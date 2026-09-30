@@ -6,18 +6,55 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin(e) {
+  async function handleLogin(e) {
     e.preventDefault();
 
-    if (!username || !password) {
+    if (!username.trim() || !password) {
       setMessage("Please enter your username and password.");
       return;
     }
 
-    // Temporary login routing.
-    // We will connect the real user database next.
-    window.location.href = "/dashboard";
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data.message || "Invalid username or password.");
+        setLoading(false);
+        return;
+      }
+
+      // Save basic login information for the dashboard.
+      sessionStorage.setItem(
+        "teamLegendUser",
+        JSON.stringify({
+          username: data.username,
+          role: data.role,
+          shop: data.shop,
+        })
+      );
+
+      window.location.href = "/dashboard";
+    } catch (error) {
+      console.error(error);
+      setMessage("Unable to connect. Please try again.");
+      setLoading(false);
+    }
   }
 
   return (
@@ -42,12 +79,18 @@ export default function LoginPage() {
           boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
         }}
       >
-        <div style={{ textAlign: "center", marginBottom: "30px" }}>
+        <div
+          style={{
+            textAlign: "center",
+            marginBottom: "30px",
+          }}
+        >
           <h1
             style={{
               margin: 0,
               fontSize: "32px",
               fontWeight: "800",
+              letterSpacing: "1px",
               color: "#111827",
             }}
           >
@@ -70,8 +113,8 @@ export default function LoginPage() {
             style={{
               display: "block",
               marginBottom: "8px",
-              fontWeight: "700",
-              color: "#374151",
+              fontWeight: "600",
+              color: "#111827",
             }}
           >
             Username
@@ -85,12 +128,12 @@ export default function LoginPage() {
             autoComplete="username"
             style={{
               width: "100%",
-              boxSizing: "border-box",
               padding: "14px",
               marginBottom: "20px",
               border: "1px solid #d1d5db",
-              borderRadius: "9px",
-              fontSize: "15px",
+              borderRadius: "10px",
+              fontSize: "16px",
+              boxSizing: "border-box",
             }}
           />
 
@@ -98,8 +141,8 @@ export default function LoginPage() {
             style={{
               display: "block",
               marginBottom: "8px",
-              fontWeight: "700",
-              color: "#374151",
+              fontWeight: "600",
+              color: "#111827",
             }}
           >
             Password
@@ -113,50 +156,54 @@ export default function LoginPage() {
             autoComplete="current-password"
             style={{
               width: "100%",
-              boxSizing: "border-box",
               padding: "14px",
               marginBottom: "20px",
               border: "1px solid #d1d5db",
-              borderRadius: "9px",
-              fontSize: "15px",
+              borderRadius: "10px",
+              fontSize: "16px",
+              boxSizing: "border-box",
             }}
           />
 
-          <button
-            type="submit"
-            style={{
-              width: "100%",
-              padding: "14px",
-              border: "none",
-              borderRadius: "9px",
-              background: "#0863ce",
-              color: "white",
-              fontSize: "16px",
-              fontWeight: "700",
-              cursor: "pointer",
-            }}
-          >
-            Sign In
-          </button>
-
           {message && (
-            <p
+            <div
               style={{
+                marginBottom: "16px",
+                padding: "10px",
+                background: "#fee2e2",
+                color: "#991b1b",
+                borderRadius: "8px",
+                fontSize: "14px",
                 textAlign: "center",
-                marginTop: "18px",
-                color: "#b91c1c",
-                fontWeight: "600",
               }}
             >
               {message}
-            </p>
+            </div>
           )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: "100%",
+              padding: "14px",
+              background: loading ? "#6b7280" : "#0284c7",
+              color: "white",
+              border: "none",
+              borderRadius: "9px",
+              fontSize: "16px",
+              fontWeight: "700",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            {loading ? "Signing in..." : "Sign In"}
+          </button>
         </form>
 
         <p
           style={{
             textAlign: "center",
-            marginTop: "24px",
+            marginTop: "22px",
             marginBottom: 0,
             color: "#9ca3af",
             fontSize: "12px",
