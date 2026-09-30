@@ -5,16 +5,57 @@ import { useState } from "react";
 export default function Home() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin(e) {
+  async function handleLogin(e) {
     e.preventDefault();
 
-    if (!username || !password) {
-      alert("Please enter your username and password.");
+    if (!username.trim() || !password) {
+      setMessage("Please enter your username and password.");
       return;
     }
 
-    alert("Login system ready for connection.");
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMessage(data.message || "Invalid username or password.");
+        setLoading(false);
+        return;
+      }
+
+      // Save login information for the dashboard
+      sessionStorage.setItem(
+        "teamLegendUser",
+        JSON.stringify({
+          username: data.username || username.trim(),
+          role: data.role,
+          shop: data.shop,
+        })
+      );
+
+      // Open dashboard after successful login
+      window.location.href = "/dashboard";
+    } catch (error) {
+      console.error(error);
+      setMessage("Unable to connect. Please try again.");
+      setLoading(false);
+    }
   }
 
   return (
@@ -38,19 +79,31 @@ export default function Home() {
           boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
         }}
       >
-        <div style={{ textAlign: "center", marginBottom: "32px" }}>
+        <div
+          style={{
+            textAlign: "center",
+            marginBottom: "32px",
+          }}
+        >
           <h1
             style={{
               margin: 0,
-              color: "#07111f",
+              color: "#0f2238",
               fontSize: "28px",
               fontWeight: "800",
+              letterSpacing: "1px",
             }}
           >
             TEAM LEGEND
           </h1>
 
-          <p style={{ marginTop: "8px", color: "#667085" }}>
+          <p
+            style={{
+              marginTop: "8px",
+              color: "#6b7280",
+              fontSize: "14px",
+            }}
+          >
             Sales Management System
           </p>
         </div>
@@ -61,7 +114,7 @@ export default function Home() {
               display: "block",
               marginBottom: "8px",
               fontWeight: "600",
-              color: "#344054",
+              color: "#374151",
             }}
           >
             Username
@@ -72,13 +125,14 @@ export default function Home() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Enter username"
+            autoComplete="username"
             style={{
               width: "100%",
-              boxSizing: "border-box",
-              padding: "14px",
+              padding: "13px",
               marginBottom: "20px",
-              border: "1px solid #d0d5dd",
-              borderRadius: "9px",
+              border: "1px solid #d1d5db",
+              borderRadius: "8px",
+              boxSizing: "border-box",
               fontSize: "15px",
             }}
           />
@@ -88,7 +142,7 @@ export default function Home() {
               display: "block",
               marginBottom: "8px",
               fontWeight: "600",
-              color: "#344054",
+              color: "#374151",
             }}
           >
             Password
@@ -99,40 +153,59 @@ export default function Home() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter password"
+            autoComplete="current-password"
             style={{
               width: "100%",
+              padding: "13px",
+              marginBottom: "20px",
+              border: "1px solid #d1d5db",
+              borderRadius: "8px",
               boxSizing: "border-box",
-              padding: "14px",
-              marginBottom: "25px",
-              border: "1px solid #d0d5dd",
-              borderRadius: "9px",
               fontSize: "15px",
             }}
           />
 
+          {message && (
+            <div
+              style={{
+                marginBottom: "16px",
+                padding: "10px",
+                borderRadius: "8px",
+                background: "#fee2e2",
+                color: "#b91c1c",
+                fontSize: "14px",
+                textAlign: "center",
+              }}
+            >
+              {message}
+            </div>
+          )}
+
           <button
             type="submit"
+            disabled={loading}
             style={{
               width: "100%",
-              padding: "14px",
+              padding: "13px",
               border: "none",
-              borderRadius: "9px",
-              background: "#0b63ce",
-              color: "white",
-              fontSize: "16px",
+              borderRadius: "7px",
+              background: loading ? "#64748b" : "#168bd2",
+              color: "#ffffff",
+              fontSize: "15px",
               fontWeight: "700",
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
             }}
           >
-            Sign In
+            {loading ? "Signing In..." : "Sign In"}
           </button>
         </form>
 
         <p
           style={{
+            marginTop: "20px",
+            marginBottom: 0,
             textAlign: "center",
-            marginTop: "25px",
-            color: "#98a2b3",
+            color: "#9ca3af",
             fontSize: "12px",
           }}
         >
