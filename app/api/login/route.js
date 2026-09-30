@@ -23,8 +23,8 @@ export async function POST(request) {
       );
     }
 
-    // Convert the username entered on the login page
-    // into the email addresses used by Supabase Authentication.
+    // Convert username entered on login page
+    // into the email used by Supabase Authentication.
     const cleanUsername = username.trim().toLowerCase();
 
     const usernameMap = {
@@ -33,7 +33,10 @@ export async function POST(request) {
       shopkings: "shopkings@teamlegend.local",
     };
 
-    const email = usernameMap[cleanUsername];
+    // Also allow the actual email address to be entered.
+    const email = cleanUsername.includes("@")
+      ? cleanUsername
+      : usernameMap[cleanUsername];
 
     if (!email) {
       return NextResponse.json(
@@ -42,21 +45,16 @@ export async function POST(request) {
       );
     }
 
-    // --------------------------------------------------
-    // 1. LOGIN THROUGH SUPABASE AUTH
-    // --------------------------------------------------
-
+    // Authenticate with Supabase.
     const authResponse = await fetch(
       `${SUPABASE_URL}/auth/v1/token?grant_type=password`,
       {
         method: "POST",
-
         headers: {
           apikey: SUPABASE_ANON_KEY,
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           "Content-Type": "application/json",
         },
-
         body: JSON.stringify({
           email,
           password,
@@ -67,22 +65,23 @@ export async function POST(request) {
     const authData = await authResponse.json();
 
     if (!authResponse.ok || !authData.user) {
+      console.error("Supabase login failed:", authData);
+
       return NextResponse.json(
         { message: "Invalid username or password." },
         { status: 401 }
       );
     }
 
-    // --------------------------------------------------
-    // 2. GET THIS USER'S PROFILE
-    // --------------------------------------------------
-
+    // Get this user's profile.
     const profileResponse = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?auth_user_id=eq.${authData.user.id}&select=id,full_name,role,shop_id,is_active`,
+      `${SUPABASE_URL}/rest/v1/profiles?auth_user_id=eq.${authData.user.id}&select=id,auth_user_id,full_name,role,shop_id,is_active`,
       {
+        method: "GET",
         headers: {
           apikey: SUPABASE_ANON_KEY,
           Authorization: `Bearer ${authData.access_token}`,
+          "Content-Type": "application/json",
         },
         cache: "no-store",
       }
@@ -90,46 +89,65 @@ export async function POST(request) {
 
     const profiles = await profileResponse.json();
 
-    if (
-      !profileResponse.ok ||
-      !Array.isArray(profiles) ||
-      profiles.length === 0
-    ) {
+    if (!profileResponse.ok) {
+      console.error("Profile lookup failed:", profiles);
+
       return NextResponse.json(
-        { message: "User profile was not found." },
+        { message: "Unable to load user profile." },
+        { status: 500 }
+      );
+    }
+
+    if (!Array.isArray(profiles) || profiles.length === 0) {
+      return NextResponse.json(
+        { message: "No staff profile is connected to this account." },
         { status: 403 }
       );
     }
 
     const profile = profiles[0];
 
-    // --------------------------------------------------
-    // 3. BLOCK DISABLED USERS
-    // --------------------------------------------------
-
-    if (profile.is_active !== true) {
+    if (!profile.is_active) {
       return NextResponse.json(
-        { message: "This account has been disabled." },
+        { message: "This staff account is inactive." },
         { status: 403 }
       );
     }
 
-    // --------------------------------------------------
-    // 4. RETURN ONLY SAFE USER INFORMATION
-    // --------------------------------------------------
+    const role = String(profile.role || "").toUpperCase();
 
-    return NextResponse.json({
-      success: true,
-      username: cleanUsername,
-      name: profile.full_name,
-      role: profile.role,
-      shop: profile.shop_id,
-    });
-  } catch (error) {
-    console.error("Login error:", error);
+    if (role !== "ADMIN" && role !== "CASHIER") {
+      return NextResponse.json(
+        { message: "This account does not have permission to sign in." },
+        { status: 403 }
+      );
+    }
+
+    // Cashiers must belong to a shop.
+    if (role === "CASHIER" && !profile.shop_id) {
+      return NextResponse.json(
+        { message: "This cashier has not been assigned to a shop." },
+        { status: 403 }
+      );
+    }
 
     return NextResponse.json(
-      { message: "Unable to sign in. Please try again." },
+      {
+        success: true,
+        user: {
+          id: authData.user.id,
+          name: profile.full_name,
+          role,
+          shop: profile.shop_id,
+        },
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Login API error:", error);
+
+    return NextResponse.json(
+      { message: "Something went wrong while signing in." },
       { status: 500 }
     );
   }
