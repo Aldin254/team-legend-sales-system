@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -15,7 +18,9 @@ export default function LoginPage() {
       return;
     }
 
-    setMessage("Login system ready for connection.");
+    // Temporary login while we build the system.
+    // Real user authentication will be connected next.
+    router.push("/dashboard");
   }
 
   return (
@@ -36,7 +41,7 @@ export default function LoginPage() {
           maxWidth: "420px",
           background: "white",
           padding: "40px",
-          borderRadius: "18px",
+          borderRadius: "14px",
           boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
         }}
       >
@@ -56,7 +61,7 @@ export default function LoginPage() {
             style={{
               marginTop: "8px",
               color: "#6b7280",
-              fontSize: "16px",
+              fontSize: "17px",
             }}
           >
             Sales Management System
@@ -140,7 +145,7 @@ export default function LoginPage() {
               style={{
                 textAlign: "center",
                 marginTop: "18px",
-                color: "#374151",
+                color: "#dc2626",
               }}
             >
               {message}
