@@ -48,22 +48,26 @@ export default function Dashboard() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#f4f7fb",
           fontFamily: "Arial, sans-serif",
         }}
       >
-        <p>Loading Team Legend...</p>
+        Loading...
       </main>
     );
   }
 
-  const isAdmin =
-    String(user?.role || "").trim().toLowerCase() === "admin";
+  if (!user) {
+    return null;
+  }
+
+  const role = String(user.role || "").toLowerCase();
+  const isAdmin = role === "admin";
 
   const shopName =
-    user?.shop && String(user.shop).trim()
-      ? String(user.shop).trim()
-      : "No shop assigned";
+    user.shop ||
+    user.shop_name ||
+    user.shopName ||
+    "Assigned Shop";
 
   return (
     <main
@@ -73,6 +77,7 @@ export default function Dashboard() {
         fontFamily: "Arial, sans-serif",
       }}
     >
+      {/* HEADER */}
       <header
         style={{
           backgroundColor: "#0f172a",
@@ -81,24 +86,15 @@ export default function Dashboard() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          gap: "20px",
         }}
       >
         <div>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "22px",
-            }}
-          >
-            TEAM LEGEND
-          </h2>
+          <h2 style={{ margin: 0 }}>TEAM LEGEND</h2>
 
           <p
             style={{
               margin: "5px 0 0",
               color: "#cbd5e1",
-              fontSize: "13px",
             }}
           >
             Sales Management System
@@ -111,157 +107,95 @@ export default function Dashboard() {
             backgroundColor: "#dc2626",
             color: "white",
             border: "none",
+            borderRadius: "6px",
             padding: "10px 18px",
-            borderRadius: "7px",
             cursor: "pointer",
-            fontWeight: "700",
+            fontWeight: "bold",
           }}
         >
           Logout
         </button>
       </header>
 
-      <section
-        style={{
-          padding: "30px",
-        }}
-      >
-        <h1
-          style={{
-            marginTop: 0,
-            marginBottom: "8px",
-            color: "#0f172a",
-          }}
-        >
-          {isAdmin ? "Admin Dashboard" : `${shopName} Dashboard`}
-        </h1>
-
-        <p
-          style={{
-            marginTop: 0,
-            marginBottom: "30px",
-            color: "#64748b",
-          }}
-        >
-          {isAdmin
-            ? "Administrator access to all Team Legend shops."
-            : `You are signed in to ${shopName}.`}
-        </p>
-
+      <section style={{ padding: "30px" }}>
+        {/* ADMIN DASHBOARD */}
         {isAdmin ? (
-          <AdminDashboard />
+          <>
+            <h1 style={{ marginTop: 0 }}>Admin Dashboard</h1>
+
+            <p>
+              Welcome to Team Legend Sales Management System.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(200px, 1fr))",
+                gap: "20px",
+                marginTop: "30px",
+              }}
+            >
+              <DashboardCard title="Shops" value="27" />
+
+              <DashboardCard
+                title="Today's Sales"
+                value="KES 0"
+              />
+
+              <DashboardCard
+                title="Expenses"
+                value="KES 0"
+              />
+
+              <DashboardCard
+                title="Closing Balance"
+                value="KES 0"
+              />
+            </div>
+          </>
         ) : (
-          <CashierDashboard shopName={shopName} />
+          /* CASHIER DASHBOARD */
+          <>
+            <h1 style={{ marginTop: 0 }}>
+              {shopName}
+            </h1>
+
+            <p>
+              Cashier Dashboard
+            </p>
+
+            <div
+              style={{
+                backgroundColor: "white",
+                borderRadius: "10px",
+                padding: "25px",
+                marginTop: "25px",
+                boxShadow:
+                  "0 2px 10px rgba(0,0,0,0.08)",
+              }}
+            >
+              <h2 style={{ marginTop: 0 }}>
+                {shopName}
+              </h2>
+
+              <p>
+                You are logged in as the cashier for this shop.
+              </p>
+
+              <p
+                style={{
+                  color: "#64748b",
+                  marginBottom: 0,
+                }}
+              >
+                You can only access your assigned shop.
+              </p>
+            </div>
+          </>
         )}
       </section>
     </main>
-  );
-}
-
-function AdminDashboard() {
-  return (
-    <div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: "20px",
-        }}
-      >
-        <DashboardCard title="Shops" value="27" />
-        <DashboardCard title="Today's Sales" value="KES 0" />
-        <DashboardCard title="Expenses" value="KES 0" />
-        <DashboardCard title="Closing Balance" value="KES 0" />
-      </div>
-
-      <div
-        style={{
-          marginTop: "30px",
-          backgroundColor: "white",
-          padding: "25px",
-          borderRadius: "12px",
-          boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
-        }}
-      >
-        <h2
-          style={{
-            marginTop: 0,
-            color: "#0f172a",
-          }}
-        >
-          All Shops
-        </h2>
-
-        <p
-          style={{
-            color: "#64748b",
-            marginBottom: 0,
-          }}
-        >
-          Admin access is active. Shop reporting and management will be
-          connected here.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function CashierDashboard({ shopName }) {
-  return (
-    <div>
-      <div
-        style={{
-          backgroundColor: "white",
-          padding: "30px",
-          borderRadius: "14px",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
-          maxWidth: "700px",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "13px",
-            color: "#64748b",
-            marginBottom: "6px",
-          }}
-        >
-          ASSIGNED SHOP
-        </div>
-
-        <h2
-          style={{
-            marginTop: 0,
-            marginBottom: "20px",
-            color: "#0f172a",
-            fontSize: "28px",
-          }}
-        >
-          {shopName}
-        </h2>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-            gap: "15px",
-          }}
-        >
-          <DashboardCard title="Today's Sales" value="KES 0" />
-          <DashboardCard title="Expenses" value="KES 0" />
-          <DashboardCard title="Closing Balance" value="KES 0" />
-        </div>
-
-        <p
-          style={{
-            marginTop: "25px",
-            marginBottom: 0,
-            color: "#64748b",
-          }}
-        >
-          Cashier access is restricted to {shopName}.
-        </p>
-      </div>
-    </div>
   );
 }
 
@@ -270,30 +204,28 @@ function DashboardCard({ title, value }) {
     <div
       style={{
         backgroundColor: "white",
+        borderRadius: "10px",
         padding: "22px",
-        borderRadius: "12px",
-        boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+        boxShadow:
+          "0 2px 10px rgba(0,0,0,0.08)",
       }}
     >
-      <div
+      <p
         style={{
+          margin: 0,
           color: "#64748b",
-          fontSize: "13px",
-          marginBottom: "8px",
         }}
       >
         {title}
-      </div>
+      </p>
 
-      <div
+      <h2
         style={{
-          color: "#0f172a",
-          fontSize: "24px",
-          fontWeight: "700",
+          margin: "8px 0 0",
         }}
       >
         {value}
-      </div>
+      </h2>
     </div>
   );
 }
