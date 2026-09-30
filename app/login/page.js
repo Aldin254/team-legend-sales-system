@@ -1,11 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const router = useRouter();
-
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -18,9 +15,9 @@ export default function LoginPage() {
       return;
     }
 
-    // Temporary login while we build the system.
-    // Real user authentication will be connected next.
-    router.push("/dashboard");
+    // Temporary login routing.
+    // We will connect the real user database next.
+    window.location.href = "/dashboard";
   }
 
   return (
@@ -41,7 +38,7 @@ export default function LoginPage() {
           maxWidth: "420px",
           background: "white",
           padding: "40px",
-          borderRadius: "14px",
+          borderRadius: "18px",
           boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
         }}
       >
@@ -61,7 +58,7 @@ export default function LoginPage() {
             style={{
               marginTop: "8px",
               color: "#6b7280",
-              fontSize: "17px",
+              fontSize: "16px",
             }}
           >
             Sales Management System
@@ -73,7 +70,7 @@ export default function LoginPage() {
             style={{
               display: "block",
               marginBottom: "8px",
-              fontWeight: "600",
+              fontWeight: "700",
               color: "#374151",
             }}
           >
@@ -85,6 +82,7 @@ export default function LoginPage() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Enter username"
+            autoComplete="username"
             style={{
               width: "100%",
               boxSizing: "border-box",
@@ -100,7 +98,7 @@ export default function LoginPage() {
             style={{
               display: "block",
               marginBottom: "8px",
-              fontWeight: "600",
+              fontWeight: "700",
               color: "#374151",
             }}
           >
@@ -112,6 +110,7 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter password"
+            autoComplete="current-password"
             style={{
               width: "100%",
               boxSizing: "border-box",
@@ -145,7 +144,8 @@ export default function LoginPage() {
               style={{
                 textAlign: "center",
                 marginTop: "18px",
-                color: "#dc2626",
+                color: "#b91c1c",
+                fontWeight: "600",
               }}
             >
               {message}
