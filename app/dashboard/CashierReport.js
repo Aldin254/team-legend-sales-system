@@ -9,7 +9,7 @@ import {
 
 import { useRouter } from "next/navigation";
 import CashierSavingsPanel from "./CashierSavingsPanel";
-
+import CashierManagementPanel from "./CashierManagementPanel";
 export default function CashierReport({
   user,
   currentShift,
@@ -2151,15 +2151,13 @@ export default function CashierReport({
               }
             />
 
-            <section style={lowerPanelStyle}>
-              <div style={lowerTitleStyle}>
-                MANAGEMENT STATUS
-              </div>
-
-              <div style={placeholderTextStyle}>
-                Management information will be connected next.
-              </div>
-            </section>
+            <CashierManagementPanel
+  user={user}
+  currentShift={
+    shift ||
+    currentShift
+  }
+/>
 
             <section style={lowerPanelStyle}>
               <div style={lowerTitleStyle}>
