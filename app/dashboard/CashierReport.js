@@ -19,23 +19,21 @@ export default function CashierReport({
     currentShift || null
   );
 
-  const [platforms, setPlatforms] =
-    useState([]);
+  const [platforms, setPlatforms] = useState([]);
+  const [readings, setReadings] = useState([]);
+  const [incomeEntries, setIncomeEntries] = useState([]);
+  const [expenses, setExpenses] = useState([]);
 
-  const [readings, setReadings] =
-    useState([]);
+  const [openingInputs, setOpeningInputs] = useState({});
+  const [closingInputs, setClosingInputs] = useState({});
 
-  const [incomeEntries, setIncomeEntries] =
-    useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [expenses, setExpenses] =
-    useState([]);
+  const [savingOpening, setSavingOpening] = useState(false);
+  const [savingClosing, setSavingClosing] = useState(false);
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("");
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -49,6 +47,13 @@ export default function CashierReport({
   const shopId =
     user?.shop_id ||
     user?.shopId ||
+    null;
+
+  const cashierId =
+    user?.profile_id ||
+    user?.id ||
+    user?.user_id ||
+    user?.auth_user_id ||
     null;
 
   const shiftId =
@@ -84,17 +89,13 @@ export default function CashierReport({
       }
 
       try {
-        setError("");
-
         // ------------------------------------------
         // SHIFT
         // ------------------------------------------
 
         const shiftResponse = await fetch(
           `${supabaseUrl}/rest/v1/shifts` +
-            `?id=eq.${encodeURIComponent(
-              shiftId
-            )}` +
+            `?id=eq.${encodeURIComponent(shiftId)}` +
             `&select=*` +
             `&limit=1`,
           {
@@ -110,9 +111,7 @@ export default function CashierReport({
         );
 
         const shiftResult =
-          await safeJson(
-            shiftResponse
-          );
+          await safeJson(shiftResponse);
 
         if (!shiftResponse.ok) {
           throw new Error(
@@ -132,31 +131,26 @@ export default function CashierReport({
         // PLATFORMS
         // ------------------------------------------
 
-        const platformResponse =
-          await fetch(
-            `${supabaseUrl}/rest/v1/shop_platforms` +
-              `?shop_id=eq.${encodeURIComponent(
-                shopId
-              )}` +
-              `&is_active=eq.true` +
-              `&select=id,platform_name,reading_type,display_order` +
-              `&order=display_order.asc`,
-            {
-              method: "GET",
+        const platformResponse = await fetch(
+          `${supabaseUrl}/rest/v1/shop_platforms` +
+            `?shop_id=eq.${encodeURIComponent(shopId)}` +
+            `&is_active=eq.true` +
+            `&select=id,platform_name,reading_type,display_order` +
+            `&order=display_order.asc`,
+          {
+            method: "GET",
 
-              headers: authHeaders(
-                supabaseAnonKey,
-                accessToken
-              ),
+            headers: authHeaders(
+              supabaseAnonKey,
+              accessToken
+            ),
 
-              cache: "no-store",
-            }
-          );
+            cache: "no-store",
+          }
+        );
 
         const platformResult =
-          await safeJson(
-            platformResponse
-          );
+          await safeJson(platformResponse);
 
         if (!platformResponse.ok) {
           throw new Error(
@@ -166,33 +160,33 @@ export default function CashierReport({
           );
         }
 
+        const loadedPlatforms =
+          Array.isArray(platformResult)
+            ? platformResult
+            : [];
+
         // ------------------------------------------
         // PLATFORM READINGS
         // ------------------------------------------
 
-        const readingResponse =
-          await fetch(
-            `${supabaseUrl}/rest/v1/platform_readings` +
-              `?shift_id=eq.${encodeURIComponent(
-                shiftId
-              )}` +
-              `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
-            {
-              method: "GET",
+        const readingResponse = await fetch(
+          `${supabaseUrl}/rest/v1/platform_readings` +
+            `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+            `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
+          {
+            method: "GET",
 
-              headers: authHeaders(
-                supabaseAnonKey,
-                accessToken
-              ),
+            headers: authHeaders(
+              supabaseAnonKey,
+              accessToken
+            ),
 
-              cache: "no-store",
-            }
-          );
+            cache: "no-store",
+          }
+        );
 
         const readingResult =
-          await safeJson(
-            readingResponse
-          );
+          await safeJson(readingResponse);
 
         if (!readingResponse.ok) {
           throw new Error(
@@ -202,34 +196,34 @@ export default function CashierReport({
           );
         }
 
+        const loadedReadings =
+          Array.isArray(readingResult)
+            ? readingResult
+            : [];
+
         // ------------------------------------------
         // FLOAT / INCOME
         // ------------------------------------------
 
-        const incomeResponse =
-          await fetch(
-            `${supabaseUrl}/rest/v1/shift_income_entries` +
-              `?shift_id=eq.${encodeURIComponent(
-                shiftId
-              )}` +
-              `&select=id,entry_type,description,amount,created_at` +
-              `&order=created_at.asc`,
-            {
-              method: "GET",
+        const incomeResponse = await fetch(
+          `${supabaseUrl}/rest/v1/shift_income_entries` +
+            `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+            `&select=id,entry_type,description,amount,created_at` +
+            `&order=created_at.asc`,
+          {
+            method: "GET",
 
-              headers: authHeaders(
-                supabaseAnonKey,
-                accessToken
-              ),
+            headers: authHeaders(
+              supabaseAnonKey,
+              accessToken
+            ),
 
-              cache: "no-store",
-            }
-          );
+            cache: "no-store",
+          }
+        );
 
         const incomeResult =
-          await safeJson(
-            incomeResponse
-          );
+          await safeJson(incomeResponse);
 
         if (!incomeResponse.ok) {
           throw new Error(
@@ -243,30 +237,25 @@ export default function CashierReport({
         // EXPENSES
         // ------------------------------------------
 
-        const expenseResponse =
-          await fetch(
-            `${supabaseUrl}/rest/v1/expenses` +
-              `?shift_id=eq.${encodeURIComponent(
-                shiftId
-              )}` +
-              `&select=id,description,amount,created_at` +
-              `&order=created_at.asc`,
-            {
-              method: "GET",
+        const expenseResponse = await fetch(
+          `${supabaseUrl}/rest/v1/expenses` +
+            `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+            `&select=id,description,amount,created_at` +
+            `&order=created_at.asc`,
+          {
+            method: "GET",
 
-              headers: authHeaders(
-                supabaseAnonKey,
-                accessToken
-              ),
+            headers: authHeaders(
+              supabaseAnonKey,
+              accessToken
+            ),
 
-              cache: "no-store",
-            }
-          );
+            cache: "no-store",
+          }
+        );
 
         const expenseResult =
-          await safeJson(
-            expenseResponse
-          );
+          await safeJson(expenseResponse);
 
         if (!expenseResponse.ok) {
           throw new Error(
@@ -276,21 +265,21 @@ export default function CashierReport({
           );
         }
 
+        // ------------------------------------------
+        // SAVE DATA
+        // ------------------------------------------
+
         setShift(
           latestShift ||
             currentShift
         );
 
         setPlatforms(
-          Array.isArray(platformResult)
-            ? platformResult
-            : []
+          loadedPlatforms
         );
 
         setReadings(
-          Array.isArray(readingResult)
-            ? readingResult
-            : []
+          loadedReadings
         );
 
         setIncomeEntries(
@@ -304,15 +293,74 @@ export default function CashierReport({
             ? expenseResult
             : []
         );
-      } catch (err) {
+
+        // ------------------------------------------
+        // PRESERVE UNSAVED OPENING INPUTS
+        // ------------------------------------------
+
+        setOpeningInputs((previous) => {
+          const next = {
+            ...previous,
+          };
+
+          for (const platform of loadedPlatforms) {
+            const savedOpening =
+              loadedReadings.find(
+                (row) =>
+                  row.platform_id === platform.id &&
+                  row.reading_kind === "OPENING"
+              );
+
+            if (savedOpening) {
+              next[platform.id] =
+                String(
+                  savedOpening.reading_value ?? ""
+                );
+            } else if (
+              next[platform.id] === undefined
+            ) {
+              next[platform.id] = "";
+            }
+          }
+
+          return next;
+        });
+
+        // ------------------------------------------
+        // PRESERVE UNSAVED CLOSING INPUTS
+        // ------------------------------------------
+
+        setClosingInputs((previous) => {
+          const next = {
+            ...previous,
+          };
+
+          for (const platform of loadedPlatforms) {
+            const savedClosing =
+              loadedReadings.find(
+                (row) =>
+                  row.platform_id === platform.id &&
+                  row.reading_kind === "CLOSING"
+              );
+
+            if (savedClosing) {
+              next[platform.id] =
+                String(
+                  savedClosing.reading_value ?? ""
+                );
+            } else if (
+              next[platform.id] === undefined
+            ) {
+              next[platform.id] = "";
+            }
+          }
+
+          return next;
+        });
+      } catch (error) {
         console.error(
           "CASHIER REPORT ERROR:",
-          err
-        );
-
-        setError(
-          err?.message ||
-            "Unable to load cashier report."
+          error
         );
       } finally {
         setLoading(false);
@@ -335,11 +383,10 @@ export default function CashierReport({
   useEffect(() => {
     loadReport();
 
-    const timer =
-      setInterval(
-        loadReport,
-        5000
-      );
+    const timer = setInterval(
+      loadReport,
+      5000
+    );
 
     return () => {
       clearInterval(timer);
@@ -357,6 +404,66 @@ export default function CashierReport({
 
     router.replace("/");
   }
+
+  // ==================================================
+  // SAVED READING COUNTS
+  // ==================================================
+
+  const savedOpeningIds =
+    useMemo(() => {
+      return new Set(
+        readings
+          .filter(
+            (row) =>
+              row.reading_kind === "OPENING"
+          )
+          .map(
+            (row) =>
+              row.platform_id
+          )
+      );
+    }, [readings]);
+
+  const savedClosingIds =
+    useMemo(() => {
+      return new Set(
+        readings
+          .filter(
+            (row) =>
+              row.reading_kind === "CLOSING"
+          )
+          .map(
+            (row) =>
+              row.platform_id
+          )
+      );
+    }, [readings]);
+
+  const savedOpeningCount =
+    platforms.filter(
+      (platform) =>
+        savedOpeningIds.has(
+          platform.id
+        )
+    ).length;
+
+  const savedClosingCount =
+    platforms.filter(
+      (platform) =>
+        savedClosingIds.has(
+          platform.id
+        )
+    ).length;
+
+  const allOpeningsSaved =
+    platforms.length > 0 &&
+    savedOpeningCount ===
+      platforms.length;
+
+  const allClosingsSaved =
+    platforms.length > 0 &&
+    savedClosingCount ===
+      platforms.length;
 
   // ==================================================
   // FLOAT TOTALS
@@ -415,7 +522,7 @@ export default function CashierReport({
     }, [incomeEntries]);
 
   // ==================================================
-  // PLATFORM DATA
+  // PLATFORM ROWS
   // ==================================================
 
   const platformRows =
@@ -440,35 +547,49 @@ export default function CashierReport({
                   "CLOSING"
             );
 
+          const openingRaw =
+            openingRow
+              ? openingRow.reading_value
+              : openingInputs[
+                  platform.id
+                ];
+
+          const closingRaw =
+            closingRow
+              ? closingRow.reading_value
+              : closingInputs[
+                  platform.id
+                ];
+
           const opening =
-            Number(
-              openingRow?.reading_value ||
-                0
-            );
+            openingRaw === "" ||
+            openingRaw === undefined ||
+            openingRaw === null
+              ? null
+              : Number(openingRaw);
 
           const closing =
-            Number(
-              closingRow?.reading_value ||
-                0
-            );
+            closingRaw === "" ||
+            closingRaw === undefined ||
+            closingRaw === null
+              ? null
+              : Number(closingRaw);
 
-          const hasOpening =
-            Boolean(openingRow);
+          let output = 0;
 
-          const hasClosing =
-            Boolean(closingRow);
-
-          const output =
-            hasOpening &&
-            hasClosing
-              ? roundMoney(
-                  Math.max(
-                    0,
-                    closing -
-                      opening
-                  )
-                )
-              : 0;
+          if (
+            opening !== null &&
+            closing !== null &&
+            !Number.isNaN(opening) &&
+            !Number.isNaN(closing) &&
+            closing >= opening
+          ) {
+            output =
+              roundMoney(
+                closing -
+                  opening
+              );
+          }
 
           return {
             ...platform,
@@ -477,18 +598,504 @@ export default function CashierReport({
             closing,
             output,
 
-            hasOpening,
-            hasClosing,
+            openingSaved:
+              Boolean(
+                openingRow
+              ),
+
+            closingSaved:
+              Boolean(
+                closingRow
+              ),
           };
         }
       );
     }, [
       platforms,
       readings,
+      openingInputs,
+      closingInputs,
     ]);
 
   // ==================================================
-  // CALCULATED TOTALS
+  // LIVE PLATFORM OUTPUT PREVIEW
+  // ==================================================
+
+  const platformPreviewTotal =
+    useMemo(() => {
+      return roundMoney(
+        platformRows.reduce(
+          (sum, platform) =>
+            sum +
+            Number(
+              platform.output || 0
+            ),
+          0
+        )
+      );
+    }, [platformRows]);
+
+  // ==================================================
+  // SAVE OPENING READINGS
+  // ==================================================
+
+  async function saveOpeningReadings() {
+    if (
+      !shiftId ||
+      !accessToken ||
+      !cashierId
+    ) {
+      setMessage(
+        "Login or shift information is missing."
+      );
+
+      setMessageType("error");
+      return;
+    }
+
+    const unsavedPlatforms =
+      platforms.filter(
+        (platform) =>
+          !savedOpeningIds.has(
+            platform.id
+          )
+      );
+
+    if (
+      unsavedPlatforms.length === 0
+    ) {
+      setMessage(
+        "All opening readings are already saved."
+      );
+
+      setMessageType("success");
+      return;
+    }
+
+    for (const platform of unsavedPlatforms) {
+      const raw =
+        openingInputs[
+          platform.id
+        ];
+
+      const value =
+        Number(raw);
+
+      if (
+        raw === "" ||
+        raw === undefined ||
+        Number.isNaN(value) ||
+        value < 0
+      ) {
+        setMessage(
+          `Enter a valid opening reading for ${platform.platform_name}.`
+        );
+
+        setMessageType("error");
+        return;
+      }
+    }
+
+    try {
+      setSavingOpening(true);
+      setMessage("");
+      setMessageType("");
+
+      const recordedAt =
+        new Date().toISOString();
+
+      for (const platform of unsavedPlatforms) {
+        const value =
+          Number(
+            openingInputs[
+              platform.id
+            ]
+          );
+
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/platform_readings`,
+          {
+            method: "POST",
+
+            headers: {
+              apikey:
+                supabaseAnonKey,
+
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+
+              Prefer:
+                "return=representation",
+            },
+
+            body: JSON.stringify({
+              shift_id:
+                shiftId,
+
+              platform_id:
+                platform.id,
+
+              reading_kind:
+                "OPENING",
+
+              reading_value:
+                roundMoney(
+                  value
+                ),
+
+              recorded_at:
+                recordedAt,
+
+              recorded_by:
+                cashierId,
+            }),
+          }
+        );
+
+        const result =
+          await safeJson(
+            response
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              result?.hint ||
+              `Unable to save ${platform.platform_name}.`
+          );
+        }
+      }
+
+      setMessage(
+        "Opening readings saved successfully."
+      );
+
+      setMessageType(
+        "success"
+      );
+
+      await loadReport();
+    } catch (error) {
+      console.error(
+        "SAVE OPENING ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to save opening readings."
+      );
+
+      setMessageType("error");
+    } finally {
+      setSavingOpening(false);
+    }
+  }
+
+  // ==================================================
+  // SAVE CLOSING READINGS
+  // ==================================================
+
+  async function saveClosingReadings() {
+    if (!allOpeningsSaved) {
+      setMessage(
+        "Save all opening readings first."
+      );
+
+      setMessageType("error");
+      return;
+    }
+
+    const unsavedPlatforms =
+      platforms.filter(
+        (platform) =>
+          !savedClosingIds.has(
+            platform.id
+          )
+      );
+
+    if (
+      unsavedPlatforms.length === 0
+    ) {
+      setMessage(
+        "All closing readings are already saved."
+      );
+
+      setMessageType("success");
+      return;
+    }
+
+    for (const platform of unsavedPlatforms) {
+      const openingRow =
+        readings.find(
+          (row) =>
+            row.platform_id ===
+              platform.id &&
+            row.reading_kind ===
+              "OPENING"
+        );
+
+      const opening =
+        Number(
+          openingRow?.reading_value
+        );
+
+      const rawClosing =
+        closingInputs[
+          platform.id
+        ];
+
+      const closing =
+        Number(
+          rawClosing
+        );
+
+      if (
+        rawClosing === "" ||
+        rawClosing === undefined ||
+        Number.isNaN(closing) ||
+        closing < 0
+      ) {
+        setMessage(
+          `Enter a valid closing reading for ${platform.platform_name}.`
+        );
+
+        setMessageType("error");
+        return;
+      }
+
+      if (
+        Number.isNaN(opening)
+      ) {
+        setMessage(
+          `Opening reading is missing for ${platform.platform_name}.`
+        );
+
+        setMessageType("error");
+        return;
+      }
+
+      if (
+        closing < opening
+      ) {
+        setMessage(
+          `${platform.platform_name} closing reading cannot be lower than opening ${money(
+            opening
+          )}.`
+        );
+
+        setMessageType("error");
+        return;
+      }
+    }
+
+    try {
+      setSavingClosing(true);
+      setMessage("");
+      setMessageType("");
+
+      const recordedAt =
+        new Date().toISOString();
+
+      for (const platform of unsavedPlatforms) {
+        const closing =
+          Number(
+            closingInputs[
+              platform.id
+            ]
+          );
+
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/platform_readings`,
+          {
+            method: "POST",
+
+            headers: {
+              apikey:
+                supabaseAnonKey,
+
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+
+              Prefer:
+                "return=representation",
+            },
+
+            body: JSON.stringify({
+              shift_id:
+                shiftId,
+
+              platform_id:
+                platform.id,
+
+              reading_kind:
+                "CLOSING",
+
+              reading_value:
+                roundMoney(
+                  closing
+                ),
+
+              recorded_at:
+                recordedAt,
+
+              recorded_by:
+                cashierId,
+            }),
+          }
+        );
+
+        const result =
+          await safeJson(
+            response
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              result?.hint ||
+              `Unable to save ${platform.platform_name} closing reading.`
+          );
+        }
+      }
+
+      // ------------------------------------------
+      // CALCULATE FINAL TOTAL OUTPUT
+      // ------------------------------------------
+
+      let totalOutput = 0;
+
+      for (const platform of platforms) {
+        const openingRow =
+          readings.find(
+            (row) =>
+              row.platform_id ===
+                platform.id &&
+              row.reading_kind ===
+                "OPENING"
+          );
+
+        const savedClosing =
+          readings.find(
+            (row) =>
+              row.platform_id ===
+                platform.id &&
+              row.reading_kind ===
+                "CLOSING"
+          );
+
+        const opening =
+          Number(
+            openingRow?.reading_value ||
+              0
+          );
+
+        const closing =
+          savedClosing
+            ? Number(
+                savedClosing.reading_value ||
+                  0
+              )
+            : Number(
+                closingInputs[
+                  platform.id
+                ] || 0
+              );
+
+        totalOutput +=
+          closing -
+          opening;
+      }
+
+      totalOutput =
+        roundMoney(
+          totalOutput
+        );
+
+      // ------------------------------------------
+      // UPDATE SHIFT TOTAL OUTPUT
+      // DATABASE TRIGGER UPDATES NET INCOME
+      // + CLOSING BALANCE
+      // ------------------------------------------
+
+      const shiftResponse = await fetch(
+        `${supabaseUrl}/rest/v1/shifts` +
+          `?id=eq.${encodeURIComponent(
+            shiftId
+          )}`,
+        {
+          method: "PATCH",
+
+          headers: {
+            apikey:
+              supabaseAnonKey,
+
+            Authorization:
+              `Bearer ${accessToken}`,
+
+            "Content-Type":
+              "application/json",
+
+            Prefer:
+              "return=representation",
+          },
+
+          body: JSON.stringify({
+            total_output:
+              totalOutput,
+          }),
+        }
+      );
+
+      const shiftResult =
+        await safeJson(
+          shiftResponse
+        );
+
+      if (!shiftResponse.ok) {
+        throw new Error(
+          shiftResult?.message ||
+            shiftResult?.details ||
+            "Closing readings were saved, but total output could not be updated."
+        );
+      }
+
+      setMessage(
+        "Closing readings saved and Total Income updated successfully."
+      );
+
+      setMessageType(
+        "success"
+      );
+
+      await loadReport();
+    } catch (error) {
+      console.error(
+        "SAVE CLOSING ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to save closing readings."
+      );
+
+      setMessageType("error");
+    } finally {
+      setSavingClosing(false);
+    }
+  }
+
+  // ==================================================
+  // SHIFT TOTALS
   // ==================================================
 
   const openingBalance =
@@ -497,7 +1104,7 @@ export default function CashierReport({
         0
     );
 
-  const totalOutput =
+  const savedTotalOutput =
     Number(
       shift?.total_output ||
         0
@@ -533,7 +1140,7 @@ export default function CashierReport({
       openingBalance +
         floatData.companyTotal +
         floatData.mshwariTotal +
-        totalOutput
+        savedTotalOutput
     );
 
   // ==================================================
@@ -566,7 +1173,8 @@ export default function CashierReport({
     Array.from(
       { length: 10 },
       (_, index) =>
-        expenses[index] || null
+        expenses[index] ||
+        null
     );
 
   // ==================================================
@@ -595,7 +1203,10 @@ export default function CashierReport({
   // LOADING
   // ==================================================
 
-  if (loading && !shift) {
+  if (
+    loading &&
+    !shift
+  ) {
     return (
       <div style={loadingStyle}>
         Loading cashier report...
@@ -613,9 +1224,7 @@ export default function CashierReport({
 
   return (
     <div style={pageStyle}>
-      {/* ============================================
-          TOP HEADER
-      ============================================ */}
+      {/* TOP HEADER */}
 
       <header style={topHeaderStyle}>
         <div style={brandWrapStyle}>
@@ -659,9 +1268,7 @@ export default function CashierReport({
       </header>
 
       <div style={bodyStyle}>
-        {/* ============================================
-            SIDEBAR
-        ============================================ */}
+        {/* SIDEBAR */}
 
         <aside style={sidebarStyle}>
           <SidebarItem
@@ -691,16 +1298,13 @@ export default function CashierReport({
           />
         </aside>
 
-        {/* ============================================
-            MAIN CONTENT
-        ============================================ */}
+        {/* MAIN */}
 
         <main style={mainStyle}>
-          {/* TOP INFORMATION CARDS */}
+          {/* TOP CARDS */}
 
           <div style={topGridStyle}>
             <TopCard
-              large
               title={shopName.toUpperCase()}
               subtitle="DAILY SALES REPORT"
               footer="12-HOUR SHOP"
@@ -728,7 +1332,7 @@ export default function CashierReport({
               title="SHIFT"
               value={
                 shift?.shift_name ||
-                "Day Shift"
+                "DAY"
               }
               subvalue={
                 shift?.scheduled_start &&
@@ -755,20 +1359,32 @@ export default function CashierReport({
             />
           </div>
 
-          {error && (
-            <div style={errorStyle}>
-              {error}
+          {message && (
+            <div
+              style={{
+                ...messageStyle,
+
+                backgroundColor:
+                  messageType ===
+                  "success"
+                    ? "#ecfdf5"
+                    : "#fef2f2",
+
+                color:
+                  messageType ===
+                  "success"
+                    ? "#166534"
+                    : "#991b1b",
+              }}
+            >
+              {message}
             </div>
           )}
 
-          {/* ============================================
-              MAIN 3-COLUMN REPORT
-          ============================================ */}
+          {/* MAIN REPORT */}
 
           <div style={reportGridStyle}>
-            {/* ======================================
-                INCOME STATEMENT
-            ====================================== */}
+            {/* INCOME STATEMENT */}
 
             <section style={panelStyle}>
               <PanelTitle
@@ -841,9 +1457,7 @@ export default function CashierReport({
               </div>
             </section>
 
-            {/* ======================================
-                PLATFORM SALES
-            ====================================== */}
+            {/* PLATFORM SALES */}
 
             <section style={panelStyle}>
               <PanelTitle
@@ -851,11 +1465,23 @@ export default function CashierReport({
                 tone="green"
               />
 
-              <div
-                style={
-                  platformHeaderStyle
-                }
-              >
+              <div style={platformStatusStyle}>
+                <span>
+                  Opening:{" "}
+                  <strong>
+                    {savedOpeningCount} / {platforms.length}
+                  </strong>
+                </span>
+
+                <span>
+                  Closing:{" "}
+                  <strong>
+                    {savedClosingCount} / {platforms.length}
+                  </strong>
+                </span>
+              </div>
+
+              <div style={platformHeaderStyle}>
                 <div>
                   SHOP / PLATFORM
                 </div>
@@ -883,9 +1509,7 @@ export default function CashierReport({
                 (platform) => (
                   <div
                     key={platform.id}
-                    style={
-                      platformRowStyle
-                    }
+                    style={platformRowStyle}
                   >
                     <div
                       style={{
@@ -893,32 +1517,90 @@ export default function CashierReport({
                           "bold",
                       }}
                     >
-                      {
-                        platform.platform_name
-                      }
+                      {platform.platform_name}
+
+                      {platform.openingSaved && (
+                        <div style={savedTextStyle}>
+                          Opening ✓
+                        </div>
+                      )}
+
+                      {platform.closingSaved && (
+                        <div style={savedTextStyle}>
+                          Closing ✓
+                        </div>
+                      )}
                     </div>
 
-                    <ReadOnlyBox
-                      value={
-                        platform.hasOpening
-                          ? platform.opening
-                          : 0
-                      }
-                    />
+                    {platform.openingSaved ? (
+                      <SavedReadingBox
+                        value={
+                          platform.opening
+                        }
+                      />
+                    ) : (
+                      <ReadingInput
+                        value={
+                          openingInputs[
+                            platform.id
+                          ] ?? ""
+                        }
+                        disabled={
+                          savingOpening
+                        }
+                        onChange={(value) => {
+                          setOpeningInputs(
+                            (previous) => ({
+                              ...previous,
 
-                    <ReadOnlyBox
-                      value={
-                        platform.hasClosing
-                          ? platform.closing
-                          : 0
-                      }
-                    />
+                              [platform.id]:
+                                value,
+                            })
+                          );
 
-                    <div
-                      style={
-                        outputBoxStyle
-                      }
-                    >
+                          setMessage("");
+                        }}
+                      />
+                    )}
+
+                    {platform.closingSaved ? (
+                      <SavedReadingBox
+                        value={
+                          platform.closing
+                        }
+                      />
+                    ) : (
+                      <ReadingInput
+                        value={
+                          closingInputs[
+                            platform.id
+                          ] ?? ""
+                        }
+                        disabled={
+                          !allOpeningsSaved ||
+                          savingClosing
+                        }
+                        placeholder={
+                          allOpeningsSaved
+                            ? "0.00"
+                            : "Wait"
+                        }
+                        onChange={(value) => {
+                          setClosingInputs(
+                            (previous) => ({
+                              ...previous,
+
+                              [platform.id]:
+                                value,
+                            })
+                          );
+
+                          setMessage("");
+                        }}
+                      />
+                    )}
+
+                    <div style={outputBoxStyle}>
                       {money(
                         platform.output
                       )}
@@ -927,26 +1609,71 @@ export default function CashierReport({
                 )
               )}
 
-              <div
-                style={
-                  platformTotalStyle
-                }
-              >
+              <div style={platformTotalStyle}>
                 <strong>
                   TOTAL INCOME
                 </strong>
 
                 <strong>
                   {money(
-                    totalOutput
+                    allClosingsSaved
+                      ? savedTotalOutput
+                      : platformPreviewTotal
                   )}
                 </strong>
               </div>
+
+              {/* PLATFORM ACTIONS */}
+
+              <div style={platformActionsStyle}>
+                {!allOpeningsSaved ? (
+                  <button
+                    type="button"
+                    onClick={
+                      saveOpeningReadings
+                    }
+                    disabled={
+                      savingOpening
+                    }
+                    style={greenActionStyle}
+                  >
+                    {savingOpening
+                      ? "Saving Opening..."
+                      : `Save Opening Readings (${savedOpeningCount}/${platforms.length})`}
+                  </button>
+                ) : (
+                  <div style={completeStyle}>
+                    Opening Readings Saved ✓
+                  </div>
+                )}
+
+                {allOpeningsSaved &&
+                  !allClosingsSaved && (
+                    <button
+                      type="button"
+                      onClick={
+                        saveClosingReadings
+                      }
+                      disabled={
+                        savingClosing
+                      }
+                      style={blueActionStyle}
+                    >
+                      {savingClosing
+                        ? "Saving Closing..."
+                        : `Save Closing Readings (${savedClosingCount}/${platforms.length})`}
+                    </button>
+                  )}
+
+                {allClosingsSaved && (
+                  <div style={completeStyle}>
+                    Closing Readings Saved ✓
+                  </div>
+                )}
+              </div>
             </section>
 
-            {/* ======================================
-                EXPENSES
-            ====================================== */}
+            {/* EXPENSES */}
 
             <section style={panelStyle}>
               <PanelTitle
@@ -954,11 +1681,7 @@ export default function CashierReport({
                 tone="red"
               />
 
-              <div
-                style={
-                  expenseHeaderStyle
-                }
-              >
+              <div style={expenseHeaderStyle}>
                 <div>NO.</div>
 
                 <div>
@@ -974,9 +1697,7 @@ export default function CashierReport({
                 (expense, index) => (
                   <div
                     key={`expense-${index}`}
-                    style={
-                      expenseRowStyle
-                    }
+                    style={expenseRowStyle}
                   >
                     <div
                       style={{
@@ -987,11 +1708,7 @@ export default function CashierReport({
                       {index + 1}
                     </div>
 
-                    <div
-                      style={
-                        expenseBoxStyle
-                      }
-                    >
+                    <div style={expenseBoxStyle}>
                       {expense?.description ||
                         ""}
                     </div>
@@ -1012,11 +1729,7 @@ export default function CashierReport({
                 )
               )}
 
-              <div
-                style={
-                  expenseTotalStyle
-                }
-              >
+              <div style={expenseTotalStyle}>
                 <strong>
                   TOTAL EXPENSES
                 </strong>
@@ -1030,15 +1743,9 @@ export default function CashierReport({
             </section>
           </div>
 
-          {/* ============================================
-              SUMMARY CARDS
-          ============================================ */}
+          {/* SUMMARY */}
 
-          <div
-            style={
-              summaryGridStyle
-            }
-          >
+          <div style={summaryGridStyle}>
             <SummaryBox
               title="TOTAL SALES"
               amount={totalSales}
@@ -1074,25 +1781,15 @@ export default function CashierReport({
             />
           </div>
 
-          {/* ============================================
-              NEXT SECTIONS PLACEHOLDER
-          ============================================ */}
+          {/* LOWER SECTIONS */}
 
-          <div
-            style={
-              lowerPlaceholderStyle
-            }
-          >
+          <div style={lowerPlaceholderStyle}>
             <div>
               <strong>
                 SAVINGS / BANKING
               </strong>
 
-              <div
-                style={
-                  placeholderTextStyle
-                }
-              >
+              <div style={placeholderTextStyle}>
                 Will be connected next.
               </div>
             </div>
@@ -1102,11 +1799,7 @@ export default function CashierReport({
                 MANAGEMENT STATUS
               </strong>
 
-              <div
-                style={
-                  placeholderTextStyle
-                }
-              >
+              <div style={placeholderTextStyle}>
                 Will be connected next.
               </div>
             </div>
@@ -1116,11 +1809,7 @@ export default function CashierReport({
                 ACCOUNTS INFORMATION
               </strong>
 
-              <div
-                style={
-                  placeholderTextStyle
-                }
-              >
+              <div style={placeholderTextStyle}>
                 Will be connected next.
               </div>
             </div>
@@ -1136,7 +1825,7 @@ export default function CashierReport({
 }
 
 // ==================================================
-// SMALL COMPONENTS
+// COMPONENTS
 // ==================================================
 
 function SidebarItem({
@@ -1147,7 +1836,7 @@ function SidebarItem({
   return (
     <div
       style={{
-        padding: "18px 18px",
+        padding: "18px",
         display: "flex",
         alignItems: "center",
         gap: "14px",
@@ -1337,11 +2026,56 @@ function IncomeRow({
   );
 }
 
-function ReadOnlyBox({
+function ReadingInput({
+  value,
+  onChange,
+  disabled,
+  placeholder = "0.00",
+}) {
+  return (
+    <input
+      type="number"
+      min="0"
+      step="0.01"
+      value={value}
+      disabled={disabled}
+      placeholder={placeholder}
+      onChange={(event) =>
+        onChange(
+          event.target.value
+        )
+      }
+      style={{
+        width: "100%",
+        boxSizing: "border-box",
+        border:
+          "1px solid #94a3b8",
+        borderRadius: "4px",
+        padding: "7px",
+        textAlign: "right",
+        backgroundColor:
+          disabled
+            ? "#e5e7eb"
+            : "white",
+        fontSize: "12px",
+      }}
+    />
+  );
+}
+
+function SavedReadingBox({
   value,
 }) {
   return (
-    <div style={readingBoxStyle}>
+    <div
+      style={{
+        ...readingBoxStyle,
+        backgroundColor:
+          "#ecfdf5",
+        border:
+          "1px solid #86efac",
+      }}
+    >
       {money(value)}
     </div>
   );
@@ -1682,6 +2416,16 @@ const incomeTotalStyle = {
   fontSize: "13px",
 };
 
+const platformStatusStyle = {
+  display: "flex",
+  justifyContent:
+    "space-between",
+  padding: "7px 10px",
+  backgroundColor: "#f8fafc",
+  color: "#475569",
+  fontSize: "11px",
+};
+
 const platformHeaderStyle = {
   display: "grid",
   gridTemplateColumns:
@@ -1703,6 +2447,12 @@ const platformRowStyle = {
   borderTop:
     "1px solid #e1e7ec",
   fontSize: "12px",
+};
+
+const savedTextStyle = {
+  color: "#15803d",
+  fontSize: "9px",
+  marginTop: "2px",
 };
 
 const readingBoxStyle = {
@@ -1730,6 +2480,44 @@ const platformTotalStyle = {
   color: "white",
   padding: "11px 13px",
   fontSize: "13px",
+};
+
+const platformActionsStyle = {
+  padding: "9px",
+  display: "grid",
+  gap: "7px",
+};
+
+const greenActionStyle = {
+  width: "100%",
+  padding: "9px",
+  border: "none",
+  borderRadius: "5px",
+  backgroundColor: "#07912a",
+  color: "white",
+  fontWeight: "bold",
+  cursor: "pointer",
+};
+
+const blueActionStyle = {
+  width: "100%",
+  padding: "9px",
+  border: "none",
+  borderRadius: "5px",
+  backgroundColor: "#0873b9",
+  color: "white",
+  fontWeight: "bold",
+  cursor: "pointer",
+};
+
+const completeStyle = {
+  textAlign: "center",
+  padding: "8px",
+  borderRadius: "5px",
+  backgroundColor: "#ecfdf5",
+  color: "#166534",
+  fontSize: "11px",
+  fontWeight: "bold",
 };
 
 const expenseHeaderStyle = {
@@ -1808,10 +2596,9 @@ const closePreviewStyle = {
   borderRadius: "8px",
 };
 
-const errorStyle = {
+const messageStyle = {
   padding: "10px 13px",
   marginBottom: "10px",
-  backgroundColor: "#fef2f2",
-  color: "#991b1b",
   borderRadius: "6px",
+  fontSize: "12px",
 };
