@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import CashierReport from "./CashierReport";
+import AdminAccountsPanel from "./AdminAccountsPanel";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -36,10 +37,17 @@ export default function Dashboard() {
           return;
         }
 
-        const parsedUser = JSON.parse(savedUser);
+        const parsedUser =
+          JSON.parse(savedUser);
 
-        if (!parsedUser || !parsedUser.role) {
-          sessionStorage.removeItem("teamLegendUser");
+        if (
+          !parsedUser ||
+          !parsedUser.role
+        ) {
+          sessionStorage.removeItem(
+            "teamLegendUser"
+          );
+
           router.replace("/");
           return;
         }
@@ -50,18 +58,23 @@ export default function Dashboard() {
 
         setUser(parsedUser);
 
-        const role = String(
-          parsedUser.role || ""
-        ).toUpperCase();
+        const role =
+          String(
+            parsedUser.role || ""
+          ).toUpperCase();
 
-        // ------------------------------------------
+        // ==========================================
         // ADMIN
-        // ------------------------------------------
+        // ==========================================
 
         if (role === "ADMIN") {
           setLoading(false);
           return;
         }
+
+        // ==========================================
+        // CASHIER LOGIN INFORMATION
+        // ==========================================
 
         const shopId =
           parsedUser.shop_id ||
@@ -97,39 +110,45 @@ export default function Dashboard() {
           );
         }
 
-        // ------------------------------------------
-        // CHECK FOR OPEN SHIFT
-        // ------------------------------------------
+        // ==========================================
+        // CHECK FOR CURRENT OPEN SHIFT
+        // ==========================================
 
-        const openShiftResponse = await fetch(
-          `${supabaseUrl}/rest/v1/shifts` +
-            `?shop_id=eq.${encodeURIComponent(shopId)}` +
-            `&cashier_id=eq.${encodeURIComponent(cashierId)}` +
-            `&status=eq.OPEN` +
-            `&select=*` +
-            `&order=opened_at.desc` +
-            `&limit=1`,
-          {
-            method: "GET",
+        const openShiftResponse =
+          await fetch(
+            `${supabaseUrl}/rest/v1/shifts` +
+              `?shop_id=eq.${encodeURIComponent(
+                shopId
+              )}` +
+              `&cashier_id=eq.${encodeURIComponent(
+                cashierId
+              )}` +
+              `&status=eq.OPEN` +
+              `&select=*` +
+              `&order=opened_at.desc` +
+              `&limit=1`,
+            {
+              method: "GET",
 
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
+              headers: {
+                apikey:
+                  supabaseAnonKey,
 
-            cache: "no-store",
-          }
-        );
+                Authorization:
+                  `Bearer ${accessToken}`,
 
-        let openShiftResult = null;
+                "Content-Type":
+                  "application/json",
+              },
 
-        try {
-          openShiftResult =
-            await openShiftResponse.json();
-        } catch {
-          openShiftResult = null;
-        }
+              cache: "no-store",
+            }
+          );
+
+        const openShiftResult =
+          await safeJson(
+            openShiftResponse
+          );
 
         if (!openShiftResponse.ok) {
           throw new Error(
@@ -143,22 +162,27 @@ export default function Dashboard() {
           return;
         }
 
-        // ------------------------------------------
+        // ==========================================
         // OPEN SHIFT EXISTS
-        // ------------------------------------------
+        // ==========================================
 
         if (
-          Array.isArray(openShiftResult) &&
+          Array.isArray(
+            openShiftResult
+          ) &&
           openShiftResult.length > 0
         ) {
           const openShift =
             openShiftResult[0];
 
-          setCurrentShift(openShift);
+          setCurrentShift(
+            openShift
+          );
 
           setBalanceBF(
             String(
-              openShift.opening_balance ?? ""
+              openShift.opening_balance ??
+                ""
             )
           );
 
@@ -167,10 +191,10 @@ export default function Dashboard() {
           return;
         }
 
-        // ------------------------------------------
+        // ==========================================
         // NO OPEN SHIFT
         // GET PREVIOUS CLOSED SHIFT
-        // ------------------------------------------
+        // ==========================================
 
         const previousShift =
           await getLatestClosedShift({
@@ -187,7 +211,8 @@ export default function Dashboard() {
         if (previousShift) {
           setBalanceBF(
             String(
-              previousShift.closing_balance ?? 0
+              previousShift.closing_balance ??
+                0
             )
           );
 
@@ -227,7 +252,10 @@ export default function Dashboard() {
   // ==================================================
 
   function logout() {
-    sessionStorage.removeItem("teamLegendUser");
+    sessionStorage.removeItem(
+      "teamLegendUser"
+    );
+
     router.replace("/");
   }
 
@@ -240,6 +268,7 @@ export default function Dashboard() {
       setMessage(
         "Login session is missing. Please log in again."
       );
+
       return;
     }
 
@@ -275,6 +304,7 @@ export default function Dashboard() {
       setMessage(
         "Shop information is missing."
       );
+
       return;
     }
 
@@ -282,6 +312,7 @@ export default function Dashboard() {
       setMessage(
         "Cashier information is missing."
       );
+
       return;
     }
 
@@ -289,13 +320,18 @@ export default function Dashboard() {
       setMessage(
         "Authentication is missing. Please log in again."
       );
+
       return;
     }
 
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (
+      !supabaseUrl ||
+      !supabaseAnonKey
+    ) {
       setMessage(
         "Database configuration is missing."
       );
+
       return;
     }
 
@@ -303,32 +339,42 @@ export default function Dashboard() {
       setStartingShift(true);
       setMessage("");
 
-      // ------------------------------------------
-      // CHECK AGAIN FOR OPEN SHIFT
-      // ------------------------------------------
+      // ==========================================
+      // CHECK AGAIN FOR AN OPEN SHOP SHIFT
+      // ==========================================
 
-      const existingResponse = await fetch(
-        `${supabaseUrl}/rest/v1/shifts` +
-          `?shop_id=eq.${encodeURIComponent(shopId)}` +
-          `&status=eq.OPEN` +
-          `&select=*` +
-          `&order=opened_at.desc` +
-          `&limit=1`,
-        {
-          method: "GET",
+      const existingResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/shifts` +
+            `?shop_id=eq.${encodeURIComponent(
+              shopId
+            )}` +
+            `&status=eq.OPEN` +
+            `&select=*` +
+            `&order=opened_at.desc` +
+            `&limit=1`,
+          {
+            method: "GET",
 
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
+            headers: {
+              apikey:
+                supabaseAnonKey,
 
-          cache: "no-store",
-        }
-      );
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+            },
+
+            cache: "no-store",
+          }
+        );
 
       const existingResult =
-        await safeJson(existingResponse);
+        await safeJson(
+          existingResponse
+        );
 
       if (!existingResponse.ok) {
         throw new Error(
@@ -339,16 +385,21 @@ export default function Dashboard() {
       }
 
       if (
-        Array.isArray(existingResult) &&
+        Array.isArray(
+          existingResult
+        ) &&
         existingResult.length > 0
       ) {
-        setCurrentShift(existingResult[0]);
+        setCurrentShift(
+          existingResult[0]
+        );
+
         return;
       }
 
-      // ------------------------------------------
-      // PREVIOUS CLOSED SHIFT
-      // ------------------------------------------
+      // ==========================================
+      // GET PREVIOUS CLOSED SHIFT
+      // ==========================================
 
       const previousShift =
         await getLatestClosedShift({
@@ -360,10 +411,15 @@ export default function Dashboard() {
 
       let openingBalance = 0;
 
+      // ==========================================
+      // BALANCE B/F
+      // ==========================================
+
       if (previousShift) {
         openingBalance =
           Number(
-            previousShift.closing_balance ?? 0
+            previousShift.closing_balance ??
+              0
           );
 
         setBalanceBF(
@@ -377,7 +433,9 @@ export default function Dashboard() {
 
         if (
           balanceBF === "" ||
-          Number.isNaN(openingBalance) ||
+          Number.isNaN(
+            openingBalance
+          ) ||
           openingBalance < 0
         ) {
           setMessage(
@@ -388,9 +446,10 @@ export default function Dashboard() {
         }
       }
 
-      // ------------------------------------------
+      // ==========================================
       // PREVIOUS TABLE CLOSING
-      // ------------------------------------------
+      // TABLE DOES NOT RESET
+      // ==========================================
 
       let tableCarryForward = null;
 
@@ -401,13 +460,15 @@ export default function Dashboard() {
             supabaseAnonKey,
             accessToken,
             shopId,
+
             previousShiftId:
               previousShift.id,
           });
 
         if (
           tableCarryForward.platform &&
-          tableCarryForward.value === null
+          tableCarryForward.value ===
+            null
         ) {
           setMessage(
             "Previous TABLE closing reading is missing. Ask admin to correct it before starting the next shift."
@@ -417,27 +478,43 @@ export default function Dashboard() {
         }
       }
 
-      // ------------------------------------------
-      // CREATE SHIFT
-      // ------------------------------------------
+      // ==========================================
+      // CREATE 12-HOUR SHIFT
+      // ==========================================
 
-      const now = new Date();
+      const now =
+        new Date();
 
-      const end = new Date(
-        now.getTime() +
-          12 * 60 * 60 * 1000
-      );
+      const end =
+        new Date(
+          now.getTime() +
+            12 *
+              60 *
+              60 *
+              1000
+        );
 
       const businessDate =
-        new Intl.DateTimeFormat("en-CA", {
-          timeZone: "Africa/Nairobi",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        }).format(now);
+        new Intl.DateTimeFormat(
+          "en-CA",
+          {
+            timeZone:
+              "Africa/Nairobi",
+
+            year:
+              "numeric",
+
+            month:
+              "2-digit",
+
+            day:
+              "2-digit",
+          }
+        ).format(now);
 
       const shiftData = {
-        shop_id: shopId,
+        shop_id:
+          shopId,
 
         cashier_id:
           cashierId,
@@ -452,10 +529,14 @@ export default function Dashboard() {
           businessDate,
 
         scheduled_start:
-          formatNairobiTime(now),
+          formatNairobiTime(
+            now
+          ),
 
         scheduled_end:
-          formatNairobiTime(end),
+          formatNairobiTime(
+            end
+          ),
 
         opened_at:
           now.toISOString(),
@@ -482,26 +563,32 @@ export default function Dashboard() {
           0,
       };
 
-      const shiftResponse = await fetch(
-        `${supabaseUrl}/rest/v1/shifts`,
-        {
-          method: "POST",
+      const shiftResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/shifts`,
+          {
+            method: "POST",
 
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization:
-              `Bearer ${accessToken}`,
-            "Content-Type":
-              "application/json",
-            Prefer:
-              "return=representation",
-          },
+            headers: {
+              apikey:
+                supabaseAnonKey,
 
-          body: JSON.stringify(
-            shiftData
-          ),
-        }
-      );
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+
+              Prefer:
+                "return=representation",
+            },
+
+            body:
+              JSON.stringify(
+                shiftData
+              ),
+          }
+        );
 
       const shiftResult =
         await safeJson(
@@ -518,7 +605,9 @@ export default function Dashboard() {
       }
 
       if (
-        !Array.isArray(shiftResult) ||
+        !Array.isArray(
+          shiftResult
+        ) ||
         shiftResult.length === 0
       ) {
         throw new Error(
@@ -529,13 +618,15 @@ export default function Dashboard() {
       const newShift =
         shiftResult[0];
 
-      // ------------------------------------------
-      // TABLE OPENING CARRY FORWARD
-      // ------------------------------------------
+      // ==========================================
+      // AUTOMATIC TABLE OPENING
+      // PREVIOUS TABLE CLOSING -> NEW TABLE OPENING
+      // ==========================================
 
       if (
         tableCarryForward?.platform &&
-        tableCarryForward.value !== null
+        tableCarryForward.value !==
+          null
       ) {
         const tableResponse =
           await fetch(
@@ -557,25 +648,28 @@ export default function Dashboard() {
                   "return=representation",
               },
 
-              body: JSON.stringify({
-                shift_id:
-                  newShift.id,
+              body:
+                JSON.stringify({
+                  shift_id:
+                    newShift.id,
 
-                platform_id:
-                  tableCarryForward.platform.id,
+                  platform_id:
+                    tableCarryForward
+                      .platform.id,
 
-                reading_kind:
-                  "OPENING",
+                  reading_kind:
+                    "OPENING",
 
-                reading_value:
-                  tableCarryForward.value,
+                  reading_value:
+                    tableCarryForward
+                      .value,
 
-                recorded_at:
-                  now.toISOString(),
+                  recorded_at:
+                    now.toISOString(),
 
-                recorded_by:
-                  cashierId,
-              }),
+                  recorded_by:
+                    cashierId,
+                }),
             }
           );
 
@@ -596,9 +690,9 @@ export default function Dashboard() {
         }
       }
 
-      // ------------------------------------------
-      // OPEN NEW CASHIER REPORT
-      // ------------------------------------------
+      // ==========================================
+      // OPEN CASHIER REPORT
+      // ==========================================
 
       setCurrentShift(
         newShift
@@ -626,10 +720,18 @@ export default function Dashboard() {
     return (
       <main
         style={{
-          minHeight: "100vh",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
+          minHeight:
+            "100vh",
+
+          display:
+            "flex",
+
+          justifyContent:
+            "center",
+
+          alignItems:
+            "center",
+
           fontFamily:
             "Arial, sans-serif",
         }}
@@ -652,60 +754,97 @@ export default function Dashboard() {
     role === "ADMIN";
 
   // ==================================================
-  // ADMIN PAGE
+  // ADMIN DASHBOARD
   // ==================================================
 
   if (isAdmin) {
     return (
       <main
         style={{
-          minHeight: "100vh",
-          backgroundColor: "#f4f7fb",
+          minHeight:
+            "100vh",
+
+          backgroundColor:
+            "#edf2f7",
+
           fontFamily:
             "Arial, sans-serif",
         }}
       >
         <header
           style={{
-            backgroundColor: "#0f172a",
-            color: "white",
-            padding: "18px 30px",
-            display: "flex",
+            background:
+              "linear-gradient(90deg,#052d4b,#063c63)",
+
+            color:
+              "white",
+
+            padding:
+              "18px 28px",
+
+            display:
+              "flex",
+
             justifyContent:
               "space-between",
-            alignItems: "center",
+
+            alignItems:
+              "center",
           }}
         >
           <div>
-            <h2
+            <div
               style={{
-                margin: 0,
+                fontSize:
+                  "28px",
+
+                fontWeight:
+                  "900",
               }}
             >
-              TEAM LEGEND
-            </h2>
+              ♛ TEAM LEGEND ADMIN
+            </div>
 
             <div
               style={{
-                marginTop: "4px",
-                color: "#cbd5e1",
+                fontSize:
+                  "11px",
+
+                letterSpacing:
+                  "3px",
+
+                marginTop:
+                  "3px",
               }}
             >
-              Admin Dashboard
+              DISCIPLINE • FOCUS • RESULTS
             </div>
           </div>
 
           <button
+            type="button"
             onClick={logout}
             style={{
-              padding: "10px 18px",
+              padding:
+                "10px 18px",
+
               backgroundColor:
                 "#dc2626",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontWeight: "bold",
+
+              color:
+                "white",
+
+              border:
+                "none",
+
+              borderRadius:
+                "7px",
+
+              fontWeight:
+                "bold",
+
+              cursor:
+                "pointer",
             }}
           >
             Logout
@@ -714,18 +853,50 @@ export default function Dashboard() {
 
         <section
           style={{
-            maxWidth: "1100px",
-            margin: "0 auto",
-            padding: "30px",
+            maxWidth:
+              "1400px",
+
+            margin:
+              "0 auto",
+
+            padding:
+              "25px",
           }}
         >
-          <h1>
-            Admin Dashboard
-          </h1>
+          <div
+            style={{
+              marginBottom:
+                "18px",
+            }}
+          >
+            <h1
+              style={{
+                margin:
+                  0,
 
-          <p>
-            The full Admin management dashboard will be connected separately.
-          </p>
+                color:
+                  "#0f172a",
+              }}
+            >
+              Admin Dashboard
+            </h1>
+
+            <p
+              style={{
+                marginTop:
+                  "5px",
+
+                color:
+                  "#64748b",
+              }}
+            >
+              Manage shop account information.
+            </p>
+          </div>
+
+          <AdminAccountsPanel
+            user={user}
+          />
         </section>
       </main>
     );
@@ -733,20 +904,22 @@ export default function Dashboard() {
 
   // ==================================================
   // CASHIER HAS OPEN SHIFT
-  //
-  // SHOW NEW CASHIER REPORT DESIGN
   // ==================================================
 
   if (
     currentShift &&
     String(
-      currentShift.status || ""
-    ).toUpperCase() === "OPEN"
+      currentShift.status ||
+        ""
+    ).toUpperCase() ===
+      "OPEN"
   ) {
     return (
       <CashierReport
         user={user}
-        currentShift={currentShift}
+        currentShift={
+          currentShift
+        }
       />
     );
   }
@@ -771,8 +944,12 @@ export default function Dashboard() {
   return (
     <main
       style={{
-        minHeight: "100vh",
-        backgroundColor: "#edf2f7",
+        minHeight:
+          "100vh",
+
+        backgroundColor:
+          "#edf2f7",
+
         fontFamily:
           "Arial, sans-serif",
       }}
@@ -781,19 +958,31 @@ export default function Dashboard() {
         style={{
           background:
             "linear-gradient(90deg,#052d4b,#063c63)",
-          color: "white",
-          padding: "18px 28px",
-          display: "flex",
+
+          color:
+            "white",
+
+          padding:
+            "18px 28px",
+
+          display:
+            "flex",
+
           justifyContent:
             "space-between",
-          alignItems: "center",
+
+          alignItems:
+            "center",
         }}
       >
         <div>
           <div
             style={{
-              fontSize: "28px",
-              fontWeight: "900",
+              fontSize:
+                "28px",
+
+              fontWeight:
+                "900",
             }}
           >
             ♛ TEAM LEGEND
@@ -801,9 +990,14 @@ export default function Dashboard() {
 
           <div
             style={{
-              fontSize: "11px",
-              letterSpacing: "3px",
-              marginTop: "3px",
+              fontSize:
+                "11px",
+
+              letterSpacing:
+                "3px",
+
+              marginTop:
+                "3px",
             }}
           >
             DISCIPLINE • FOCUS • RESULTS
@@ -814,15 +1008,26 @@ export default function Dashboard() {
           type="button"
           onClick={logout}
           style={{
-            padding: "10px 18px",
+            padding:
+              "10px 18px",
+
             backgroundColor:
               "transparent",
-            color: "white",
+
+            color:
+              "white",
+
             border:
               "1px solid rgba(255,255,255,0.45)",
-            borderRadius: "7px",
-            fontWeight: "bold",
-            cursor: "pointer",
+
+            borderRadius:
+              "7px",
+
+            fontWeight:
+              "bold",
+
+            cursor:
+              "pointer",
           }}
         >
           Logout
@@ -831,20 +1036,29 @@ export default function Dashboard() {
 
       <section
         style={{
-          maxWidth: "700px",
-          margin: "0 auto",
-          padding: "40px 20px",
+          maxWidth:
+            "700px",
+
+          margin:
+            "0 auto",
+
+          padding:
+            "40px 20px",
         }}
       >
         <div
           style={{
-            textAlign: "center",
-            marginBottom: "25px",
+            textAlign:
+              "center",
+
+            marginBottom:
+              "25px",
           }}
         >
           <h1
             style={{
-              marginBottom: "5px",
+              marginBottom:
+                "5px",
             }}
           >
             {shopName}
@@ -852,10 +1066,12 @@ export default function Dashboard() {
 
           <div
             style={{
-              color: "#64748b",
+              color:
+                "#64748b",
             }}
           >
-            Cashier: {cashierName}
+            Cashier:{" "}
+            {cashierName}
           </div>
         </div>
 
@@ -876,7 +1092,8 @@ export default function Dashboard() {
         >
           <h2
             style={{
-              marginTop: 0,
+              marginTop:
+                0,
             }}
           >
             Opening Shift
@@ -884,8 +1101,11 @@ export default function Dashboard() {
 
           <p
             style={{
-              color: "#64748b",
-              marginBottom: "20px",
+              color:
+                "#64748b",
+
+              marginBottom:
+                "20px",
             }}
           >
             {balanceLocked
@@ -895,9 +1115,14 @@ export default function Dashboard() {
 
           <label
             style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "8px",
+              display:
+                "block",
+
+              fontWeight:
+                "bold",
+
+              marginBottom:
+                "8px",
             }}
           >
             Balance B/F (KES)
@@ -907,57 +1132,103 @@ export default function Dashboard() {
             type="number"
             min="0"
             step="0.01"
-            value={balanceBF}
+            value={
+              balanceBF
+            }
             disabled={
               startingShift ||
               balanceLocked
             }
-            onChange={(e) => {
+            onChange={(
+              event
+            ) => {
               setBalanceBF(
-                e.target.value
+                event.target
+                  .value
               );
 
               setMessage("");
             }}
             style={{
-              width: "100%",
+              width:
+                "100%",
+
               boxSizing:
                 "border-box",
-              padding: "13px",
-              fontSize: "17px",
+
+              padding:
+                "13px",
+
+              fontSize:
+                "18px",
+
               border:
-                "1px solid #cbd5e1",
-              borderRadius: "7px",
+                balanceLocked
+                  ? "1px solid #86efac"
+                  : "1px solid #94a3b8",
+
               backgroundColor:
                 balanceLocked
-                  ? "#f1f5f9"
+                  ? "#ecfdf5"
                   : "white",
+
+              borderRadius:
+                "7px",
+
+              marginBottom:
+                "15px",
             }}
           />
 
           {balanceLocked && (
             <div
               style={{
-                color: "#15803d",
-                fontWeight: "bold",
-                fontSize: "13px",
-                marginTop: "8px",
+                backgroundColor:
+                  "#ecfdf5",
+
+                color:
+                  "#166534",
+
+                padding:
+                  "10px",
+
+                borderRadius:
+                  "6px",
+
+                marginBottom:
+                  "15px",
+
+                fontSize:
+                  "12px",
+
+                fontWeight:
+                  "bold",
               }}
             >
-              Carried forward from previous Closing Balance ✓
+              ✓ Balance B/F carried forward from previous shift
             </div>
           )}
 
           {message && (
             <div
               style={{
-                marginTop: "16px",
-                padding: "12px",
-                borderRadius: "7px",
                 backgroundColor:
                   "#fef2f2",
+
                 color:
                   "#991b1b",
+
+                padding:
+                  "10px",
+
+                borderRadius:
+                  "6px",
+
+                marginBottom:
+                  "15px",
+
+                fontSize:
+                  "12px",
               }}
             >
               {message}
@@ -966,32 +1237,48 @@ export default function Dashboard() {
 
           <button
             type="button"
-            onClick={startShift}
-            disabled={startingShift}
+            onClick={
+              startShift
+            }
+            disabled={
+              startingShift
+            }
             style={{
-              width: "100%",
-              marginTop: "20px",
-              padding: "14px",
-              border: "none",
-              borderRadius: "7px",
-              color: "white",
-              fontWeight: "bold",
-              fontSize: "16px",
+              width:
+                "100%",
+
+              padding:
+                "14px",
+
+              border:
+                "none",
+
+              borderRadius:
+                "7px",
 
               backgroundColor:
                 startingShift
                   ? "#94a3b8"
                   : "#07912a",
 
+              color:
+                "white",
+
+              fontSize:
+                "15px",
+
+              fontWeight:
+                "bold",
+
               cursor:
                 startingShift
-                  ? "not-allowed"
+                  ? "default"
                   : "pointer",
             }}
           >
             {startingShift
-              ? "Starting Shift..."
-              : "Start Shift"}
+              ? "Opening Shift..."
+              : "START SHIFT"}
           </button>
         </div>
       </section>
@@ -1000,7 +1287,7 @@ export default function Dashboard() {
 }
 
 // ==================================================
-// PREVIOUS CLOSED SHIFT
+// GET LATEST CLOSED SHIFT
 // ==================================================
 
 async function getLatestClosedShift({
@@ -1009,30 +1296,35 @@ async function getLatestClosedShift({
   accessToken,
   shopId,
 }) {
-  const response = await fetch(
-    `${supabaseUrl}/rest/v1/shifts` +
-      `?shop_id=eq.${encodeURIComponent(shopId)}` +
-      `&status=eq.CLOSED` +
-      `&select=id,closing_balance,closed_at` +
-      `&order=closed_at.desc` +
-      `&limit=1`,
-    {
-      method: "GET",
+  const response =
+    await fetch(
+      `${supabaseUrl}/rest/v1/shifts` +
+        `?shop_id=eq.${encodeURIComponent(
+          shopId
+        )}` +
+        `&status=eq.CLOSED` +
+        `&select=*` +
+        `&order=closed_at.desc` +
+        `&limit=1`,
+      {
+        method:
+          "GET",
 
-      headers: {
-        apikey:
-          supabaseAnonKey,
+        headers: {
+          apikey:
+            supabaseAnonKey,
 
-        Authorization:
-          `Bearer ${accessToken}`,
+          Authorization:
+            `Bearer ${accessToken}`,
 
-        "Content-Type":
-          "application/json",
-      },
+          "Content-Type":
+            "application/json",
+        },
 
-      cache: "no-store",
-    }
-  );
+        cache:
+          "no-store",
+      }
+    );
 
   const result =
     await safeJson(
@@ -1048,17 +1340,23 @@ async function getLatestClosedShift({
   }
 
   if (
-    Array.isArray(result) &&
-    result.length > 0
+    !Array.isArray(
+      result
+    ) ||
+    result.length === 0
   ) {
-    return result[0];
+    return null;
   }
 
-  return null;
+  return result[0];
 }
 
 // ==================================================
-// TABLE CARRY FORWARD
+// GET TABLE CARRY FORWARD
+//
+// Previous TABLE Closing
+// becomes
+// New TABLE Opening
 // ==================================================
 
 async function getTableCarryForward({
@@ -1068,14 +1366,23 @@ async function getTableCarryForward({
   shopId,
   previousShiftId,
 }) {
+  // ================================================
+  // FIND TABLE PLATFORM
+  // ================================================
+
   const platformResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/shop_platforms` +
-        `?shop_id=eq.${encodeURIComponent(shopId)}` +
+        `?shop_id=eq.${encodeURIComponent(
+          shopId
+        )}` +
+        `&platform_name=ilike.TABLE` +
         `&is_active=eq.true` +
-        `&select=id,platform_name,reading_type`,
+        `&select=id,platform_name` +
+        `&limit=1`,
       {
-        method: "GET",
+        method:
+          "GET",
 
         headers: {
           apikey:
@@ -1088,7 +1395,8 @@ async function getTableCarryForward({
             "application/json",
         },
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
@@ -1101,45 +1409,48 @@ async function getTableCarryForward({
     throw new Error(
       platformResult?.message ||
         platformResult?.details ||
-        "Unable to load TABLE platform."
+        "Unable to find TABLE platform."
     );
   }
 
-  const platforms =
-    Array.isArray(platformResult)
-      ? platformResult
-      : [];
-
-  const tablePlatform =
-    platforms.find(
-      (platform) =>
-        String(
-          platform.platform_name ||
-            ""
-        )
-          .trim()
-          .toUpperCase() ===
-        "TABLE"
-    );
-
-  if (!tablePlatform) {
+  if (
+    !Array.isArray(
+      platformResult
+    ) ||
+    platformResult.length === 0
+  ) {
     return {
-      platform: null,
-      value: null,
+      platform:
+        null,
+
+      value:
+        null,
     };
   }
+
+  const platform =
+    platformResult[0];
+
+  // ================================================
+  // FIND PREVIOUS TABLE CLOSING
+  // ================================================
 
   const readingResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/platform_readings` +
-        `?shift_id=eq.${encodeURIComponent(previousShiftId)}` +
-        `&platform_id=eq.${encodeURIComponent(tablePlatform.id)}` +
+        `?shift_id=eq.${encodeURIComponent(
+          previousShiftId
+        )}` +
+        `&platform_id=eq.${encodeURIComponent(
+          platform.id
+        )}` +
         `&reading_kind=eq.CLOSING` +
         `&select=id,reading_value,recorded_at` +
         `&order=recorded_at.desc` +
         `&limit=1`,
       {
-        method: "GET",
+        method:
+          "GET",
 
         headers: {
           apikey:
@@ -1152,7 +1463,8 @@ async function getTableCarryForward({
             "application/json",
         },
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
@@ -1170,20 +1482,20 @@ async function getTableCarryForward({
   }
 
   if (
-    !Array.isArray(readingResult) ||
-    readingResult.length === 0
+    !Array.isArray(
+      readingResult
+    ) ||
+    readingResult.length ===
+      0
   ) {
     return {
-      platform:
-        tablePlatform,
-
+      platform,
       value: null,
     };
   }
 
   return {
-    platform:
-      tablePlatform,
+    platform,
 
     value:
       Number(
@@ -1209,6 +1521,7 @@ async function safeJson(
 
 // ==================================================
 // NAIROBI TIME
+// HH:MM:SS
 // ==================================================
 
 function formatNairobiTime(
@@ -1230,23 +1543,33 @@ function formatNairobiTime(
         second:
           "2-digit",
 
-        hourCycle:
-          "h23",
+        hour12:
+          false,
       }
     ).formatToParts(
       date
     );
 
-  const values = {};
+  const hour =
+    parts.find(
+      (part) =>
+        part.type ===
+        "hour"
+    )?.value || "00";
 
-  for (
-    const part of parts
-  ) {
-    values[
-      part.type
-    ] =
-      part.value;
-  }
+  const minute =
+    parts.find(
+      (part) =>
+        part.type ===
+        "minute"
+    )?.value || "00";
 
-  return `${values.hour}:${values.minute}:${values.second}`;
+  const second =
+    parts.find(
+      (part) =>
+        part.type ===
+        "second"
+    )?.value || "00";
+
+  return `${hour}:${minute}:${second}`;
 }
