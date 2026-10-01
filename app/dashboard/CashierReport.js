@@ -100,12 +100,10 @@ export default function CashierReport({
             `&limit=1`,
           {
             method: "GET",
-
             headers: authHeaders(
               supabaseAnonKey,
               accessToken
             ),
-
             cache: "no-store",
           }
         );
@@ -139,12 +137,10 @@ export default function CashierReport({
             `&order=display_order.asc`,
           {
             method: "GET",
-
             headers: authHeaders(
               supabaseAnonKey,
               accessToken
             ),
-
             cache: "no-store",
           }
         );
@@ -175,12 +171,10 @@ export default function CashierReport({
             `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
           {
             method: "GET",
-
             headers: authHeaders(
               supabaseAnonKey,
               accessToken
             ),
-
             cache: "no-store",
           }
         );
@@ -212,12 +206,10 @@ export default function CashierReport({
             `&order=created_at.asc`,
           {
             method: "GET",
-
             headers: authHeaders(
               supabaseAnonKey,
               accessToken
             ),
-
             cache: "no-store",
           }
         );
@@ -244,12 +236,10 @@ export default function CashierReport({
             `&order=created_at.asc`,
           {
             method: "GET",
-
             headers: authHeaders(
               supabaseAnonKey,
               accessToken
             ),
-
             cache: "no-store",
           }
         );
@@ -618,24 +608,6 @@ export default function CashierReport({
     ]);
 
   // ==================================================
-  // LIVE PLATFORM OUTPUT PREVIEW
-  // ==================================================
-
-  const platformPreviewTotal =
-    useMemo(() => {
-      return roundMoney(
-        platformRows.reduce(
-          (sum, platform) =>
-            sum +
-            Number(
-              platform.output || 0
-            ),
-          0
-        )
-      );
-    }, [platformRows]);
-
-  // ==================================================
   // SAVE OPENING READINGS
   // ==================================================
 
@@ -968,7 +940,7 @@ export default function CashierReport({
       }
 
       // ------------------------------------------
-      // CALCULATE FINAL TOTAL OUTPUT
+      // CALCULATE TOTAL PLATFORM OUTPUT
       // ------------------------------------------
 
       let totalOutput = 0;
@@ -1022,8 +994,6 @@ export default function CashierReport({
 
       // ------------------------------------------
       // UPDATE SHIFT TOTAL OUTPUT
-      // DATABASE TRIGGER UPDATES NET INCOME
-      // + CLOSING BALANCE
       // ------------------------------------------
 
       const shiftResponse = await fetch(
@@ -1064,12 +1034,12 @@ export default function CashierReport({
         throw new Error(
           shiftResult?.message ||
             shiftResult?.details ||
-            "Closing readings were saved, but total output could not be updated."
+            "Closing readings were saved, but total sales could not be updated."
         );
       }
 
       setMessage(
-        "Closing readings saved and Total Income updated successfully."
+        "Closing readings saved successfully."
       );
 
       setMessageType(
@@ -1116,12 +1086,6 @@ export default function CashierReport({
         0
     );
 
-  const netIncome =
-    Number(
-      shift?.net_income ||
-        0
-    );
-
   const closingBalance =
     Number(
       shift?.closing_balance ||
@@ -1134,6 +1098,9 @@ export default function CashierReport({
         floatData.companyTotal +
         floatData.mshwariTotal
     );
+
+  // TOTAL SALES =
+  // B/F + COMPANY FLOAT + M-SHWARI + PLATFORM OUTPUT
 
   const totalSales =
     roundMoney(
@@ -1499,7 +1466,7 @@ export default function CashierReport({
                 </div>
 
                 <div>
-                  INCOME
+                  SALES
                   <br />
                   (KES)
                 </div>
@@ -1552,7 +1519,6 @@ export default function CashierReport({
                           setOpeningInputs(
                             (previous) => ({
                               ...previous,
-
                               [platform.id]:
                                 value,
                             })
@@ -1589,7 +1555,6 @@ export default function CashierReport({
                           setClosingInputs(
                             (previous) => ({
                               ...previous,
-
                               [platform.id]:
                                 value,
                             })
@@ -1609,21 +1574,7 @@ export default function CashierReport({
                 )
               )}
 
-              <div style={platformTotalStyle}>
-                <strong>
-                  TOTAL INCOME
-                </strong>
-
-                <strong>
-                  {money(
-                    allClosingsSaved
-                      ? savedTotalOutput
-                      : platformPreviewTotal
-                  )}
-                </strong>
-              </div>
-
-              {/* PLATFORM ACTIONS */}
+              {/* NO TOTAL INCOME ROW */}
 
               <div style={platformActionsStyle}>
                 {!allOpeningsSaved ? (
@@ -1743,7 +1694,9 @@ export default function CashierReport({
             </section>
           </div>
 
-          {/* SUMMARY */}
+          {/* ======================================
+              SUMMARY — ONLY 3 FIGURES
+          ====================================== */}
 
           <div style={summaryGridStyle}>
             <SummaryBox
@@ -1760,15 +1713,6 @@ export default function CashierReport({
               }
               tone="red"
               icon="▣"
-            />
-
-            <SummaryBox
-              title="NET INCOME"
-              amount={
-                netIncome
-              }
-              tone="green"
-              icon="↗"
             />
 
             <SummaryBox
@@ -2472,16 +2416,6 @@ const outputBoxStyle = {
   fontWeight: "bold",
 };
 
-const platformTotalStyle = {
-  display: "flex",
-  justifyContent:
-    "space-between",
-  backgroundColor: "#075b95",
-  color: "white",
-  padding: "11px 13px",
-  fontSize: "13px",
-};
-
 const platformActionsStyle = {
   padding: "9px",
   display: "grid",
@@ -2566,7 +2500,7 @@ const expenseTotalStyle = {
 const summaryGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(4,1fr)",
+    "repeat(3,1fr)",
   gap: "10px",
   marginTop: "12px",
 };
