@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
+import PlatformReadings from "./PlatformReadings";
 export default function Dashboard() {
   const router = useRouter();
 
@@ -804,7 +804,12 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-
+{shiftStarted && currentShift && (
+  <PlatformReadings
+    user={user}
+    currentShift={currentShift}
+  />
+)}
             <p
               style={{
                 marginTop: "20px",
