@@ -183,19 +183,24 @@ export async function POST(request) {
     }
 
     // Successful login.
+    // Return the Supabase access token so authenticated
+    // database requests can be made from the dashboard.
     return NextResponse.json(
       {
         success: true,
+
+        access_token: authData.access_token,
+
         user: {
           id: authData.user.id,
+          profile_id: profile.id,
           name: profile.full_name,
           role: role,
 
-          // Dashboard receives the REAL shop name here.
+          // Real shop name shown on dashboard.
           shop: shopName,
 
-          // Keep UUID as well because we will need it
-          // later for sales, shifts, expenses, etc.
+          // Shop UUID used when saving shifts.
           shop_id: profile.shop_id,
         },
       },
