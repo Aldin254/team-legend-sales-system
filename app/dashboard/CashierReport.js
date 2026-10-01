@@ -10,7 +10,6 @@ import {
 import { useRouter } from "next/navigation";
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierManagementPanel from "./CashierManagementPanel";
-import CashierManagementPanel from "./CashierManagementPanel";
 export default function CashierReport({
   user,
   currentShift,
