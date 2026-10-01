@@ -13,16 +13,33 @@ export default function Dashboard() {
     try {
       const savedUser = sessionStorage.getItem("teamLegendUser");
 
+      console.log("SAVED USER:", savedUser);
+
+      // TEMPORARY TEST:
+      // Do not redirect if session is missing.
       if (!savedUser) {
-        router.replace("/");
+        setUser({
+          username: "TEST",
+          role: "admin",
+          shop: "TEST SHOP",
+        });
+        setLoading(false);
         return;
       }
 
       const parsedUser = JSON.parse(savedUser);
 
+      console.log("PARSED USER:", parsedUser);
+
+      // TEMPORARY TEST:
+      // Do not redirect if role is missing.
       if (!parsedUser || !parsedUser.role) {
-        sessionStorage.removeItem("teamLegendUser");
-        router.replace("/");
+        setUser({
+          username: parsedUser?.username || "TEST",
+          role: "admin",
+          shop: parsedUser?.shop || "TEST SHOP",
+        });
+        setLoading(false);
         return;
       }
 
@@ -30,10 +47,18 @@ export default function Dashboard() {
       setLoading(false);
     } catch (error) {
       console.error("Unable to read login session:", error);
-      sessionStorage.removeItem("teamLegendUser");
-      router.replace("/");
+
+      // TEMPORARY TEST:
+      // Keep dashboard open instead of redirecting.
+      setUser({
+        username: "TEST",
+        role: "admin",
+        shop: "TEST SHOP",
+      });
+
+      setLoading(false);
     }
-  }, [router]);
+  }, []);
 
   function logout() {
     sessionStorage.removeItem("teamLegendUser");
@@ -49,9 +74,10 @@ export default function Dashboard() {
           alignItems: "center",
           justifyContent: "center",
           fontFamily: "Arial, sans-serif",
+          backgroundColor: "#f4f7fb",
         }}
       >
-        Loading...
+        <p>Loading...</p>
       </main>
     );
   }
@@ -107,7 +133,7 @@ export default function Dashboard() {
             backgroundColor: "#dc2626",
             color: "white",
             border: "none",
-            borderRadius: "6px",
+            borderRadius: "8px",
             padding: "10px 18px",
             cursor: "pointer",
             fontWeight: "bold",
@@ -118,9 +144,9 @@ export default function Dashboard() {
       </header>
 
       <section style={{ padding: "30px" }}>
-        {/* ADMIN DASHBOARD */}
         {isAdmin ? (
           <>
+            {/* ADMIN DASHBOARD */}
             <h1 style={{ marginTop: 0 }}>Admin Dashboard</h1>
 
             <p>
@@ -136,7 +162,10 @@ export default function Dashboard() {
                 marginTop: "30px",
               }}
             >
-              <DashboardCard title="Shops" value="27" />
+              <DashboardCard
+                title="Shops"
+                value="27"
+              />
 
               <DashboardCard
                 title="Today's Sales"
@@ -155,15 +184,13 @@ export default function Dashboard() {
             </div>
           </>
         ) : (
-          /* CASHIER DASHBOARD */
           <>
+            {/* CASHIER DASHBOARD */}
             <h1 style={{ marginTop: 0 }}>
               {shopName}
             </h1>
 
-            <p>
-              Cashier Dashboard
-            </p>
+            <p>Cashier Dashboard</p>
 
             <div
               style={{
@@ -171,8 +198,7 @@ export default function Dashboard() {
                 borderRadius: "10px",
                 padding: "25px",
                 marginTop: "25px",
-                boxShadow:
-                  "0 2px 10px rgba(0,0,0,0.08)",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
               }}
             >
               <h2 style={{ marginTop: 0 }}>
@@ -206,8 +232,7 @@ function DashboardCard({ title, value }) {
         backgroundColor: "white",
         borderRadius: "10px",
         padding: "22px",
-        boxShadow:
-          "0 2px 10px rgba(0,0,0,0.08)",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
       }}
     >
       <p
