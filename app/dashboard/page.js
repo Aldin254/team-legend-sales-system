@@ -3,12 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import PlatformReadings from "./PlatformReadings";
-import ShiftIncomeEntries from "./ShiftIncomeEntries";
-import ShiftExpenses from "./ShiftExpenses";
-import ShiftSavings from "./ShiftSavings";
-import ClosingPlatformReadings from "./ClosingPlatformReadings";
-import CloseShift from "./CloseShift";
+import CashierReport from "./CashierReport";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -19,15 +14,14 @@ export default function Dashboard() {
   const [balanceBF, setBalanceBF] = useState("");
   const [balanceLocked, setBalanceLocked] = useState(false);
 
-  const [shiftStarted, setShiftStarted] = useState(false);
   const [currentShift, setCurrentShift] = useState(null);
 
   const [message, setMessage] = useState("");
   const [startingShift, setStartingShift] = useState(false);
 
-  // --------------------------------------------------
-  // LOAD USER + CURRENT SHIFT
-  // --------------------------------------------------
+  // ==================================================
+  // LOAD USER + CURRENT OPEN SHIFT
+  // ==================================================
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +53,10 @@ export default function Dashboard() {
         const role = String(
           parsedUser.role || ""
         ).toUpperCase();
+
+        // ------------------------------------------
+        // ADMIN
+        // ------------------------------------------
 
         if (role === "ADMIN") {
           setLoading(false);
@@ -94,13 +92,14 @@ export default function Dashboard() {
           !supabaseUrl ||
           !supabaseAnonKey
         ) {
-          setLoading(false);
-          return;
+          throw new Error(
+            "Login information is incomplete. Please log in again."
+          );
         }
 
-        // --------------------------------------------
-        // CHECK FOR EXISTING OPEN SHIFT
-        // --------------------------------------------
+        // ------------------------------------------
+        // CHECK FOR OPEN SHIFT
+        // ------------------------------------------
 
         const openShiftResponse = await fetch(
           `${supabaseUrl}/rest/v1/shifts` +
@@ -112,13 +111,13 @@ export default function Dashboard() {
             `&limit=1`,
           {
             method: "GET",
+
             headers: {
               apikey: supabaseAnonKey,
-              Authorization:
-                `Bearer ${accessToken}`,
-              "Content-Type":
-                "application/json",
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
             },
+
             cache: "no-store",
           }
         );
@@ -144,6 +143,10 @@ export default function Dashboard() {
           return;
         }
 
+        // ------------------------------------------
+        // OPEN SHIFT EXISTS
+        // ------------------------------------------
+
         if (
           Array.isArray(openShiftResult) &&
           openShiftResult.length > 0
@@ -152,7 +155,6 @@ export default function Dashboard() {
             openShiftResult[0];
 
           setCurrentShift(openShift);
-          setShiftStarted(true);
 
           setBalanceBF(
             String(
@@ -165,10 +167,10 @@ export default function Dashboard() {
           return;
         }
 
-        // --------------------------------------------
-        // NO OPEN SHIFT:
+        // ------------------------------------------
+        // NO OPEN SHIFT
         // GET PREVIOUS CLOSED SHIFT
-        // --------------------------------------------
+        // ------------------------------------------
 
         const previousShift =
           await getLatestClosedShift({
@@ -220,18 +222,18 @@ export default function Dashboard() {
     };
   }, [router]);
 
-  // --------------------------------------------------
+  // ==================================================
   // LOGOUT
-  // --------------------------------------------------
+  // ==================================================
 
   function logout() {
     sessionStorage.removeItem("teamLegendUser");
     router.replace("/");
   }
 
-  // --------------------------------------------------
+  // ==================================================
   // START SHIFT
-  // --------------------------------------------------
+  // ==================================================
 
   async function startShift() {
     if (!user) {
@@ -263,44 +265,32 @@ export default function Dashboard() {
       user.access_token ||
       null;
 
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const supabaseAnonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
     if (!shopId) {
       setMessage(
-        "Shop ID is missing. Please log in again."
+        "Shop information is missing."
       );
       return;
     }
 
     if (!cashierId) {
       setMessage(
-        "Cashier ID is missing. Please log in again."
+        "Cashier information is missing."
       );
       return;
     }
 
     if (!accessToken) {
       setMessage(
-        "Login authentication is missing. Please log in again."
+        "Authentication is missing. Please log in again."
       );
       return;
     }
-
-    if (
-      currentShift &&
-      String(
-        currentShift.status || ""
-      ).toUpperCase() === "OPEN"
-    ) {
-      setMessage(
-        "An open shift already exists."
-      );
-      return;
-    }
-
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-    const supabaseAnonKey =
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
       setMessage(
@@ -313,9 +303,52 @@ export default function Dashboard() {
       setStartingShift(true);
       setMessage("");
 
-      // --------------------------------------------
-      // GET PREVIOUS CLOSED SHIFT
-      // --------------------------------------------
+      // ------------------------------------------
+      // CHECK AGAIN FOR OPEN SHIFT
+      // ------------------------------------------
+
+      const existingResponse = await fetch(
+        `${supabaseUrl}/rest/v1/shifts` +
+          `?shop_id=eq.${encodeURIComponent(shopId)}` +
+          `&status=eq.OPEN` +
+          `&select=*` +
+          `&order=opened_at.desc` +
+          `&limit=1`,
+        {
+          method: "GET",
+
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+
+          cache: "no-store",
+        }
+      );
+
+      const existingResult =
+        await safeJson(existingResponse);
+
+      if (!existingResponse.ok) {
+        throw new Error(
+          existingResult?.message ||
+            existingResult?.details ||
+            "Unable to check current shift."
+        );
+      }
+
+      if (
+        Array.isArray(existingResult) &&
+        existingResult.length > 0
+      ) {
+        setCurrentShift(existingResult[0]);
+        return;
+      }
+
+      // ------------------------------------------
+      // PREVIOUS CLOSED SHIFT
+      // ------------------------------------------
 
       const previousShift =
         await getLatestClosedShift({
@@ -325,13 +358,9 @@ export default function Dashboard() {
           shopId,
         });
 
-      let openingBalance;
+      let openingBalance = 0;
 
       if (previousShift) {
-        // ------------------------------------------
-        // AUTOMATIC BALANCE B/F
-        // ------------------------------------------
-
         openingBalance =
           Number(
             previousShift.closing_balance ?? 0
@@ -343,10 +372,6 @@ export default function Dashboard() {
 
         setBalanceLocked(true);
       } else {
-        // ------------------------------------------
-        // FIRST SHIFT - MANUAL BALANCE B/F
-        // ------------------------------------------
-
         openingBalance =
           Number(balanceBF);
 
@@ -358,13 +383,14 @@ export default function Dashboard() {
           setMessage(
             "Please enter a valid Balance B/F."
           );
+
           return;
         }
       }
 
-      // --------------------------------------------
-      // PREPARE TABLE CARRY-FORWARD
-      // --------------------------------------------
+      // ------------------------------------------
+      // PREVIOUS TABLE CLOSING
+      // ------------------------------------------
 
       let tableCarryForward = null;
 
@@ -386,21 +412,14 @@ export default function Dashboard() {
           setMessage(
             "Previous TABLE closing reading is missing. Ask admin to correct it before starting the next shift."
           );
+
           return;
         }
       }
 
-      // --------------------------------------------
-      // CREATE NEW SHIFT
-      // --------------------------------------------
-
-      const businessDate =
-        new Intl.DateTimeFormat("en-CA", {
-          timeZone: "Africa/Nairobi",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        }).format(new Date());
+      // ------------------------------------------
+      // CREATE SHIFT
+      // ------------------------------------------
 
       const now = new Date();
 
@@ -409,47 +428,65 @@ export default function Dashboard() {
           12 * 60 * 60 * 1000
       );
 
-      const scheduledStart =
-        formatNairobiTime(now);
-
-      const scheduledEnd =
-        formatNairobiTime(end);
+      const businessDate =
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Africa/Nairobi",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(now);
 
       const shiftData = {
         shop_id: shopId,
-        cashier_id: cashierId,
-        cashier_name: cashierName,
 
-        shift_name: "DAY",
+        cashier_id:
+          cashierId,
+
+        cashier_name:
+          cashierName,
+
+        shift_name:
+          "DAY",
 
         business_date:
           businessDate,
 
         scheduled_start:
-          scheduledStart,
+          formatNairobiTime(now),
 
         scheduled_end:
-          scheduledEnd,
+          formatNairobiTime(end),
 
         opened_at:
           now.toISOString(),
 
-        status: "OPEN",
+        status:
+          "OPEN",
 
         opening_balance:
           openingBalance,
 
-        total_added_float: 0,
-        total_output: 0,
-        total_expenses: 0,
-        net_income: 0,
-        closing_balance: 0,
+        total_added_float:
+          0,
+
+        total_output:
+          0,
+
+        total_expenses:
+          0,
+
+        net_income:
+          0,
+
+        closing_balance:
+          0,
       };
 
       const shiftResponse = await fetch(
         `${supabaseUrl}/rest/v1/shifts`,
         {
           method: "POST",
+
           headers: {
             apikey: supabaseAnonKey,
             Authorization:
@@ -459,32 +496,24 @@ export default function Dashboard() {
             Prefer:
               "return=representation",
           },
+
           body: JSON.stringify(
             shiftData
           ),
         }
       );
 
-      let shiftResult = null;
-
-      try {
-        shiftResult =
-          await shiftResponse.json();
-      } catch {
-        shiftResult = null;
-      }
-
-      if (!shiftResponse.ok) {
-        console.error(
-          "SHIFT INSERT ERROR:",
-          shiftResult
+      const shiftResult =
+        await safeJson(
+          shiftResponse
         );
 
+      if (!shiftResponse.ok) {
         throw new Error(
           shiftResult?.message ||
             shiftResult?.details ||
             shiftResult?.hint ||
-            `Unable to open shift. Error ${shiftResponse.status}`
+            "Unable to start shift."
         );
       }
 
@@ -500,12 +529,9 @@ export default function Dashboard() {
       const newShift =
         shiftResult[0];
 
-      // --------------------------------------------
-      // AUTOMATIC TABLE OPENING
-      //
-      // NEW TABLE OPENING =
-      // PREVIOUS TABLE CLOSING
-      // --------------------------------------------
+      // ------------------------------------------
+      // TABLE OPENING CARRY FORWARD
+      // ------------------------------------------
 
       if (
         tableCarryForward?.platform &&
@@ -536,8 +562,7 @@ export default function Dashboard() {
                   newShift.id,
 
                 platform_id:
-                  tableCarryForward
-                    .platform.id,
+                  tableCarryForward.platform.id,
 
                 reading_kind:
                   "OPENING",
@@ -554,14 +579,10 @@ export default function Dashboard() {
             }
           );
 
-        let tableResult = null;
-
-        try {
-          tableResult =
-            await tableResponse.json();
-        } catch {
-          tableResult = null;
-        }
+        const tableResult =
+          await safeJson(
+            tableResponse
+          );
 
         if (!tableResponse.ok) {
           console.error(
@@ -569,54 +590,19 @@ export default function Dashboard() {
             tableResult
           );
 
-          setCurrentShift(
-            newShift
-          );
-
-          setShiftStarted(true);
-
           setMessage(
-            "Shift opened, but TABLE opening could not be carried forward. Ask admin to correct the TABLE opening before continuing."
+            "Shift opened, but TABLE opening could not be carried forward. Ask admin to correct TABLE before continuing."
           );
-
-          return;
         }
       }
+
+      // ------------------------------------------
+      // OPEN NEW CASHIER REPORT
+      // ------------------------------------------
 
       setCurrentShift(
         newShift
       );
-
-      setShiftStarted(true);
-
-      if (
-        tableCarryForward?.platform &&
-        tableCarryForward.value !== null
-      ) {
-        setMessage(
-          `Shift opened successfully. Balance B/F carried forward as KES ${Number(
-            openingBalance
-          ).toLocaleString(
-            "en-KE",
-            {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }
-          )}. TABLE opening carried forward as ${Number(
-            tableCarryForward.value
-          ).toLocaleString(
-            "en-KE",
-            {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }
-          )}.`
-        );
-      } else {
-        setMessage(
-          "Shift opened successfully."
-        );
-      }
     } catch (error) {
       console.error(
         "START SHIFT ERROR:",
@@ -625,34 +611,16 @@ export default function Dashboard() {
 
       setMessage(
         error?.message ||
-          "Unable to open shift."
+          "Unable to start shift."
       );
     } finally {
       setStartingShift(false);
     }
   }
 
-  // --------------------------------------------------
-  // SHIFT CLOSED
-  // --------------------------------------------------
-
-  function handleShiftClosed(
-    closedShift
-  ) {
-    setCurrentShift(
-      closedShift
-    );
-
-    setShiftStarted(true);
-
-    setMessage(
-      "Shift closed successfully."
-    );
-  }
-
-  // --------------------------------------------------
+  // ==================================================
   // LOADING
-  // --------------------------------------------------
+  // ==================================================
 
   if (loading) {
     return (
@@ -660,8 +628,8 @@ export default function Dashboard() {
         style={{
           minHeight: "100vh",
           display: "flex",
-          alignItems: "center",
           justifyContent: "center",
+          alignItems: "center",
           fontFamily:
             "Arial, sans-serif",
         }}
@@ -675,10 +643,6 @@ export default function Dashboard() {
     return null;
   }
 
-  // --------------------------------------------------
-  // USER DETAILS
-  // --------------------------------------------------
-
   const role =
     String(
       user.role || ""
@@ -686,6 +650,111 @@ export default function Dashboard() {
 
   const isAdmin =
     role === "ADMIN";
+
+  // ==================================================
+  // ADMIN PAGE
+  // ==================================================
+
+  if (isAdmin) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          backgroundColor: "#f4f7fb",
+          fontFamily:
+            "Arial, sans-serif",
+        }}
+      >
+        <header
+          style={{
+            backgroundColor: "#0f172a",
+            color: "white",
+            padding: "18px 30px",
+            display: "flex",
+            justifyContent:
+              "space-between",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                margin: 0,
+              }}
+            >
+              TEAM LEGEND
+            </h2>
+
+            <div
+              style={{
+                marginTop: "4px",
+                color: "#cbd5e1",
+              }}
+            >
+              Admin Dashboard
+            </div>
+          </div>
+
+          <button
+            onClick={logout}
+            style={{
+              padding: "10px 18px",
+              backgroundColor:
+                "#dc2626",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
+            Logout
+          </button>
+        </header>
+
+        <section
+          style={{
+            maxWidth: "1100px",
+            margin: "0 auto",
+            padding: "30px",
+          }}
+        >
+          <h1>
+            Admin Dashboard
+          </h1>
+
+          <p>
+            The full Admin management dashboard will be connected separately.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  // ==================================================
+  // CASHIER HAS OPEN SHIFT
+  //
+  // SHOW NEW CASHIER REPORT DESIGN
+  // ==================================================
+
+  if (
+    currentShift &&
+    String(
+      currentShift.status || ""
+    ).toUpperCase() === "OPEN"
+  ) {
+    return (
+      <CashierReport
+        user={user}
+        currentShift={currentShift}
+      />
+    );
+  }
+
+  // ==================================================
+  // NO OPEN SHIFT
+  // START SHIFT SCREEN
+  // ==================================================
 
   const shopName =
     user.shop ||
@@ -699,95 +768,61 @@ export default function Dashboard() {
     user.username ||
     "Cashier";
 
-  const today =
-    new Intl.DateTimeFormat(
-      "en-KE",
-      {
-        timeZone:
-          "Africa/Nairobi",
-
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }
-    ).format(new Date());
-
-  const displayedBalance =
-    currentShift
-      ? Number(
-          currentShift.opening_balance ||
-            0
-        )
-      : Number(
-          balanceBF || 0
-        );
-
-  const currentShiftStatus =
-    String(
-      currentShift?.status || ""
-    ).toUpperCase();
-
-  const isCurrentShiftOpen =
-    currentShiftStatus ===
-    "OPEN";
-
-  const isCurrentShiftClosed =
-    currentShiftStatus ===
-    "CLOSED";
-
-  // --------------------------------------------------
-  // PAGE
-  // --------------------------------------------------
-
   return (
     <main
       style={{
         minHeight: "100vh",
-        backgroundColor: "#f4f7fb",
+        backgroundColor: "#edf2f7",
         fontFamily:
           "Arial, sans-serif",
       }}
     >
       <header
         style={{
-          backgroundColor: "#0f172a",
+          background:
+            "linear-gradient(90deg,#052d4b,#063c63)",
           color: "white",
-          padding: "18px 30px",
+          padding: "18px 28px",
           display: "flex",
           justifyContent:
             "space-between",
           alignItems: "center",
-          gap: "20px",
         }}
       >
         <div>
-          <h2 style={{ margin: 0 }}>
-            TEAM LEGEND
-          </h2>
-
-          <p
+          <div
             style={{
-              margin: "5px 0 0",
-              color: "#cbd5e1",
-              fontSize: "14px",
+              fontSize: "28px",
+              fontWeight: "900",
             }}
           >
-            Sales Management System
-          </p>
+            ♛ TEAM LEGEND
+          </div>
+
+          <div
+            style={{
+              fontSize: "11px",
+              letterSpacing: "3px",
+              marginTop: "3px",
+            }}
+          >
+            DISCIPLINE • FOCUS • RESULTS
+          </div>
         </div>
 
         <button
+          type="button"
           onClick={logout}
           style={{
-            backgroundColor:
-              "#dc2626",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
             padding: "10px 18px",
-            cursor: "pointer",
+            backgroundColor:
+              "transparent",
+            color: "white",
+            border:
+              "1px solid rgba(255,255,255,0.45)",
+            borderRadius: "7px",
             fontWeight: "bold",
+            cursor: "pointer",
           }}
         >
           Logout
@@ -796,640 +831,176 @@ export default function Dashboard() {
 
       <section
         style={{
-          padding: "30px",
-          maxWidth: "1200px",
+          maxWidth: "700px",
           margin: "0 auto",
+          padding: "40px 20px",
         }}
       >
-        {isAdmin ? (
-          <>
-            <h1
-              style={{
-                marginTop: 0,
-              }}
-            >
-              Admin Dashboard
-            </h1>
+        <div
+          style={{
+            textAlign: "center",
+            marginBottom: "25px",
+          }}
+        >
+          <h1
+            style={{
+              marginBottom: "5px",
+            }}
+          >
+            {shopName}
+          </h1>
 
-            <p>
-              Welcome to Team Legend
-              Sales Management System.
-            </p>
+          <div
+            style={{
+              color: "#64748b",
+            }}
+          >
+            Cashier: {cashierName}
+          </div>
+        </div>
 
+        <div
+          style={{
+            backgroundColor:
+              "white",
+
+            padding:
+              "28px",
+
+            borderRadius:
+              "12px",
+
+            boxShadow:
+              "0 2px 12px rgba(0,0,0,0.10)",
+          }}
+        >
+          <h2
+            style={{
+              marginTop: 0,
+            }}
+          >
+            Opening Shift
+          </h2>
+
+          <p
+            style={{
+              color: "#64748b",
+              marginBottom: "20px",
+            }}
+          >
+            {balanceLocked
+              ? "Balance B/F has been carried forward automatically from the previous shift."
+              : "Enter the opening Balance B/F to start the shift."}
+          </p>
+
+          <label
+            style={{
+              display: "block",
+              fontWeight: "bold",
+              marginBottom: "8px",
+            }}
+          >
+            Balance B/F (KES)
+          </label>
+
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={balanceBF}
+            disabled={
+              startingShift ||
+              balanceLocked
+            }
+            onChange={(e) => {
+              setBalanceBF(
+                e.target.value
+              );
+
+              setMessage("");
+            }}
+            style={{
+              width: "100%",
+              boxSizing:
+                "border-box",
+              padding: "13px",
+              fontSize: "17px",
+              border:
+                "1px solid #cbd5e1",
+              borderRadius: "7px",
+              backgroundColor:
+                balanceLocked
+                  ? "#f1f5f9"
+                  : "white",
+            }}
+          />
+
+          {balanceLocked && (
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(210px, 1fr))",
-                gap: "20px",
-                marginTop: "30px",
-              }}
-            >
-              <DashboardCard
-                title="Shops"
-                value="27"
-              />
-
-              <DashboardCard
-                title="Today's Sales"
-                value="KES 0"
-              />
-
-              <DashboardCard
-                title="Expenses"
-                value="KES 0"
-              />
-
-              <DashboardCard
-                title="Closing Balance"
-                value="KES 0"
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <div
-              style={{
-                marginBottom:
-                  "25px",
-              }}
-            >
-              <h1
-                style={{
-                  margin: 0,
-                }}
-              >
-                {shopName}
-              </h1>
-
-              <p
-                style={{
-                  marginTop:
-                    "7px",
-                  color:
-                    "#64748b",
-                }}
-              >
-                Cashier Dashboard
-              </p>
-            </div>
-
-            {/* SHOP INFORMATION */}
-
-            <div
-              style={{
-                backgroundColor:
-                  "white",
-                padding: "22px",
-                borderRadius:
-                  "12px",
-
-                boxShadow:
-                  "0 2px 10px rgba(0,0,0,0.08)",
-
-                marginBottom:
-                  "20px",
-              }}
-            >
-              <h2
-                style={{
-                  marginTop: 0,
-                }}
-              >
-                {shopName}
-              </h2>
-
-              <p>
-                <strong>
-                  Cashier:
-                </strong>{" "}
-                {cashierName}
-              </p>
-
-              <p>
-                <strong>
-                  Date:
-                </strong>{" "}
-                {today}
-              </p>
-
-              <p
-                style={{
-                  marginBottom: 0,
-                }}
-              >
-                <strong>
-                  Status:
-                </strong>{" "}
-
-                <span
-                  style={{
-                    color:
-                      isCurrentShiftClosed
-                        ? "#dc2626"
-                        : "#15803d",
-
-                    fontWeight:
-                      "bold",
-                  }}
-                >
-                  {isCurrentShiftClosed
-                    ? "SHIFT CLOSED"
-                    : "ACTIVE"}
-                </span>
-              </p>
-            </div>
-
-            {/* OPENING SHIFT */}
-
-            <div
-              style={{
-                backgroundColor:
-                  "white",
-
-                padding: "25px",
-
-                borderRadius:
-                  "12px",
-
-                boxShadow:
-                  "0 2px 10px rgba(0,0,0,0.08)",
-
-                maxWidth:
-                  "700px",
-              }}
-            >
-              <h2
-                style={{
-                  marginTop: 0,
-                }}
-              >
-                Opening Shift
-              </h2>
-
-              {!shiftStarted ||
-              !currentShift ? (
-                <>
-                  <p
-                    style={{
-                      color:
-                        "#64748b",
-
-                      marginBottom:
-                        "20px",
-                    }}
-                  >
-                    {balanceLocked
-                      ? "Balance B/F has been carried forward automatically from the previous shift."
-                      : "Enter the opening balance before starting work."}
-                  </p>
-
-                  <label
-                    style={{
-                      display:
-                        "block",
-
-                      fontWeight:
-                        "bold",
-
-                      marginBottom:
-                        "8px",
-                    }}
-                  >
-                    Balance B/F (KES)
-                  </label>
-
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-
-                    value={
-                      balanceBF
-                    }
-
-                    disabled={
-                      startingShift ||
-                      balanceLocked
-                    }
-
-                    onChange={(e) => {
-                      setBalanceBF(
-                        e.target.value
-                      );
-
-                      setMessage("");
-                    }}
-
-                    placeholder="Enter opening balance"
-
-                    style={{
-                      width: "100%",
-                      padding: "13px",
-
-                      border:
-                        "1px solid #cbd5e1",
-
-                      borderRadius:
-                        "8px",
-
-                      boxSizing:
-                        "border-box",
-
-                      fontSize:
-                        "16px",
-
-                      marginBottom:
-                        balanceLocked
-                          ? "8px"
-                          : "18px",
-
-                      backgroundColor:
-                        balanceLocked
-                          ? "#f1f5f9"
-                          : "white",
-                    }}
-                  />
-
-                  {balanceLocked && (
-                    <div
-                      style={{
-                        color:
-                          "#166534",
-
-                        fontSize:
-                          "13px",
-
-                        marginBottom:
-                          "18px",
-
-                        fontWeight:
-                          "bold",
-                      }}
-                    >
-                      Carried forward from
-                      previous Closing
-                      Balance ✓
-                    </div>
-                  )}
-
-                  {message && (
-                    <div
-                      style={{
-                        marginBottom:
-                          "16px",
-
-                        padding:
-                          "10px",
-
-                        backgroundColor:
-                          "#fef2f2",
-
-                        color:
-                          "#991b1b",
-
-                        borderRadius:
-                          "8px",
-                      }}
-                    >
-                      {message}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={
-                      startShift
-                    }
-
-                    disabled={
-                      startingShift
-                    }
-
-                    style={{
-                      width:
-                        "100%",
-
-                      padding:
-                        "14px",
-
-                      border:
-                        "none",
-
-                      borderRadius:
-                        "8px",
-
-                      backgroundColor:
-                        startingShift
-                          ? "#94a3b8"
-                          : "#168d32",
-
-                      color:
-                        "white",
-
-                      fontSize:
-                        "16px",
-
-                      fontWeight:
-                        "bold",
-
-                      cursor:
-                        startingShift
-                          ? "not-allowed"
-                          : "pointer",
-                    }}
-                  >
-                    {startingShift
-                      ? "Opening Shift..."
-                      : "Start Shift"}
-                  </button>
-                </>
-              ) : (
-                <div>
-                  <div
-                    style={{
-                      padding:
-                        "14px",
-
-                      backgroundColor:
-                        isCurrentShiftClosed
-                          ? "#fef2f2"
-                          : "#ecfdf5",
-
-                      borderRadius:
-                        "8px",
-
-                      color:
-                        isCurrentShiftClosed
-                          ? "#991b1b"
-                          : "#166534",
-
-                      marginBottom:
-                        "18px",
-                    }}
-                  >
-                    {isCurrentShiftClosed
-                      ? "Shift is closed."
-                      : "Shift is open."}
-                  </div>
-
-                  <p>
-                    <strong>
-                      Shop:
-                    </strong>{" "}
-                    {shopName}
-                  </p>
-
-                  <p>
-                    <strong>
-                      Cashier:
-                    </strong>{" "}
-                    {cashierName}
-                  </p>
-
-                  <p>
-                    <strong>
-                      Balance B/F:
-                    </strong>{" "}
-                    KES{" "}
-                    {displayedBalance.toLocaleString(
-                      "en-KE",
-                      {
-                        minimumFractionDigits:
-                          2,
-
-                        maximumFractionDigits:
-                          2,
-                      }
-                    )}
-                  </p>
-
-                  {currentShift.scheduled_start && (
-                    <p>
-                      <strong>
-                        Scheduled Start:
-                      </strong>{" "}
-                      {displayShiftTime(
-                        currentShift.scheduled_start
-                      )}
-                    </p>
-                  )}
-
-                  {currentShift.scheduled_end && (
-                    <p>
-                      <strong>
-                        Scheduled End:
-                      </strong>{" "}
-                      {displayShiftTime(
-                        currentShift.scheduled_end
-                      )}
-                    </p>
-                  )}
-
-                  <p
-                    style={{
-                      marginBottom: 0,
-                    }}
-                  >
-                    <strong>
-                      Shift Status:
-                    </strong>{" "}
-
-                    <span
-                      style={{
-                        color:
-                          isCurrentShiftClosed
-                            ? "#dc2626"
-                            : "#15803d",
-
-                        fontWeight:
-                          "bold",
-                      }}
-                    >
-                      {
-                        currentShift.status
-                      }
-                    </span>
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* OPEN SHIFT MODULES */}
-
-            {shiftStarted &&
-              currentShift &&
-              isCurrentShiftOpen && (
-                <>
-                  <PlatformReadings
-                    user={user}
-                    currentShift={
-                      currentShift
-                    }
-                  />
-
-                  <ShiftIncomeEntries
-                    user={user}
-                    currentShift={
-                      currentShift
-                    }
-                  />
-
-                  <ShiftExpenses
-                    user={user}
-                    currentShift={
-                      currentShift
-                    }
-                  />
-
-                  <ShiftSavings
-                    user={user}
-                    currentShift={
-                      currentShift
-                    }
-                  />
-
-                  <ClosingPlatformReadings
-                    user={user}
-                    currentShift={
-                      currentShift
-                    }
-                  />
-
-                  <CloseShift
-                    user={user}
-                    currentShift={
-                      currentShift
-                    }
-                    onShiftClosed={
-                      handleShiftClosed
-                    }
-                  />
-                </>
-              )}
-
-            {/* CLOSED SHIFT SUMMARY */}
-
-            {currentShift &&
-              isCurrentShiftClosed && (
-                <div
-                  style={{
-                    marginTop:
-                      "24px",
-
-                    backgroundColor:
-                      "white",
-
-                    padding:
-                      "25px",
-
-                    borderRadius:
-                      "12px",
-
-                    boxShadow:
-                      "0 2px 10px rgba(0,0,0,0.08)",
-
-                    maxWidth:
-                      "700px",
-                  }}
-                >
-                  <h2
-                    style={{
-                      marginTop:
-                        0,
-                    }}
-                  >
-                    Shift Completed
-                  </h2>
-
-                  <div
-                    style={{
-                      padding:
-                        "14px",
-
-                      backgroundColor:
-                        "#ecfdf5",
-
-                      color:
-                        "#166534",
-
-                      borderRadius:
-                        "8px",
-
-                      fontWeight:
-                        "bold",
-
-                      marginBottom:
-                        "18px",
-                    }}
-                  >
-                    Shift Closed ✓
-                  </div>
-
-                  <p>
-                    <strong>
-                      Net Income:
-                    </strong>{" "}
-                    KES{" "}
-                    {Number(
-                      currentShift.net_income ||
-                        0
-                    ).toLocaleString(
-                      "en-KE",
-                      {
-                        minimumFractionDigits:
-                          2,
-
-                        maximumFractionDigits:
-                          2,
-                      }
-                    )}
-                  </p>
-
-                  <p
-                    style={{
-                      marginBottom: 0,
-                    }}
-                  >
-                    <strong>
-                      Closing Balance:
-                    </strong>{" "}
-                    KES{" "}
-                    {Number(
-                      currentShift.closing_balance ||
-                        0
-                    ).toLocaleString(
-                      "en-KE",
-                      {
-                        minimumFractionDigits:
-                          2,
-
-                        maximumFractionDigits:
-                          2,
-                      }
-                    )}
-                  </p>
-                </div>
-              )}
-
-            <p
-              style={{
-                marginTop: "20px",
-                color: "#64748b",
+                color: "#15803d",
+                fontWeight: "bold",
                 fontSize: "13px",
+                marginTop: "8px",
               }}
             >
-              You can only access your
-              assigned shop.
-            </p>
-          </>
-        )}
+              Carried forward from previous Closing Balance ✓
+            </div>
+          )}
+
+          {message && (
+            <div
+              style={{
+                marginTop: "16px",
+                padding: "12px",
+                borderRadius: "7px",
+                backgroundColor:
+                  "#fef2f2",
+                color:
+                  "#991b1b",
+              }}
+            >
+              {message}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={startShift}
+            disabled={startingShift}
+            style={{
+              width: "100%",
+              marginTop: "20px",
+              padding: "14px",
+              border: "none",
+              borderRadius: "7px",
+              color: "white",
+              fontWeight: "bold",
+              fontSize: "16px",
+
+              backgroundColor:
+                startingShift
+                  ? "#94a3b8"
+                  : "#07912a",
+
+              cursor:
+                startingShift
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+          >
+            {startingShift
+              ? "Starting Shift..."
+              : "Start Shift"}
+          </button>
+        </div>
       </section>
     </main>
   );
 }
 
 // ==================================================
-// GET LATEST CLOSED SHIFT FOR SHOP
+// PREVIOUS CLOSED SHIFT
 // ==================================================
 
 async function getLatestClosedShift({
@@ -1442,11 +1013,12 @@ async function getLatestClosedShift({
     `${supabaseUrl}/rest/v1/shifts` +
       `?shop_id=eq.${encodeURIComponent(shopId)}` +
       `&status=eq.CLOSED` +
-      `&select=id,shop_id,closing_balance,closed_at` +
+      `&select=id,closing_balance,closed_at` +
       `&order=closed_at.desc` +
       `&limit=1`,
     {
       method: "GET",
+
       headers: {
         apikey:
           supabaseAnonKey,
@@ -1462,14 +1034,10 @@ async function getLatestClosedShift({
     }
   );
 
-  let result = null;
-
-  try {
-    result =
-      await response.json();
-  } catch {
-    result = null;
-  }
+  const result =
+    await safeJson(
+      response
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -1490,7 +1058,7 @@ async function getLatestClosedShift({
 }
 
 // ==================================================
-// GET PREVIOUS TABLE CLOSING
+// TABLE CARRY FORWARD
 // ==================================================
 
 async function getTableCarryForward({
@@ -1500,10 +1068,6 @@ async function getTableCarryForward({
   shopId,
   previousShiftId,
 }) {
-  // --------------------------------------------
-  // FIND TABLE PLATFORM
-  // --------------------------------------------
-
   const platformResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/shop_platforms` +
@@ -1528,14 +1092,10 @@ async function getTableCarryForward({
       }
     );
 
-  let platformResult = null;
-
-  try {
-    platformResult =
-      await platformResponse.json();
-  } catch {
-    platformResult = null;
-  }
+  const platformResult =
+    await safeJson(
+      platformResponse
+    );
 
   if (!platformResponse.ok) {
     throw new Error(
@@ -1569,10 +1129,6 @@ async function getTableCarryForward({
     };
   }
 
-  // --------------------------------------------
-  // GET PREVIOUS TABLE CLOSING
-  // --------------------------------------------
-
   const readingResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/platform_readings` +
@@ -1600,14 +1156,10 @@ async function getTableCarryForward({
       }
     );
 
-  let readingResult = null;
-
-  try {
-    readingResult =
-      await readingResponse.json();
-  } catch {
-    readingResult = null;
-  }
+  const readingResult =
+    await safeJson(
+      readingResponse
+    );
 
   if (!readingResponse.ok) {
     throw new Error(
@@ -1642,48 +1194,17 @@ async function getTableCarryForward({
 }
 
 // ==================================================
-// DASHBOARD CARD
+// SAFE JSON
 // ==================================================
 
-function DashboardCard({
-  title,
-  value,
-}) {
-  return (
-    <div
-      style={{
-        backgroundColor:
-          "white",
-
-        borderRadius:
-          "10px",
-
-        padding:
-          "22px",
-
-        boxShadow:
-          "0 2px 10px rgba(0,0,0,0.08)",
-      }}
-    >
-      <p
-        style={{
-          margin: 0,
-          color: "#64748b",
-        }}
-      >
-        {title}
-      </p>
-
-      <h2
-        style={{
-          margin:
-            "8px 0 0",
-        }}
-      >
-        {value}
-      </h2>
-    </div>
-  );
+async function safeJson(
+  response
+) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 // ==================================================
@@ -1728,20 +1249,4 @@ function formatNairobiTime(
   }
 
   return `${values.hour}:${values.minute}:${values.second}`;
-}
-
-// ==================================================
-// DISPLAY SHIFT TIME
-// ==================================================
-
-function displayShiftTime(
-  value
-) {
-  if (!value) {
-    return "-";
-  }
-
-  return String(value)
-    .split(".")[0]
-    .slice(0, 8);
 }
