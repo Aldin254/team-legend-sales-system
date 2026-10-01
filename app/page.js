@@ -39,28 +39,35 @@ export default function Home() {
         return;
       }
 
-      // Make sure API returned a user
       if (!data.user) {
         setMessage("Login succeeded, but user information is missing.");
         setLoading(false);
         return;
       }
 
-      // Save the user returned by API.
-      // IMPORTANT: shop_id is required by the dashboard
-      // when creating a shift in Supabase.
+      if (!data.access_token) {
+        setMessage(
+          "Login succeeded, but the authentication token is missing."
+        );
+        setLoading(false);
+        return;
+      }
+
       sessionStorage.setItem(
         "teamLegendUser",
         JSON.stringify({
           id: data.user.id,
+          profile_id: data.user.profile_id || null,
           name: data.user.name || username.trim(),
           role: data.user.role,
           shop: data.user.shop || null,
           shop_id: data.user.shop_id || null,
+
+          // Needed for authenticated Supabase requests
+          access_token: data.access_token,
         })
       );
 
-      // Open dashboard
       window.location.href = "/dashboard";
     } catch (error) {
       console.error("Login error:", error);
@@ -138,6 +145,7 @@ export default function Home() {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Enter username"
             autoComplete="username"
+            disabled={loading}
             style={{
               width: "100%",
               padding: "13px",
@@ -166,6 +174,7 @@ export default function Home() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter password"
             autoComplete="current-password"
+            disabled={loading}
             style={{
               width: "100%",
               padding: "13px",
