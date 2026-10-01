@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import PlatformReadings from "./PlatformReadings";
 import ShiftIncomeEntries from "./ShiftIncomeEntries";
 import ShiftExpenses from "./ShiftExpenses";
 import ShiftSavings from "./ShiftSavings";
 import ClosingPlatformReadings from "./ClosingPlatformReadings";
+import CloseShift from "./CloseShift";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -213,7 +215,10 @@ export default function Dashboard() {
       return;
     }
 
-    if (currentShift) {
+    if (
+      currentShift &&
+      String(currentShift.status).toUpperCase() === "OPEN"
+    ) {
       setShiftStarted(true);
       setMessage(
         "An open shift already exists."
@@ -388,6 +393,19 @@ export default function Dashboard() {
   }
 
   // --------------------------------------------------
+  // SHIFT CLOSED
+  // --------------------------------------------------
+
+  function handleShiftClosed(closedShift) {
+    setCurrentShift(closedShift);
+    setShiftStarted(true);
+
+    setMessage(
+      "Shift closed successfully."
+    );
+  }
+
+  // --------------------------------------------------
   // LOADING
   // --------------------------------------------------
 
@@ -452,6 +470,17 @@ export default function Dashboard() {
       : Number(
           balanceBF || 0
         );
+
+  const currentShiftStatus =
+    String(
+      currentShift?.status || ""
+    ).toUpperCase();
+
+  const isCurrentShiftOpen =
+    currentShiftStatus === "OPEN";
+
+  const isCurrentShiftClosed =
+    currentShiftStatus === "CLOSED";
 
   // --------------------------------------------------
   // PAGE
@@ -607,11 +636,15 @@ export default function Dashboard() {
 
                 <span
                   style={{
-                    color: "#15803d",
+                    color: isCurrentShiftClosed
+                      ? "#dc2626"
+                      : "#15803d",
                     fontWeight: "bold",
                   }}
                 >
-                  ACTIVE
+                  {isCurrentShiftClosed
+                    ? "SHIFT CLOSED"
+                    : "ACTIVE"}
                 </span>
               </p>
             </div>
@@ -727,13 +760,21 @@ export default function Dashboard() {
                   <div
                     style={{
                       padding: "14px",
-                      backgroundColor: "#ecfdf5",
+                      backgroundColor:
+                        isCurrentShiftClosed
+                          ? "#fef2f2"
+                          : "#ecfdf5",
                       borderRadius: "8px",
-                      color: "#166534",
+                      color:
+                        isCurrentShiftClosed
+                          ? "#991b1b"
+                          : "#166534",
                       marginBottom: "18px",
                     }}
                   >
-                    Shift is open.
+                    {isCurrentShiftClosed
+                      ? "Shift is closed."
+                      : "Shift is open."}
                   </div>
 
                   <p>
@@ -750,7 +791,11 @@ export default function Dashboard() {
                     <strong>Balance B/F:</strong>{" "}
                     KES{" "}
                     {displayedBalance.toLocaleString(
-                      "en-KE"
+                      "en-KE",
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }
                     )}
                   </p>
 
@@ -783,61 +828,130 @@ export default function Dashboard() {
 
                     <span
                       style={{
-                        color: "#15803d",
+                        color:
+                          isCurrentShiftClosed
+                            ? "#dc2626"
+                            : "#15803d",
                         fontWeight: "bold",
                       }}
                     >
-                      {currentShift.status || "OPEN"}
+                      {currentShift.status}
                     </span>
                   </p>
                 </div>
               )}
             </div>
 
-            {/* OPENING PLATFORM READINGS */}
+            {/* CASHIER EDITING SECTIONS - OPEN SHIFT ONLY */}
 
-            {shiftStarted && currentShift && (
-              <PlatformReadings
-                user={user}
-                currentShift={currentShift}
-              />
-            )}
+            {shiftStarted &&
+              currentShift &&
+              isCurrentShiftOpen && (
+                <>
+                  <PlatformReadings
+                    user={user}
+                    currentShift={currentShift}
+                  />
 
-            {/* FLOAT / INCOME */}
+                  <ShiftIncomeEntries
+                    user={user}
+                    currentShift={currentShift}
+                  />
 
-            {shiftStarted && currentShift && (
-              <ShiftIncomeEntries
-                user={user}
-                currentShift={currentShift}
-              />
-            )}
+                  <ShiftExpenses
+                    user={user}
+                    currentShift={currentShift}
+                  />
 
-            {/* EXPENSES */}
+                  <ShiftSavings
+                    user={user}
+                    currentShift={currentShift}
+                  />
 
-            {shiftStarted && currentShift && (
-              <ShiftExpenses
-                user={user}
-                currentShift={currentShift}
-              />
-            )}
+                  <ClosingPlatformReadings
+                    user={user}
+                    currentShift={currentShift}
+                  />
 
-            {/* SAVINGS */}
+                  <CloseShift
+                    user={user}
+                    currentShift={currentShift}
+                    onShiftClosed={
+                      handleShiftClosed
+                    }
+                  />
+                </>
+              )}
 
-            {shiftStarted && currentShift && (
-              <ShiftSavings
-                user={user}
-                currentShift={currentShift}
-              />
-            )}
+            {/* CLOSED SHIFT SUMMARY */}
 
-            {/* CLOSING PLATFORM READINGS */}
+            {currentShift &&
+              isCurrentShiftClosed && (
+                <div
+                  style={{
+                    marginTop: "24px",
+                    backgroundColor: "white",
+                    padding: "25px",
+                    borderRadius: "12px",
+                    boxShadow:
+                      "0 2px 10px rgba(0,0,0,0.08)",
+                    maxWidth: "700px",
+                  }}
+                >
+                  <h2
+                    style={{
+                      marginTop: 0,
+                    }}
+                  >
+                    Shift Completed
+                  </h2>
 
-            {shiftStarted && currentShift && (
-              <ClosingPlatformReadings
-                user={user}
-                currentShift={currentShift}
-              />
-            )}
+                  <div
+                    style={{
+                      padding: "14px",
+                      backgroundColor: "#ecfdf5",
+                      color: "#166534",
+                      borderRadius: "8px",
+                      fontWeight: "bold",
+                      marginBottom: "18px",
+                    }}
+                  >
+                    Shift Closed ✓
+                  </div>
+
+                  <p>
+                    <strong>
+                      Net Income:
+                    </strong>{" "}
+                    KES{" "}
+                    {Number(
+                      currentShift.net_income || 0
+                    ).toLocaleString(
+                      "en-KE",
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }
+                    )}
+                  </p>
+
+                  <p style={{ marginBottom: 0 }}>
+                    <strong>
+                      Closing Balance:
+                    </strong>{" "}
+                    KES{" "}
+                    {Number(
+                      currentShift.closing_balance || 0
+                    ).toLocaleString(
+                      "en-KE",
+                      {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }
+                    )}
+                  </p>
+                </div>
+              )}
 
             <p
               style={{
