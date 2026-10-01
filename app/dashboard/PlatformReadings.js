@@ -40,8 +40,10 @@ export default function PlatformReadings({
     currentShift?.id ||
     null;
 
+  const readingKind = "SHIFT_READING";
+
   // --------------------------------------------------
-  // LOAD PLATFORMS AND EXISTING READINGS
+  // LOAD PLATFORMS + EXISTING READINGS
   // --------------------------------------------------
 
   useEffect(() => {
@@ -123,13 +125,14 @@ export default function PlatformReadings({
         setPlatforms(activePlatforms);
 
         // --------------------------------------------
-        // LOAD EXISTING READINGS FOR CURRENT SHIFT
+        // LOAD SAVED READINGS FOR CURRENT SHIFT
         // --------------------------------------------
 
         const readingUrl =
           `${supabaseUrl}/rest/v1/platform_readings` +
           `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-          `&select=id,shift_id,platform_id,reading_value,recorded_at,recorded_by`;
+          `&reading_kind=eq.${encodeURIComponent(readingKind)}` +
+          `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by`;
 
         const readingResponse = await fetch(
           readingUrl,
@@ -228,7 +231,7 @@ export default function PlatformReadings({
   ]);
 
   // --------------------------------------------------
-  // CHANGE READING
+  // UPDATE INPUT VALUE
   // --------------------------------------------------
 
   function updateReading(platformId, value) {
@@ -247,25 +250,19 @@ export default function PlatformReadings({
 
   async function saveReadings() {
     if (!shiftId) {
-      setMessage(
-        "No open shift was found."
-      );
+      setMessage("No open shift was found.");
       setMessageType("error");
       return;
     }
 
     if (!shopId) {
-      setMessage(
-        "Shop information is missing."
-      );
+      setMessage("Shop information is missing.");
       setMessageType("error");
       return;
     }
 
     if (!cashierId) {
-      setMessage(
-        "Cashier information is missing."
-      );
+      setMessage("Cashier information is missing.");
       setMessageType("error");
       return;
     }
@@ -279,9 +276,7 @@ export default function PlatformReadings({
     }
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      setMessage(
-        "Database configuration is missing."
-      );
+      setMessage("Database configuration is missing.");
       setMessageType("error");
       return;
     }
@@ -375,6 +370,9 @@ export default function PlatformReadings({
               },
 
               body: JSON.stringify({
+                reading_kind:
+                  readingKind,
+
                 reading_value:
                   numericValue,
 
@@ -448,6 +446,9 @@ export default function PlatformReadings({
               platform_id:
                 platform.id,
 
+              reading_kind:
+                readingKind,
+
               reading_value:
                 numericValue,
 
@@ -501,9 +502,7 @@ export default function PlatformReadings({
         "Platform readings saved successfully."
       );
 
-      setMessageType(
-        "success"
-      );
+      setMessageType("success");
     } catch (error) {
       console.error(
         "SAVE PLATFORM READINGS ERROR:",
@@ -515,9 +514,7 @@ export default function PlatformReadings({
           "Unable to save platform readings."
       );
 
-      setMessageType(
-        "error"
-      );
+      setMessageType("error");
     } finally {
       setSaving(false);
     }
