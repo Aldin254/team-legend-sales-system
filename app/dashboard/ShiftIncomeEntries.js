@@ -8,10 +8,12 @@ export default function ShiftIncomeEntries({
 }) {
   const [entries, setEntries] = useState([]);
   const [entryType, setEntryType] = useState("COMPANY_FLOAT");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState("Float from company");
   const [amount, setAmount] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
 
@@ -28,19 +30,154 @@ export default function ShiftIncomeEntries({
     currentShift?.id || null;
 
   // --------------------------------------------------
-  // UPDATE PARENT SHIFT TOTAL
+  // LOAD FLOAT ENTRIES
   // --------------------------------------------------
 
-  async function syncShiftTotal(totalAdded) {
+  useEffect(() => {
     if (
       !shiftId ||
       !accessToken ||
       !supabaseUrl ||
       !supabaseAnonKey
     ) {
-      throw new Error(
-        "Unable to synchronize shift total."
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadEntries() {
+      try {
+        setLoading(true);
+        setMessage("");
+        setMessageType("");
+
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/shift_income_entries` +
+            `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+            `&select=id,shift_id,entry_type,description,amount,created_at` +
+            `&order=created_at.asc`,
+          {
+            method: "GET",
+            headers: {
+              apikey: supabaseAnonKey,
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            cache: "no-store",
+          }
+        );
+
+        let result = null;
+
+        try {
+          result = await response.json();
+        } catch {
+          result = null;
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              "Unable to load float entries."
+          );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const loadedEntries =
+          Array.isArray(result)
+            ? result
+            : [];
+
+        setEntries(loadedEntries);
+
+        // Recalculate and repair shift total
+        const totalAdded =
+          calculateTotalAdded(
+            loadedEntries
+          );
+
+        await syncShiftTotalAdded(
+          totalAdded
+        );
+      } catch (error) {
+        console.error(
+          "LOAD FLOAT ENTRIES ERROR:",
+          error
+        );
+
+        if (!cancelled) {
+          setMessage(
+            error?.message ||
+              "Unable to load float entries."
+          );
+
+          setMessageType("error");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadEntries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    shiftId,
+    accessToken,
+    supabaseUrl,
+    supabaseAnonKey,
+  ]);
+
+  // --------------------------------------------------
+  // UPDATE DESCRIPTION WHEN TYPE CHANGES
+  // --------------------------------------------------
+
+  function handleEntryTypeChange(value) {
+    setEntryType(value);
+
+    if (value === "COMPANY_FLOAT") {
+      setDescription(
+        "Float from company"
       );
+    }
+
+    if (value === "MSHWARI_FLOAT") {
+      setDescription(
+        "Float from M-Shwari"
+      );
+    }
+
+    setMessage("");
+    setMessageType("");
+  }
+
+  // --------------------------------------------------
+  // SYNC shifts.total_added_float
+  //
+  // ONLY:
+  // COMPANY FLOAT
+  // + M-SHWARI FLOAT
+  // --------------------------------------------------
+
+  async function syncShiftTotalAdded(
+    totalAdded
+  ) {
+    if (
+      !shiftId ||
+      !accessToken ||
+      !supabaseUrl ||
+      !supabaseAnonKey
+    ) {
+      return;
     }
 
     const response = await fetch(
@@ -51,7 +188,8 @@ export default function ShiftIncomeEntries({
         method: "PATCH",
 
         headers: {
-          apikey: supabaseAnonKey,
+          apikey:
+            supabaseAnonKey,
 
           Authorization:
             `Bearer ${accessToken}`,
@@ -80,11 +218,6 @@ export default function ShiftIncomeEntries({
         result = null;
       }
 
-      console.error(
-        "SHIFT TOTAL UPDATE ERROR:",
-        result
-      );
-
       throw new Error(
         result?.message ||
           result?.details ||
@@ -95,274 +228,34 @@ export default function ShiftIncomeEntries({
   }
 
   // --------------------------------------------------
-  // LOAD EXISTING ENTRIES
+  // ADD FLOAT
   // --------------------------------------------------
 
-  useEffect(() => {
-    if (
-      !shiftId ||
-      !accessToken ||
-      !supabaseUrl ||
-      !supabaseAnonKey
-    ) {
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadEntries() {
-      try {
-        setLoading(true);
-        setMessage("");
-        setMessageType("");
-
-        const url =
-          `${supabaseUrl}/rest/v1/shift_income_entries` +
-          `?shift_id=eq.${encodeURIComponent(
-            shiftId
-          )}` +
-          `&select=id,shift_id,entry_type,description,amount,created_at` +
-          `&order=created_at.asc`;
-
-        const response = await fetch(
-          url,
-          {
-            method: "GET",
-
-            headers: {
-              apikey:
-                supabaseAnonKey,
-
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
-            cache: "no-store",
-          }
-        );
-
-        let result = null;
-
-        try {
-          result =
-            await response.json();
-        } catch {
-          result = null;
-        }
-
-        if (!response.ok) {
-          console.error(
-            "SHIFT INCOME LOAD ERROR:",
-            result
-          );
-
-          throw new Error(
-            result?.message ||
-              result?.details ||
-              result?.hint ||
-              "Unable to load shift income entries."
-          );
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        const loadedEntries =
-          Array.isArray(result)
-            ? result
-            : [];
-
-        setEntries(
-          loadedEntries
-        );
-
-        // --------------------------------------------
-        // REPAIR / SYNCHRONIZE SHIFT TOTAL
-        // This also fixes old shifts where the entries
-        // exist but total_added_float is still zero.
-        // --------------------------------------------
-
-        const totalAdded =
-          calculateTotalAdded(
-            loadedEntries
-          );
-
-        try {
-          await syncShiftTotal(
-            totalAdded
-          );
-        } catch (syncError) {
-          console.error(
-            "INITIAL SHIFT TOTAL SYNC ERROR:",
-            syncError
-          );
-
-          if (!cancelled) {
-            setMessage(
-              syncError?.message ||
-                "Entries loaded, but shift total could not be synchronized."
-            );
-
-            setMessageType(
-              "error"
-            );
-          }
-        }
-      } catch (error) {
-        console.error(
-          "LOAD SHIFT INCOME ERROR:",
-          error
-        );
-
-        if (!cancelled) {
-          setMessage(
-            error?.message ||
-              "Unable to load shift income entries."
-          );
-
-          setMessageType(
-            "error"
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadEntries();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    shiftId,
-    accessToken,
-    supabaseUrl,
-    supabaseAnonKey,
-  ]);
-
-  // --------------------------------------------------
-  // TOTALS
-  // --------------------------------------------------
-
-  const totals = useMemo(() => {
-    let companyFloat = 0;
-    let mshwariFloat = 0;
-    let other = 0;
-    let balanceBF = 0;
-
-    for (const entry of entries) {
-      const value =
-        Number(entry.amount) || 0;
-
-      switch (
-        entry.entry_type
-      ) {
-        case "COMPANY_FLOAT":
-          companyFloat += value;
-          break;
-
-        case "MSHWARI_FLOAT":
-          mshwariFloat += value;
-          break;
-
-        case "OTHER":
-          other += value;
-          break;
-
-        case "BALANCE_BF":
-          balanceBF += value;
-          break;
-
-        default:
-          break;
-      }
-    }
-
-    companyFloat =
-      roundMoney(
-        companyFloat
-      );
-
-    mshwariFloat =
-      roundMoney(
-        mshwariFloat
-      );
-
-    other =
-      roundMoney(
-        other
-      );
-
-    balanceBF =
-      roundMoney(
-        balanceBF
-      );
-
-    const totalAdded =
-      roundMoney(
-        companyFloat +
-          mshwariFloat +
-          other
-      );
-
-    return {
-      companyFloat,
-      mshwariFloat,
-      other,
-      balanceBF,
-      totalAdded,
-    };
-  }, [entries]);
-
-  // --------------------------------------------------
-  // SAVE ENTRY
-  // --------------------------------------------------
-
-  async function saveEntry() {
+  async function addEntry() {
     if (!shiftId) {
       setMessage(
         "No open shift was found."
       );
-
-      setMessageType(
-        "error"
-      );
-
+      setMessageType("error");
       return;
     }
 
     if (!accessToken) {
       setMessage(
-        "Login authentication is missing. Please log in again."
+        "Authentication is missing. Please log in again."
       );
-
-      setMessageType(
-        "error"
-      );
-
+      setMessageType("error");
       return;
     }
 
     if (
-      !supabaseUrl ||
-      !supabaseAnonKey
+      entryType !== "COMPANY_FLOAT" &&
+      entryType !== "MSHWARI_FLOAT"
     ) {
       setMessage(
-        "Database configuration is missing."
+        "Select a valid float type."
       );
-
-      setMessageType(
-        "error"
-      );
-
+      setMessageType("error");
       return;
     }
 
@@ -371,41 +264,13 @@ export default function ShiftIncomeEntries({
 
     if (
       amount === "" ||
-      Number.isNaN(
-        numericAmount
-      ) ||
+      Number.isNaN(numericAmount) ||
       numericAmount <= 0
     ) {
       setMessage(
-        "Please enter a valid amount greater than zero."
+        "Enter a valid amount greater than zero."
       );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    const allowedTypes = [
-      "COMPANY_FLOAT",
-      "MSHWARI_FLOAT",
-      "OTHER",
-    ];
-
-    if (
-      !allowedTypes.includes(
-        entryType
-      )
-    ) {
-      setMessage(
-        "Invalid entry type."
-      );
-
-      setMessageType(
-        "error"
-      );
-
+      setMessageType("error");
       return;
     }
 
@@ -414,61 +279,45 @@ export default function ShiftIncomeEntries({
       setMessage("");
       setMessageType("");
 
-      const body = {
-        shift_id:
-          shiftId,
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/shift_income_entries`,
+        {
+          method: "POST",
 
-        entry_type:
-          entryType,
+          headers: {
+            apikey:
+              supabaseAnonKey,
 
-        description:
-          description.trim() ||
-          defaultDescription(
-            entryType
-          ),
+            Authorization:
+              `Bearer ${accessToken}`,
 
-        amount:
-          roundMoney(
-            numericAmount
-          ),
-      };
+            "Content-Type":
+              "application/json",
 
-      console.log(
-        "Saving shift income entry:",
-        body
-      );
+            Prefer:
+              "return=representation",
+          },
 
-      // --------------------------------------------
-      // INSERT ENTRY
-      // --------------------------------------------
+          body: JSON.stringify({
+            shift_id:
+              shiftId,
 
-      const response =
-        await fetch(
-          `${supabaseUrl}/rest/v1/shift_income_entries`,
-          {
-            method:
-              "POST",
+            entry_type:
+              entryType,
 
-            headers: {
-              apikey:
-                supabaseAnonKey,
+            description:
+              description.trim() ||
+              (entryType === "COMPANY_FLOAT"
+                ? "Float from company"
+                : "Float from M-Shwari"),
 
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-
-              Prefer:
-                "return=representation",
-            },
-
-            body:
-              JSON.stringify(
-                body
+            amount:
+              roundMoney(
+                numericAmount
               ),
-          }
-        );
+          }),
+        }
+      );
 
       let result = null;
 
@@ -481,7 +330,7 @@ export default function ShiftIncomeEntries({
 
       if (!response.ok) {
         console.error(
-          "SHIFT INCOME INSERT ERROR:",
+          "FLOAT INSERT ERROR:",
           result
         );
 
@@ -489,73 +338,44 @@ export default function ShiftIncomeEntries({
           result?.message ||
             result?.details ||
             result?.hint ||
-            "Unable to save entry."
+            "Unable to save float entry."
         );
       }
 
-      if (
-        !Array.isArray(
-          result
-        ) ||
-        result.length === 0
-      ) {
+      const insertedRow =
+        Array.isArray(result) &&
+        result.length > 0
+          ? result[0]
+          : null;
+
+      if (!insertedRow) {
         throw new Error(
-          "Entry was saved, but the saved record was not returned."
+          "Float was saved but no record was returned."
         );
       }
-
-      const savedEntry =
-        result[0];
 
       const updatedEntries = [
         ...entries,
-        savedEntry,
+        insertedRow,
       ];
 
-      // Update screen immediately.
       setEntries(
         updatedEntries
       );
 
-      setAmount("");
-      setDescription("");
-
-      // --------------------------------------------
-      // CALCULATE NEW TOTAL
-      // --------------------------------------------
-
-      const newTotalAdded =
+      const newTotal =
         calculateTotalAdded(
           updatedEntries
         );
 
-      // --------------------------------------------
-      // UPDATE shifts.total_added_float
-      // --------------------------------------------
+      await syncShiftTotalAdded(
+        newTotal
+      );
 
-      try {
-        await syncShiftTotal(
-          newTotalAdded
-        );
-      } catch (syncError) {
-        console.error(
-          "POST-SAVE SHIFT TOTAL SYNC ERROR:",
-          syncError
-        );
-
-        setMessage(
-          "Entry saved successfully, but the shift total could not be synchronized. Do not enter it again; refresh the page once."
-        );
-
-        setMessageType(
-          "error"
-        );
-
-        return;
-      }
+      setAmount("");
 
       setMessage(
-        "Entry saved and shift total updated successfully."
+        "Float saved successfully."
       );
 
       setMessageType(
@@ -563,22 +383,78 @@ export default function ShiftIncomeEntries({
       );
     } catch (error) {
       console.error(
-        "SAVE SHIFT INCOME ERROR:",
+        "SAVE FLOAT ERROR:",
         error
       );
 
       setMessage(
         error?.message ||
-          "Unable to save entry."
+          "Unable to save float."
       );
 
-      setMessageType(
-        "error"
-      );
+      setMessageType("error");
     } finally {
       setSaving(false);
     }
   }
+
+  // --------------------------------------------------
+  // TOTALS
+  // --------------------------------------------------
+
+  const totals =
+    useMemo(() => {
+      let company = 0;
+      let mshwari = 0;
+
+      for (const entry of entries) {
+        const value =
+          Number(
+            entry.amount || 0
+          );
+
+        if (
+          entry.entry_type ===
+          "COMPANY_FLOAT"
+        ) {
+          company += value;
+        }
+
+        if (
+          entry.entry_type ===
+          "MSHWARI_FLOAT"
+        ) {
+          mshwari += value;
+        }
+      }
+
+      return {
+        company:
+          roundMoney(company),
+
+        mshwari:
+          roundMoney(mshwari),
+
+        total:
+          roundMoney(
+            company +
+              mshwari
+          ),
+      };
+    }, [entries]);
+
+  // --------------------------------------------------
+  // ONLY DISPLAY VALID FLOAT HISTORY
+  // --------------------------------------------------
+
+  const visibleEntries =
+    entries.filter(
+      (entry) =>
+        entry.entry_type ===
+          "COMPANY_FLOAT" ||
+        entry.entry_type ===
+          "MSHWARI_FLOAT"
+    );
 
   // --------------------------------------------------
   // DISPLAY
@@ -612,8 +488,8 @@ export default function ShiftIncomeEntries({
       <p
         style={{
           marginTop: 0,
-          marginBottom: "22px",
           color: "#64748b",
+          marginBottom: "20px",
         }}
       >
         Record money added during the current shift.
@@ -625,398 +501,265 @@ export default function ShiftIncomeEntries({
         style={{
           display: "grid",
           gridTemplateColumns:
-            "repeat(auto-fit, minmax(150px, 1fr))",
-          gap: "12px",
-          marginBottom: "25px",
+            "repeat(3, minmax(0, 1fr))",
+          gap: "10px",
+          marginBottom: "24px",
         }}
       >
         <SummaryCard
           title="Company Float"
-          amount={
-            totals.companyFloat
-          }
+          value={totals.company}
         />
 
         <SummaryCard
           title="M-Shwari Float"
-          amount={
-            totals.mshwariFloat
-          }
-        />
-
-        <SummaryCard
-          title="Other"
-          amount={
-            totals.other
-          }
+          value={totals.mshwari}
         />
 
         <SummaryCard
           title="Total Added"
-          amount={
-            totals.totalAdded
-          }
+          value={totals.total}
         />
       </div>
 
       {/* ADD ENTRY */}
 
-      <div
-        style={{
-          backgroundColor:
-            "#f8fafc",
-          padding: "18px",
-          borderRadius: "10px",
-          marginBottom: "24px",
-        }}
-      >
-        <h3
-          style={{
-            marginTop: 0,
-          }}
-        >
-          Add Entry
-        </h3>
-
-        <label
-          style={{
-            display: "block",
-            fontWeight: "bold",
-            marginBottom: "7px",
-          }}
-        >
-          Entry Type
-        </label>
-
-        <select
-          value={
-            entryType
-          }
-          disabled={
-            saving
-          }
-          onChange={(e) => {
-            setEntryType(
-              e.target.value
-            );
-
-            setMessage("");
-            setMessageType("");
-          }}
-          style={{
-            width: "100%",
-            padding: "13px",
-            border:
-              "1px solid #cbd5e1",
-            borderRadius: "8px",
-            boxSizing:
-              "border-box",
-            fontSize: "15px",
-            marginBottom: "16px",
-            backgroundColor:
-              "white",
-          }}
-        >
-          <option value="COMPANY_FLOAT">
-            Company Float
-          </option>
-
-          <option value="MSHWARI_FLOAT">
-            M-Shwari Float
-          </option>
-
-          <option value="OTHER">
-            Other
-          </option>
-        </select>
-
-        <label
-          style={{
-            display: "block",
-            fontWeight: "bold",
-            marginBottom: "7px",
-          }}
-        >
-          Description
-        </label>
-
-        <input
-          type="text"
-          value={
-            description
-          }
-          disabled={
-            saving
-          }
-          onChange={(e) => {
-            setDescription(
-              e.target.value
-            );
-
-            setMessage("");
-            setMessageType("");
-          }}
-          placeholder={
-            defaultDescription(
-              entryType
-            )
-          }
-          style={{
-            width: "100%",
-            padding: "13px",
-            border:
-              "1px solid #cbd5e1",
-            borderRadius: "8px",
-            boxSizing:
-              "border-box",
-            fontSize: "15px",
-            marginBottom: "16px",
-          }}
-        />
-
-        <label
-          style={{
-            display: "block",
-            fontWeight: "bold",
-            marginBottom: "7px",
-          }}
-        >
-          Amount (KES)
-        </label>
-
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          value={
-            amount
-          }
-          disabled={
-            saving
-          }
-          onChange={(e) => {
-            setAmount(
-              e.target.value
-            );
-
-            setMessage("");
-            setMessageType("");
-          }}
-          placeholder="Enter amount"
-          style={{
-            width: "100%",
-            padding: "13px",
-            border:
-              "1px solid #cbd5e1",
-            borderRadius: "8px",
-            boxSizing:
-              "border-box",
-            fontSize: "15px",
-            marginBottom: "16px",
-          }}
-        />
-
-        {message && (
-          <div
-            style={{
-              padding: "11px",
-              marginBottom: "16px",
-              borderRadius: "8px",
-
-              backgroundColor:
-                messageType ===
-                "success"
-                  ? "#ecfdf5"
-                  : "#fef2f2",
-
-              color:
-                messageType ===
-                "success"
-                  ? "#166534"
-                  : "#991b1b",
-            }}
-          >
-            {message}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={
-            saveEntry
-          }
-          disabled={
-            saving
-          }
-          style={{
-            width: "100%",
-            padding: "14px",
-            border: "none",
-            borderRadius: "8px",
-
-            backgroundColor:
-              saving
-                ? "#94a3b8"
-                : "#168d32",
-
-            color: "white",
-            fontSize: "16px",
-            fontWeight: "bold",
-
-            cursor:
-              saving
-                ? "not-allowed"
-                : "pointer",
-          }}
-        >
-          {saving
-            ? "Saving..."
-            : "Save Entry"}
-        </button>
-      </div>
-
-      {/* ENTRY HISTORY */}
-
-      <h3
-        style={{
-          marginBottom: "12px",
-        }}
-      >
-        Shift Entry History
+      <h3>
+        Add Entry
       </h3>
 
-      {loading ? (
+      <label
+        style={labelStyle}
+      >
+        Entry Type
+      </label>
+
+      <select
+        value={entryType}
+        disabled={saving}
+        onChange={(e) =>
+          handleEntryTypeChange(
+            e.target.value
+          )
+        }
+        style={inputStyle}
+      >
+        <option value="COMPANY_FLOAT">
+          Company Float
+        </option>
+
+        <option value="MSHWARI_FLOAT">
+          M-Shwari Float
+        </option>
+      </select>
+
+      <label
+        style={labelStyle}
+      >
+        Description
+      </label>
+
+      <input
+        type="text"
+        value={description}
+        disabled={saving}
+        onChange={(e) =>
+          setDescription(
+            e.target.value
+          )
+        }
+        style={inputStyle}
+      />
+
+      <label
+        style={labelStyle}
+      >
+        Amount (KES)
+      </label>
+
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        value={amount}
+        disabled={saving}
+        onChange={(e) => {
+          setAmount(
+            e.target.value
+          );
+
+          setMessage("");
+          setMessageType("");
+        }}
+        placeholder="Enter amount"
+        style={inputStyle}
+      />
+
+      {message && (
         <div
           style={{
-            color: "#64748b",
-            padding: "12px 0",
-          }}
-        >
-          Loading entries...
-        </div>
-      ) : entries.length === 0 ? (
-        <div
-          style={{
-            padding: "14px",
-            backgroundColor:
-              "#f8fafc",
+            padding: "12px",
+            marginBottom: "16px",
             borderRadius: "8px",
-            color: "#64748b",
+
+            backgroundColor:
+              messageType ===
+              "success"
+                ? "#ecfdf5"
+                : "#fef2f2",
+
+            color:
+              messageType ===
+              "success"
+                ? "#166534"
+                : "#991b1b",
           }}
         >
-          No float or income entries have been recorded yet.
+          {message}
         </div>
-      ) : (
-        <div>
-          {entries.map(
+      )}
+
+      <button
+        type="button"
+        onClick={addEntry}
+        disabled={
+          saving ||
+          loading
+        }
+        style={{
+          width: "100%",
+          padding: "14px",
+          border: "none",
+          borderRadius: "8px",
+
+          backgroundColor:
+            saving
+              ? "#94a3b8"
+              : "#168d32",
+
+          color: "white",
+          fontSize: "16px",
+          fontWeight: "bold",
+
+          cursor:
+            saving
+              ? "not-allowed"
+              : "pointer",
+        }}
+      >
+        {saving
+          ? "Saving..."
+          : "Add Float"}
+      </button>
+
+      {/* HISTORY */}
+
+      <div
+        style={{
+          marginTop: "28px",
+        }}
+      >
+        <h3>
+          Float History
+        </h3>
+
+        {loading ? (
+          <p>
+            Loading...
+          </p>
+        ) : visibleEntries.length === 0 ? (
+          <p
+            style={{
+              color: "#64748b",
+            }}
+          >
+            No float has been added during this shift.
+          </p>
+        ) : (
+          visibleEntries.map(
             (entry) => (
               <div
-                key={
-                  entry.id
-                }
+                key={entry.id}
                 style={{
-                  padding:
-                    "13px 0",
-
-                  borderBottom:
+                  borderTop:
                     "1px solid #e2e8f0",
-
-                  display:
-                    "flex",
-
-                  justifyContent:
-                    "space-between",
-
-                  gap:
-                    "20px",
-
-                  alignItems:
-                    "center",
+                  padding:
+                    "12px 0",
                 }}
               >
-                <div>
-                  <div
-                    style={{
-                      fontWeight:
-                        "bold",
-                    }}
-                  >
-                    {friendlyType(
-                      entry.entry_type
-                    )}
-                  </div>
+                <div
+                  style={{
+                    display:
+                      "flex",
+                    justifyContent:
+                      "space-between",
+                    gap: "15px",
+                  }}
+                >
+                  <div>
+                    <strong>
+                      {displayEntryType(
+                        entry.entry_type
+                      )}
+                    </strong>
 
-                  <div
-                    style={{
-                      color:
-                        "#64748b",
-
-                      fontSize:
-                        "13px",
-
-                      marginTop:
-                        "3px",
-                    }}
-                  >
-                    {entry.description ||
-                      "-"}
-                  </div>
-
-                  {entry.created_at && (
                     <div
                       style={{
                         color:
-                          "#94a3b8",
-
+                          "#64748b",
                         fontSize:
-                          "12px",
-
+                          "13px",
                         marginTop:
-                          "3px",
+                          "4px",
                       }}
                     >
-                      {formatKenyaDate(
+                      {entry.description}
+                    </div>
+
+                    <div
+                      style={{
+                        color:
+                          "#64748b",
+                        fontSize:
+                          "12px",
+                        marginTop:
+                          "4px",
+                      }}
+                    >
+                      {formatDate(
                         entry.created_at
                       )}
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                <div
-                  style={{
-                    fontWeight:
-                      "bold",
-
-                    whiteSpace:
-                      "nowrap",
-                  }}
-                >
-                  KES{" "}
-                  {Number(
-                    entry.amount ||
-                      0
-                  ).toLocaleString(
-                    "en-KE",
-                    {
-                      minimumFractionDigits:
-                        2,
-
-                      maximumFractionDigits:
-                        2,
-                    }
-                  )}
+                  <strong>
+                    KES{" "}
+                    {Number(
+                      entry.amount || 0
+                    ).toLocaleString(
+                      "en-KE",
+                      {
+                        minimumFractionDigits:
+                          2,
+                        maximumFractionDigits:
+                          2,
+                      }
+                    )}
+                  </strong>
                 </div>
               </div>
             )
-          )}
-        </div>
-      )}
+          )
+        )}
+      </div>
     </div>
   );
 }
 
 // --------------------------------------------------
-// CALCULATE TOTAL ADDED
+// TOTAL ADDED FLOAT
+//
+// ONLY COMPANY + M-SHWARI
 // --------------------------------------------------
 
 function calculateTotalAdded(
@@ -1026,18 +769,18 @@ function calculateTotalAdded(
 
   for (const entry of entries) {
     if (
-      entry.entry_type ===
-        "COMPANY_FLOAT" ||
-      entry.entry_type ===
-        "MSHWARI_FLOAT" ||
-      entry.entry_type ===
-        "OTHER"
+      entry.entry_type !==
+        "COMPANY_FLOAT" &&
+      entry.entry_type !==
+        "MSHWARI_FLOAT"
     ) {
-      total +=
-        Number(
-          entry.amount
-        ) || 0;
+      continue;
     }
+
+    total +=
+      Number(
+        entry.amount || 0
+      );
   }
 
   return roundMoney(
@@ -1046,106 +789,52 @@ function calculateTotalAdded(
 }
 
 // --------------------------------------------------
-// ROUND MONEY
+// ENTRY TYPE LABEL
 // --------------------------------------------------
 
-function roundMoney(
-  value
+function displayEntryType(
+  type
 ) {
-  return (
-    Math.round(
-      (Number(value) +
-        Number.EPSILON) *
-        100
-    ) / 100
+  if (
+    type ===
+    "COMPANY_FLOAT"
+  ) {
+    return "Company Float";
+  }
+
+  if (
+    type ===
+    "MSHWARI_FLOAT"
+  ) {
+    return "M-Shwari Float";
+  }
+
+  return type;
+}
+
+// --------------------------------------------------
+// DATE
+// --------------------------------------------------
+
+function formatDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-KE",
+    {
+      timeZone:
+        "Africa/Nairobi",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  ).format(
+    new Date(value)
   );
-}
-
-// --------------------------------------------------
-// DEFAULT DESCRIPTION
-// --------------------------------------------------
-
-function defaultDescription(
-  type
-) {
-  switch (type) {
-    case "COMPANY_FLOAT":
-      return "Float from company";
-
-    case "MSHWARI_FLOAT":
-      return "Float from M-Shwari";
-
-    case "BALANCE_BF":
-      return "Balance B/F";
-
-    case "OTHER":
-      return "Other income";
-
-    default:
-      return "";
-  }
-}
-
-// --------------------------------------------------
-// FRIENDLY TYPE
-// --------------------------------------------------
-
-function friendlyType(
-  type
-) {
-  switch (type) {
-    case "COMPANY_FLOAT":
-      return "Company Float";
-
-    case "MSHWARI_FLOAT":
-      return "M-Shwari Float";
-
-    case "BALANCE_BF":
-      return "Balance B/F";
-
-    case "OTHER":
-      return "Other";
-
-    default:
-      return type || "Entry";
-  }
-}
-
-// --------------------------------------------------
-// KENYA DATE / TIME
-// --------------------------------------------------
-
-function formatKenyaDate(
-  value
-) {
-  try {
-    return new Intl.DateTimeFormat(
-      "en-KE",
-      {
-        timeZone:
-          "Africa/Nairobi",
-
-        day:
-          "2-digit",
-
-        month:
-          "short",
-
-        year:
-          "numeric",
-
-        hour:
-          "2-digit",
-
-        minute:
-          "2-digit",
-      }
-    ).format(
-      new Date(value)
-    );
-  } catch {
-    return value;
-  }
 }
 
 // --------------------------------------------------
@@ -1154,34 +843,23 @@ function formatKenyaDate(
 
 function SummaryCard({
   title,
-  amount,
+  value,
 }) {
   return (
     <div
       style={{
+        padding: "14px",
         backgroundColor:
           "#f8fafc",
-
-        padding:
-          "14px",
-
-        borderRadius:
-          "9px",
-
         border:
           "1px solid #e2e8f0",
+        borderRadius: "9px",
       }}
     >
       <div
         style={{
-          color:
-            "#64748b",
-
-          fontSize:
-            "12px",
-
-          marginBottom:
-            "5px",
+          color: "#64748b",
+          fontSize: "12px",
         }}
       >
         {title}
@@ -1189,27 +867,58 @@ function SummaryCard({
 
       <div
         style={{
-          fontWeight:
-            "bold",
-
-          fontSize:
-            "17px",
+          fontWeight: "bold",
+          marginTop: "5px",
         }}
       >
         KES{" "}
         {Number(
-          amount || 0
+          value || 0
         ).toLocaleString(
           "en-KE",
           {
             minimumFractionDigits:
               2,
-
             maximumFractionDigits:
               2,
           }
         )}
       </div>
     </div>
+  );
+}
+
+// --------------------------------------------------
+// STYLES
+// --------------------------------------------------
+
+const labelStyle = {
+  display: "block",
+  fontWeight: "bold",
+  marginBottom: "7px",
+};
+
+const inputStyle = {
+  width: "100%",
+  padding: "12px",
+  border:
+    "1px solid #cbd5e1",
+  borderRadius: "8px",
+  boxSizing: "border-box",
+  marginBottom: "16px",
+  fontSize: "15px",
+};
+
+// --------------------------------------------------
+// MONEY
+// --------------------------------------------------
+
+function roundMoney(value) {
+  return (
+    Math.round(
+      (Number(value) +
+        Number.EPSILON) *
+        100
+    ) / 100
   );
 }
