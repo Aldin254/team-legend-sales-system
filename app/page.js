@@ -39,19 +39,25 @@ export default function Home() {
         return;
       }
 
-      // Save complete login information for the dashboard
+      // Make sure API returned a user
+      if (!data.user) {
+        setMessage("Login succeeded, but user information is missing.");
+        setLoading(false);
+        return;
+      }
+
+      // Save EXACT user returned by API
       sessionStorage.setItem(
         "teamLegendUser",
         JSON.stringify({
-          id: data.id,
-          username: data.username || username.trim(),
-          name: data.name,
-          role: data.role,
-          shop: data.shop,
+          id: data.user.id,
+          name: data.user.name || username.trim(),
+          role: data.user.role,
+          shop: data.user.shop || null,
         })
       );
 
-      // Open dashboard after successful login
+      // Open dashboard
       window.location.href = "/dashboard";
     } catch (error) {
       console.error("Login error:", error);
