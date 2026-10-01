@@ -10,6 +10,7 @@ import {
 import { useRouter } from "next/navigation";
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierManagementPanel from "./CashierManagementPanel";
+import CashierManagementPanel from "./CashierManagementPanel";
 export default function CashierReport({
   user,
   currentShift,
@@ -2159,15 +2160,9 @@ export default function CashierReport({
   }
 />
 
-            <section style={lowerPanelStyle}>
-              <div style={lowerTitleStyle}>
-                ACCOUNTS INFORMATION
-              </div>
-
-              <div style={placeholderTextStyle}>
-                Accounts information will be connected next.
-              </div>
-            </section>
+            <CashierAccountsPanel
+  user={user}
+/>
           </div>
 
           <div style={closePreviewStyle}>
