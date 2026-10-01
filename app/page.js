@@ -46,7 +46,9 @@ export default function Home() {
         return;
       }
 
-      // Save EXACT user returned by API
+      // Save the user returned by API.
+      // IMPORTANT: shop_id is required by the dashboard
+      // when creating a shift in Supabase.
       sessionStorage.setItem(
         "teamLegendUser",
         JSON.stringify({
@@ -54,6 +56,7 @@ export default function Home() {
           name: data.user.name || username.trim(),
           role: data.user.role,
           shop: data.user.shop || null,
+          shop_id: data.user.shop_id || null,
         })
       );
 
