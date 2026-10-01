@@ -120,22 +120,53 @@ export default function Dashboard() {
       setStartingShift(true);
       setMessage("");
 
+      const now = new Date();
+
       const businessDate =
         new Intl.DateTimeFormat("en-CA", {
           timeZone: "Africa/Nairobi",
           year: "numeric",
           month: "2-digit",
           day: "2-digit",
-        }).format(new Date());
+        }).format(now);
+
+      function nairobiTime(date) {
+        return new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Africa/Nairobi",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hourCycle: "h23",
+        }).format(date);
+      }
+
+      // Mirriams is currently a 12-hour shop.
+      const scheduledStart = nairobiTime(now);
+
+      const scheduledEnd = nairobiTime(
+        new Date(
+          now.getTime() +
+            12 * 60 * 60 * 1000
+        )
+      );
 
       const shiftData = {
         shop_id: shopId,
         cashier_id: cashierId,
         cashier_name: cashierName,
+
         shift_name: "DAY",
+
         business_date: businessDate,
-        opened_at: new Date().toISOString(),
+
+        // Required by the shifts table.
+        scheduled_start: scheduledStart,
+        scheduled_end: scheduledEnd,
+
+        opened_at: now.toISOString(),
+
         status: "OPEN",
+
         opening_balance: amount,
         total_added_float: 0,
         total_output: 0,
@@ -150,15 +181,18 @@ export default function Dashboard() {
         `${supabaseUrl}/rest/v1/shifts`,
         {
           method: "POST",
+
           headers: {
             apikey: supabaseAnonKey,
 
-            // Use the logged-in cashier's
-            // authenticated Supabase token.
-            Authorization: `Bearer ${accessToken}`,
+            Authorization:
+              `Bearer ${accessToken}`,
 
-            "Content-Type": "application/json",
-            Prefer: "return=representation",
+            "Content-Type":
+              "application/json",
+
+            Prefer:
+              "return=representation",
           },
 
           body: JSON.stringify(shiftData),
@@ -189,10 +223,15 @@ export default function Dashboard() {
         return;
       }
 
-      console.log("SHIFT CREATED:", result);
+      console.log(
+        "SHIFT CREATED:",
+        result
+      );
 
       setShiftStarted(true);
-      setMessage("Shift opened successfully.");
+      setMessage(
+        "Shift opened successfully."
+      );
     } catch (error) {
       console.error(
         "START SHIFT ERROR:",
@@ -262,8 +301,6 @@ export default function Dashboard() {
         fontFamily: "Arial, sans-serif",
       }}
     >
-      {/* HEADER */}
-
       <header
         style={{
           backgroundColor: "#0f172a",
@@ -276,11 +313,7 @@ export default function Dashboard() {
         }}
       >
         <div>
-          <h2
-            style={{
-              margin: 0,
-            }}
-          >
+          <h2 style={{ margin: 0 }}>
             TEAM LEGEND
           </h2>
 
@@ -320,19 +353,13 @@ export default function Dashboard() {
       >
         {isAdmin ? (
           <>
-            {/* ADMIN DASHBOARD */}
-
-            <h1
-              style={{
-                marginTop: 0,
-              }}
-            >
+            <h1 style={{ marginTop: 0 }}>
               Admin Dashboard
             </h1>
 
             <p>
-              Welcome to Team Legend Sales Management
-              System.
+              Welcome to Team Legend Sales
+              Management System.
             </p>
 
             <div
@@ -367,18 +394,12 @@ export default function Dashboard() {
           </>
         ) : (
           <>
-            {/* CASHIER DASHBOARD */}
-
             <div
               style={{
                 marginBottom: "25px",
               }}
             >
-              <h1
-                style={{
-                  margin: 0,
-                }}
-              >
+              <h1 style={{ margin: 0 }}>
                 {shopName}
               </h1>
 
@@ -392,8 +413,6 @@ export default function Dashboard() {
               </p>
             </div>
 
-            {/* SHOP INFORMATION */}
-
             <div
               style={{
                 backgroundColor: "white",
@@ -404,11 +423,7 @@ export default function Dashboard() {
                 marginBottom: "20px",
               }}
             >
-              <h2
-                style={{
-                  marginTop: 0,
-                }}
-              >
+              <h2 style={{ marginTop: 0 }}>
                 {shopName}
               </h2>
 
@@ -422,11 +437,7 @@ export default function Dashboard() {
                 {today}
               </p>
 
-              <p
-                style={{
-                  marginBottom: 0,
-                }}
-              >
+              <p style={{ marginBottom: 0 }}>
                 <strong>Status:</strong>{" "}
 
                 <span
@@ -440,8 +451,6 @@ export default function Dashboard() {
               </p>
             </div>
 
-            {/* OPENING SHIFT */}
-
             <div
               style={{
                 backgroundColor: "white",
@@ -452,11 +461,7 @@ export default function Dashboard() {
                 maxWidth: "600px",
               }}
             >
-              <h2
-                style={{
-                  marginTop: 0,
-                }}
-              >
+              <h2 style={{ marginTop: 0 }}>
                 Opening Shift
               </h2>
 
@@ -468,8 +473,8 @@ export default function Dashboard() {
                       marginBottom: "20px",
                     }}
                   >
-                    Enter the opening balance before
-                    starting work.
+                    Enter the opening balance
+                    before starting work.
                   </p>
 
                   <label
@@ -573,9 +578,7 @@ export default function Dashboard() {
                   </p>
 
                   <p>
-                    <strong>
-                      Cashier:
-                    </strong>{" "}
+                    <strong>Cashier:</strong>{" "}
                     {cashierName}
                   </p>
 
@@ -591,11 +594,7 @@ export default function Dashboard() {
                     )}
                   </p>
 
-                  <p
-                    style={{
-                      marginBottom: 0,
-                    }}
-                  >
+                  <p style={{ marginBottom: 0 }}>
                     <strong>
                       Shift Status:
                     </strong>{" "}
@@ -603,8 +602,7 @@ export default function Dashboard() {
                     <span
                       style={{
                         color: "#15803d",
-                        fontWeight:
-                          "bold",
+                        fontWeight: "bold",
                       }}
                     >
                       OPEN
@@ -621,7 +619,8 @@ export default function Dashboard() {
                 fontSize: "13px",
               }}
             >
-              You can only access your assigned shop.
+              You can only access your assigned
+              shop.
             </p>
           </>
         )}
@@ -630,10 +629,7 @@ export default function Dashboard() {
   );
 }
 
-function DashboardCard({
-  title,
-  value,
-}) {
+function DashboardCard({ title, value }) {
   return (
     <div
       style={{
