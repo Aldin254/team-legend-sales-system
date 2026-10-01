@@ -41,7 +41,7 @@ export default function PlatformReadings({
     null;
 
   // --------------------------------------------------
-  // LOAD SHOP PLATFORMS + EXISTING READINGS
+  // LOAD PLATFORMS AND EXISTING READINGS
   // --------------------------------------------------
 
   useEffect(() => {
@@ -62,6 +62,7 @@ export default function PlatformReadings({
       try {
         setLoading(true);
         setMessage("");
+        setMessageType("");
 
         // --------------------------------------------
         // LOAD ACTIVE PLATFORMS FOR THIS SHOP
@@ -105,6 +106,7 @@ export default function PlatformReadings({
           throw new Error(
             platformData?.message ||
               platformData?.details ||
+              platformData?.hint ||
               "Unable to load shop platforms."
           );
         }
@@ -121,13 +123,13 @@ export default function PlatformReadings({
         setPlatforms(activePlatforms);
 
         // --------------------------------------------
-        // LOAD SAVED READINGS FOR CURRENT SHIFT
+        // LOAD EXISTING READINGS FOR CURRENT SHIFT
         // --------------------------------------------
 
         const readingUrl =
           `${supabaseUrl}/rest/v1/platform_readings` +
           `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-          `&select=id,shift_id,platform_id,reading_label,reading_value,recorded_at,recorded_by`;
+          `&select=id,shift_id,platform_id,reading_value,recorded_at,recorded_by`;
 
         const readingResponse = await fetch(
           readingUrl,
@@ -160,6 +162,7 @@ export default function PlatformReadings({
           throw new Error(
             readingData?.message ||
               readingData?.details ||
+              readingData?.hint ||
               "Unable to load saved readings."
           );
         }
@@ -244,19 +247,25 @@ export default function PlatformReadings({
 
   async function saveReadings() {
     if (!shiftId) {
-      setMessage("No open shift was found.");
+      setMessage(
+        "No open shift was found."
+      );
       setMessageType("error");
       return;
     }
 
     if (!shopId) {
-      setMessage("Shop information is missing.");
+      setMessage(
+        "Shop information is missing."
+      );
       setMessageType("error");
       return;
     }
 
     if (!cashierId) {
-      setMessage("Cashier information is missing.");
+      setMessage(
+        "Cashier information is missing."
+      );
       setMessageType("error");
       return;
     }
@@ -265,7 +274,14 @@ export default function PlatformReadings({
       setMessage(
         "Login authentication is missing. Please log in again."
       );
+      setMessageType("error");
+      return;
+    }
 
+    if (!supabaseUrl || !supabaseAnonKey) {
+      setMessage(
+        "Database configuration is missing."
+      );
       setMessageType("error");
       return;
     }
@@ -359,9 +375,6 @@ export default function PlatformReadings({
               },
 
               body: JSON.stringify({
-                reading_label:
-                  "SHIFT_READING",
-
                 reading_value:
                   numericValue,
 
@@ -392,6 +405,7 @@ export default function PlatformReadings({
             throw new Error(
               result?.message ||
                 result?.details ||
+                result?.hint ||
                 `Unable to update ${platform.platform_name}.`
             );
           }
@@ -428,13 +442,11 @@ export default function PlatformReadings({
             },
 
             body: JSON.stringify({
-              shift_id: shiftId,
+              shift_id:
+                shiftId,
 
               platform_id:
                 platform.id,
-
-              reading_label:
-                "SHIFT_READING",
 
               reading_value:
                 numericValue,
@@ -466,6 +478,7 @@ export default function PlatformReadings({
           throw new Error(
             result?.message ||
               result?.details ||
+              result?.hint ||
               `Unable to save ${platform.platform_name}.`
           );
         }
@@ -488,7 +501,9 @@ export default function PlatformReadings({
         "Platform readings saved successfully."
       );
 
-      setMessageType("success");
+      setMessageType(
+        "success"
+      );
     } catch (error) {
       console.error(
         "SAVE PLATFORM READINGS ERROR:",
@@ -500,7 +515,9 @@ export default function PlatformReadings({
           "Unable to save platform readings."
       );
 
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
     } finally {
       setSaving(false);
     }
@@ -567,55 +584,53 @@ export default function PlatformReadings({
         </div>
       ) : (
         <>
-          {platforms.map(
-            (platform) => (
-              <div
-                key={platform.id}
+          {platforms.map((platform) => (
+            <div
+              key={platform.id}
+              style={{
+                marginBottom: "16px",
+              }}
+            >
+              <label
                 style={{
-                  marginBottom: "16px",
+                  display: "block",
+                  fontWeight: "bold",
+                  marginBottom: "7px",
                 }}
               >
-                <label
-                  style={{
-                    display: "block",
-                    fontWeight: "bold",
-                    marginBottom: "7px",
-                  }}
-                >
-                  {platform.platform_name}
-                </label>
+                {platform.platform_name}
+              </label>
 
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={
-                    readings[
-                      platform.id
-                    ] ?? ""
-                  }
-                  disabled={saving}
-                  onChange={(e) =>
-                    updateReading(
-                      platform.id,
-                      e.target.value
-                    )
-                  }
-                  placeholder={`Enter ${platform.platform_name} reading`}
-                  style={{
-                    width: "100%",
-                    padding: "13px",
-                    border:
-                      "1px solid #cbd5e1",
-                    borderRadius: "8px",
-                    boxSizing:
-                      "border-box",
-                    fontSize: "16px",
-                  }}
-                />
-              </div>
-            )
-          )}
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={
+                  readings[
+                    platform.id
+                  ] ?? ""
+                }
+                disabled={saving}
+                onChange={(e) =>
+                  updateReading(
+                    platform.id,
+                    e.target.value
+                  )
+                }
+                placeholder={`Enter ${platform.platform_name} reading`}
+                style={{
+                  width: "100%",
+                  padding: "13px",
+                  border:
+                    "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  boxSizing:
+                    "border-box",
+                  fontSize: "16px",
+                }}
+              />
+            </div>
+          ))}
 
           {message && (
             <div
@@ -626,14 +641,12 @@ export default function PlatformReadings({
                 borderRadius: "8px",
 
                 backgroundColor:
-                  messageType ===
-                  "success"
+                  messageType === "success"
                     ? "#ecfdf5"
                     : "#fef2f2",
 
                 color:
-                  messageType ===
-                  "success"
+                  messageType === "success"
                     ? "#166534"
                     : "#991b1b",
               }}
