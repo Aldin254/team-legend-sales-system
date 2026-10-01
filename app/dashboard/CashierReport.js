@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { useRouter } from "next/navigation";
+import CashierSavingsPanel from "./CashierSavingsPanel";
 
 export default function CashierReport({
   user,
@@ -290,9 +291,7 @@ export default function CashierReport({
           loadedExpenses
         );
 
-        // ------------------------------------------
         // OPENING INPUTS
-        // ------------------------------------------
 
         setOpeningInputs((previous) => {
           const next = {
@@ -322,9 +321,7 @@ export default function CashierReport({
           return next;
         });
 
-        // ------------------------------------------
         // CLOSING INPUTS
-        // ------------------------------------------
 
         setClosingInputs((previous) => {
           const next = {
@@ -354,9 +351,7 @@ export default function CashierReport({
           return next;
         });
 
-        // ------------------------------------------
         // FLOAT INPUTS
-        // ------------------------------------------
 
         const companyRows =
           loadedIncome.filter(
@@ -388,10 +383,6 @@ export default function CashierReport({
                   companyRows[i].amount ??
                     ""
                 );
-            } else if (
-              company[i] === undefined
-            ) {
-              company[i] = "";
             }
 
             if (mshwariRows[i]) {
@@ -400,10 +391,6 @@ export default function CashierReport({
                   mshwariRows[i].amount ??
                     ""
                 );
-            } else if (
-              mshwari[i] === undefined
-            ) {
-              mshwari[i] = "";
             }
           }
 
@@ -413,9 +400,7 @@ export default function CashierReport({
           };
         });
 
-        // ------------------------------------------
         // EXPENSE INPUTS
-        // ------------------------------------------
 
         setExpenseInputs((previous) => {
           const next =
@@ -436,14 +421,12 @@ export default function CashierReport({
             if (loadedExpenses[i]) {
               next[i] = {
                 description:
-                  loadedExpenses[i]
-                    .description ||
+                  loadedExpenses[i].description ||
                   "",
 
                 amount:
                   String(
-                    loadedExpenses[i]
-                      .amount ??
+                    loadedExpenses[i].amount ??
                       ""
                   ),
               };
@@ -735,18 +718,6 @@ export default function CashierReport({
   // ==================================================
 
   async function saveFloats() {
-    if (
-      !shiftId ||
-      !accessToken
-    ) {
-      setMessage(
-        "Shift or login information is missing."
-      );
-
-      setMessageType("error");
-      return;
-    }
-
     const rowsToSave = [];
 
     for (let i = 0; i < 3; i += 1) {
@@ -776,15 +747,11 @@ export default function CashierReport({
           }
 
           rowsToSave.push({
-            shift_id:
-              shiftId,
-
+            shift_id: shiftId,
             entry_type:
               "COMPANY_FLOAT",
-
             description:
               `Float ${i + 1} from company`,
-
             amount:
               roundMoney(value),
           });
@@ -817,15 +784,11 @@ export default function CashierReport({
           }
 
           rowsToSave.push({
-            shift_id:
-              shiftId,
-
+            shift_id: shiftId,
             entry_type:
               "MSHWARI_FLOAT",
-
             description:
               `Float ${i + 1} from M-Shwari`,
-
             amount:
               roundMoney(value),
           });
@@ -847,7 +810,6 @@ export default function CashierReport({
     try {
       setSavingFloats(true);
       setMessage("");
-      setMessageType("");
 
       const response = await fetch(
         `${supabaseUrl}/rest/v1/shift_income_entries`,
@@ -883,7 +845,6 @@ export default function CashierReport({
         throw new Error(
           result?.message ||
             result?.details ||
-            result?.hint ||
             "Unable to save float."
         );
       }
@@ -904,10 +865,9 @@ export default function CashierReport({
 
       const shiftResponse =
         await fetch(
-          `${supabaseUrl}/rest/v1/shifts` +
-            `?id=eq.${encodeURIComponent(
-              shiftId
-            )}`,
+          `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(
+            shiftId
+          )}`,
           {
             method: "PATCH",
 
@@ -920,9 +880,6 @@ export default function CashierReport({
 
               "Content-Type":
                 "application/json",
-
-              Prefer:
-                "return=minimal",
             },
 
             body: JSON.stringify({
@@ -933,15 +890,8 @@ export default function CashierReport({
         );
 
       if (!shiftResponse.ok) {
-        const result =
-          await safeJson(
-            shiftResponse
-          );
-
         throw new Error(
-          result?.message ||
-            result?.details ||
-            "Float saved, but total added float could not be updated."
+          "Float saved but shift total could not be updated."
         );
       }
 
@@ -955,11 +905,6 @@ export default function CashierReport({
 
       await loadReport();
     } catch (error) {
-      console.error(
-        "SAVE FLOAT ERROR:",
-        error
-      );
-
       setMessage(
         error?.message ||
           "Unable to save float."
@@ -976,19 +921,6 @@ export default function CashierReport({
   // ==================================================
 
   async function saveExpenses() {
-    if (
-      !shiftId ||
-      !accessToken ||
-      !cashierId
-    ) {
-      setMessage(
-        "Shift or cashier information is missing."
-      );
-
-      setMessageType("error");
-      return;
-    }
-
     const rowsToSave = [];
 
     for (let i = 0; i < 10; i += 1) {
@@ -1082,7 +1014,6 @@ export default function CashierReport({
     try {
       setSavingExpenses(true);
       setMessage("");
-      setMessageType("");
 
       const response = await fetch(
         `${supabaseUrl}/rest/v1/expenses`,
@@ -1118,7 +1049,6 @@ export default function CashierReport({
         throw new Error(
           result?.message ||
             result?.details ||
-            result?.hint ||
             "Unable to save expenses."
         );
       }
@@ -1150,10 +1080,9 @@ export default function CashierReport({
 
       const shiftResponse =
         await fetch(
-          `${supabaseUrl}/rest/v1/shifts` +
-            `?id=eq.${encodeURIComponent(
-              shiftId
-            )}`,
+          `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(
+            shiftId
+          )}`,
           {
             method: "PATCH",
 
@@ -1166,9 +1095,6 @@ export default function CashierReport({
 
               "Content-Type":
                 "application/json",
-
-              Prefer:
-                "return=minimal",
             },
 
             body: JSON.stringify({
@@ -1179,15 +1105,8 @@ export default function CashierReport({
         );
 
       if (!shiftResponse.ok) {
-        const result =
-          await safeJson(
-            shiftResponse
-          );
-
         throw new Error(
-          result?.message ||
-            result?.details ||
-            "Expenses saved, but total expenses could not be updated."
+          "Expenses saved but shift total could not be updated."
         );
       }
 
@@ -1201,11 +1120,6 @@ export default function CashierReport({
 
       await loadReport();
     } catch (error) {
-      console.error(
-        "SAVE EXPENSE ERROR:",
-        error
-      );
-
       setMessage(
         error?.message ||
           "Unable to save expenses."
@@ -1218,23 +1132,10 @@ export default function CashierReport({
   }
 
   // ==================================================
-  // SAVE OPENING
+  // SAVE OPENING READINGS
   // ==================================================
 
   async function saveOpeningReadings() {
-    if (
-      !shiftId ||
-      !accessToken ||
-      !cashierId
-    ) {
-      setMessage(
-        "Login or shift information is missing."
-      );
-
-      setMessageType("error");
-      return;
-    }
-
     const unsavedPlatforms =
       platforms.filter(
         (platform) =>
@@ -1242,12 +1143,6 @@ export default function CashierReport({
             platform.id
           )
       );
-
-    if (
-      unsavedPlatforms.length === 0
-    ) {
-      return;
-    }
 
     for (const platform of unsavedPlatforms) {
       const raw =
@@ -1296,9 +1191,6 @@ export default function CashierReport({
 
                 "Content-Type":
                   "application/json",
-
-                Prefer:
-                  "return=representation",
               },
 
               body: JSON.stringify({
@@ -1329,15 +1221,14 @@ export default function CashierReport({
             }
           );
 
-        const result =
-          await safeJson(
-            response
-          );
-
         if (!response.ok) {
+          const result =
+            await safeJson(
+              response
+            );
+
           throw new Error(
             result?.message ||
-              result?.details ||
               `Unable to save ${platform.platform_name}.`
           );
         }
@@ -1365,19 +1256,10 @@ export default function CashierReport({
   }
 
   // ==================================================
-  // SAVE CLOSING
+  // SAVE CLOSING READINGS
   // ==================================================
 
   async function saveClosingReadings() {
-    if (!allOpeningsSaved) {
-      setMessage(
-        "Save all opening readings first."
-      );
-
-      setMessageType("error");
-      return;
-    }
-
     const unsavedPlatforms =
       platforms.filter(
         (platform) =>
@@ -1385,12 +1267,6 @@ export default function CashierReport({
             platform.id
           )
       );
-
-    if (
-      unsavedPlatforms.length === 0
-    ) {
-      return;
-    }
 
     for (const platform of unsavedPlatforms) {
       const openingRow =
@@ -1407,19 +1283,14 @@ export default function CashierReport({
           openingRow?.reading_value
         );
 
-      const rawClosing =
-        closingInputs[
-          platform.id
-        ];
-
       const closing =
         Number(
-          rawClosing
+          closingInputs[
+            platform.id
+          ]
         );
 
       if (
-        rawClosing === "" ||
-        rawClosing === undefined ||
         Number.isNaN(closing) ||
         closing < opening
       ) {
@@ -1455,9 +1326,6 @@ export default function CashierReport({
 
                 "Content-Type":
                   "application/json",
-
-                Prefer:
-                  "return=representation",
               },
 
               body: JSON.stringify({
@@ -1488,16 +1356,9 @@ export default function CashierReport({
             }
           );
 
-        const result =
-          await safeJson(
-            response
-          );
-
         if (!response.ok) {
           throw new Error(
-            result?.message ||
-              result?.details ||
-              `Unable to save ${platform.platform_name}.`
+            `Unable to save ${platform.platform_name}.`
           );
         }
       }
@@ -1564,9 +1425,6 @@ export default function CashierReport({
 
               "Content-Type":
                 "application/json",
-
-              Prefer:
-                "return=minimal",
             },
 
             body: JSON.stringify({
@@ -1580,7 +1438,7 @@ export default function CashierReport({
 
       if (!shiftResponse.ok) {
         throw new Error(
-          "Closing readings saved but Total Sales could not be updated."
+          "Closing readings saved but sales total could not be updated."
         );
       }
 
@@ -1648,10 +1506,6 @@ export default function CashierReport({
         savedTotalOutput
     );
 
-  // ==================================================
-  // DATE
-  // ==================================================
-
   const reportDate =
     formatReportDate(
       shift?.opened_at ||
@@ -1670,10 +1524,6 @@ export default function CashierReport({
         "OPEN"
     ).toUpperCase();
 
-  // ==================================================
-  // LOADING
-  // ==================================================
-
   if (
     loading &&
     !shift
@@ -1688,10 +1538,6 @@ export default function CashierReport({
   if (!shift) {
     return null;
   }
-
-  // ==================================================
-  // PAGE
-  // ==================================================
 
   return (
     <div style={pageStyle}>
@@ -1779,13 +1625,11 @@ export default function CashierReport({
             <InfoCard
               title="DATE"
               value={reportDate}
-              tone="blue"
             />
 
             <InfoCard
               title="DAY"
               value={reportDay}
-              tone="blue"
             />
 
             <InfoCard
@@ -1795,14 +1639,11 @@ export default function CashierReport({
                 "DAY"
               }
               subvalue={
-                shift?.scheduled_start &&
-                shift?.scheduled_end
-                  ? `${displayTime(
-                      shift.scheduled_start
-                    )} - ${displayTime(
-                      shift.scheduled_end
-                    )}`
-                  : "12 Hours"
+                `${displayTime(
+                  shift?.scheduled_start
+                )} - ${displayTime(
+                  shift?.scheduled_end
+                )}`
               }
               tone="green"
             />
@@ -1837,9 +1678,7 @@ export default function CashierReport({
           )}
 
           <div style={reportGridStyle}>
-            {/* ======================================
-                INCOME STATEMENT
-            ====================================== */}
+            {/* INCOME */}
 
             <section style={panelStyle}>
               <PanelTitle
@@ -1852,12 +1691,7 @@ export default function CashierReport({
                   DESCRIPTION
                 </div>
 
-                <div
-                  style={{
-                    textAlign:
-                      "right",
-                  }}
-                >
+                <div>
                   AMOUNT (KES)
                 </div>
               </div>
@@ -1876,12 +1710,9 @@ export default function CashierReport({
                     label={`Added Float ${
                       index + 1
                     } From Company`}
-                    savedEntry={
-                      entry
-                    }
+                    savedEntry={entry}
                     value={
-                      floatInputs
-                        .company[
+                      floatInputs.company[
                         index
                       ] || ""
                     }
@@ -1891,10 +1722,9 @@ export default function CashierReport({
                     onChange={(value) => {
                       setFloatInputs(
                         (previous) => {
-                          const company =
-                            [
-                              ...previous.company,
-                            ];
+                          const company = [
+                            ...previous.company,
+                          ];
 
                           company[
                             index
@@ -1907,8 +1737,6 @@ export default function CashierReport({
                           };
                         }
                       );
-
-                      setMessage("");
                     }}
                   />
                 )
@@ -1921,12 +1749,9 @@ export default function CashierReport({
                     label={`Added Float ${
                       index + 1
                     } From M-Shwari`}
-                    savedEntry={
-                      entry
-                    }
+                    savedEntry={entry}
                     value={
-                      floatInputs
-                        .mshwari[
+                      floatInputs.mshwari[
                         index
                       ] || ""
                     }
@@ -1936,10 +1761,9 @@ export default function CashierReport({
                     onChange={(value) => {
                       setFloatInputs(
                         (previous) => {
-                          const mshwari =
-                            [
-                              ...previous.mshwari,
-                            ];
+                          const mshwari = [
+                            ...previous.mshwari,
+                          ];
 
                           mshwari[
                             index
@@ -1952,8 +1776,6 @@ export default function CashierReport({
                           };
                         }
                       );
-
-                      setMessage("");
                     }}
                   />
                 )
@@ -1973,25 +1795,17 @@ export default function CashierReport({
 
               <div style={panelButtonWrapStyle}>
                 <button
-                  type="button"
                   onClick={
                     saveFloats
                   }
-                  disabled={
-                    savingFloats
-                  }
                   style={greenActionStyle}
                 >
-                  {savingFloats
-                    ? "Saving..."
-                    : "Save Added Float"}
+                  Save Added Float
                 </button>
               </div>
             </section>
 
-            {/* ======================================
-                PLATFORM SALES
-            ====================================== */}
+            {/* PLATFORM */}
 
             <section style={panelStyle}>
               <PanelTitle
@@ -2002,16 +1816,14 @@ export default function CashierReport({
               <div style={platformStatusStyle}>
                 <span>
                   Opening:{" "}
-                  <strong>
-                    {savedOpeningCount} / {platforms.length}
-                  </strong>
+                  {savedOpeningCount}/
+                  {platforms.length}
                 </span>
 
                 <span>
                   Closing:{" "}
-                  <strong>
-                    {savedClosingCount} / {platforms.length}
-                  </strong>
+                  {savedClosingCount}/
+                  {platforms.length}
                 </span>
               </div>
 
@@ -2022,20 +1834,14 @@ export default function CashierReport({
 
                 <div>
                   OPENING
-                  <br />
-                  (KES)
                 </div>
 
                 <div>
                   CLOSING
-                  <br />
-                  (KES)
                 </div>
 
                 <div>
                   SALES
-                  <br />
-                  (KES)
                 </div>
               </div>
 
@@ -2045,13 +1851,10 @@ export default function CashierReport({
                     key={platform.id}
                     style={platformRowStyle}
                   >
-                    <div
-                      style={{
-                        fontWeight:
-                          "bold",
-                      }}
-                    >
-                      {platform.platform_name}
+                    <div>
+                      <strong>
+                        {platform.platform_name}
+                      </strong>
 
                       {platform.openingSaved && (
                         <div style={savedTextStyle}>
@@ -2077,10 +1880,7 @@ export default function CashierReport({
                         value={
                           openingInputs[
                             platform.id
-                          ] ?? ""
-                        }
-                        disabled={
-                          savingOpening
+                          ] || ""
                         }
                         onChange={(value) =>
                           setOpeningInputs(
@@ -2105,16 +1905,10 @@ export default function CashierReport({
                         value={
                           closingInputs[
                             platform.id
-                          ] ?? ""
+                          ] || ""
                         }
                         disabled={
-                          !allOpeningsSaved ||
-                          savingClosing
-                        }
-                        placeholder={
-                          allOpeningsSaved
-                            ? "0.00"
-                            : "Wait"
+                          !allOpeningsSaved
                         }
                         onChange={(value) =>
                           setClosingInputs(
@@ -2138,7 +1932,7 @@ export default function CashierReport({
               )}
 
               <div style={platformActionsStyle}>
-                {!allOpeningsSaved ? (
+                {!allOpeningsSaved && (
                   <button
                     onClick={
                       saveOpeningReadings
@@ -2147,10 +1941,6 @@ export default function CashierReport({
                   >
                     Save Opening Readings
                   </button>
-                ) : (
-                  <div style={completeStyle}>
-                    Opening Readings Saved ✓
-                  </div>
                 )}
 
                 {allOpeningsSaved &&
@@ -2165,6 +1955,12 @@ export default function CashierReport({
                     </button>
                   )}
 
+                {allOpeningsSaved && (
+                  <div style={completeStyle}>
+                    Opening Readings Saved ✓
+                  </div>
+                )}
+
                 {allClosingsSaved && (
                   <div style={completeStyle}>
                     Closing Readings Saved ✓
@@ -2173,9 +1969,7 @@ export default function CashierReport({
               </div>
             </section>
 
-            {/* ======================================
-                EXPENSES
-            ====================================== */}
+            {/* EXPENSES */}
 
             <section style={panelStyle}>
               <PanelTitle
@@ -2185,35 +1979,22 @@ export default function CashierReport({
 
               <div style={expenseHeaderStyle}>
                 <div>NO.</div>
-
-                <div>
-                  DESCRIPTION
-                </div>
-
-                <div>
-                  AMOUNT (KES)
-                </div>
+                <div>DESCRIPTION</div>
+                <div>AMOUNT (KES)</div>
               </div>
 
               {Array.from(
                 { length: 10 },
                 (_, index) => {
                   const saved =
-                    expenses[
-                      index
-                    ];
+                    expenses[index];
 
                   return (
                     <div
-                      key={`expense-${index}`}
+                      key={index}
                       style={expenseRowStyle}
                     >
-                      <div
-                        style={{
-                          textAlign:
-                            "center",
-                        }}
-                      >
+                      <div>
                         {index + 1}
                       </div>
 
@@ -2223,32 +2004,21 @@ export default function CashierReport({
                             {saved.description}
                           </div>
 
-                          <div
-                            style={{
-                              ...savedExpenseStyle,
-                              textAlign:
-                                "right",
-                            }}
-                          >
+                          <div style={savedExpenseStyle}>
                             {money(
                               saved.amount
-                            )}{" "}
-                            ✓
+                            )} ✓
                           </div>
                         </>
                       ) : (
                         <>
                           <input
-                            type="text"
                             value={
                               expenseInputs[
                                 index
                               ]
                                 ?.description ||
                               ""
-                            }
-                            disabled={
-                              savingExpenses
                             }
                             placeholder="Description"
                             onChange={(event) => {
@@ -2260,9 +2030,7 @@ export default function CashierReport({
                                 (previous) => {
                                   const next =
                                     previous.map(
-                                      (
-                                        row
-                                      ) => ({
+                                      (row) => ({
                                         ...row,
                                       })
                                     );
@@ -2275,25 +2043,18 @@ export default function CashierReport({
                                   return next;
                                 }
                               );
-
-                              setMessage("");
                             }}
                             style={expenseInputStyle}
                           />
 
                           <input
                             type="number"
-                            min="0"
-                            step="0.01"
                             value={
                               expenseInputs[
                                 index
                               ]
                                 ?.amount ||
                               ""
-                            }
-                            disabled={
-                              savingExpenses
                             }
                             placeholder="0.00"
                             onChange={(event) => {
@@ -2305,9 +2066,7 @@ export default function CashierReport({
                                 (previous) => {
                                   const next =
                                     previous.map(
-                                      (
-                                        row
-                                      ) => ({
+                                      (row) => ({
                                         ...row,
                                       })
                                     );
@@ -2320,14 +2079,8 @@ export default function CashierReport({
                                   return next;
                                 }
                               );
-
-                              setMessage("");
                             }}
-                            style={{
-                              ...expenseInputStyle,
-                              textAlign:
-                                "right",
-                            }}
+                            style={expenseInputStyle}
                           />
                         </>
                       )}
@@ -2350,33 +2103,24 @@ export default function CashierReport({
 
               <div style={panelButtonWrapStyle}>
                 <button
-                  type="button"
                   onClick={
                     saveExpenses
                   }
-                  disabled={
-                    savingExpenses
-                  }
                   style={redActionStyle}
                 >
-                  {savingExpenses
-                    ? "Saving..."
-                    : "Save Expenses"}
+                  Save Expenses
                 </button>
               </div>
             </section>
           </div>
 
-          {/* ======================================
-              SUMMARY
-          ====================================== */}
+          {/* SUMMARY */}
 
           <div style={summaryGridStyle}>
             <SummaryBox
               title="TOTAL SALES"
               amount={totalSales}
               tone="blue"
-              icon="▥"
             />
 
             <SummaryBox
@@ -2385,7 +2129,6 @@ export default function CashierReport({
                 totalExpenses
               }
               tone="red"
-              icon="▣"
             />
 
             <SummaryBox
@@ -2394,40 +2137,39 @@ export default function CashierReport({
                 closingBalance
               }
               tone="navy"
-              icon="●"
             />
           </div>
 
-          <div style={lowerPlaceholderStyle}>
-            <div>
-              <strong>
-                SAVINGS / BANKING
-              </strong>
+          {/* LOWER PANELS */}
 
-              <div style={placeholderTextStyle}>
-                Will be connected next.
-              </div>
-            </div>
+          <div style={lowerGridStyle}>
+            <CashierSavingsPanel
+              user={user}
+              currentShift={
+                shift ||
+                currentShift
+              }
+            />
 
-            <div>
-              <strong>
+            <section style={lowerPanelStyle}>
+              <div style={lowerTitleStyle}>
                 MANAGEMENT STATUS
-              </strong>
+              </div>
 
               <div style={placeholderTextStyle}>
-                Will be connected next.
+                Management information will be connected next.
               </div>
-            </div>
+            </section>
 
-            <div>
-              <strong>
+            <section style={lowerPanelStyle}>
+              <div style={lowerTitleStyle}>
                 ACCOUNTS INFORMATION
-              </strong>
+              </div>
 
               <div style={placeholderTextStyle}>
-                Will be connected next.
+                Accounts information will be connected next.
               </div>
-            </div>
+            </section>
           </div>
 
           <div style={closePreviewStyle}>
@@ -2440,20 +2182,20 @@ export default function CashierReport({
 }
 
 // ==================================================
-// SMALL COMPONENTS
+// COMPONENTS
 // ==================================================
 
 function SidebarItem({
   icon,
   label,
-  active = false,
+  active,
 }) {
   return (
     <div
       style={{
         padding: "18px",
         display: "flex",
-        gap: "14px",
+        gap: "12px",
         color: "white",
         backgroundColor:
           active
@@ -2474,12 +2216,7 @@ function TopCard({
 }) {
   return (
     <div style={shopCardStyle}>
-      <div
-        style={{
-          fontSize: "30px",
-          fontWeight: "900",
-        }}
-      >
+      <div style={shopTitleStyle}>
         {title}
       </div>
 
@@ -2487,7 +2224,7 @@ function TopCard({
         {subtitle}
       </strong>
 
-      <div>
+      <div style={smallTextStyle}>
         {footer}
       </div>
     </div>
@@ -2522,21 +2259,13 @@ function InfoCard({
         {title}
       </strong>
 
-      <div
-        style={{
-          fontSize: "17px",
-          fontWeight: "bold",
-          marginTop: "9px",
-        }}
-      >
+      <div style={infoValueStyle}>
         {value}
       </div>
 
-      {subvalue && (
-        <small>
-          {subvalue}
-        </small>
-      )}
+      <small>
+        {subvalue}
+      </small>
     </div>
   );
 }
@@ -2592,11 +2321,10 @@ function EditableFloatRow({
   return (
     <div style={incomeRowStyle}>
       <div>
-        {label}
+        {label}{" "}
 
         {savedEntry && (
           <span style={savedInlineStyle}>
-            {" "}
             ✓
           </span>
         )}
@@ -2612,10 +2340,8 @@ function EditableFloatRow({
         <input
           type="number"
           min="0"
-          step="0.01"
           value={value}
           disabled={disabled}
-          placeholder="0.00"
           onChange={(event) =>
             onChange(
               event.target.value
@@ -2632,16 +2358,12 @@ function ReadingInput({
   value,
   onChange,
   disabled,
-  placeholder = "0.00",
 }) {
   return (
     <input
       type="number"
-      min="0"
-      step="0.01"
       value={value}
       disabled={disabled}
-      placeholder={placeholder}
       onChange={(event) =>
         onChange(
           event.target.value
@@ -2666,7 +2388,6 @@ function SummaryBox({
   title,
   amount,
   tone,
-  icon,
 }) {
   const background =
     tone === "red"
@@ -2683,30 +2404,13 @@ function SummaryBox({
         color: "white",
         padding: "13px",
         borderRadius: "7px",
+        textAlign: "center",
+        fontWeight: "bold",
       }}
     >
-      <div
-        style={{
-          textAlign: "center",
-          fontWeight: "bold",
-        }}
-      >
-        {icon} {title}
-      </div>
+      {title}
 
-      <div
-        style={{
-          marginTop: "8px",
-          padding: "9px",
-          backgroundColor:
-            "white",
-          color: "#111",
-          borderRadius: "5px",
-          textAlign: "center",
-          fontWeight: "900",
-          fontSize: "20px",
-        }}
-      >
+      <div style={summaryValueStyle}>
         KES {money(amount)}
       </div>
     </div>
@@ -2811,8 +2515,7 @@ function displayTime(value) {
 const pageStyle = {
   minHeight: "100vh",
   backgroundColor: "#edf2f7",
-  fontFamily:
-    "Arial, sans-serif",
+  fontFamily: "Arial, sans-serif",
 };
 
 const loadingStyle = {
@@ -2827,8 +2530,7 @@ const topHeaderStyle = {
   color: "white",
   padding: "12px 22px",
   display: "flex",
-  justifyContent:
-    "space-between",
+  justifyContent: "space-between",
   alignItems: "center",
 };
 
@@ -2866,8 +2568,7 @@ const headerShopStyle = {
 const logoutButtonStyle = {
   background: "transparent",
   color: "white",
-  border:
-    "1px solid white",
+  border: "1px solid white",
   padding: "8px 14px",
   borderRadius: "6px",
 };
@@ -2905,6 +2606,22 @@ const shopCardStyle = {
   textAlign: "center",
 };
 
+const shopTitleStyle = {
+  fontSize: "27px",
+  fontWeight: "900",
+};
+
+const smallTextStyle = {
+  fontSize: "10px",
+  marginTop: "4px",
+};
+
+const infoValueStyle = {
+  fontSize: "17px",
+  fontWeight: "bold",
+  marginTop: "8px",
+};
+
 const reportGridStyle = {
   display: "grid",
   gridTemplateColumns:
@@ -2940,8 +2657,7 @@ const incomeRowStyle = {
 
 const amountBoxStyle = {
   padding: "7px",
-  border:
-    "1px solid #ddd",
+  border: "1px solid #ddd",
   textAlign: "right",
 };
 
@@ -2949,16 +2665,14 @@ const moneyInputStyle = {
   width: "100%",
   boxSizing: "border-box",
   padding: "7px",
-  border:
-    "1px solid #94a3b8",
+  border: "1px solid #94a3b8",
   borderRadius: "4px",
   textAlign: "right",
 };
 
 const savedMoneyStyle = {
   padding: "7px",
-  border:
-    "1px solid #86efac",
+  border: "1px solid #86efac",
   backgroundColor: "#ecfdf5",
   borderRadius: "4px",
   textAlign: "right",
@@ -2971,8 +2685,7 @@ const savedInlineStyle = {
 
 const incomeTotalStyle = {
   display: "flex",
-  justifyContent:
-    "space-between",
+  justifyContent: "space-between",
   padding: "11px",
   backgroundColor: "#dcfce7",
 };
@@ -2983,8 +2696,7 @@ const panelButtonWrapStyle = {
 
 const platformStatusStyle = {
   display: "flex",
-  justifyContent:
-    "space-between",
+  justifyContent: "space-between",
   padding: "6px 9px",
   fontSize: "10px",
 };
@@ -3014,6 +2726,7 @@ const savedTextStyle = {
   fontSize: "8px",
   color: "#15803d",
 };
+
 const outputBoxStyle = {
   padding: "7px",
   textAlign: "right",
@@ -3023,7 +2736,7 @@ const outputBoxStyle = {
 const platformActionsStyle = {
   padding: "8px",
   display: "grid",
-  gap: "6px",
+  gap: "5px",
 };
 
 const completeStyle = {
@@ -3032,7 +2745,6 @@ const completeStyle = {
   backgroundColor: "#ecfdf5",
   color: "#166534",
   fontWeight: "bold",
-  borderRadius: "4px",
 };
 
 const greenActionStyle = {
@@ -3043,7 +2755,6 @@ const greenActionStyle = {
   color: "white",
   borderRadius: "5px",
   fontWeight: "bold",
-  cursor: "pointer",
 };
 
 const blueActionStyle = {
@@ -3060,12 +2771,10 @@ const expenseHeaderStyle = {
   display: "grid",
   gridTemplateColumns:
     "35px 1.5fr 1fr",
-  gap: "6px",
   padding: "8px",
   backgroundColor: "#fff0f0",
   fontSize: "10px",
   fontWeight: "bold",
-  textAlign: "center",
 };
 
 const expenseRowStyle = {
@@ -3081,27 +2790,23 @@ const expenseInputStyle = {
   width: "100%",
   boxSizing: "border-box",
   padding: "6px",
-  border:
-    "1px solid #cbd5e1",
+  border: "1px solid #cbd5e1",
   borderRadius: "4px",
 };
 
 const savedExpenseStyle = {
   padding: "6px",
-  border:
-    "1px solid #86efac",
+  border: "1px solid #86efac",
   backgroundColor: "#ecfdf5",
   borderRadius: "4px",
 };
 
 const expenseTotalStyle = {
   display: "flex",
-  justifyContent:
-    "space-between",
+  justifyContent: "space-between",
   padding: "10px",
   backgroundColor: "#c50000",
   color: "white",
-  fontWeight: "bold",
 };
 
 const summaryGridStyle = {
@@ -3112,18 +2817,42 @@ const summaryGridStyle = {
   marginTop: "10px",
 };
 
-const lowerPlaceholderStyle = {
+const summaryValueStyle = {
+  marginTop: "8px",
+  padding: "9px",
+  backgroundColor: "white",
+  color: "#111",
+  borderRadius: "5px",
+  fontSize: "20px",
+};
+
+const lowerGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(3,1fr)",
+    "1fr 1.25fr 1fr",
   gap: "10px",
   marginTop: "10px",
+  alignItems: "start",
+};
+
+const lowerPanelStyle = {
+  backgroundColor: "white",
+  borderRadius: "6px",
+  minHeight: "180px",
+  overflow: "hidden",
+};
+
+const lowerTitleStyle = {
+  backgroundColor: "#0873b9",
+  color: "white",
+  padding: "9px 12px",
+  fontWeight: "bold",
 };
 
 const placeholderTextStyle = {
   fontSize: "11px",
   color: "#64748b",
-  marginTop: "4px",
+  padding: "12px",
 };
 
 const closePreviewStyle = {
@@ -3133,12 +2862,10 @@ const closePreviewStyle = {
   marginTop: "10px",
   textAlign: "center",
   fontWeight: "bold",
-  borderRadius: "5px",
 };
 
 const messageStyle = {
   padding: "9px",
   marginBottom: "8px",
   borderRadius: "5px",
-  fontSize: "12px",
 };
