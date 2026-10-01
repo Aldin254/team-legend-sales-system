@@ -40,8 +40,7 @@ export default function PlatformReadings({
     currentShift?.id ||
     null;
 
-  const readingKind = "SHIFT_READING";
-
+  const readingKind = "OPENING";
   // --------------------------------------------------
   // LOAD PLATFORMS + EXISTING READINGS
   // --------------------------------------------------
