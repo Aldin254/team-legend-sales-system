@@ -20,6 +20,9 @@ export default function Dashboard() {
   const [message, setMessage] = useState("");
   const [startingShift, setStartingShift] = useState(false);
 
+  const [shopType, setShopType] = useState("");
+  const [closedForToday, setClosedForToday] = useState(false);
+
   // ==================================================
   // LOAD USER + CURRENT OPEN SHIFT
   // ==================================================
@@ -111,6 +114,26 @@ export default function Dashboard() {
         }
 
         // ==========================================
+        // LOAD SHOP TYPE
+        // ==========================================
+
+        const loadedShopType =
+          await getShopType({
+            supabaseUrl,
+            supabaseAnonKey,
+            accessToken,
+            shopId,
+          });
+
+        if (cancelled) {
+          return;
+        }
+
+        setShopType(
+          loadedShopType
+        );
+
+        // ==========================================
         // CHECK FOR CURRENT OPEN SHIFT
         // ==========================================
 
@@ -187,12 +210,56 @@ export default function Dashboard() {
           );
 
           setBalanceLocked(true);
+          setClosedForToday(false);
 
           return;
         }
 
         // ==========================================
         // NO OPEN SHIFT
+        // CHECK DAILY LOCK FOR 12_HOUR SHOP
+        // ==========================================
+
+        const today =
+          getNairobiBusinessDate();
+
+        if (
+          loadedShopType ===
+          "12_HOUR"
+        ) {
+          const closedToday =
+            await getClosedShiftForDate({
+              supabaseUrl,
+              supabaseAnonKey,
+              accessToken,
+              shopId,
+              businessDate:
+                today,
+            });
+
+          if (cancelled) {
+            return;
+          }
+
+          if (closedToday) {
+            setClosedForToday(true);
+
+            setBalanceBF(
+              String(
+                closedToday.closing_balance ??
+                  0
+              )
+            );
+
+            setBalanceLocked(true);
+
+            return;
+          }
+        }
+
+        setClosedForToday(false);
+
+        // ==========================================
         // GET PREVIOUS CLOSED SHIFT
         // ==========================================
 
@@ -272,6 +339,14 @@ export default function Dashboard() {
       return;
     }
 
+    if (closedForToday) {
+      setMessage(
+        "This 12-hour shop is closed for today. The next cashier shift can only start tomorrow or be opened by Admin."
+      );
+
+      return;
+    }
+
     const shopId =
       user.shop_id ||
       user.shopId ||
@@ -338,6 +413,62 @@ export default function Dashboard() {
     try {
       setStartingShift(true);
       setMessage("");
+
+      // ==========================================
+      // RECHECK SHOP TYPE
+      // ==========================================
+
+      const latestShopType =
+        await getShopType({
+          supabaseUrl,
+          supabaseAnonKey,
+          accessToken,
+          shopId,
+        });
+
+      setShopType(
+        latestShopType
+      );
+
+      // ==========================================
+      // RECHECK SAME-DAY LOCK
+      // ==========================================
+
+      const businessDate =
+        getNairobiBusinessDate();
+
+      if (
+        latestShopType ===
+        "12_HOUR"
+      ) {
+        const closedToday =
+          await getClosedShiftForDate({
+            supabaseUrl,
+            supabaseAnonKey,
+            accessToken,
+            shopId,
+            businessDate,
+          });
+
+        if (closedToday) {
+          setClosedForToday(true);
+
+          setBalanceBF(
+            String(
+              closedToday.closing_balance ??
+                0
+            )
+          );
+
+          setBalanceLocked(true);
+
+          setMessage(
+            "This 12-hour shop has already closed for today. The next cashier shift can only start tomorrow or be opened by Admin."
+          );
+
+          return;
+        }
+      }
 
       // ==========================================
       // CHECK AGAIN FOR AN OPEN SHOP SHIFT
@@ -423,7 +554,9 @@ export default function Dashboard() {
           );
 
         setBalanceBF(
-          String(openingBalance)
+          String(
+            openingBalance
+          )
         );
 
         setBalanceLocked(true);
@@ -448,10 +581,10 @@ export default function Dashboard() {
 
       // ==========================================
       // PREVIOUS TABLE CLOSING
-      // TABLE DOES NOT RESET
       // ==========================================
 
-      let tableCarryForward = null;
+      let tableCarryForward =
+        null;
 
       if (previousShift) {
         tableCarryForward =
@@ -493,24 +626,6 @@ export default function Dashboard() {
               60 *
               1000
         );
-
-      const businessDate =
-        new Intl.DateTimeFormat(
-          "en-CA",
-          {
-            timeZone:
-              "Africa/Nairobi",
-
-            year:
-              "numeric",
-
-            month:
-              "2-digit",
-
-            day:
-              "2-digit",
-          }
-        ).format(now);
 
       const shiftData = {
         shop_id:
@@ -596,10 +711,30 @@ export default function Dashboard() {
         );
 
       if (!shiftResponse.ok) {
-        throw new Error(
+        const databaseMessage =
           shiftResult?.message ||
-            shiftResult?.details ||
-            shiftResult?.hint ||
+          shiftResult?.details ||
+          shiftResult?.hint ||
+          "";
+
+        if (
+          String(
+            databaseMessage
+          ).includes(
+            "SHOP_CLOSED_FOR_TODAY"
+          )
+        ) {
+          setClosedForToday(
+            true
+          );
+
+          throw new Error(
+            "This 12-hour shop has already closed for today. The next cashier shift can only start tomorrow or be opened by Admin."
+          );
+        }
+
+        throw new Error(
+          databaseMessage ||
             "Unable to start shift."
         );
       }
@@ -619,8 +754,7 @@ export default function Dashboard() {
         shiftResult[0];
 
       // ==========================================
-      // AUTOMATIC TABLE OPENING
-      // PREVIOUS TABLE CLOSING -> NEW TABLE OPENING
+      // TABLE CARRY FORWARD
       // ==========================================
 
       if (
@@ -690,9 +824,7 @@ export default function Dashboard() {
         }
       }
 
-      // ==========================================
-      // OPEN CASHIER REPORT
-      // ==========================================
+      setClosedForToday(false);
 
       setCurrentShift(
         newShift
@@ -720,18 +852,10 @@ export default function Dashboard() {
     return (
       <main
         style={{
-          minHeight:
-            "100vh",
-
-          display:
-            "flex",
-
-          justifyContent:
-            "center",
-
-          alignItems:
-            "center",
-
+          minHeight: "100vh",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
           fontFamily:
             "Arial, sans-serif",
         }}
@@ -871,9 +995,7 @@ export default function Dashboard() {
           >
             <h1
               style={{
-                margin:
-                  0,
-
+                margin: 0,
                 color:
                   "#0f172a",
               }}
@@ -926,7 +1048,6 @@ export default function Dashboard() {
 
   // ==================================================
   // NO OPEN SHIFT
-  // START SHIFT SCREEN
   // ==================================================
 
   const shopName =
@@ -1073,217 +1194,508 @@ export default function Dashboard() {
             Cashier:{" "}
             {cashierName}
           </div>
-        </div>
 
-        <div
-          style={{
-            backgroundColor:
-              "white",
-
-            padding:
-              "28px",
-
-            borderRadius:
-              "12px",
-
-            boxShadow:
-              "0 2px 12px rgba(0,0,0,0.10)",
-          }}
-        >
-          <h2
-            style={{
-              marginTop:
-                0,
-            }}
-          >
-            Opening Shift
-          </h2>
-
-          <p
-            style={{
-              color:
-                "#64748b",
-
-              marginBottom:
-                "20px",
-            }}
-          >
-            {balanceLocked
-              ? "Balance B/F has been carried forward automatically from the previous shift."
-              : "Enter the opening Balance B/F to start the shift."}
-          </p>
-
-          <label
-            style={{
-              display:
-                "block",
-
-              fontWeight:
-                "bold",
-
-              marginBottom:
-                "8px",
-            }}
-          >
-            Balance B/F (KES)
-          </label>
-
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={
-              balanceBF
-            }
-            disabled={
-              startingShift ||
-              balanceLocked
-            }
-            onChange={(
-              event
-            ) => {
-              setBalanceBF(
-                event.target
-                  .value
-              );
-
-              setMessage("");
-            }}
-            style={{
-              width:
-                "100%",
-
-              boxSizing:
-                "border-box",
-
-              padding:
-                "13px",
-
-              fontSize:
-                "18px",
-
-              border:
-                balanceLocked
-                  ? "1px solid #86efac"
-                  : "1px solid #94a3b8",
-
-              backgroundColor:
-                balanceLocked
-                  ? "#ecfdf5"
-                  : "white",
-
-              borderRadius:
-                "7px",
-
-              marginBottom:
-                "15px",
-            }}
-          />
-
-          {balanceLocked && (
+          {shopType && (
             <div
               style={{
+                color:
+                  "#64748b",
+
+                marginTop:
+                  "4px",
+
+                fontSize:
+                  "12px",
+              }}
+            >
+              {shopType ===
+              "12_HOUR"
+                ? "12-Hour Shop"
+                : shopType ===
+                  "24_HOUR"
+                ? "24-Hour Shop"
+                : shopType}
+            </div>
+          )}
+        </div>
+
+        {closedForToday ? (
+          // ========================================
+          // CLOSED FOR TODAY SCREEN
+          // ========================================
+
+          <div
+            style={{
+              backgroundColor:
+                "white",
+
+              padding:
+                "30px",
+
+              borderRadius:
+                "12px",
+
+              boxShadow:
+                "0 2px 12px rgba(0,0,0,0.10)",
+
+              textAlign:
+                "center",
+
+              border:
+                "2px solid #dc2626",
+            }}
+          >
+            <div
+              style={{
+                fontSize:
+                  "42px",
+
+                marginBottom:
+                  "10px",
+              }}
+            >
+              🔒
+            </div>
+
+            <h2
+              style={{
+                color:
+                  "#b91c1c",
+
+                margin:
+                  "0 0 10px 0",
+              }}
+            >
+              SHOP CLOSED FOR TODAY
+            </h2>
+
+            <p
+              style={{
+                color:
+                  "#475569",
+
+                lineHeight:
+                  "1.6",
+              }}
+            >
+              This 12-hour shop has already completed and closed its shift for today.
+            </p>
+
+            <div
+              style={{
+                marginTop:
+                  "20px",
+
+                padding:
+                  "15px",
+
+                backgroundColor:
+                  "#fef2f2",
+
+                borderRadius:
+                  "8px",
+
+                color:
+                  "#991b1b",
+
+                fontWeight:
+                  "bold",
+              }}
+            >
+              Next cashier shift can open tomorrow.
+            </div>
+
+            <div
+              style={{
+                marginTop:
+                  "12px",
+
+                color:
+                  "#64748b",
+
+                fontSize:
+                  "12px",
+              }}
+            >
+              Admin override is required to reopen this shop today.
+            </div>
+
+            <div
+              style={{
+                marginTop:
+                  "22px",
+
+                padding:
+                  "13px",
+
                 backgroundColor:
                   "#ecfdf5",
 
                 color:
                   "#166534",
 
-                padding:
-                  "10px",
-
                 borderRadius:
-                  "6px",
-
-                marginBottom:
-                  "15px",
-
-                fontSize:
-                  "12px",
+                  "7px",
 
                 fontWeight:
                   "bold",
               }}
             >
-              ✓ Balance B/F carried forward from previous shift
+              Closing Balance carried forward: KES{" "}
+              {money(
+                balanceBF
+              )}
             </div>
-          )}
+          </div>
+        ) : (
+          // ========================================
+          // NORMAL START SHIFT SCREEN
+          // ========================================
 
-          {message && (
-            <div
+          <div
+            style={{
+              backgroundColor:
+                "white",
+
+              padding:
+                "28px",
+
+              borderRadius:
+                "12px",
+
+              boxShadow:
+                "0 2px 12px rgba(0,0,0,0.10)",
+            }}
+          >
+            <h2
               style={{
-                backgroundColor:
-                  "#fef2f2",
+                marginTop:
+                  0,
+              }}
+            >
+              Opening Shift
+            </h2>
 
+            <p
+              style={{
                 color:
-                  "#991b1b",
+                  "#64748b",
+
+                marginBottom:
+                  "20px",
+              }}
+            >
+              {balanceLocked
+                ? "Balance B/F has been carried forward automatically from the previous shift."
+                : "Enter the opening Balance B/F to start the shift."}
+            </p>
+
+            <label
+              style={{
+                display:
+                  "block",
+
+                fontWeight:
+                  "bold",
+
+                marginBottom:
+                  "8px",
+              }}
+            >
+              Balance B/F (KES)
+            </label>
+
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={
+                balanceBF
+              }
+              disabled={
+                startingShift ||
+                balanceLocked
+              }
+              onChange={(
+                event
+              ) => {
+                setBalanceBF(
+                  event.target.value
+                );
+
+                setMessage("");
+              }}
+              style={{
+                width:
+                  "100%",
+
+                boxSizing:
+                  "border-box",
 
                 padding:
-                  "10px",
+                  "13px",
+
+                fontSize:
+                  "18px",
+
+                border:
+                  balanceLocked
+                    ? "1px solid #86efac"
+                    : "1px solid #94a3b8",
+
+                backgroundColor:
+                  balanceLocked
+                    ? "#ecfdf5"
+                    : "white",
 
                 borderRadius:
-                  "6px",
+                  "7px",
 
                 marginBottom:
                   "15px",
+              }}
+            />
+
+            {balanceLocked && (
+              <div
+                style={{
+                  backgroundColor:
+                    "#ecfdf5",
+
+                  color:
+                    "#166534",
+
+                  padding:
+                    "10px",
+
+                  borderRadius:
+                    "6px",
+
+                  marginBottom:
+                    "15px",
+
+                  fontSize:
+                    "12px",
+
+                  fontWeight:
+                    "bold",
+                }}
+              >
+                ✓ Balance B/F carried forward from previous shift
+              </div>
+            )}
+
+            {message && (
+              <div
+                style={{
+                  backgroundColor:
+                    "#fef2f2",
+
+                  color:
+                    "#991b1b",
+
+                  padding:
+                    "10px",
+
+                  borderRadius:
+                    "6px",
+
+                  marginBottom:
+                    "15px",
+
+                  fontSize:
+                    "12px",
+                }}
+              >
+                {message}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={
+                startShift
+              }
+              disabled={
+                startingShift
+              }
+              style={{
+                width:
+                  "100%",
+
+                padding:
+                  "14px",
+
+                border:
+                  "none",
+
+                borderRadius:
+                  "7px",
+
+                backgroundColor:
+                  startingShift
+                    ? "#94a3b8"
+                    : "#07912a",
+
+                color:
+                  "white",
 
                 fontSize:
-                  "12px",
+                  "15px",
+
+                fontWeight:
+                  "bold",
+
+                cursor:
+                  startingShift
+                    ? "default"
+                    : "pointer",
               }}
             >
-              {message}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={
-              startShift
-            }
-            disabled={
-              startingShift
-            }
-            style={{
-              width:
-                "100%",
-
-              padding:
-                "14px",
-
-              border:
-                "none",
-
-              borderRadius:
-                "7px",
-
-              backgroundColor:
-                startingShift
-                  ? "#94a3b8"
-                  : "#07912a",
-
-              color:
-                "white",
-
-              fontSize:
-                "15px",
-
-              fontWeight:
-                "bold",
-
-              cursor:
-                startingShift
-                  ? "default"
-                  : "pointer",
-            }}
-          >
-            {startingShift
-              ? "Opening Shift..."
-              : "START SHIFT"}
-          </button>
-        </div>
+              {startingShift
+                ? "Opening Shift..."
+                : "START SHIFT"}
+            </button>
+          </div>
+        )}
       </section>
     </main>
   );
+}
+
+// ==================================================
+// GET SHOP TYPE
+// ==================================================
+
+async function getShopType({
+  supabaseUrl,
+  supabaseAnonKey,
+  accessToken,
+  shopId,
+}) {
+  const response =
+    await fetch(
+      `${supabaseUrl}/rest/v1/shops` +
+        `?id=eq.${encodeURIComponent(
+          shopId
+        )}` +
+        `&select=id,shop_name,shop_type,is_active` +
+        `&limit=1`,
+      {
+        method: "GET",
+
+        headers: {
+          apikey:
+            supabaseAnonKey,
+
+          Authorization:
+            `Bearer ${accessToken}`,
+
+          "Content-Type":
+            "application/json",
+        },
+
+        cache:
+          "no-store",
+      }
+    );
+
+  const result =
+    await safeJson(
+      response
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      result?.message ||
+        result?.details ||
+        "Unable to load shop type."
+    );
+  }
+
+  if (
+    !Array.isArray(
+      result
+    ) ||
+    result.length === 0
+  ) {
+    throw new Error(
+      "Shop could not be found."
+    );
+  }
+
+  return String(
+    result[0].shop_type ||
+      ""
+  ).toUpperCase();
+}
+
+// ==================================================
+// GET CLOSED SHIFT FOR BUSINESS DATE
+// ==================================================
+
+async function getClosedShiftForDate({
+  supabaseUrl,
+  supabaseAnonKey,
+  accessToken,
+  shopId,
+  businessDate,
+}) {
+  const response =
+    await fetch(
+      `${supabaseUrl}/rest/v1/shifts` +
+        `?shop_id=eq.${encodeURIComponent(
+          shopId
+        )}` +
+        `&business_date=eq.${encodeURIComponent(
+          businessDate
+        )}` +
+        `&status=eq.CLOSED` +
+        `&select=id,business_date,closing_balance,closed_at` +
+        `&order=closed_at.desc` +
+        `&limit=1`,
+      {
+        method: "GET",
+
+        headers: {
+          apikey:
+            supabaseAnonKey,
+
+          Authorization:
+            `Bearer ${accessToken}`,
+
+          "Content-Type":
+            "application/json",
+        },
+
+        cache:
+          "no-store",
+      }
+    );
+
+  const result =
+    await safeJson(
+      response
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      result?.message ||
+        result?.details ||
+        "Unable to check today's closed shift."
+    );
+  }
+
+  if (
+    !Array.isArray(
+      result
+    ) ||
+    result.length === 0
+  ) {
+    return null;
+  }
+
+  return result[0];
 }
 
 // ==================================================
@@ -1307,8 +1719,7 @@ async function getLatestClosedShift({
         `&order=closed_at.desc` +
         `&limit=1`,
       {
-        method:
-          "GET",
+        method: "GET",
 
         headers: {
           apikey:
@@ -1353,10 +1764,6 @@ async function getLatestClosedShift({
 
 // ==================================================
 // GET TABLE CARRY FORWARD
-//
-// Previous TABLE Closing
-// becomes
-// New TABLE Opening
 // ==================================================
 
 async function getTableCarryForward({
@@ -1366,10 +1773,6 @@ async function getTableCarryForward({
   shopId,
   previousShiftId,
 }) {
-  // ================================================
-  // FIND TABLE PLATFORM
-  // ================================================
-
   const platformResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/shop_platforms` +
@@ -1381,8 +1784,7 @@ async function getTableCarryForward({
         `&select=id,platform_name` +
         `&limit=1`,
       {
-        method:
-          "GET",
+        method: "GET",
 
         headers: {
           apikey:
@@ -1431,10 +1833,6 @@ async function getTableCarryForward({
   const platform =
     platformResult[0];
 
-  // ================================================
-  // FIND PREVIOUS TABLE CLOSING
-  // ================================================
-
   const readingResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/platform_readings` +
@@ -1449,8 +1847,7 @@ async function getTableCarryForward({
         `&order=recorded_at.desc` +
         `&limit=1`,
       {
-        method:
-          "GET",
+        method: "GET",
 
         headers: {
           apikey:
@@ -1490,7 +1887,8 @@ async function getTableCarryForward({
   ) {
     return {
       platform,
-      value: null,
+      value:
+        null,
     };
   }
 
@@ -1503,6 +1901,58 @@ async function getTableCarryForward({
           .reading_value
       ),
   };
+}
+
+// ==================================================
+// NAIROBI BUSINESS DATE
+// YYYY-MM-DD
+// ==================================================
+
+function getNairobiBusinessDate(
+  date = new Date()
+) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Africa/Nairobi",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      date
+    );
+
+  const year =
+    parts.find(
+      (part) =>
+        part.type ===
+        "year"
+    )?.value;
+
+  const month =
+    parts.find(
+      (part) =>
+        part.type ===
+        "month"
+    )?.value;
+
+  const day =
+    parts.find(
+      (part) =>
+        part.type ===
+        "day"
+    )?.value;
+
+  return `${year}-${month}-${day}`;
 }
 
 // ==================================================
@@ -1520,8 +1970,26 @@ async function safeJson(
 }
 
 // ==================================================
+// MONEY
+// ==================================================
+
+function money(value) {
+  return Number(
+    value || 0
+  ).toLocaleString(
+    "en-KE",
+    {
+      minimumFractionDigits:
+        2,
+
+      maximumFractionDigits:
+        2,
+    }
+  );
+}
+
+// ==================================================
 // NAIROBI TIME
-// HH:MM:SS
 // ==================================================
 
 function formatNairobiTime(
