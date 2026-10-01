@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import PlatformReadings from "./PlatformReadings";
 import ShiftIncomeEntries from "./ShiftIncomeEntries";
 import ShiftExpenses from "./ShiftExpenses";
+import ShiftSavings from "./ShiftSavings";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -91,10 +92,6 @@ export default function Dashboard() {
           setLoading(false);
           return;
         }
-
-        // --------------------------------------------
-        // RESTORE EXISTING OPEN SHIFT
-        // --------------------------------------------
 
         const shiftUrl =
           `${supabaseUrl}/rest/v1/shifts` +
@@ -255,7 +252,6 @@ export default function Dashboard() {
       setMessage(
         "Shop ID is missing. Please log in again."
       );
-
       return;
     }
 
@@ -263,7 +259,6 @@ export default function Dashboard() {
       setMessage(
         "Cashier ID is missing. Please log in again."
       );
-
       return;
     }
 
@@ -271,7 +266,6 @@ export default function Dashboard() {
       setMessage(
         "Login authentication is missing. Please log out and log in again."
       );
-
       return;
     }
 
@@ -285,17 +279,12 @@ export default function Dashboard() {
       setMessage(
         "Database configuration is missing."
       );
-
       return;
     }
 
     try {
       setStartingShift(true);
       setMessage("");
-
-      // --------------------------------------------
-      // BUSINESS DATE - KENYA
-      // --------------------------------------------
 
       const businessDate =
         new Intl.DateTimeFormat("en-CA", {
@@ -304,10 +293,6 @@ export default function Dashboard() {
           month: "2-digit",
           day: "2-digit",
         }).format(new Date());
-
-      // --------------------------------------------
-      // 12-HOUR SHIFT TIMES
-      // --------------------------------------------
 
       const now = new Date();
 
@@ -388,10 +373,6 @@ export default function Dashboard() {
         result.length > 0
       ) {
         setCurrentShift(result[0]);
-      } else {
-        setCurrentShift({
-          ...shiftData,
-        });
       }
 
       setShiftStarted(true);
@@ -491,8 +472,6 @@ export default function Dashboard() {
         fontFamily: "Arial, sans-serif",
       }}
     >
-      {/* HEADER */}
-
       <header
         style={{
           backgroundColor: "#0f172a",
@@ -545,8 +524,6 @@ export default function Dashboard() {
       >
         {isAdmin ? (
           <>
-            {/* ADMIN DASHBOARD */}
-
             <h1 style={{ marginTop: 0 }}>
               Admin Dashboard
             </h1>
@@ -587,8 +564,6 @@ export default function Dashboard() {
           </>
         ) : (
           <>
-            {/* CASHIER DASHBOARD */}
-
             <div
               style={{
                 marginBottom: "25px",
@@ -734,16 +709,13 @@ export default function Dashboard() {
                       padding: "14px",
                       border: "none",
                       borderRadius: "8px",
-
                       backgroundColor:
                         startingShift
                           ? "#94a3b8"
                           : "#168d32",
-
                       color: "white",
                       fontSize: "16px",
                       fontWeight: "bold",
-
                       cursor:
                         startingShift
                           ? "not-allowed"
@@ -827,7 +799,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* OPENING PLATFORM READINGS */}
+            {/* PLATFORM READINGS */}
 
             {shiftStarted && currentShift && (
               <PlatformReadings
@@ -849,6 +821,15 @@ export default function Dashboard() {
 
             {shiftStarted && currentShift && (
               <ShiftExpenses
+                user={user}
+                currentShift={currentShift}
+              />
+            )}
+
+            {/* SAVINGS */}
+
+            {shiftStarted && currentShift && (
+              <ShiftSavings
                 user={user}
                 currentShift={currentShift}
               />
@@ -909,7 +890,7 @@ function DashboardCard({
 }
 
 // --------------------------------------------------
-// NAIROBI TIME FOR DATABASE
+// NAIROBI TIME
 // --------------------------------------------------
 
 function formatNairobiTime(date) {
@@ -936,7 +917,7 @@ function formatNairobiTime(date) {
 }
 
 // --------------------------------------------------
-// DISPLAY DATABASE TIME
+// DISPLAY SHIFT TIME
 // --------------------------------------------------
 
 function displayShiftTime(value) {
@@ -944,10 +925,7 @@ function displayShiftTime(value) {
     return "-";
   }
 
-  const text =
-    String(value);
-
-  return text
+  return String(value)
     .split(".")[0]
     .slice(0, 8);
 }
