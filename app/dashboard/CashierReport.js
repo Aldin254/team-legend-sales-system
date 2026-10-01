@@ -6,10 +6,10 @@ import {
   useMemo,
   useState,
 } from "react";
-
 import { useRouter } from "next/navigation";
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierManagementPanel from "./CashierManagementPanel";
+import CashierAccountsPanel from "./CashierAccountsPanel";
 export default function CashierReport({
   user,
   currentShift,
