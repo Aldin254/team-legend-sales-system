@@ -22,15 +22,80 @@ export default function ShiftIncomeEntries({
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
-    user?.access_token ||
-    null;
+    user?.access_token || null;
 
   const shiftId =
-    currentShift?.id ||
-    null;
+    currentShift?.id || null;
 
   // --------------------------------------------------
-  // LOAD EXISTING SHIFT INCOME / FLOAT ENTRIES
+  // UPDATE PARENT SHIFT TOTAL
+  // --------------------------------------------------
+
+  async function syncShiftTotal(totalAdded) {
+    if (
+      !shiftId ||
+      !accessToken ||
+      !supabaseUrl ||
+      !supabaseAnonKey
+    ) {
+      throw new Error(
+        "Unable to synchronize shift total."
+      );
+    }
+
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(
+        shiftId
+      )}`,
+      {
+        method: "PATCH",
+
+        headers: {
+          apikey: supabaseAnonKey,
+
+          Authorization:
+            `Bearer ${accessToken}`,
+
+          "Content-Type":
+            "application/json",
+
+          Prefer:
+            "return=minimal",
+        },
+
+        body: JSON.stringify({
+          total_added_float:
+            roundMoney(totalAdded),
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      let result = null;
+
+      try {
+        result =
+          await response.json();
+      } catch {
+        result = null;
+      }
+
+      console.error(
+        "SHIFT TOTAL UPDATE ERROR:",
+        result
+      );
+
+      throw new Error(
+        result?.message ||
+          result?.details ||
+          result?.hint ||
+          "Unable to update total added float."
+      );
+    }
+  }
+
+  // --------------------------------------------------
+  // LOAD EXISTING ENTRIES
   // --------------------------------------------------
 
   useEffect(() => {
@@ -54,24 +119,37 @@ export default function ShiftIncomeEntries({
 
         const url =
           `${supabaseUrl}/rest/v1/shift_income_entries` +
-          `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+          `?shift_id=eq.${encodeURIComponent(
+            shiftId
+          )}` +
           `&select=id,shift_id,entry_type,description,amount,created_at` +
           `&order=created_at.asc`;
 
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          cache: "no-store",
-        });
+        const response = await fetch(
+          url,
+          {
+            method: "GET",
+
+            headers: {
+              apikey:
+                supabaseAnonKey,
+
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+            },
+
+            cache: "no-store",
+          }
+        );
 
         let result = null;
 
         try {
-          result = await response.json();
+          result =
+            await response.json();
         } catch {
           result = null;
         }
@@ -94,11 +172,47 @@ export default function ShiftIncomeEntries({
           return;
         }
 
-        setEntries(
+        const loadedEntries =
           Array.isArray(result)
             ? result
-            : []
+            : [];
+
+        setEntries(
+          loadedEntries
         );
+
+        // --------------------------------------------
+        // REPAIR / SYNCHRONIZE SHIFT TOTAL
+        // This also fixes old shifts where the entries
+        // exist but total_added_float is still zero.
+        // --------------------------------------------
+
+        const totalAdded =
+          calculateTotalAdded(
+            loadedEntries
+          );
+
+        try {
+          await syncShiftTotal(
+            totalAdded
+          );
+        } catch (syncError) {
+          console.error(
+            "INITIAL SHIFT TOTAL SYNC ERROR:",
+            syncError
+          );
+
+          if (!cancelled) {
+            setMessage(
+              syncError?.message ||
+                "Entries loaded, but shift total could not be synchronized."
+            );
+
+            setMessageType(
+              "error"
+            );
+          }
+        }
       } catch (error) {
         console.error(
           "LOAD SHIFT INCOME ERROR:",
@@ -111,7 +225,9 @@ export default function ShiftIncomeEntries({
               "Unable to load shift income entries."
           );
 
-          setMessageType("error");
+          setMessageType(
+            "error"
+          );
         }
       } finally {
         if (!cancelled) {
@@ -146,7 +262,9 @@ export default function ShiftIncomeEntries({
       const value =
         Number(entry.amount) || 0;
 
-      switch (entry.entry_type) {
+      switch (
+        entry.entry_type
+      ) {
         case "COMPANY_FLOAT":
           companyFloat += value;
           break;
@@ -168,16 +286,39 @@ export default function ShiftIncomeEntries({
       }
     }
 
+    companyFloat =
+      roundMoney(
+        companyFloat
+      );
+
+    mshwariFloat =
+      roundMoney(
+        mshwariFloat
+      );
+
+    other =
+      roundMoney(
+        other
+      );
+
+    balanceBF =
+      roundMoney(
+        balanceBF
+      );
+
+    const totalAdded =
+      roundMoney(
+        companyFloat +
+          mshwariFloat +
+          other
+      );
+
     return {
       companyFloat,
       mshwariFloat,
       other,
       balanceBF,
-
-      totalAdded:
-        companyFloat +
-        mshwariFloat +
-        other,
+      totalAdded,
     };
   }, [entries]);
 
@@ -190,7 +331,11 @@ export default function ShiftIncomeEntries({
       setMessage(
         "No open shift was found."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -198,15 +343,26 @@ export default function ShiftIncomeEntries({
       setMessage(
         "Login authentication is missing. Please log in again."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (
+      !supabaseUrl ||
+      !supabaseAnonKey
+    ) {
       setMessage(
         "Database configuration is missing."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -215,30 +371,41 @@ export default function ShiftIncomeEntries({
 
     if (
       amount === "" ||
-      Number.isNaN(numericAmount) ||
+      Number.isNaN(
+        numericAmount
+      ) ||
       numericAmount <= 0
     ) {
       setMessage(
         "Please enter a valid amount greater than zero."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
     const allowedTypes = [
-      "BALANCE_BF",
       "COMPANY_FLOAT",
       "MSHWARI_FLOAT",
       "OTHER",
     ];
 
     if (
-      !allowedTypes.includes(entryType)
+      !allowedTypes.includes(
+        entryType
+      )
     ) {
       setMessage(
         "Invalid entry type."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -248,8 +415,11 @@ export default function ShiftIncomeEntries({
       setMessageType("");
 
       const body = {
-        shift_id: shiftId,
-        entry_type: entryType,
+        shift_id:
+          shiftId,
+
+        entry_type:
+          entryType,
 
         description:
           description.trim() ||
@@ -257,7 +427,10 @@ export default function ShiftIncomeEntries({
             entryType
           ),
 
-        amount: numericAmount,
+        amount:
+          roundMoney(
+            numericAmount
+          ),
       };
 
       console.log(
@@ -265,25 +438,37 @@ export default function ShiftIncomeEntries({
         body
       );
 
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/shift_income_entries`,
-        {
-          method: "POST",
+      // --------------------------------------------
+      // INSERT ENTRY
+      // --------------------------------------------
 
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization:
-              `Bearer ${accessToken}`,
-            "Content-Type":
-              "application/json",
-            Prefer:
-              "return=representation",
-          },
+      const response =
+        await fetch(
+          `${supabaseUrl}/rest/v1/shift_income_entries`,
+          {
+            method:
+              "POST",
 
-          body:
-            JSON.stringify(body),
-        }
-      );
+            headers: {
+              apikey:
+                supabaseAnonKey,
+
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+
+              Prefer:
+                "return=representation",
+            },
+
+            body:
+              JSON.stringify(
+                body
+              ),
+          }
+        );
 
       let result = null;
 
@@ -309,20 +494,68 @@ export default function ShiftIncomeEntries({
       }
 
       if (
-        Array.isArray(result) &&
-        result.length > 0
+        !Array.isArray(
+          result
+        ) ||
+        result.length === 0
       ) {
-        setEntries((previous) => [
-          ...previous,
-          result[0],
-        ]);
+        throw new Error(
+          "Entry was saved, but the saved record was not returned."
+        );
       }
+
+      const savedEntry =
+        result[0];
+
+      const updatedEntries = [
+        ...entries,
+        savedEntry,
+      ];
+
+      // Update screen immediately.
+      setEntries(
+        updatedEntries
+      );
 
       setAmount("");
       setDescription("");
 
+      // --------------------------------------------
+      // CALCULATE NEW TOTAL
+      // --------------------------------------------
+
+      const newTotalAdded =
+        calculateTotalAdded(
+          updatedEntries
+        );
+
+      // --------------------------------------------
+      // UPDATE shifts.total_added_float
+      // --------------------------------------------
+
+      try {
+        await syncShiftTotal(
+          newTotalAdded
+        );
+      } catch (syncError) {
+        console.error(
+          "POST-SAVE SHIFT TOTAL SYNC ERROR:",
+          syncError
+        );
+
+        setMessage(
+          "Entry saved successfully, but the shift total could not be synchronized. Do not enter it again; refresh the page once."
+        );
+
+        setMessageType(
+          "error"
+        );
+
+        return;
+      }
+
       setMessage(
-        "Entry saved successfully."
+        "Entry saved and shift total updated successfully."
       );
 
       setMessageType(
@@ -456,14 +689,19 @@ export default function ShiftIncomeEntries({
         </label>
 
         <select
-          value={entryType}
-          disabled={saving}
+          value={
+            entryType
+          }
+          disabled={
+            saving
+          }
           onChange={(e) => {
             setEntryType(
               e.target.value
             );
 
             setMessage("");
+            setMessageType("");
           }}
           style={{
             width: "100%",
@@ -504,14 +742,19 @@ export default function ShiftIncomeEntries({
 
         <input
           type="text"
-          value={description}
-          disabled={saving}
+          value={
+            description
+          }
+          disabled={
+            saving
+          }
           onChange={(e) => {
             setDescription(
               e.target.value
             );
 
             setMessage("");
+            setMessageType("");
           }}
           placeholder={
             defaultDescription(
@@ -545,14 +788,19 @@ export default function ShiftIncomeEntries({
           type="number"
           min="0"
           step="0.01"
-          value={amount}
-          disabled={saving}
+          value={
+            amount
+          }
+          disabled={
+            saving
+          }
           onChange={(e) => {
             setAmount(
               e.target.value
             );
 
             setMessage("");
+            setMessageType("");
           }}
           placeholder="Enter amount"
           style={{
@@ -572,10 +820,8 @@ export default function ShiftIncomeEntries({
           <div
             style={{
               padding: "11px",
-              marginBottom:
-                "16px",
-              borderRadius:
-                "8px",
+              marginBottom: "16px",
+              borderRadius: "8px",
 
               backgroundColor:
                 messageType ===
@@ -596,8 +842,12 @@ export default function ShiftIncomeEntries({
 
         <button
           type="button"
-          onClick={saveEntry}
-          disabled={saving}
+          onClick={
+            saveEntry
+          }
+          disabled={
+            saving
+          }
           style={{
             width: "100%",
             padding: "14px",
@@ -639,8 +889,7 @@ export default function ShiftIncomeEntries({
         <div
           style={{
             color: "#64748b",
-            padding:
-              "12px 0",
+            padding: "12px 0",
           }}
         >
           Loading entries...
@@ -662,17 +911,25 @@ export default function ShiftIncomeEntries({
           {entries.map(
             (entry) => (
               <div
-                key={entry.id}
+                key={
+                  entry.id
+                }
                 style={{
                   padding:
                     "13px 0",
+
                   borderBottom:
                     "1px solid #e2e8f0",
+
                   display:
                     "flex",
+
                   justifyContent:
                     "space-between",
-                  gap: "20px",
+
+                  gap:
+                    "20px",
+
                   alignItems:
                     "center",
                 }}
@@ -693,8 +950,10 @@ export default function ShiftIncomeEntries({
                     style={{
                       color:
                         "#64748b",
+
                       fontSize:
                         "13px",
+
                       marginTop:
                         "3px",
                     }}
@@ -708,8 +967,10 @@ export default function ShiftIncomeEntries({
                       style={{
                         color:
                           "#94a3b8",
+
                         fontSize:
                           "12px",
+
                         marginTop:
                           "3px",
                       }}
@@ -725,6 +986,7 @@ export default function ShiftIncomeEntries({
                   style={{
                     fontWeight:
                       "bold",
+
                     whiteSpace:
                       "nowrap",
                   }}
@@ -738,6 +1000,7 @@ export default function ShiftIncomeEntries({
                     {
                       minimumFractionDigits:
                         2,
+
                       maximumFractionDigits:
                         2,
                     }
@@ -753,10 +1016,58 @@ export default function ShiftIncomeEntries({
 }
 
 // --------------------------------------------------
-// HELPERS
+// CALCULATE TOTAL ADDED
 // --------------------------------------------------
 
-function defaultDescription(type) {
+function calculateTotalAdded(
+  entries
+) {
+  let total = 0;
+
+  for (const entry of entries) {
+    if (
+      entry.entry_type ===
+        "COMPANY_FLOAT" ||
+      entry.entry_type ===
+        "MSHWARI_FLOAT" ||
+      entry.entry_type ===
+        "OTHER"
+    ) {
+      total +=
+        Number(
+          entry.amount
+        ) || 0;
+    }
+  }
+
+  return roundMoney(
+    total
+  );
+}
+
+// --------------------------------------------------
+// ROUND MONEY
+// --------------------------------------------------
+
+function roundMoney(
+  value
+) {
+  return (
+    Math.round(
+      (Number(value) +
+        Number.EPSILON) *
+        100
+    ) / 100
+  );
+}
+
+// --------------------------------------------------
+// DEFAULT DESCRIPTION
+// --------------------------------------------------
+
+function defaultDescription(
+  type
+) {
   switch (type) {
     case "COMPANY_FLOAT":
       return "Float from company";
@@ -775,7 +1086,13 @@ function defaultDescription(type) {
   }
 }
 
-function friendlyType(type) {
+// --------------------------------------------------
+// FRIENDLY TYPE
+// --------------------------------------------------
+
+function friendlyType(
+  type
+) {
   switch (type) {
     case "COMPANY_FLOAT":
       return "Company Float";
@@ -794,24 +1111,46 @@ function friendlyType(type) {
   }
 }
 
-function formatKenyaDate(value) {
+// --------------------------------------------------
+// KENYA DATE / TIME
+// --------------------------------------------------
+
+function formatKenyaDate(
+  value
+) {
   try {
     return new Intl.DateTimeFormat(
       "en-KE",
       {
         timeZone:
           "Africa/Nairobi",
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
+
+        day:
+          "2-digit",
+
+        month:
+          "short",
+
+        year:
+          "numeric",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
       }
-    ).format(new Date(value));
+    ).format(
+      new Date(value)
+    );
   } catch {
     return value;
   }
 }
+
+// --------------------------------------------------
+// SUMMARY CARD
+// --------------------------------------------------
 
 function SummaryCard({
   title,
@@ -822,17 +1161,27 @@ function SummaryCard({
       style={{
         backgroundColor:
           "#f8fafc",
-        padding: "14px",
-        borderRadius: "9px",
+
+        padding:
+          "14px",
+
+        borderRadius:
+          "9px",
+
         border:
           "1px solid #e2e8f0",
       }}
     >
       <div
         style={{
-          color: "#64748b",
-          fontSize: "12px",
-          marginBottom: "5px",
+          color:
+            "#64748b",
+
+          fontSize:
+            "12px",
+
+          marginBottom:
+            "5px",
         }}
       >
         {title}
@@ -840,8 +1189,11 @@ function SummaryCard({
 
       <div
         style={{
-          fontWeight: "bold",
-          fontSize: "17px",
+          fontWeight:
+            "bold",
+
+          fontSize:
+            "17px",
         }}
       >
         KES{" "}
@@ -852,6 +1204,7 @@ function SummaryCard({
           {
             minimumFractionDigits:
               2,
+
             maximumFractionDigits:
               2,
           }
