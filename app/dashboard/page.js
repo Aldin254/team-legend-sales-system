@@ -820,11 +820,33 @@ export default function Dashboard() {
     </main>
   );
 }
-
 function DashboardCard({ title, value }) {
   return (
     <div
       style={{
         backgroundColor: "white",
         borderRadius: "10px",
-        paddin
+        padding: "22px",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+      }}
+    >
+      <p
+        style={{
+          margin: 0,
+          color: "#64748b",
+        }}
+      >
+        {title}
+      </p>
+
+      <h2
+        style={{
+          margin: "8px 0 0",
+        }}
+      >
+        {value}
+      </h2>
+    </div>
+  );
+}
+
