@@ -1005,22 +1005,217 @@ export default function Dashboard() {
                   {message && (
                     <div
                       style={{
-                        marginBottom:
-                          "16px",
-
-                        padding:
-                          "10px",
-
-                        backgroundColor:
-                          "#fef2f2",
-
-                        color:
-                          "#991b1b",
-
-                        borderRadius:
-                          "8px",
+                        marginBottom: "16px",
+                        padding: "10px",
+                        backgroundColor: "#fef2f2",
+                        color: "#991b1b",
+                        borderRadius: "8px",
                       }}
                     >
                       {message}
                     </div>
                   )}
+
+                  <button
+                    onClick={startShift}
+                    disabled={startingShift}
+                    style={{
+                      width: "100%",
+                      padding: "14px",
+                      border: "none",
+                      borderRadius: "8px",
+                      backgroundColor: startingShift
+                        ? "#94a3b8"
+                        : "#168d32",
+                      color: "white",
+                      fontSize: "16px",
+                      fontWeight: "bold",
+                      cursor: startingShift
+                        ? "not-allowed"
+                        : "pointer",
+                    }}
+                  >
+                    {startingShift
+                      ? "Opening Shift..."
+                      : "Start Shift"}
+                  </button>
+                </>
+              ) : (
+                <div>
+                  <div
+                    style={{
+                      padding: "14px",
+                      backgroundColor: "#ecfdf5",
+                      borderRadius: "8px",
+                      color: "#166534",
+                      marginBottom: "18px",
+                    }}
+                  >
+                    Shift is open.
+                  </div>
+
+                  <p>
+                    <strong>Shop:</strong>{" "}
+                    {shopName}
+                  </p>
+
+                  <p>
+                    <strong>Cashier:</strong>{" "}
+                    {cashierName}
+                  </p>
+
+                  <p>
+                    <strong>Balance B/F:</strong>{" "}
+                    KES{" "}
+                    {displayedBalance.toLocaleString(
+                      "en-KE"
+                    )}
+                  </p>
+
+                  {currentShift.scheduled_start && (
+                    <p>
+                      <strong>
+                        Scheduled Start:
+                      </strong>{" "}
+                      {displayShiftTime(
+                        currentShift.scheduled_start
+                      )}
+                    </p>
+                  )}
+
+                  {currentShift.scheduled_end && (
+                    <p>
+                      <strong>
+                        Scheduled End:
+                      </strong>{" "}
+                      {displayShiftTime(
+                        currentShift.scheduled_end
+                      )}
+                    </p>
+                  )}
+
+                  <p style={{ marginBottom: 0 }}>
+                    <strong>
+                      Shift Status:
+                    </strong>{" "}
+                    <span
+                      style={{
+                        color: "#15803d",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {currentShift.status || "OPEN"}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* OPENING PLATFORM READINGS */}
+
+            {shiftStarted && currentShift && (
+              <PlatformReadings
+                user={user}
+                currentShift={currentShift}
+              />
+            )}
+
+            {/* FLOAT / INCOME ENTRIES */}
+
+            {shiftStarted && currentShift && (
+              <ShiftIncomeEntries
+                user={user}
+                currentShift={currentShift}
+              />
+            )}
+
+            <p
+              style={{
+                marginTop: "20px",
+                color: "#64748b",
+                fontSize: "13px",
+              }}
+            >
+              You can only access your assigned shop.
+            </p>
+          </>
+        )}
+      </section>
+    </main>
+  );
+}
+
+// --------------------------------------------------
+// DASHBOARD CARD
+// --------------------------------------------------
+
+function DashboardCard({ title, value }) {
+  return (
+    <div
+      style={{
+        backgroundColor: "white",
+        borderRadius: "10px",
+        padding: "22px",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+      }}
+    >
+      <p
+        style={{
+          margin: 0,
+          color: "#64748b",
+        }}
+      >
+        {title}
+      </p>
+
+      <h2
+        style={{
+          margin: "8px 0 0",
+        }}
+      >
+        {value}
+      </h2>
+    </div>
+  );
+}
+
+// --------------------------------------------------
+// NAIROBI TIME FOR DATABASE
+// --------------------------------------------------
+
+function formatNairobiTime(date) {
+  const parts = new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "Africa/Nairobi",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }
+  ).formatToParts(date);
+
+  const values = {};
+
+  for (const part of parts) {
+    values[part.type] = part.value;
+  }
+
+  return `${values.hour}:${values.minute}:${values.second}`;
+}
+
+// --------------------------------------------------
+// DISPLAY DATABASE TIME
+// --------------------------------------------------
+
+function displayShiftTime(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const text = String(value);
+
+  return text
+    .split(".")[0]
+    .slice(0, 8);
+}
