@@ -63,6 +63,7 @@ export default function Dashboard() {
       null;
 
     const cashierId =
+      user.profile_id ||
       user.id ||
       user.user_id ||
       user.auth_user_id ||
@@ -73,6 +74,10 @@ export default function Dashboard() {
       user.name ||
       user.username ||
       "Cashier";
+
+    const accessToken =
+      user.access_token ||
+      null;
 
     if (!shopId) {
       console.error("Missing shop ID. Login user:", user);
@@ -86,12 +91,27 @@ export default function Dashboard() {
       return;
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!accessToken) {
+      console.error("Missing Supabase access token.");
+
+      setMessage(
+        "Login authentication is missing. Please log out and log in again."
+      );
+
+      return;
+    }
+
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
     const supabaseAnonKey =
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      console.error("Supabase environment variables are missing.");
+      console.error(
+        "Supabase environment variables are missing."
+      );
+
       setMessage("Database configuration is missing.");
       return;
     }
@@ -100,12 +120,13 @@ export default function Dashboard() {
       setStartingShift(true);
       setMessage("");
 
-      const businessDate = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Africa/Nairobi",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date());
+      const businessDate =
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Africa/Nairobi",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date());
 
       const shiftData = {
         shop_id: shopId,
@@ -131,10 +152,15 @@ export default function Dashboard() {
           method: "POST",
           headers: {
             apikey: supabaseAnonKey,
-            Authorization: `Bearer ${supabaseAnonKey}`,
+
+            // Use the logged-in cashier's
+            // authenticated Supabase token.
+            Authorization: `Bearer ${accessToken}`,
+
             "Content-Type": "application/json",
             Prefer: "return=representation",
           },
+
           body: JSON.stringify(shiftData),
         }
       );
@@ -148,7 +174,10 @@ export default function Dashboard() {
       }
 
       if (!response.ok) {
-        console.error("SHIFT INSERT ERROR:", result);
+        console.error(
+          "SHIFT INSERT ERROR:",
+          result
+        );
 
         const errorMessage =
           result?.message ||
@@ -165,8 +194,14 @@ export default function Dashboard() {
       setShiftStarted(true);
       setMessage("Shift opened successfully.");
     } catch (error) {
-      console.error("START SHIFT ERROR:", error);
-      setMessage("Unable to open shift. Please try again.");
+      console.error(
+        "START SHIFT ERROR:",
+        error
+      );
+
+      setMessage(
+        "Unable to open shift. Please try again."
+      );
     } finally {
       setStartingShift(false);
     }
@@ -192,8 +227,11 @@ export default function Dashboard() {
     return null;
   }
 
-  const role = String(user.role || "").toUpperCase();
-  const isAdmin = role === "ADMIN";
+  const role =
+    String(user.role || "").toUpperCase();
+
+  const isAdmin =
+    role === "ADMIN";
 
   const shopName =
     user.shop ||
@@ -207,13 +245,14 @@ export default function Dashboard() {
     user.username ||
     "Cashier";
 
-  const today = new Intl.DateTimeFormat("en-KE", {
-    timeZone: "Africa/Nairobi",
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }).format(new Date());
+  const today =
+    new Intl.DateTimeFormat("en-KE", {
+      timeZone: "Africa/Nairobi",
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }).format(new Date());
 
   return (
     <main
@@ -224,6 +263,7 @@ export default function Dashboard() {
       }}
     >
       {/* HEADER */}
+
       <header
         style={{
           backgroundColor: "#0f172a",
@@ -236,7 +276,13 @@ export default function Dashboard() {
         }}
       >
         <div>
-          <h2 style={{ margin: 0 }}>TEAM LEGEND</h2>
+          <h2
+            style={{
+              margin: 0,
+            }}
+          >
+            TEAM LEGEND
+          </h2>
 
           <p
             style={{
@@ -275,10 +321,18 @@ export default function Dashboard() {
         {isAdmin ? (
           <>
             {/* ADMIN DASHBOARD */}
-            <h1 style={{ marginTop: 0 }}>Admin Dashboard</h1>
+
+            <h1
+              style={{
+                marginTop: 0,
+              }}
+            >
+              Admin Dashboard
+            </h1>
 
             <p>
-              Welcome to Team Legend Sales Management System.
+              Welcome to Team Legend Sales Management
+              System.
             </p>
 
             <div
@@ -290,15 +344,21 @@ export default function Dashboard() {
                 marginTop: "30px",
               }}
             >
-              <DashboardCard title="Shops" value="27" />
+              <DashboardCard
+                title="Shops"
+                value="27"
+              />
+
               <DashboardCard
                 title="Today's Sales"
                 value="KES 0"
               />
+
               <DashboardCard
                 title="Expenses"
                 value="KES 0"
               />
+
               <DashboardCard
                 title="Closing Balance"
                 value="KES 0"
@@ -308,8 +368,19 @@ export default function Dashboard() {
         ) : (
           <>
             {/* CASHIER DASHBOARD */}
-            <div style={{ marginBottom: "25px" }}>
-              <h1 style={{ margin: 0 }}>{shopName}</h1>
+
+            <div
+              style={{
+                marginBottom: "25px",
+              }}
+            >
+              <h1
+                style={{
+                  margin: 0,
+                }}
+              >
+                {shopName}
+              </h1>
 
               <p
                 style={{
@@ -322,27 +393,42 @@ export default function Dashboard() {
             </div>
 
             {/* SHOP INFORMATION */}
+
             <div
               style={{
                 backgroundColor: "white",
                 padding: "22px",
                 borderRadius: "12px",
-                boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+                boxShadow:
+                  "0 2px 10px rgba(0,0,0,0.08)",
                 marginBottom: "20px",
               }}
             >
-              <h2 style={{ marginTop: 0 }}>{shopName}</h2>
+              <h2
+                style={{
+                  marginTop: 0,
+                }}
+              >
+                {shopName}
+              </h2>
 
               <p>
-                <strong>Cashier:</strong> {cashierName}
+                <strong>Cashier:</strong>{" "}
+                {cashierName}
               </p>
 
               <p>
-                <strong>Date:</strong> {today}
+                <strong>Date:</strong>{" "}
+                {today}
               </p>
 
-              <p style={{ marginBottom: 0 }}>
+              <p
+                style={{
+                  marginBottom: 0,
+                }}
+              >
                 <strong>Status:</strong>{" "}
+
                 <span
                   style={{
                     color: "#15803d",
@@ -355,16 +441,22 @@ export default function Dashboard() {
             </div>
 
             {/* OPENING SHIFT */}
+
             <div
               style={{
                 backgroundColor: "white",
                 padding: "25px",
                 borderRadius: "12px",
-                boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+                boxShadow:
+                  "0 2px 10px rgba(0,0,0,0.08)",
                 maxWidth: "600px",
               }}
             >
-              <h2 style={{ marginTop: 0 }}>
+              <h2
+                style={{
+                  marginTop: 0,
+                }}
+              >
                 Opening Shift
               </h2>
 
@@ -376,8 +468,8 @@ export default function Dashboard() {
                       marginBottom: "20px",
                     }}
                   >
-                    Enter the opening balance before starting
-                    work.
+                    Enter the opening balance before
+                    starting work.
                   </p>
 
                   <label
@@ -397,14 +489,18 @@ export default function Dashboard() {
                     value={balanceBF}
                     disabled={startingShift}
                     onChange={(e) => {
-                      setBalanceBF(e.target.value);
+                      setBalanceBF(
+                        e.target.value
+                      );
+
                       setMessage("");
                     }}
                     placeholder="Enter opening balance"
                     style={{
                       width: "100%",
                       padding: "13px",
-                      border: "1px solid #cbd5e1",
+                      border:
+                        "1px solid #cbd5e1",
                       borderRadius: "8px",
                       boxSizing: "border-box",
                       fontSize: "16px",
@@ -417,7 +513,8 @@ export default function Dashboard() {
                       style={{
                         marginBottom: "16px",
                         padding: "10px",
-                        backgroundColor: "#fef2f2",
+                        backgroundColor:
+                          "#fef2f2",
                         color: "#991b1b",
                         borderRadius: "8px",
                       }}
@@ -434,15 +531,20 @@ export default function Dashboard() {
                       padding: "14px",
                       border: "none",
                       borderRadius: "8px",
-                      backgroundColor: startingShift
-                        ? "#94a3b8"
-                        : "#168d32",
+
+                      backgroundColor:
+                        startingShift
+                          ? "#94a3b8"
+                          : "#168d32",
+
                       color: "white",
                       fontSize: "16px",
                       fontWeight: "bold",
-                      cursor: startingShift
-                        ? "not-allowed"
-                        : "pointer",
+
+                      cursor:
+                        startingShift
+                          ? "not-allowed"
+                          : "pointer",
                     }}
                   >
                     {startingShift
@@ -455,7 +557,8 @@ export default function Dashboard() {
                   <div
                     style={{
                       padding: "14px",
-                      backgroundColor: "#ecfdf5",
+                      backgroundColor:
+                        "#ecfdf5",
                       borderRadius: "8px",
                       color: "#166534",
                       marginBottom: "18px",
@@ -465,28 +568,43 @@ export default function Dashboard() {
                   </div>
 
                   <p>
-                    <strong>Shop:</strong> {shopName}
+                    <strong>Shop:</strong>{" "}
+                    {shopName}
                   </p>
 
                   <p>
-                    <strong>Cashier:</strong>{" "}
+                    <strong>
+                      Cashier:
+                    </strong>{" "}
                     {cashierName}
                   </p>
 
                   <p>
-                    <strong>Balance B/F:</strong>{" "}
+                    <strong>
+                      Balance B/F:
+                    </strong>{" "}
                     KES{" "}
-                    {Number(balanceBF).toLocaleString(
+                    {Number(
+                      balanceBF
+                    ).toLocaleString(
                       "en-KE"
                     )}
                   </p>
 
-                  <p style={{ marginBottom: 0 }}>
-                    <strong>Shift Status:</strong>{" "}
+                  <p
+                    style={{
+                      marginBottom: 0,
+                    }}
+                  >
+                    <strong>
+                      Shift Status:
+                    </strong>{" "}
+
                     <span
                       style={{
                         color: "#15803d",
-                        fontWeight: "bold",
+                        fontWeight:
+                          "bold",
                       }}
                     >
                       OPEN
@@ -512,14 +630,18 @@ export default function Dashboard() {
   );
 }
 
-function DashboardCard({ title, value }) {
+function DashboardCard({
+  title,
+  value,
+}) {
   return (
     <div
       style={{
         backgroundColor: "white",
         borderRadius: "10px",
         padding: "22px",
-        boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+        boxShadow:
+          "0 2px 10px rgba(0,0,0,0.08)",
       }}
     >
       <p
