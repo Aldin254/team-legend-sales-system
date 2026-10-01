@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierManagementPanel from "./CashierManagementPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
+import CashierCloseShiftButton from "./CashierCloseShiftButton";
 export default function CashierReport({
   user,
   currentShift,
@@ -2164,9 +2165,10 @@ export default function CashierReport({
 />
           </div>
 
-          <div style={closePreviewStyle}>
-            ✓ CLOSE SHIFT & HAND OVER
-          </div>
+          <CashierCloseShiftButton
+  user={user}
+  currentShift={shift}
+/>
         </main>
       </div>
     </div>
