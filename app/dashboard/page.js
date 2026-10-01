@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PlatformReadings from "./PlatformReadings";
 import ShiftIncomeEntries from "./ShiftIncomeEntries";
+import ShiftExpenses from "./ShiftExpenses";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -35,17 +36,10 @@ export default function Dashboard() {
           return;
         }
 
-        const parsedUser =
-          JSON.parse(savedUser);
+        const parsedUser = JSON.parse(savedUser);
 
-        if (
-          !parsedUser ||
-          !parsedUser.role
-        ) {
-          sessionStorage.removeItem(
-            "teamLegendUser"
-          );
-
+        if (!parsedUser || !parsedUser.role) {
+          sessionStorage.removeItem("teamLegendUser");
           router.replace("/");
           return;
         }
@@ -60,7 +54,6 @@ export default function Dashboard() {
           parsedUser.role || ""
         ).toUpperCase();
 
-        // Admin does not need a cashier shift.
         if (role === "ADMIN") {
           setLoading(false);
           return;
@@ -83,12 +76,10 @@ export default function Dashboard() {
           null;
 
         const supabaseUrl =
-          process.env
-            .NEXT_PUBLIC_SUPABASE_URL;
+          process.env.NEXT_PUBLIC_SUPABASE_URL;
 
         const supabaseAnonKey =
-          process.env
-            .NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
         if (
           !shopId ||
@@ -102,47 +93,34 @@ export default function Dashboard() {
         }
 
         // --------------------------------------------
-        // LOOK FOR EXISTING OPEN SHIFT
+        // RESTORE EXISTING OPEN SHIFT
         // --------------------------------------------
 
         const shiftUrl =
           `${supabaseUrl}/rest/v1/shifts` +
-          `?shop_id=eq.${encodeURIComponent(
-            shopId
-          )}` +
-          `&cashier_id=eq.${encodeURIComponent(
-            cashierId
-          )}` +
+          `?shop_id=eq.${encodeURIComponent(shopId)}` +
+          `&cashier_id=eq.${encodeURIComponent(cashierId)}` +
           `&status=eq.OPEN` +
           `&select=*` +
           `&order=opened_at.desc` +
           `&limit=1`;
 
-        const response = await fetch(
-          shiftUrl,
-          {
-            method: "GET",
+        const response = await fetch(shiftUrl, {
+          method: "GET",
 
-            headers: {
-              apikey:
-                supabaseAnonKey,
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
 
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
-            cache: "no-store",
-          }
-        );
+          cache: "no-store",
+        });
 
         let result = null;
 
         try {
-          result =
-            await response.json();
+          result = await response.json();
         } catch {
           result = null;
         }
@@ -172,21 +150,14 @@ export default function Dashboard() {
           Array.isArray(result) &&
           result.length > 0
         ) {
-          const openShift =
-            result[0];
+          const openShift = result[0];
 
-          setCurrentShift(
-            openShift
-          );
-
-          setShiftStarted(
-            true
-          );
+          setCurrentShift(openShift);
+          setShiftStarted(true);
 
           setBalanceBF(
             String(
-              openShift.opening_balance ??
-                ""
+              openShift.opening_balance ?? ""
             )
           );
         }
@@ -196,10 +167,7 @@ export default function Dashboard() {
           error
         );
 
-        sessionStorage.removeItem(
-          "teamLegendUser"
-        );
-
+        sessionStorage.removeItem("teamLegendUser");
         router.replace("/");
       } finally {
         if (!cancelled) {
@@ -220,10 +188,7 @@ export default function Dashboard() {
   // --------------------------------------------------
 
   function logout() {
-    sessionStorage.removeItem(
-      "teamLegendUser"
-    );
-
+    sessionStorage.removeItem("teamLegendUser");
     router.replace("/");
   }
 
@@ -232,8 +197,7 @@ export default function Dashboard() {
   // --------------------------------------------------
 
   async function startShift() {
-    const amount =
-      Number(balanceBF);
+    const amount = Number(balanceBF);
 
     if (
       balanceBF === "" ||
@@ -288,11 +252,6 @@ export default function Dashboard() {
       null;
 
     if (!shopId) {
-      console.error(
-        "Missing shop ID. Login user:",
-        user
-      );
-
       setMessage(
         "Shop ID is missing. Please log in again."
       );
@@ -301,11 +260,6 @@ export default function Dashboard() {
     }
 
     if (!cashierId) {
-      console.error(
-        "Missing cashier ID. Login user:",
-        user
-      );
-
       setMessage(
         "Cashier ID is missing. Please log in again."
       );
@@ -314,10 +268,6 @@ export default function Dashboard() {
     }
 
     if (!accessToken) {
-      console.error(
-        "Missing Supabase access token."
-      );
-
       setMessage(
         "Login authentication is missing. Please log out and log in again."
       );
@@ -326,21 +276,12 @@ export default function Dashboard() {
     }
 
     const supabaseUrl =
-      process.env
-        .NEXT_PUBLIC_SUPABASE_URL;
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
 
     const supabaseAnonKey =
-      process.env
-        .NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (
-      !supabaseUrl ||
-      !supabaseAnonKey
-    ) {
-      console.error(
-        "Supabase environment variables are missing."
-      );
-
+    if (!supabaseUrl || !supabaseAnonKey) {
       setMessage(
         "Database configuration is missing."
       );
@@ -353,36 +294,27 @@ export default function Dashboard() {
       setMessage("");
 
       // --------------------------------------------
-      // KENYA BUSINESS DATE
+      // BUSINESS DATE - KENYA
       // --------------------------------------------
 
       const businessDate =
-        new Intl.DateTimeFormat(
-          "en-CA",
-          {
-            timeZone:
-              "Africa/Nairobi",
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-          }
-        ).format(new Date());
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Africa/Nairobi",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date());
 
       // --------------------------------------------
       // 12-HOUR SHIFT TIMES
       // --------------------------------------------
 
-      const now =
-        new Date();
+      const now = new Date();
 
-      const end =
-        new Date(
-          now.getTime() +
-            12 *
-              60 *
-              60 *
-              1000
-        );
+      const end = new Date(
+        now.getTime() +
+          12 * 60 * 60 * 1000
+      );
 
       const scheduledStart =
         formatNairobiTime(now);
@@ -390,95 +322,47 @@ export default function Dashboard() {
       const scheduledEnd =
         formatNairobiTime(end);
 
-      // --------------------------------------------
-      // SHIFT RECORD
-      // --------------------------------------------
-
       const shiftData = {
-        shop_id:
-          shopId,
-
-        cashier_id:
-          cashierId,
-
-        cashier_name:
-          cashierName,
-
-        shift_name:
-          "DAY",
-
-        business_date:
-          businessDate,
-
-        scheduled_start:
-          scheduledStart,
-
-        scheduled_end:
-          scheduledEnd,
-
-        opened_at:
-          now.toISOString(),
-
-        status:
-          "OPEN",
-
-        opening_balance:
-          amount,
-
-        total_added_float:
-          0,
-
-        total_output:
-          0,
-
-        total_expenses:
-          0,
-
-        net_income:
-          0,
-
-        closing_balance:
-          0,
+        shop_id: shopId,
+        cashier_id: cashierId,
+        cashier_name: cashierName,
+        shift_name: "DAY",
+        business_date: businessDate,
+        scheduled_start: scheduledStart,
+        scheduled_end: scheduledEnd,
+        opened_at: now.toISOString(),
+        status: "OPEN",
+        opening_balance: amount,
+        total_added_float: 0,
+        total_output: 0,
+        total_expenses: 0,
+        net_income: 0,
+        closing_balance: 0,
       };
 
-      console.log(
-        "Creating shift:",
-        shiftData
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/shifts`,
+        {
+          method: "POST",
+
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization:
+              `Bearer ${accessToken}`,
+            "Content-Type":
+              "application/json",
+            Prefer:
+              "return=representation",
+          },
+
+          body: JSON.stringify(shiftData),
+        }
       );
-
-      const response =
-        await fetch(
-          `${supabaseUrl}/rest/v1/shifts`,
-          {
-            method:
-              "POST",
-
-            headers: {
-              apikey:
-                supabaseAnonKey,
-
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-
-              Prefer:
-                "return=representation",
-            },
-
-            body:
-              JSON.stringify(
-                shiftData
-              ),
-          }
-        );
 
       let result = null;
 
       try {
-        result =
-          await response.json();
+        result = await response.json();
       } catch {
         result = null;
       }
@@ -489,40 +373,28 @@ export default function Dashboard() {
           result
         );
 
-        const errorMessage =
-          result?.message ||
-          result?.details ||
-          result?.hint ||
-          `Unable to open shift. Error ${response.status}`;
-
         setMessage(
-          errorMessage
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            `Unable to open shift. Error ${response.status}`
         );
 
         return;
       }
 
-      console.log(
-        "SHIFT CREATED:",
-        result
-      );
-
       if (
         Array.isArray(result) &&
         result.length > 0
       ) {
-        setCurrentShift(
-          result[0]
-        );
+        setCurrentShift(result[0]);
       } else {
         setCurrentShift({
           ...shiftData,
         });
       }
 
-      setShiftStarted(
-        true
-      );
+      setShiftStarted(true);
 
       setMessage(
         "Shift opened successfully."
@@ -537,9 +409,7 @@ export default function Dashboard() {
         "Unable to open shift. Please try again."
       );
     } finally {
-      setStartingShift(
-        false
-      );
+      setStartingShift(false);
     }
   }
 
@@ -551,20 +421,11 @@ export default function Dashboard() {
     return (
       <main
         style={{
-          minHeight:
-            "100vh",
-
-          display:
-            "flex",
-
-          alignItems:
-            "center",
-
-          justifyContent:
-            "center",
-
-          fontFamily:
-            "Arial, sans-serif",
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "Arial, sans-serif",
         }}
       >
         Loading...
@@ -601,37 +462,21 @@ export default function Dashboard() {
     "Cashier";
 
   const today =
-    new Intl.DateTimeFormat(
-      "en-KE",
-      {
-        timeZone:
-          "Africa/Nairobi",
-
-        weekday:
-          "long",
-
-        year:
-          "numeric",
-
-        month:
-          "long",
-
-        day:
-          "numeric",
-      }
-    ).format(
-      new Date()
-    );
+    new Intl.DateTimeFormat("en-KE", {
+      timeZone: "Africa/Nairobi",
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }).format(new Date());
 
   const displayedBalance =
     currentShift
       ? Number(
-          currentShift.opening_balance ||
-            0
+          currentShift.opening_balance || 0
         )
       : Number(
-          balanceBF ||
-            0
+          balanceBF || 0
         );
 
   // --------------------------------------------------
@@ -641,61 +486,34 @@ export default function Dashboard() {
   return (
     <main
       style={{
-        minHeight:
-          "100vh",
-
-        backgroundColor:
-          "#f4f7fb",
-
-        fontFamily:
-          "Arial, sans-serif",
+        minHeight: "100vh",
+        backgroundColor: "#f4f7fb",
+        fontFamily: "Arial, sans-serif",
       }}
     >
       {/* HEADER */}
 
       <header
         style={{
-          backgroundColor:
-            "#0f172a",
-
-          color:
-            "white",
-
-          padding:
-            "18px 30px",
-
-          display:
-            "flex",
-
-          justifyContent:
-            "space-between",
-
-          alignItems:
-            "center",
-
-          gap:
-            "20px",
+          backgroundColor: "#0f172a",
+          color: "white",
+          padding: "18px 30px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "20px",
         }}
       >
         <div>
-          <h2
-            style={{
-              margin: 0,
-            }}
-          >
+          <h2 style={{ margin: 0 }}>
             TEAM LEGEND
           </h2>
 
           <p
             style={{
-              margin:
-                "5px 0 0",
-
-              color:
-                "#cbd5e1",
-
-              fontSize:
-                "14px",
+              margin: "5px 0 0",
+              color: "#cbd5e1",
+              fontSize: "14px",
             }}
           >
             Sales Management System
@@ -703,30 +521,15 @@ export default function Dashboard() {
         </div>
 
         <button
-          onClick={
-            logout
-          }
+          onClick={logout}
           style={{
-            backgroundColor:
-              "#dc2626",
-
-            color:
-              "white",
-
-            border:
-              "none",
-
-            borderRadius:
-              "8px",
-
-            padding:
-              "10px 18px",
-
-            cursor:
-              "pointer",
-
-            fontWeight:
-              "bold",
+            backgroundColor: "#dc2626",
+            color: "white",
+            border: "none",
+            borderRadius: "8px",
+            padding: "10px 18px",
+            cursor: "pointer",
+            fontWeight: "bold",
           }}
         >
           Logout
@@ -735,26 +538,16 @@ export default function Dashboard() {
 
       <section
         style={{
-          padding:
-            "30px",
-
-          maxWidth:
-            "1200px",
-
-          margin:
-            "0 auto",
+          padding: "30px",
+          maxWidth: "1200px",
+          margin: "0 auto",
         }}
       >
         {isAdmin ? (
           <>
             {/* ADMIN DASHBOARD */}
 
-            <h1
-              style={{
-                marginTop:
-                  0,
-              }}
-            >
+            <h1 style={{ marginTop: 0 }}>
               Admin Dashboard
             </h1>
 
@@ -764,17 +557,11 @@ export default function Dashboard() {
 
             <div
               style={{
-                display:
-                  "grid",
-
+                display: "grid",
                 gridTemplateColumns:
                   "repeat(auto-fit, minmax(210px, 1fr))",
-
-                gap:
-                  "20px",
-
-                marginTop:
-                  "30px",
+                gap: "20px",
+                marginTop: "30px",
               }}
             >
               <DashboardCard
@@ -804,26 +591,17 @@ export default function Dashboard() {
 
             <div
               style={{
-                marginBottom:
-                  "25px",
+                marginBottom: "25px",
               }}
             >
-              <h1
-                style={{
-                  margin:
-                    0,
-                }}
-              >
+              <h1 style={{ margin: 0 }}>
                 {shopName}
               </h1>
 
               <p
                 style={{
-                  marginTop:
-                    "7px",
-
-                  color:
-                    "#64748b",
+                  marginTop: "7px",
+                  color: "#64748b",
                 }}
               >
                 Cashier Dashboard
@@ -834,62 +612,35 @@ export default function Dashboard() {
 
             <div
               style={{
-                backgroundColor:
-                  "white",
-
-                padding:
-                  "22px",
-
-                borderRadius:
-                  "12px",
-
+                backgroundColor: "white",
+                padding: "22px",
+                borderRadius: "12px",
                 boxShadow:
                   "0 2px 10px rgba(0,0,0,0.08)",
-
-                marginBottom:
-                  "20px",
+                marginBottom: "20px",
               }}
             >
-              <h2
-                style={{
-                  marginTop:
-                    0,
-                }}
-              >
+              <h2 style={{ marginTop: 0 }}>
                 {shopName}
               </h2>
 
               <p>
-                <strong>
-                  Cashier:
-                </strong>{" "}
+                <strong>Cashier:</strong>{" "}
                 {cashierName}
               </p>
 
               <p>
-                <strong>
-                  Date:
-                </strong>{" "}
+                <strong>Date:</strong>{" "}
                 {today}
               </p>
 
-              <p
-                style={{
-                  marginBottom:
-                    0,
-                }}
-              >
-                <strong>
-                  Status:
-                </strong>{" "}
+              <p style={{ marginBottom: 0 }}>
+                <strong>Status:</strong>{" "}
 
                 <span
                   style={{
-                    color:
-                      "#15803d",
-
-                    fontWeight:
-                      "bold",
+                    color: "#15803d",
+                    fontWeight: "bold",
                   }}
                 >
                   ACTIVE
@@ -901,28 +652,15 @@ export default function Dashboard() {
 
             <div
               style={{
-                backgroundColor:
-                  "white",
-
-                padding:
-                  "25px",
-
-                borderRadius:
-                  "12px",
-
+                backgroundColor: "white",
+                padding: "25px",
+                borderRadius: "12px",
                 boxShadow:
                   "0 2px 10px rgba(0,0,0,0.08)",
-
-                maxWidth:
-                  "700px",
+                maxWidth: "700px",
               }}
             >
-              <h2
-                style={{
-                  marginTop:
-                    0,
-                }}
-              >
+              <h2 style={{ marginTop: 0 }}>
                 Opening Shift
               </h2>
 
@@ -931,11 +669,8 @@ export default function Dashboard() {
                 <>
                   <p
                     style={{
-                      color:
-                        "#64748b",
-
-                      marginBottom:
-                        "20px",
+                      color: "#64748b",
+                      marginBottom: "20px",
                     }}
                   >
                     Enter the opening balance before starting work.
@@ -943,14 +678,9 @@ export default function Dashboard() {
 
                   <label
                     style={{
-                      display:
-                        "block",
-
-                      fontWeight:
-                        "bold",
-
-                      marginBottom:
-                        "8px",
+                      display: "block",
+                      fontWeight: "bold",
+                      marginBottom: "8px",
                     }}
                   >
                     Balance B/F (KES)
@@ -960,45 +690,25 @@ export default function Dashboard() {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={
-                      balanceBF
-                    }
-                    disabled={
-                      startingShift
-                    }
-                    onChange={(
-                      e
-                    ) => {
+                    value={balanceBF}
+                    disabled={startingShift}
+                    onChange={(e) => {
                       setBalanceBF(
                         e.target.value
                       );
 
-                      setMessage(
-                        ""
-                      );
+                      setMessage("");
                     }}
                     placeholder="Enter opening balance"
                     style={{
-                      width:
-                        "100%",
-
-                      padding:
-                        "13px",
-
+                      width: "100%",
+                      padding: "13px",
                       border:
                         "1px solid #cbd5e1",
-
-                      borderRadius:
-                        "8px",
-
-                      boxSizing:
-                        "border-box",
-
-                      fontSize:
-                        "16px",
-
-                      marginBottom:
-                        "18px",
+                      borderRadius: "8px",
+                      boxSizing: "border-box",
+                      fontSize: "16px",
+                      marginBottom: "18px",
                     }}
                   />
 
@@ -1024,15 +734,20 @@ export default function Dashboard() {
                       padding: "14px",
                       border: "none",
                       borderRadius: "8px",
-                      backgroundColor: startingShift
-                        ? "#94a3b8"
-                        : "#168d32",
+
+                      backgroundColor:
+                        startingShift
+                          ? "#94a3b8"
+                          : "#168d32",
+
                       color: "white",
                       fontSize: "16px",
                       fontWeight: "bold",
-                      cursor: startingShift
-                        ? "not-allowed"
-                        : "pointer",
+
+                      cursor:
+                        startingShift
+                          ? "not-allowed"
+                          : "pointer",
                     }}
                   >
                     {startingShift
@@ -1098,6 +813,7 @@ export default function Dashboard() {
                     <strong>
                       Shift Status:
                     </strong>{" "}
+
                     <span
                       style={{
                         color: "#15803d",
@@ -1120,10 +836,19 @@ export default function Dashboard() {
               />
             )}
 
-            {/* FLOAT / INCOME ENTRIES */}
+            {/* FLOAT / INCOME */}
 
             {shiftStarted && currentShift && (
               <ShiftIncomeEntries
+                user={user}
+                currentShift={currentShift}
+              />
+            )}
+
+            {/* EXPENSES */}
+
+            {shiftStarted && currentShift && (
+              <ShiftExpenses
                 user={user}
                 currentShift={currentShift}
               />
@@ -1149,14 +874,18 @@ export default function Dashboard() {
 // DASHBOARD CARD
 // --------------------------------------------------
 
-function DashboardCard({ title, value }) {
+function DashboardCard({
+  title,
+  value,
+}) {
   return (
     <div
       style={{
         backgroundColor: "white",
         borderRadius: "10px",
         padding: "22px",
-        boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+        boxShadow:
+          "0 2px 10px rgba(0,0,0,0.08)",
       }}
     >
       <p
@@ -1184,21 +913,23 @@ function DashboardCard({ title, value }) {
 // --------------------------------------------------
 
 function formatNairobiTime(date) {
-  const parts = new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone: "Africa/Nairobi",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-    }
-  ).formatToParts(date);
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone: "Africa/Nairobi",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }
+    ).formatToParts(date);
 
   const values = {};
 
   for (const part of parts) {
-    values[part.type] = part.value;
+    values[part.type] =
+      part.value;
   }
 
   return `${values.hour}:${values.minute}:${values.second}`;
@@ -1213,7 +944,8 @@ function displayShiftTime(value) {
     return "-";
   }
 
-  const text = String(value);
+  const text =
+    String(value);
 
   return text
     .split(".")[0]
