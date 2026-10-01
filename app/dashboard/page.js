@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [balanceBF, setBalanceBF] = useState("");
   const [shiftStarted, setShiftStarted] = useState(false);
   const [message, setMessage] = useState("");
+  const [startingShift, setStartingShift] = useState(false);
 
   useEffect(() => {
     try {
@@ -43,7 +44,7 @@ export default function Dashboard() {
     router.replace("/");
   }
 
-  function startShift() {
+  async function startShift() {
     const amount = Number(balanceBF);
 
     if (balanceBF === "" || Number.isNaN(amount) || amount < 0) {
@@ -51,8 +52,124 @@ export default function Dashboard() {
       return;
     }
 
-    setShiftStarted(true);
-    setMessage("Shift opened successfully.");
+    if (!user) {
+      setMessage("Login session is missing. Please log in again.");
+      return;
+    }
+
+    const shopId =
+      user.shop_id ||
+      user.shopId ||
+      null;
+
+    const cashierId =
+      user.id ||
+      user.user_id ||
+      user.auth_user_id ||
+      null;
+
+    const cashierName =
+      user.full_name ||
+      user.name ||
+      user.username ||
+      "Cashier";
+
+    if (!shopId) {
+      console.error("Missing shop ID. Login user:", user);
+      setMessage("Shop ID is missing. Please log in again.");
+      return;
+    }
+
+    if (!cashierId) {
+      console.error("Missing cashier ID. Login user:", user);
+      setMessage("Cashier ID is missing. Please log in again.");
+      return;
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("Supabase environment variables are missing.");
+      setMessage("Database configuration is missing.");
+      return;
+    }
+
+    try {
+      setStartingShift(true);
+      setMessage("");
+
+      const businessDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Africa/Nairobi",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+
+      const shiftData = {
+        shop_id: shopId,
+        cashier_id: cashierId,
+        cashier_name: cashierName,
+        shift_name: "DAY",
+        business_date: businessDate,
+        opened_at: new Date().toISOString(),
+        status: "OPEN",
+        opening_balance: amount,
+        total_added_float: 0,
+        total_output: 0,
+        total_expenses: 0,
+        net_income: 0,
+        closing_balance: 0,
+      };
+
+      console.log("Creating shift:", shiftData);
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/shifts`,
+        {
+          method: "POST",
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${supabaseAnonKey}`,
+            "Content-Type": "application/json",
+            Prefer: "return=representation",
+          },
+          body: JSON.stringify(shiftData),
+        }
+      );
+
+      let result = null;
+
+      try {
+        result = await response.json();
+      } catch {
+        result = null;
+      }
+
+      if (!response.ok) {
+        console.error("SHIFT INSERT ERROR:", result);
+
+        const errorMessage =
+          result?.message ||
+          result?.details ||
+          result?.hint ||
+          `Unable to open shift. Error ${response.status}`;
+
+        setMessage(errorMessage);
+        return;
+      }
+
+      console.log("SHIFT CREATED:", result);
+
+      setShiftStarted(true);
+      setMessage("Shift opened successfully.");
+    } catch (error) {
+      console.error("START SHIFT ERROR:", error);
+      setMessage("Unable to open shift. Please try again.");
+    } finally {
+      setStartingShift(false);
+    }
   }
 
   if (loading) {
@@ -85,6 +202,7 @@ export default function Dashboard() {
     "Assigned Shop";
 
   const cashierName =
+    user.full_name ||
     user.name ||
     user.username ||
     "Cashier";
@@ -159,7 +277,9 @@ export default function Dashboard() {
             {/* ADMIN DASHBOARD */}
             <h1 style={{ marginTop: 0 }}>Admin Dashboard</h1>
 
-            <p>Welcome to Team Legend Sales Management System.</p>
+            <p>
+              Welcome to Team Legend Sales Management System.
+            </p>
 
             <div
               style={{
@@ -171,9 +291,18 @@ export default function Dashboard() {
               }}
             >
               <DashboardCard title="Shops" value="27" />
-              <DashboardCard title="Today's Sales" value="KES 0" />
-              <DashboardCard title="Expenses" value="KES 0" />
-              <DashboardCard title="Closing Balance" value="KES 0" />
+              <DashboardCard
+                title="Today's Sales"
+                value="KES 0"
+              />
+              <DashboardCard
+                title="Expenses"
+                value="KES 0"
+              />
+              <DashboardCard
+                title="Closing Balance"
+                value="KES 0"
+              />
             </div>
           </>
         ) : (
@@ -235,7 +364,9 @@ export default function Dashboard() {
                 maxWidth: "600px",
               }}
             >
-              <h2 style={{ marginTop: 0 }}>Opening Shift</h2>
+              <h2 style={{ marginTop: 0 }}>
+                Opening Shift
+              </h2>
 
               {!shiftStarted ? (
                 <>
@@ -245,7 +376,8 @@ export default function Dashboard() {
                       marginBottom: "20px",
                     }}
                   >
-                    Enter the opening balance before starting work.
+                    Enter the opening balance before starting
+                    work.
                   </p>
 
                   <label
@@ -263,6 +395,7 @@ export default function Dashboard() {
                     min="0"
                     step="0.01"
                     value={balanceBF}
+                    disabled={startingShift}
                     onChange={(e) => {
                       setBalanceBF(e.target.value);
                       setMessage("");
@@ -295,19 +428,26 @@ export default function Dashboard() {
 
                   <button
                     onClick={startShift}
+                    disabled={startingShift}
                     style={{
                       width: "100%",
                       padding: "14px",
                       border: "none",
                       borderRadius: "8px",
-                      backgroundColor: "#168d32",
+                      backgroundColor: startingShift
+                        ? "#94a3b8"
+                        : "#168d32",
                       color: "white",
                       fontSize: "16px",
                       fontWeight: "bold",
-                      cursor: "pointer",
+                      cursor: startingShift
+                        ? "not-allowed"
+                        : "pointer",
                     }}
                   >
-                    Start Shift
+                    {startingShift
+                      ? "Opening Shift..."
+                      : "Start Shift"}
                   </button>
                 </>
               ) : (
@@ -329,12 +469,16 @@ export default function Dashboard() {
                   </p>
 
                   <p>
-                    <strong>Cashier:</strong> {cashierName}
+                    <strong>Cashier:</strong>{" "}
+                    {cashierName}
                   </p>
 
                   <p>
                     <strong>Balance B/F:</strong>{" "}
-                    KES {Number(balanceBF).toLocaleString("en-KE")}
+                    KES{" "}
+                    {Number(balanceBF).toLocaleString(
+                      "en-KE"
+                    )}
                   </p>
 
                   <p style={{ marginBottom: 0 }}>
