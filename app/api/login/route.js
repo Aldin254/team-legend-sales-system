@@ -59,6 +59,7 @@ export async function POST(request) {
           email,
           password,
         }),
+        cache: "no-store",
       }
     );
 
@@ -131,14 +132,71 @@ export async function POST(request) {
       );
     }
 
+    // -------------------------------------------------
+    // GET THE REAL SHOP NAME FROM THE SHOPS TABLE
+    // -------------------------------------------------
+
+    let shopName = null;
+
+    if (profile.shop_id) {
+      const shopResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/shops?id=eq.${profile.shop_id}&select=id,shop_name,is_active`,
+        {
+          method: "GET",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${authData.access_token}`,
+            "Content-Type": "application/json",
+          },
+          cache: "no-store",
+        }
+      );
+
+      const shops = await shopResponse.json();
+
+      if (!shopResponse.ok) {
+        console.error("Shop lookup failed:", shops);
+
+        return NextResponse.json(
+          { message: "Unable to load assigned shop." },
+          { status: 500 }
+        );
+      }
+
+      if (!Array.isArray(shops) || shops.length === 0) {
+        return NextResponse.json(
+          { message: "Assigned shop could not be found." },
+          { status: 403 }
+        );
+      }
+
+      const shop = shops[0];
+
+      if (!shop.is_active) {
+        return NextResponse.json(
+          { message: "This shop is currently inactive." },
+          { status: 403 }
+        );
+      }
+
+      shopName = shop.shop_name;
+    }
+
+    // Successful login.
     return NextResponse.json(
       {
         success: true,
         user: {
           id: authData.user.id,
           name: profile.full_name,
-          role,
-          shop: profile.shop_id,
+          role: role,
+
+          // Dashboard receives the REAL shop name here.
+          shop: shopName,
+
+          // Keep UUID as well because we will need it
+          // later for sales, shifts, expenses, etc.
+          shop_id: profile.shop_id,
         },
       },
       { status: 200 }
