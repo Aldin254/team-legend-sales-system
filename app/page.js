@@ -27,7 +27,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           username: username.trim(),
-          password: password,
+          password,
         }),
       });
 
@@ -39,7 +39,6 @@ export default function Home() {
         return;
       }
 
-      // Save login information for the dashboard
       sessionStorage.setItem(
         "teamLegendUser",
         JSON.stringify({
@@ -49,7 +48,6 @@ export default function Home() {
         })
       );
 
-      // Open dashboard after successful login
       window.location.href = "/dashboard";
     } catch (error) {
       console.error(error);
@@ -67,6 +65,7 @@ export default function Home() {
         justifyContent: "center",
         background: "#07111f",
         padding: "20px",
+        fontFamily: "Arial, sans-serif",
       }}
     >
       <div
@@ -196,7 +195,7 @@ export default function Home() {
               cursor: loading ? "not-allowed" : "pointer",
             }}
           >
-            {loading ? "Signing In..." : "Sign In"}
+            {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
 
