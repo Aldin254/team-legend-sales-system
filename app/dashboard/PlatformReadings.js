@@ -41,8 +41,9 @@ export default function PlatformReadings({
     null;
 
   const readingKind = "OPENING";
+
   // --------------------------------------------------
-  // LOAD PLATFORMS + EXISTING READINGS
+  // LOAD PLATFORMS + SAVED OPENING READINGS
   // --------------------------------------------------
 
   useEffect(() => {
@@ -124,7 +125,7 @@ export default function PlatformReadings({
         setPlatforms(activePlatforms);
 
         // --------------------------------------------
-        // LOAD SAVED READINGS FOR CURRENT SHIFT
+        // LOAD SAVED OPENING READINGS
         // --------------------------------------------
 
         const readingUrl =
@@ -230,10 +231,16 @@ export default function PlatformReadings({
   ]);
 
   // --------------------------------------------------
-  // UPDATE INPUT VALUE
+  // UPDATE UNSAVED INPUT
   // --------------------------------------------------
 
   function updateReading(platformId, value) {
+    // Never allow a saved opening reading
+    // to be changed in the browser.
+    if (existingRows[platformId]?.id) {
+      return;
+    }
+
     setReadings((previous) => ({
       ...previous,
       [platformId]: value,
@@ -244,7 +251,7 @@ export default function PlatformReadings({
   }
 
   // --------------------------------------------------
-  // SAVE READINGS
+  // SAVE NEW OPENING READINGS
   // --------------------------------------------------
 
   async function saveReadings() {
@@ -275,7 +282,9 @@ export default function PlatformReadings({
     }
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      setMessage("Database configuration is missing.");
+      setMessage(
+        "Database configuration is missing."
+      );
       setMessageType("error");
       return;
     }
@@ -283,6 +292,11 @@ export default function PlatformReadings({
     const rowsToSave = [];
 
     for (const platform of platforms) {
+      // Already saved = locked forever
+      if (existingRows[platform.id]?.id) {
+        continue;
+      }
+
       const rawValue =
         readings[platform.id];
 
@@ -316,11 +330,25 @@ export default function PlatformReadings({
     }
 
     if (rowsToSave.length === 0) {
-      setMessage(
-        "Enter at least one platform reading before saving."
-      );
+      const allSaved =
+        platforms.length > 0 &&
+        platforms.every(
+          (platform) =>
+            existingRows[platform.id]?.id
+        );
 
-      setMessageType("error");
+      if (allSaved) {
+        setMessage(
+          "All opening readings have already been saved."
+        );
+        setMessageType("success");
+      } else {
+        setMessage(
+          "Enter at least one unsaved platform reading."
+        );
+        setMessageType("error");
+      }
+
       return;
     }
 
@@ -343,84 +371,9 @@ export default function PlatformReadings({
         const numericValue =
           item.numericValue;
 
-        const existing =
-          existingRows[platform.id];
-
         // --------------------------------------------
-        // UPDATE EXISTING READING
-        // --------------------------------------------
-
-        if (existing?.id) {
-          const response = await fetch(
-            `${supabaseUrl}/rest/v1/platform_readings?id=eq.${encodeURIComponent(
-              existing.id
-            )}`,
-            {
-              method: "PATCH",
-
-              headers: {
-                apikey: supabaseAnonKey,
-                Authorization:
-                  `Bearer ${accessToken}`,
-                "Content-Type":
-                  "application/json",
-                Prefer:
-                  "return=representation",
-              },
-
-              body: JSON.stringify({
-                reading_kind:
-                  readingKind,
-
-                reading_value:
-                  numericValue,
-
-                recorded_at:
-                  recordedAt,
-
-                recorded_by:
-                  cashierId,
-              }),
-            }
-          );
-
-          let result = null;
-
-          try {
-            result =
-              await response.json();
-          } catch {
-            result = null;
-          }
-
-          if (!response.ok) {
-            console.error(
-              "READING UPDATE ERROR:",
-              result
-            );
-
-            throw new Error(
-              result?.message ||
-                result?.details ||
-                result?.hint ||
-                `Unable to update ${platform.platform_name}.`
-            );
-          }
-
-          if (
-            Array.isArray(result) &&
-            result.length > 0
-          ) {
-            newExistingRows[
-              platform.id
-            ] = result[0];
-          }
-
-          continue;
-        }
-
-        // --------------------------------------------
-        // INSERT NEW READING
+        // INSERT ONLY
+        // Opening readings are never updated.
         // --------------------------------------------
 
         const response = await fetch(
@@ -498,7 +451,7 @@ export default function PlatformReadings({
       );
 
       setMessage(
-        "Platform readings saved successfully."
+        "Opening readings saved and locked successfully."
       );
 
       setMessageType("success");
@@ -518,6 +471,20 @@ export default function PlatformReadings({
       setSaving(false);
     }
   }
+
+  // --------------------------------------------------
+  // COUNTS
+  // --------------------------------------------------
+
+  const savedCount =
+    platforms.filter(
+      (platform) =>
+        existingRows[platform.id]?.id
+    ).length;
+
+  const allSaved =
+    platforms.length > 0 &&
+    savedCount === platforms.length;
 
   // --------------------------------------------------
   // DISPLAY
@@ -545,18 +512,37 @@ export default function PlatformReadings({
           marginBottom: "6px",
         }}
       >
-        Platform Readings
+        Opening Platform Readings
       </h2>
 
       <p
         style={{
           marginTop: 0,
-          marginBottom: "24px",
+          marginBottom: "10px",
           color: "#64748b",
         }}
       >
-        Enter the current reading for each platform.
+        Enter each platform opening reading.
+        Once saved, it cannot be edited.
       </p>
+
+      {!loading &&
+        platforms.length > 0 && (
+          <p
+            style={{
+              marginTop: 0,
+              marginBottom: "24px",
+              color: allSaved
+                ? "#15803d"
+                : "#64748b",
+              fontWeight: "bold",
+              fontSize: "14px",
+            }}
+          >
+            Saved: {savedCount} /{" "}
+            {platforms.length}
+          </p>
+        )}
 
       {loading ? (
         <div
@@ -576,57 +562,111 @@ export default function PlatformReadings({
             borderRadius: "8px",
           }}
         >
-          No active platforms are assigned to this shop.
+          No active platforms are assigned
+          to this shop.
         </div>
       ) : (
         <>
-          {platforms.map((platform) => (
-            <div
-              key={platform.id}
-              style={{
-                marginBottom: "16px",
-              }}
-            >
-              <label
+          {platforms.map((platform) => {
+            const saved =
+              Boolean(
+                existingRows[
+                  platform.id
+                ]?.id
+              );
+
+            return (
+              <div
+                key={platform.id}
                 style={{
-                  display: "block",
-                  fontWeight: "bold",
-                  marginBottom: "7px",
+                  marginBottom: "16px",
                 }}
               >
-                {platform.platform_name}
-              </label>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent:
+                      "space-between",
+                    alignItems: "center",
+                    gap: "15px",
+                    marginBottom: "7px",
+                  }}
+                >
+                  <label
+                    style={{
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {
+                      platform.platform_name
+                    }
+                  </label>
 
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={
-                  readings[
-                    platform.id
-                  ] ?? ""
-                }
-                disabled={saving}
-                onChange={(e) =>
-                  updateReading(
-                    platform.id,
-                    e.target.value
-                  )
-                }
-                placeholder={`Enter ${platform.platform_name} reading`}
-                style={{
-                  width: "100%",
-                  padding: "13px",
-                  border:
-                    "1px solid #cbd5e1",
-                  borderRadius: "8px",
-                  boxSizing:
-                    "border-box",
-                  fontSize: "16px",
-                }}
-              />
-            </div>
-          ))}
+                  {saved && (
+                    <span
+                      style={{
+                        color:
+                          "#15803d",
+                        fontWeight:
+                          "bold",
+                        fontSize:
+                          "13px",
+                      }}
+                    >
+                      Saved ✓
+                    </span>
+                  )}
+                </div>
+
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={
+                    readings[
+                      platform.id
+                    ] ?? ""
+                  }
+                  disabled={
+                    saving || saved
+                  }
+                  onChange={(e) =>
+                    updateReading(
+                      platform.id,
+                      e.target.value
+                    )
+                  }
+                  placeholder={`Enter ${platform.platform_name} reading`}
+                  style={{
+                    width: "100%",
+                    padding: "13px",
+                    border:
+                      saved
+                        ? "1px solid #86efac"
+                        : "1px solid #cbd5e1",
+                    borderRadius:
+                      "8px",
+                    boxSizing:
+                      "border-box",
+                    fontSize:
+                      "16px",
+                    backgroundColor:
+                      saved
+                        ? "#f0fdf4"
+                        : "white",
+                    color:
+                      saved
+                        ? "#166534"
+                        : "#111827",
+                    cursor:
+                      saved
+                        ? "not-allowed"
+                        : "text",
+                  }}
+                />
+              </div>
+            );
+          })}
 
           {message && (
             <div
@@ -637,12 +677,14 @@ export default function PlatformReadings({
                 borderRadius: "8px",
 
                 backgroundColor:
-                  messageType === "success"
+                  messageType ===
+                  "success"
                     ? "#ecfdf5"
                     : "#fef2f2",
 
                 color:
-                  messageType === "success"
+                  messageType ===
+                  "success"
                     ? "#166534"
                     : "#991b1b",
               }}
@@ -651,34 +693,60 @@ export default function PlatformReadings({
             </div>
           )}
 
-          <button
-            onClick={saveReadings}
-            disabled={saving}
-            style={{
-              width: "100%",
-              padding: "14px",
-              border: "none",
-              borderRadius: "8px",
+          {!allSaved && (
+            <button
+              onClick={
+                saveReadings
+              }
+              disabled={saving}
+              style={{
+                width: "100%",
+                padding: "14px",
+                border: "none",
+                borderRadius:
+                  "8px",
 
-              backgroundColor:
-                saving
-                  ? "#94a3b8"
-                  : "#168d32",
+                backgroundColor:
+                  saving
+                    ? "#94a3b8"
+                    : "#168d32",
 
-              color: "white",
-              fontSize: "16px",
-              fontWeight: "bold",
+                color: "white",
+                fontSize:
+                  "16px",
+                fontWeight:
+                  "bold",
 
-              cursor:
-                saving
-                  ? "not-allowed"
-                  : "pointer",
-            }}
-          >
-            {saving
-              ? "Saving..."
-              : "Save Readings"}
-          </button>
+                cursor:
+                  saving
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              {saving
+                ? "Saving..."
+                : "Save Opening Readings"}
+            </button>
+          )}
+
+          {allSaved && (
+            <div
+              style={{
+                padding: "14px",
+                backgroundColor:
+                  "#ecfdf5",
+                color: "#166534",
+                borderRadius:
+                  "8px",
+                fontWeight:
+                  "bold",
+                textAlign:
+                  "center",
+              }}
+            >
+              All opening readings saved ✓
+            </div>
+          )}
         </>
       )}
     </div>
