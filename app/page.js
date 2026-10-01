@@ -39,18 +39,22 @@ export default function Home() {
         return;
       }
 
+      // Save complete login information for the dashboard
       sessionStorage.setItem(
         "teamLegendUser",
         JSON.stringify({
+          id: data.id,
           username: data.username || username.trim(),
+          name: data.name,
           role: data.role,
           shop: data.shop,
         })
       );
 
+      // Open dashboard after successful login
       window.location.href = "/dashboard";
     } catch (error) {
-      console.error(error);
+      console.error("Login error:", error);
       setMessage("Unable to connect. Please try again.");
       setLoading(false);
     }
