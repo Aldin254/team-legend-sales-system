@@ -6,6 +6,7 @@ import PlatformReadings from "./PlatformReadings";
 import ShiftIncomeEntries from "./ShiftIncomeEntries";
 import ShiftExpenses from "./ShiftExpenses";
 import ShiftSavings from "./ShiftSavings";
+import ClosingPlatformReadings from "./ClosingPlatformReadings";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -104,13 +105,11 @@ export default function Dashboard() {
 
         const response = await fetch(shiftUrl, {
           method: "GET",
-
           headers: {
             apikey: supabaseAnonKey,
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
-
           cache: "no-store",
         });
 
@@ -204,7 +203,6 @@ export default function Dashboard() {
       setMessage(
         "Please enter a valid Balance B/F."
       );
-
       return;
     }
 
@@ -212,17 +210,14 @@ export default function Dashboard() {
       setMessage(
         "Login session is missing. Please log in again."
       );
-
       return;
     }
 
     if (currentShift) {
       setShiftStarted(true);
-
       setMessage(
         "An open shift already exists."
       );
-
       return;
     }
 
@@ -329,7 +324,6 @@ export default function Dashboard() {
         `${supabaseUrl}/rest/v1/shifts`,
         {
           method: "POST",
-
           headers: {
             apikey: supabaseAnonKey,
             Authorization:
@@ -339,7 +333,6 @@ export default function Dashboard() {
             Prefer:
               "return=representation",
           },
-
           body: JSON.stringify(shiftData),
         }
       );
@@ -671,7 +664,6 @@ export default function Dashboard() {
                       setBalanceBF(
                         e.target.value
                       );
-
                       setMessage("");
                     }}
                     placeholder="Enter opening balance"
@@ -709,13 +701,16 @@ export default function Dashboard() {
                       padding: "14px",
                       border: "none",
                       borderRadius: "8px",
+
                       backgroundColor:
                         startingShift
                           ? "#94a3b8"
                           : "#168d32",
+
                       color: "white",
                       fontSize: "16px",
                       fontWeight: "bold",
+
                       cursor:
                         startingShift
                           ? "not-allowed"
@@ -799,7 +794,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* PLATFORM READINGS */}
+            {/* OPENING PLATFORM READINGS */}
 
             {shiftStarted && currentShift && (
               <PlatformReadings
@@ -830,6 +825,15 @@ export default function Dashboard() {
 
             {shiftStarted && currentShift && (
               <ShiftSavings
+                user={user}
+                currentShift={currentShift}
+              />
+            )}
+
+            {/* CLOSING PLATFORM READINGS */}
+
+            {shiftStarted && currentShift && (
+              <ClosingPlatformReadings
                 user={user}
                 currentShift={currentShift}
               />
