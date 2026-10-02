@@ -10,7 +10,6 @@ export default function PlatformReadings24Hour({
 }) {
   const [platforms, setPlatforms] = useState([]);
   const [rows, setRows] = useState({});
-
   const [values, setValues] = useState({});
 
   const [loading, setLoading] = useState(true);
@@ -355,7 +354,7 @@ export default function PlatformReadings24Hour({
       return;
     }
 
-    // TABLE must never receive a midnight reading.
+    // TABLE never receives a midnight reading.
     const stagePlatforms =
       readingKind ===
       "MIDNIGHT_CLOSE"
@@ -446,6 +445,7 @@ export default function PlatformReadings24Hour({
           value:
             numericValue,
           values,
+          shiftName,
         });
 
       if (
@@ -1266,6 +1266,7 @@ function validateReading({
   readingKind,
   value,
   values,
+  shiftName,
 }) {
   const platformValues =
     values[
@@ -1292,16 +1293,47 @@ function validateReading({
       platformValues.MIDNIGHT_CLOSE
     );
 
+  // ==================================================
+  // SHIFT 1 - 9 PM HANDOVER
+  // Must be >= 9 AM opening.
+  // ==================================================
+
   if (
+    shiftName ===
+      "SHIFT 1" &&
     readingKind ===
       "HANDOVER_9PM" &&
     opening !== null &&
     value < opening
   ) {
-    return `${platform.platform_name} 9 PM reading cannot be lower than its opening reading of ${opening}.`;
+    return `${platform.platform_name} 9 PM reading cannot be lower than its 9 AM opening reading of ${opening}.`;
   }
 
+  // ==================================================
+  // SHIFT 2 - 11:59 PM CLOSE
+  //
+  // SHIFT 2 receives the 9 PM figure as OPENING.
+  // Therefore MIDNIGHT_CLOSE must be compared to
+  // OPENING, not HANDOVER_9PM.
+  // TABLE never reaches this stage.
+  // ==================================================
+
   if (
+    shiftName ===
+      "SHIFT 2" &&
+    readingKind ===
+      "MIDNIGHT_CLOSE" &&
+    opening !== null &&
+    value < opening
+  ) {
+    return `${platform.platform_name} 11:59 PM reading cannot be lower than its 9 PM opening reading of ${opening}.`;
+  }
+
+  // Defensive fallback for any future use where
+  // HANDOVER_9PM exists in the same shift.
+  if (
+    shiftName !==
+      "SHIFT 2" &&
     readingKind ===
       "MIDNIGHT_CLOSE" &&
     handover !== null &&
@@ -1309,6 +1341,12 @@ function validateReading({
   ) {
     return `${platform.platform_name} 11:59 PM reading cannot be lower than its 9 PM reading of ${handover}.`;
   }
+
+  // ==================================================
+  // TABLE - SHIFT 2 9 AM
+  //
+  // TABLE is continuous. It cannot go backwards.
+  // ==================================================
 
   if (
     readingKind ===
@@ -1320,12 +1358,17 @@ function validateReading({
     return `TABLE 9 AM handover cannot be lower than its opening reading of ${opening}.`;
   }
 
-  // Non-TABLE CLOSING_9AM is allowed
-  // to be lower than the previous night's
-  // values because those platforms reset
-  // to zero at midnight.
+  // ==================================================
+  // RESETTABLE PLATFORMS - SHIFT 2 9 AM
+  //
+  // Midnight reading must already exist.
+  // The 9 AM reading may be lower than the previous
+  // night because the platform reset to 0 at midnight.
+  // ==================================================
 
   if (
+    shiftName ===
+      "SHIFT 2" &&
     readingKind ===
       "CLOSING_9AM" &&
     !table &&
@@ -1363,6 +1406,12 @@ function calculateShiftOutput({
           ?.reading_value
       );
 
+    // ==============================================
+    // SHIFT 1
+    //
+    // 9 AM -> 9 PM
+    // ==============================================
+
     if (
       shiftName ===
       "SHIFT 1"
@@ -1388,6 +1437,10 @@ function calculateShiftOutput({
       continue;
     }
 
+    // ==============================================
+    // SHIFT 2
+    // ==============================================
+
     if (
       shiftName ===
       "SHIFT 2"
@@ -1398,6 +1451,13 @@ function calculateShiftOutput({
             .CLOSING_9AM
             ?.reading_value
         );
+
+      // ------------------------------------------
+      // TABLE
+      //
+      // Continuous:
+      // 9 PM opening -> next 9 AM closing
+      // ------------------------------------------
 
       if (
         isTable(
@@ -1419,6 +1479,16 @@ function calculateShiftOutput({
         continue;
       }
 
+      // ------------------------------------------
+      // RESETTABLE PLATFORM
+      //
+      // 9 PM -> 11:59 PM
+      // +
+      // 12 AM -> 9 AM
+      //
+      // At midnight counter resets to 0.
+      // ------------------------------------------
+
       const midnight =
         numericOrNull(
           platformRows
@@ -1433,10 +1503,6 @@ function calculateShiftOutput({
         midnight >=
           opening
       ) {
-        // Shift 2:
-        // 9PM -> 11:59PM
-        // plus
-        // 12AM -> 9AM from zero.
         total +=
           midnight -
           opening +
