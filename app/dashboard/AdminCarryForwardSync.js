@@ -50,6 +50,39 @@ export default function AdminCarryForwardSync({
     null;
 
   // ==================================================
+  // SHOP / SHIFT TYPE
+  // ==================================================
+
+  const shopType =
+    normalizeShopType(
+      selectedShop?.shop_type ||
+        selectedShift?.shop_type ||
+        ""
+    );
+
+  const shiftName =
+    normalizeShiftName(
+      selectedShift?.shift_name
+    );
+
+  const is24HourShop =
+    shopType === "24_HOUR" ||
+    shiftName === "SHIFT 1" ||
+    shiftName === "SHIFT 2";
+
+  const sourceTableReadingKind =
+    getSourceTableReadingKind({
+      shopType,
+      shiftName,
+    });
+
+  const sourceTableReadingLabel =
+    getSourceTableReadingLabel({
+      shopType,
+      shiftName,
+    });
+
+  // ==================================================
   // HEADERS
   // ==================================================
 
@@ -313,7 +346,16 @@ export default function AdminCarryForwardSync({
           }
 
           // ==========================================
-          // 3. CLOSED SHIFT TABLE CLOSING
+          // 3. CLOSED SHIFT TABLE HANDOVER/CLOSING
+          //
+          // 12 HOUR:
+          // CLOSING
+          //
+          // 24 HOUR SHIFT 1:
+          // HANDOVER_9PM
+          //
+          // 24 HOUR SHIFT 2:
+          // CLOSING_9AM
           // ==========================================
 
           const sourceTableResponse =
@@ -325,7 +367,9 @@ export default function AdminCarryForwardSync({
                 `&platform_id=eq.${encodeURIComponent(
                   table.id
                 )}` +
-                `&reading_kind=eq.CLOSING` +
+                `&reading_kind=eq.${encodeURIComponent(
+                  sourceTableReadingKind
+                )}` +
                 `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
                 `&order=recorded_at.desc` +
                 `&limit=1`,
@@ -351,7 +395,7 @@ export default function AdminCarryForwardSync({
             throw new Error(
               sourceTableResult?.message ||
                 sourceTableResult?.details ||
-                "Unable to load previous TABLE closing."
+                `Unable to load previous TABLE ${sourceTableReadingLabel}.`
             );
           }
 
@@ -460,6 +504,8 @@ export default function AdminCarryForwardSync({
         supabaseAnonKey,
         accessToken,
         authHeaders,
+        sourceTableReadingKind,
+        sourceTableReadingLabel,
       ]
     );
 
@@ -547,7 +593,7 @@ export default function AdminCarryForwardSync({
       null
     ) {
       setMessage(
-        "The selected closed shift has no TABLE Closing reading. Correct TABLE Closing first."
+        `The selected closed shift has no TABLE ${sourceTableReadingLabel} reading. Correct the TABLE reading first.`
       );
 
       setMessageType(
@@ -604,10 +650,15 @@ export default function AdminCarryForwardSync({
           `Closing Balance: KES ${money(
             sourceClosingBalance
           )}\n` +
-          `Next Balance B/F: KES ${money(
-            nextOpeningBalance
-          )}\n\n` +
-          `TABLE Closing: ${money(
+          `Next Balance B/F: ${
+            nextOpeningBalance ===
+            null
+              ? "MISSING"
+              : `KES ${money(
+                  nextOpeningBalance
+                )}`
+          }\n\n` +
+          `TABLE ${sourceTableReadingLabel}: ${money(
             sourceTableValue
           )}\n` +
           `Next TABLE Opening: ${
@@ -838,6 +889,9 @@ export default function AdminCarryForwardSync({
                 source_shift_id:
                   selectedShift.id,
 
+                source_reading_kind:
+                  sourceTableReadingKind,
+
                 correction_reason:
                   cleanReason,
               },
@@ -952,6 +1006,9 @@ export default function AdminCarryForwardSync({
                 source_shift_id:
                   selectedShift.id,
 
+                source_reading_kind:
+                  sourceTableReadingKind,
+
                 correction_reason:
                   cleanReason,
               },
@@ -988,6 +1045,9 @@ export default function AdminCarryForwardSync({
             source_table_closing:
               sourceTableValue,
 
+            source_table_reading_kind:
+              sourceTableReadingKind,
+
             next_shift_id:
               nextShift.id,
 
@@ -1007,6 +1067,9 @@ export default function AdminCarryForwardSync({
 
             source_table_closing:
               sourceTableValue,
+
+            source_table_reading_kind:
+              sourceTableReadingKind,
 
             next_shift_id:
               nextShift.id,
@@ -1228,7 +1291,9 @@ export default function AdminCarryForwardSync({
 
           <div>
             <small>
-              TABLE CLOSING
+              {is24HourShop
+                ? `TABLE ${sourceTableReadingLabel.toUpperCase()}`
+                : "TABLE CLOSING"}
             </small>
 
             <strong>
@@ -1394,8 +1459,9 @@ export default function AdminCarryForwardSync({
                 tableMatches && (
                   <div style={successNoticeStyle}>
                     Carry-forward is correct. Closing Balance
-                    matches the next Balance B/F, and TABLE
-                    Closing matches the next TABLE Opening.
+                    matches the next Balance B/F, and the
+                    correct TABLE handover reading matches
+                    the next TABLE Opening.
                   </div>
                 )}
 
@@ -1470,9 +1536,9 @@ export default function AdminCarryForwardSync({
         )}
 
         <div style={footerNoticeStyle}>
-          Closing Balance → next Balance B/F. TABLE Closing
-          → next TABLE Opening. Only an OPEN following shift
-          can be synchronized automatically.
+          Closing Balance → next Balance B/F. TABLE handover
+          reading → next TABLE Opening. Only an OPEN following
+          shift can be synchronized automatically.
         </div>
       </div>
     </section>
@@ -1518,6 +1584,147 @@ function ComparisonRow({
       </div>
     </div>
   );
+}
+
+// ==================================================
+// TABLE READING RULES
+// ==================================================
+
+function getSourceTableReadingKind({
+  shopType,
+  shiftName,
+}) {
+  const normalizedShopType =
+    normalizeShopType(
+      shopType
+    );
+
+  const normalizedShift =
+    normalizeShiftName(
+      shiftName
+    );
+
+  if (
+    normalizedShopType ===
+      "24_HOUR" ||
+    normalizedShift ===
+      "SHIFT 1" ||
+    normalizedShift ===
+      "SHIFT 2"
+  ) {
+    if (
+      normalizedShift ===
+      "SHIFT 1"
+    ) {
+      return "HANDOVER_9PM";
+    }
+
+    if (
+      normalizedShift ===
+      "SHIFT 2"
+    ) {
+      return "CLOSING_9AM";
+    }
+  }
+
+  return "CLOSING";
+}
+
+function getSourceTableReadingLabel({
+  shopType,
+  shiftName,
+}) {
+  const readingKind =
+    getSourceTableReadingKind({
+      shopType,
+      shiftName,
+    });
+
+  if (
+    readingKind ===
+    "HANDOVER_9PM"
+  ) {
+    return "9 PM Handover";
+  }
+
+  if (
+    readingKind ===
+    "CLOSING_9AM"
+  ) {
+    return "9 AM Handover";
+  }
+
+  return "Closing";
+}
+
+function normalizeShopType(
+  value
+) {
+  const text =
+    String(
+      value || ""
+    )
+      .trim()
+      .toUpperCase()
+      .replace(
+        /[\s-]+/g,
+        "_"
+      );
+
+  if (
+    text ===
+      "24HOUR" ||
+    text ===
+      "24_HOUR"
+  ) {
+    return "24_HOUR";
+  }
+
+  if (
+    text ===
+      "12HOUR" ||
+    text ===
+      "12_HOUR"
+  ) {
+    return "12_HOUR";
+  }
+
+  return text;
+}
+
+function normalizeShiftName(
+  value
+) {
+  const text =
+    String(
+      value || ""
+    )
+      .trim()
+      .toUpperCase()
+      .replace(
+        /[_-]+/g,
+        " "
+      )
+      .replace(
+        /\s+/g,
+        " "
+      );
+
+  if (
+    text === "SHIFT 1" ||
+    text === "SHIFT1"
+  ) {
+    return "SHIFT 1";
+  }
+
+  if (
+    text === "SHIFT 2" ||
+    text === "SHIFT2"
+  ) {
+    return "SHIFT 2";
+  }
+
+  return text;
 }
 
 // ==================================================
