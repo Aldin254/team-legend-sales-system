@@ -11,6 +11,7 @@ import AdminPlatformCorrections from "./AdminPlatformCorrections";
 import AdminExpenseCorrections from "./AdminExpenseCorrections";
 import AdminSavingsCorrections from "./AdminSavingsCorrections";
 import AdminAuditLogPanel from "./AdminAuditLogPanel";
+import AdminCarryForwardSync from "./AdminCarryForwardSync";
 export default function AdminShiftCorrectionsPanel({
   user,
 }) {
@@ -978,6 +979,12 @@ export default function AdminShiftCorrectionsPanel({
   user={user}
   selectedShift={selectedShift}
   selectedShop={selectedShop}
+/>
+    <AdminCarryForwardSync
+  user={user}
+  selectedShift={selectedShift}
+  selectedShop={selectedShop}
+  onChanged={loadShifts}
 />
             {/* CORRECTION FIELDS */}
 
