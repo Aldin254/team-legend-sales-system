@@ -27,6 +27,10 @@ export default function Cashier24HourReport({
   const [incomeEntries, setIncomeEntries] = useState([]);
   const [expenses, setExpenses] = useState([]);
 
+  // Used to tell CloseShift24Hour to reload
+  // its shift + platform reading information.
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const [floatInputs, setFloatInputs] = useState({
     company: ["", "", ""],
     mshwari: ["", "", ""],
@@ -341,6 +345,19 @@ export default function Cashier24HourReport({
   );
 
   // ==================================================
+  // REFRESH REPORT + CLOSE SHIFT PANEL
+  // ==================================================
+
+  const refresh24HourReport =
+    useCallback(async () => {
+      await loadReport();
+
+      setRefreshKey(
+        (previous) => previous + 1
+      );
+    }, [loadReport]);
+
+  // ==================================================
   // AUTO REFRESH
   // ==================================================
 
@@ -629,7 +646,7 @@ export default function Cashier24HourReport({
         "success"
       );
 
-      await loadReport();
+      await refresh24HourReport();
     } catch (error) {
       setMessage(
         error?.message ||
@@ -845,7 +862,7 @@ export default function Cashier24HourReport({
         "success"
       );
 
-      await loadReport();
+      await refresh24HourReport();
     } catch (error) {
       setMessage(
         error?.message ||
@@ -1472,7 +1489,7 @@ export default function Cashier24HourReport({
               currentShift
             }
             onReadingsChanged={
-              loadReport
+              refresh24HourReport
             }
           />
 
@@ -1549,6 +1566,9 @@ export default function Cashier24HourReport({
             currentShift={
               shift ||
               currentShift
+            }
+            refreshKey={
+              refreshKey
             }
             onShiftClosed={() => {
               router.refresh();
