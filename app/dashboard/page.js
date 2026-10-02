@@ -149,10 +149,12 @@ export default function DashboardPage() {
               `&limit=1`,
             {
               method: "GET",
+
               headers: authHeaders(
                 supabaseAnonKey,
                 accessToken
               ),
+
               cache: "no-store",
             }
           );
@@ -174,7 +176,46 @@ export default function DashboardPage() {
             ? openShiftResult[0]
             : null;
 
+        // ==========================================
+        // EXISTING OPEN SHIFT
+        // ==========================================
+
         if (openShift) {
+          if (cancelled) {
+            return;
+          }
+
+          // ----------------------------------------
+          // REPAIR EXISTING 12-HOUR OPENINGS
+          //
+          // This covers shifts that were created
+          // before automatic opening creation.
+          //
+          // Existing readings are NEVER overwritten.
+          //
+          // Missing non-TABLE = 0
+          // Missing TABLE =
+          // previous CLOSED shift TABLE closing.
+          // ----------------------------------------
+
+          if (
+            loadedShopType ===
+            "12_HOUR"
+          ) {
+            await ensure12HourOpeningReadings({
+              shopId,
+
+              shiftId:
+                openShift.id,
+
+              cashierId,
+
+              accessToken,
+              supabaseUrl,
+              supabaseAnonKey,
+            });
+          }
+
           if (cancelled) {
             return;
           }
@@ -432,10 +473,12 @@ export default function DashboardPage() {
             `&limit=1`,
           {
             method: "GET",
+
             headers: authHeaders(
               supabaseAnonKey,
               accessToken
             ),
+
             cache: "no-store",
           }
         );
@@ -468,6 +511,26 @@ export default function DashboardPage() {
           existingCashier ===
           String(cashierId)
         ) {
+          // Repair existing 12-hour shift before
+          // displaying it.
+          if (
+            loadedShopType ===
+            "12_HOUR"
+          ) {
+            await ensure12HourOpeningReadings({
+              shopId,
+
+              shiftId:
+                existingOpen.id,
+
+              cashierId,
+
+              accessToken,
+              supabaseUrl,
+              supabaseAnonKey,
+            });
+          }
+
           setCurrentShift(
             existingOpen
           );
@@ -504,9 +567,10 @@ export default function DashboardPage() {
       let openingBalance;
 
       if (previousShift) {
-        // IMPORTANT:
-        // B/F always comes from previous
+        // B/F ALWAYS comes from previous
         // shift Closing Balance.
+        //
+        // Zero is valid.
         openingBalance =
           Number(
             previousShift.closing_balance ??
@@ -565,8 +629,7 @@ export default function DashboardPage() {
         // NON-TABLE = 0
         // TABLE = PREVIOUS TABLE CLOSING
         //
-        // A PREVIOUS TABLE VALUE OF ZERO
-        // REMAINS ZERO.
+        // Previous TABLE value 0 remains 0.
         // ----------------------------------------
 
         const openingReadings =
@@ -619,7 +682,7 @@ export default function DashboardPage() {
               status:
                 "OPEN",
 
-              // B/F = PREVIOUS CLOSING BALANCE
+              // B/F = previous Closing Balance.
               opening_balance:
                 roundMoney(
                   openingBalance
@@ -654,7 +717,7 @@ export default function DashboardPage() {
           });
 
         // ----------------------------------------
-        // SAVE ALL AUTOMATIC OPENING READINGS
+        // SAVE ALL AUTOMATIC OPENINGS
         // ----------------------------------------
 
         await insert12HourOpeningReadings({
@@ -743,10 +806,6 @@ export default function DashboardPage() {
             });
         }
 
-        // ----------------------------------------
-        // CREATE SHIFT
-        // ----------------------------------------
-
         const now =
           new Date();
 
@@ -815,10 +874,6 @@ export default function DashboardPage() {
             supabaseUrl,
             supabaseAnonKey,
           });
-
-        // ----------------------------------------
-        // COPY PLATFORM HANDOVER INTO OPENING
-        // ----------------------------------------
 
         if (
           carryForwardReadings.length >
@@ -1283,6 +1338,338 @@ async function getLatestClosedShift({
 }
 
 // ==================================================
+// REPAIR EXISTING 12-HOUR OPEN SHIFT OPENINGS
+// ==================================================
+
+async function ensure12HourOpeningReadings({
+  shopId,
+  shiftId,
+  cashierId,
+  accessToken,
+  supabaseUrl,
+  supabaseAnonKey,
+}) {
+  if (
+    !shopId ||
+    !shiftId ||
+    !cashierId
+  ) {
+    throw new Error(
+      "Unable to prepare automatic opening readings."
+    );
+  }
+
+  // ----------------------------------------------
+  // 1. LOAD ACTIVE PLATFORMS
+  // ----------------------------------------------
+
+  const platformResponse =
+    await fetch(
+      `${supabaseUrl}/rest/v1/shop_platforms` +
+        `?shop_id=eq.${encodeURIComponent(shopId)}` +
+        `&is_active=eq.true` +
+        `&select=id,platform_name,display_order` +
+        `&order=display_order.asc`,
+      {
+        method: "GET",
+
+        headers: authHeaders(
+          supabaseAnonKey,
+          accessToken
+        ),
+
+        cache: "no-store",
+      }
+    );
+
+  const platformResult =
+    await safeJson(
+      platformResponse
+    );
+
+  if (!platformResponse.ok) {
+    throw new Error(
+      platformResult?.message ||
+        platformResult?.details ||
+        "Unable to load shop platforms."
+    );
+  }
+
+  const platforms =
+    Array.isArray(
+      platformResult
+    )
+      ? platformResult
+      : [];
+
+  if (
+    platforms.length === 0
+  ) {
+    throw new Error(
+      "No active platforms were found for this shop."
+    );
+  }
+
+  // ----------------------------------------------
+  // 2. LOAD EXISTING OPENINGS
+  // ----------------------------------------------
+
+  const existingResponse =
+    await fetch(
+      `${supabaseUrl}/rest/v1/platform_readings` +
+        `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+        `&reading_kind=eq.OPENING` +
+        `&select=id,platform_id,reading_value,recorded_at`,
+      {
+        method: "GET",
+
+        headers: authHeaders(
+          supabaseAnonKey,
+          accessToken
+        ),
+
+        cache: "no-store",
+      }
+    );
+
+  const existingResult =
+    await safeJson(
+      existingResponse
+    );
+
+  if (!existingResponse.ok) {
+    throw new Error(
+      existingResult?.message ||
+        existingResult?.details ||
+        "Unable to check automatic opening readings."
+    );
+  }
+
+  const existingReadings =
+    Array.isArray(
+      existingResult
+    )
+      ? existingResult
+      : [];
+
+  const existingPlatformIds =
+    new Set(
+      existingReadings.map(
+        (reading) =>
+          reading.platform_id
+      )
+    );
+
+  // ----------------------------------------------
+  // 3. FIND ONLY MISSING PLATFORMS
+  // ----------------------------------------------
+
+  const missingPlatforms =
+    platforms.filter(
+      (platform) =>
+        !existingPlatformIds.has(
+          platform.id
+        )
+    );
+
+  if (
+    missingPlatforms.length === 0
+  ) {
+    return;
+  }
+
+  const missingTable =
+    missingPlatforms.find(
+      (platform) =>
+        isTablePlatform(
+          platform.platform_name
+        )
+    ) || null;
+
+  let tableOpening = 0;
+
+  // ----------------------------------------------
+  // 4. TABLE COMES FROM PREVIOUS CLOSED SHIFT
+  // ----------------------------------------------
+
+  if (missingTable) {
+    const previousShift =
+      await getLatestClosedShift({
+        shopId,
+        accessToken,
+        supabaseUrl,
+        supabaseAnonKey,
+      });
+
+    if (previousShift?.id) {
+      const tableResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/platform_readings` +
+            `?shift_id=eq.${encodeURIComponent(previousShift.id)}` +
+            `&platform_id=eq.${encodeURIComponent(missingTable.id)}` +
+            `&reading_kind=eq.CLOSING` +
+            `&select=id,platform_id,reading_value,recorded_at` +
+            `&order=recorded_at.desc` +
+            `&limit=1`,
+          {
+            method: "GET",
+
+            headers: authHeaders(
+              supabaseAnonKey,
+              accessToken
+            ),
+
+            cache: "no-store",
+          }
+        );
+
+      const tableResult =
+        await safeJson(
+          tableResponse
+        );
+
+      if (!tableResponse.ok) {
+        throw new Error(
+          tableResult?.message ||
+            tableResult?.details ||
+            "Unable to load previous TABLE closing."
+        );
+      }
+
+      if (
+        !Array.isArray(
+          tableResult
+        ) ||
+        tableResult.length === 0
+      ) {
+        throw new Error(
+          "Previous shift TABLE closing is missing. Contact Admin."
+        );
+      }
+
+      const rawValue =
+        tableResult[0]
+          ?.reading_value;
+
+      if (
+        rawValue === null ||
+        rawValue === undefined ||
+        rawValue === ""
+      ) {
+        throw new Error(
+          "Previous shift TABLE closing is missing. Contact Admin."
+        );
+      }
+
+      const numericValue =
+        Number(rawValue);
+
+      if (
+        Number.isNaN(
+          numericValue
+        ) ||
+        numericValue < 0
+      ) {
+        throw new Error(
+          "Previous shift TABLE closing is invalid. Contact Admin."
+        );
+      }
+
+      // Zero remains zero.
+      tableOpening =
+        roundMoney(
+          numericValue
+        );
+    } else {
+      // First-ever shift.
+      tableOpening = 0;
+    }
+  }
+
+  // ----------------------------------------------
+  // 5. BUILD ONLY MISSING OPENINGS
+  //
+  // NON-TABLE = 0
+  // TABLE = previous TABLE closing
+  // ----------------------------------------------
+
+  const recordedAt =
+    new Date().toISOString();
+
+  const payload =
+    missingPlatforms.map(
+      (platform) => ({
+        shift_id:
+          shiftId,
+
+        platform_id:
+          platform.id,
+
+        reading_kind:
+          "OPENING",
+
+        reading_value:
+          isTablePlatform(
+            platform.platform_name
+          )
+            ? tableOpening
+            : 0,
+
+        recorded_at:
+          recordedAt,
+
+        recorded_by:
+          cashierId,
+      })
+    );
+
+  // ----------------------------------------------
+  // 6. INSERT ONLY MISSING ROWS
+  // ----------------------------------------------
+
+  const insertResponse =
+    await fetch(
+      `${supabaseUrl}/rest/v1/platform_readings`,
+      {
+        method: "POST",
+
+        headers: {
+          apikey:
+            supabaseAnonKey,
+
+          Authorization:
+            `Bearer ${accessToken}`,
+
+          "Content-Type":
+            "application/json",
+
+          Prefer:
+            "return=minimal",
+        },
+
+        body:
+          JSON.stringify(
+            payload
+          ),
+      }
+    );
+
+  if (!insertResponse.ok) {
+    const insertResult =
+      await safeJson(
+        insertResponse
+      );
+
+    throw new Error(
+      insertResult?.message ||
+        insertResult?.details ||
+        insertResult?.hint ||
+        "Unable to create missing automatic opening readings."
+    );
+  }
+}
+
+// ==================================================
 // 12-HOUR AUTOMATIC PLATFORM OPENINGS
 // ==================================================
 
@@ -1293,10 +1680,6 @@ async function get12HourOpeningReadings({
   supabaseUrl,
   supabaseAnonKey,
 }) {
-  // ----------------------------------------------
-  // LOAD ALL ACTIVE PLATFORMS
-  // ----------------------------------------------
-
   const platformResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/shop_platforms` +
@@ -1342,10 +1725,6 @@ async function get12HourOpeningReadings({
     );
   }
 
-  // ----------------------------------------------
-  // FIND TABLE IF THIS SHOP HAS ONE
-  // ----------------------------------------------
-
   const tablePlatform =
     platforms.find(
       (platform) =>
@@ -1354,12 +1733,7 @@ async function get12HourOpeningReadings({
         )
     ) || null;
 
-  // Zero is a VALID value.
   let tableOpening = 0;
-
-  // ----------------------------------------------
-  // PREVIOUS TABLE CLOSING
-  // ----------------------------------------------
 
   if (
     tablePlatform &&
@@ -1399,46 +1773,54 @@ async function get12HourOpeningReadings({
       );
     }
 
+    // Previous shift exists and this shop has TABLE.
+    // Therefore TABLE closing must exist.
+    //
+    // A saved value of ZERO is valid.
     if (
-      Array.isArray(readingResult) &&
-      readingResult.length > 0
+      !Array.isArray(
+        readingResult
+      ) ||
+      readingResult.length === 0
     ) {
-      const rawValue =
-        readingResult[0]
-          ?.reading_value;
-
-      // Do not use:
-      // rawValue || anotherValue
-      //
-      // because zero is a real TABLE reading.
-
-      if (
-        rawValue !== null &&
-        rawValue !== undefined &&
-        rawValue !== ""
-      ) {
-        const numericValue =
-          Number(rawValue);
-
-        if (
-          !Number.isNaN(numericValue) &&
-          numericValue >= 0
-        ) {
-          tableOpening =
-            roundMoney(
-              numericValue
-            );
-        }
-      }
+      throw new Error(
+        "Previous shift TABLE closing is missing. Contact Admin."
+      );
     }
-  }
 
-  // ----------------------------------------------
-  // BUILD OPENINGS
-  //
-  // TABLE = previous TABLE closing
-  // EVERYTHING ELSE = 0
-  // ----------------------------------------------
+    const rawValue =
+      readingResult[0]
+        ?.reading_value;
+
+    if (
+      rawValue === null ||
+      rawValue === undefined ||
+      rawValue === ""
+    ) {
+      throw new Error(
+        "Previous shift TABLE closing is missing. Contact Admin."
+      );
+    }
+
+    const numericValue =
+      Number(rawValue);
+
+    if (
+      Number.isNaN(
+        numericValue
+      ) ||
+      numericValue < 0
+    ) {
+      throw new Error(
+        "Previous shift TABLE closing is invalid. Contact Admin."
+      );
+    }
+
+    tableOpening =
+      roundMoney(
+        numericValue
+      );
+  }
 
   return platforms.map(
     (platform) => ({
@@ -1492,7 +1874,6 @@ async function insert12HourOpeningReadings({
         reading_kind:
           "OPENING",
 
-        // Zero must remain zero.
         reading_value:
           roundMoney(
             reading.value
@@ -1545,7 +1926,6 @@ async function insert12HourOpeningReadings({
     );
   }
 }
-
 // ==================================================
 // 24-HOUR PLATFORM CARRY FORWARD
 // ==================================================
@@ -1701,21 +2081,51 @@ async function get24HourCarryForwardReadings({
   }
 
   return platforms.map(
-    (platform) => ({
-      platformId:
-        platform.id,
+    (platform) => {
+      const reading =
+        readingMap.get(
+          platform.id
+        );
 
-      platformName:
-        platform.platform_name,
+      const rawValue =
+        reading?.reading_value;
 
-      value:
-        Number(
-          readingMap.get(
-            platform.id
-          )?.reading_value ??
-            0
-        ),
-    })
+      if (
+        rawValue === null ||
+        rawValue === undefined ||
+        rawValue === ""
+      ) {
+        throw new Error(
+          `Previous ${previousName} has an invalid ${requiredKind} reading for ${platform.platform_name}.`
+        );
+      }
+
+      const numericValue =
+        Number(rawValue);
+
+      if (
+        Number.isNaN(
+          numericValue
+        ) ||
+        numericValue < 0
+      ) {
+        throw new Error(
+          `Previous ${previousName} has an invalid ${requiredKind} reading for ${platform.platform_name}.`
+        );
+      }
+
+      return {
+        platformId:
+          platform.id,
+
+        platformName:
+          platform.platform_name,
+
+        // Zero remains zero.
+        value:
+          numericValue,
+      };
+    }
   );
 }
 
@@ -1750,7 +2160,9 @@ async function createShift({
         },
 
         body:
-          JSON.stringify(shift),
+          JSON.stringify(
+            shift
+          ),
       }
     );
 
