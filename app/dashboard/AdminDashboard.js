@@ -7,6 +7,7 @@ import AdminShiftOverridePanel from "./AdminShiftOverridePanel";
 import AdminShiftCorrectionsPanel from "./AdminShiftCorrectionsPanel";
 import AdminReportsPanel from "./AdminReportsPanel";
 import AdminUserAccountsPanel from "./AdminUserAccountsPanel";
+import AdminShopManagementPanel from "./AdminShopManagementPanel";
 
 export default function AdminDashboard({
   user,
@@ -521,8 +522,12 @@ function SettingsPanel({
           system expands. Existing sales and correction
           functions are unaffected.
         </div>
-      </div>
-            <AdminUserAccountsPanel user={user} />
+     </div>
+
+      <AdminShopManagementPanel user={user} />
+
+      <AdminUserAccountsPanel user={user} />
+
     </>
   );
 }
