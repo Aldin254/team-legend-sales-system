@@ -10,6 +10,7 @@ import AdminFloatCorrections from "./AdminFloatCorrections";
 import AdminPlatformCorrections from "./AdminPlatformCorrections";
 import AdminExpenseCorrections from "./AdminExpenseCorrections";
 import AdminSavingsCorrections from "./AdminSavingsCorrections";
+import AdminAuditLogPanel from "./AdminAuditLogPanel";
 export default function AdminShiftCorrectionsPanel({
   user,
 }) {
@@ -1208,6 +1209,11 @@ export default function AdminShiftCorrectionsPanel({
               Every saved correction records the previous values, new values,
               Admin profile, shop, shift and correction reason in the audit log.
             </div>
+                <AdminAuditLogPanel
+  user={user}
+  selectedShift={selectedShift}
+  selectedShop={selectedShop}
+/>
           </>
         )}
       </div>
