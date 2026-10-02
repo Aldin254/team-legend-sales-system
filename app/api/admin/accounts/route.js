@@ -258,17 +258,24 @@ async function requireAdmin(
     );
 
   if (
-    !profileResponse.ok ||
-    !Array.isArray(
-      profiles
-    ) ||
-    profiles.length === 0
-  ) {
-    throw new ApiError(
-      "Admin profile could not be verified.",
-      403
-    );
-  }
+  !profileResponse.ok ||
+  !Array.isArray(profiles) ||
+  profiles.length === 0
+) {
+  console.error(
+    "ADMIN PROFILE VERIFY FAILED:",
+    {
+      status: profileResponse.status,
+      profiles,
+      auth_user_id: authUser.id,
+    }
+  );
+
+  throw new ApiError(
+    `Admin profile could not be verified. Status: ${profileResponse.status}`,
+    403
+  );
+}
 
   const adminProfile =
     profiles[0];
