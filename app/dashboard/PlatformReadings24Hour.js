@@ -7,6 +7,7 @@ const TABLE_NAME = "TABLE";
 export default function PlatformReadings24Hour({
   user,
   currentShift,
+  onReadingsChanged,
 }) {
   const [platforms, setPlatforms] = useState([]);
   const [rows, setRows] = useState({});
@@ -584,7 +585,7 @@ export default function PlatformReadings24Hour({
         totalOutput
       );
 
-      setMessage(
+     setMessage(
         `${stageLabel(
           readingKind
         )} readings saved and locked successfully.`
@@ -593,6 +594,15 @@ export default function PlatformReadings24Hour({
       setMessageType(
         "success"
       );
+
+      // Tell the parent report that platform readings
+      // and shift totals have changed.
+      if (
+        typeof onReadingsChanged ===
+        "function"
+      ) {
+        await onReadingsChanged();
+      }
     } catch (error) {
       console.error(
         "24H READING SAVE ERROR:",
