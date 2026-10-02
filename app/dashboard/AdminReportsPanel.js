@@ -10,34 +10,57 @@ import {
 export default function AdminReportsPanel({
   user,
 }) {
-  const [shops, setShops] = useState([]);
-  const [shifts, setShifts] = useState([]);
+  const [shops, setShops] =
+    useState([]);
 
-  const [selectedShopId, setSelectedShopId] =
-    useState("");
+  const [shifts, setShifts] =
+    useState([]);
+
+  const [
+    selectedShopId,
+    setSelectedShopId,
+  ] = useState("");
 
   const [
     selectedBusinessDate,
     setSelectedBusinessDate,
-  ] = useState("");
+  ] = useState("ALL");
+
+  const [
+    selectedCashier,
+    setSelectedCashier,
+  ] = useState("ALL");
+
+  const [
+    selectedStatus,
+    setSelectedStatus,
+  ] = useState("ALL");
 
   const [
     selectedShiftId,
     setSelectedShiftId,
   ] = useState("");
 
-  const [report, setReport] = useState(null);
+  const [report, setReport] =
+    useState(null);
 
-  const [loadingShops, setLoadingShops] =
-    useState(false);
+  const [
+    loadingShops,
+    setLoadingShops,
+  ] = useState(false);
 
-  const [loadingShifts, setLoadingShifts] =
-    useState(false);
+  const [
+    loadingShifts,
+    setLoadingShifts,
+  ] = useState(false);
 
-  const [loadingReport, setLoadingReport] =
-    useState(false);
+  const [
+    loadingReport,
+    setLoadingReport,
+  ] = useState(false);
 
-  const [message, setMessage] = useState("");
+  const [message, setMessage] =
+    useState("");
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -88,12 +111,12 @@ export default function AdminReportsPanel({
     ]);
 
   // ==================================================
-  // AVAILABLE BUSINESS DATES
+  // BUSINESS DATES
   // ==================================================
 
   const businessDates =
     useMemo(() => {
-      const dates = [
+      return [
         ...new Set(
           shifts
             .map(
@@ -102,9 +125,7 @@ export default function AdminReportsPanel({
             )
             .filter(Boolean)
         ),
-      ];
-
-      return dates.sort(
+      ].sort(
         (a, b) =>
           String(b).localeCompare(
             String(a)
@@ -113,28 +134,83 @@ export default function AdminReportsPanel({
     }, [shifts]);
 
   // ==================================================
-  // SHIFTS FOR SELECTED DATE
+  // CASHIERS
   // ==================================================
 
-  const dateShifts =
+  const cashiers =
     useMemo(() => {
-      if (!selectedBusinessDate) {
-        return [];
-      }
+      return [
+        ...new Set(
+          shifts
+            .map(
+              (shift) =>
+                String(
+                  shift.cashier_name ||
+                    ""
+                ).trim()
+            )
+            .filter(Boolean)
+        ),
+      ].sort((a, b) =>
+        a.localeCompare(b)
+      );
+    }, [shifts]);
 
+  // ==================================================
+  // FILTERED SHIFTS
+  // ==================================================
+
+  const filteredShifts =
+    useMemo(() => {
       return shifts.filter(
-        (shift) =>
-          String(
-            shift.business_date ||
-              ""
-          ) ===
-          String(
-            selectedBusinessDate
-          )
+        (shift) => {
+          if (
+            selectedBusinessDate !==
+              "ALL" &&
+            String(
+              shift.business_date ||
+                ""
+            ) !==
+              String(
+                selectedBusinessDate
+              )
+          ) {
+            return false;
+          }
+
+          if (
+            selectedCashier !==
+              "ALL" &&
+            String(
+              shift.cashier_name ||
+                ""
+            ) !==
+              String(
+                selectedCashier
+              )
+          ) {
+            return false;
+          }
+
+          if (
+            selectedStatus !==
+              "ALL" &&
+            String(
+              shift.status || ""
+            ).toUpperCase() !==
+              selectedStatus
+          ) {
+            return false;
+          }
+
+          return true;
+        }
       );
     }, [
       shifts,
       selectedBusinessDate,
+      selectedCashier,
+      selectedStatus,
     ]);
 
   // ==================================================
@@ -152,7 +228,6 @@ export default function AdminReportsPanel({
           setMessage(
             "Database or login information is missing."
           );
-
           return;
         }
 
@@ -164,14 +239,11 @@ export default function AdminReportsPanel({
             await fetch(
               `${supabaseUrl}/rest/v1/shops` +
                 `?select=id,shop_name,shop_type,is_active,timezone` +
-                `&is_active=eq.true` +
                 `&order=shop_name.asc`,
               {
                 method: "GET",
-
                 headers:
                   authHeaders,
-
                 cache:
                   "no-store",
               }
@@ -202,7 +274,7 @@ export default function AdminReportsPanel({
           ) {
             setSelectedShopId(
               (current) => {
-                const stillExists =
+                const exists =
                   loaded.some(
                     (shop) =>
                       String(
@@ -213,11 +285,9 @@ export default function AdminReportsPanel({
                       )
                   );
 
-                if (stillExists) {
-                  return current;
-                }
-
-                return loaded[0].id;
+                return exists
+                  ? current
+                  : loaded[0].id;
               }
             );
           } else {
@@ -261,10 +331,8 @@ export default function AdminReportsPanel({
           !accessToken
         ) {
           setShifts([]);
-          setSelectedBusinessDate("");
           setSelectedShiftId("");
           setReport(null);
-
           return;
         }
 
@@ -287,13 +355,11 @@ export default function AdminReportsPanel({
                 `admin_manual_totals,admin_override_note,` +
                 `admin_override_at,admin_override_by` +
                 `&order=business_date.desc,opened_at.desc` +
-                `&limit=300`,
+                `&limit=500`,
               {
                 method: "GET",
-
                 headers:
                   authHeaders,
-
                 cache:
                   "no-store",
               }
@@ -322,10 +388,6 @@ export default function AdminReportsPanel({
           if (
             loaded.length === 0
           ) {
-            setSelectedBusinessDate(
-              ""
-            );
-
             setSelectedShiftId(
               ""
             );
@@ -356,6 +418,40 @@ export default function AdminReportsPanel({
     );
 
   // ==================================================
+  // FETCH JSON
+  // ==================================================
+
+  const fetchJson =
+    useCallback(
+      async (url) => {
+        const response =
+          await fetch(url, {
+            method: "GET",
+            headers:
+              authHeaders,
+            cache:
+              "no-store",
+          });
+
+        const result =
+          await safeJson(
+            response
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              "Unable to load report data."
+          );
+        }
+
+        return result;
+      },
+      [authHeaders]
+    );
+
+  // ==================================================
   // LOAD FULL REPORT
   // ==================================================
 
@@ -366,7 +462,6 @@ export default function AdminReportsPanel({
           !selectedShiftId ||
           !selectedShopId ||
           !supabaseUrl ||
-          !supabaseAnonKey ||
           !accessToken
         ) {
           setReport(null);
@@ -377,25 +472,6 @@ export default function AdminReportsPanel({
           setLoadingReport(true);
           setMessage("");
 
-          const shiftResponse =
-            await fetch(
-              `${supabaseUrl}/rest/v1/shifts` +
-                `?id=eq.${encodeURIComponent(
-                  selectedShiftId
-                )}` +
-                `&select=*` +
-                `&limit=1`,
-              {
-                method: "GET",
-
-                headers:
-                  authHeaders,
-
-                cache:
-                  "no-store",
-              }
-            );
-
           const [
             shiftResult,
             platformResult,
@@ -405,122 +481,62 @@ export default function AdminReportsPanel({
             savingsResult,
           ] =
             await Promise.all([
-              safeJson(
-                shiftResponse
+              fetchJson(
+                `${supabaseUrl}/rest/v1/shifts` +
+                  `?id=eq.${encodeURIComponent(
+                    selectedShiftId
+                  )}` +
+                  `&select=*` +
+                  `&limit=1`
               ),
 
-              fetch(
+              fetchJson(
                 `${supabaseUrl}/rest/v1/shop_platforms` +
                   `?shop_id=eq.${encodeURIComponent(
                     selectedShopId
                   )}` +
                   `&select=id,shop_id,platform_name,reading_type,display_order,is_active` +
-                  `&order=display_order.asc`,
-                {
-                  method: "GET",
-
-                  headers:
-                    authHeaders,
-
-                  cache:
-                    "no-store",
-                }
-              ).then(
-                safeJson
+                  `&order=display_order.asc`
               ),
 
-              fetch(
+              fetchJson(
                 `${supabaseUrl}/rest/v1/platform_readings` +
                   `?shift_id=eq.${encodeURIComponent(
                     selectedShiftId
                   )}` +
                   `&reading_kind=in.(OPENING,CLOSING)` +
                   `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
-                  `&order=recorded_at.asc`,
-                {
-                  method: "GET",
-
-                  headers:
-                    authHeaders,
-
-                  cache:
-                    "no-store",
-                }
-              ).then(
-                safeJson
+                  `&order=recorded_at.asc`
               ),
 
-              fetch(
+              fetchJson(
                 `${supabaseUrl}/rest/v1/shift_income_entries` +
                   `?shift_id=eq.${encodeURIComponent(
                     selectedShiftId
                   )}` +
                   `&entry_type=in.(COMPANY_FLOAT,MSHWARI_FLOAT)` +
                   `&select=id,shift_id,entry_type,description,amount,created_at` +
-                  `&order=created_at.asc`,
-                {
-                  method: "GET",
-
-                  headers:
-                    authHeaders,
-
-                  cache:
-                    "no-store",
-                }
-              ).then(
-                safeJson
+                  `&order=created_at.asc`
               ),
 
-              fetch(
+              fetchJson(
                 `${supabaseUrl}/rest/v1/expenses` +
                   `?shift_id=eq.${encodeURIComponent(
                     selectedShiftId
                   )}` +
                   `&select=id,shift_id,description,amount,created_at,created_by` +
-                  `&order=created_at.asc`,
-                {
-                  method: "GET",
-
-                  headers:
-                    authHeaders,
-
-                  cache:
-                    "no-store",
-                }
-              ).then(
-                safeJson
+                  `&order=created_at.asc`
               ),
 
-              fetch(
+              fetchJson(
                 `${supabaseUrl}/rest/v1/shift_savings` +
                   `?shift_id=eq.${encodeURIComponent(
                     selectedShiftId
                   )}` +
                   `&select=id,shift_id,description,amount,payment_status,created_at` +
-                  `&order=created_at.asc`,
-                {
-                  method: "GET",
-
-                  headers:
-                    authHeaders,
-
-                  cache:
-                    "no-store",
-                }
-              ).then(
-                safeJson
+                  `&order=created_at.asc`
               ),
             ]);
-
-          if (
-            !shiftResponse.ok
-          ) {
-            throw new Error(
-              shiftResult?.message ||
-                shiftResult?.details ||
-                "Unable to load selected shift."
-            );
-          }
 
           if (
             !Array.isArray(
@@ -572,10 +588,6 @@ export default function AdminReportsPanel({
               ? savingsResult
               : [];
 
-          // ========================================
-          // LATEST READING FOR EACH PLATFORM/KIND
-          // ========================================
-
           const readingMap = {};
 
           for (
@@ -588,37 +600,21 @@ export default function AdminReportsPanel({
             const existing =
               readingMap[key];
 
-            if (!existing) {
-              readingMap[key] =
-                reading;
-
-              continue;
-            }
-
-            const existingTime =
-              new Date(
-                existing.recorded_at ||
-                  0
-              ).getTime();
-
-            const currentTime =
+            if (
+              !existing ||
               new Date(
                 reading.recorded_at ||
                   0
-              ).getTime();
-
-            if (
-              currentTime >=
-              existingTime
+              ).getTime() >=
+                new Date(
+                  existing.recorded_at ||
+                    0
+                ).getTime()
             ) {
               readingMap[key] =
                 reading;
             }
           }
-
-          // ========================================
-          // PLATFORM REPORT ROWS
-          // ========================================
 
           const platformRows =
             platforms.map(
@@ -650,17 +646,12 @@ export default function AdminReportsPanel({
 
                 return {
                   ...platform,
-
                   opening,
                   closing,
                   output,
                 };
               }
             );
-
-          // ========================================
-          // FLOAT GROUPS
-          // ========================================
 
           const companyFloats =
             floats.filter(
@@ -675,10 +666,6 @@ export default function AdminReportsPanel({
                 entry.entry_type ===
                 "MSHWARI_FLOAT"
             );
-
-          // ========================================
-          // SAVINGS TOTALS
-          // ========================================
 
           let totalSavings = 0;
           let paidSavings = 0;
@@ -702,23 +689,20 @@ export default function AdminReportsPanel({
               ).toUpperCase() ===
               "PAID"
             ) {
-              paidSavings += amount;
+              paidSavings +=
+                amount;
             } else {
-              pendingSavings += amount;
+              pendingSavings +=
+                amount;
             }
           }
 
           setReport({
             shift,
-
             platformRows,
-
             companyFloats,
-
             mshwariFloats,
-
             expenses,
-
             savings,
 
             totalSavings:
@@ -756,9 +740,8 @@ export default function AdminReportsPanel({
         selectedShiftId,
         selectedShopId,
         supabaseUrl,
-        supabaseAnonKey,
         accessToken,
-        authHeaders,
+        fetchJson,
       ]
     );
 
@@ -775,8 +758,22 @@ export default function AdminReportsPanel({
   // ==================================================
 
   useEffect(() => {
-    setSelectedBusinessDate("");
-    setSelectedShiftId("");
+    setSelectedBusinessDate(
+      "ALL"
+    );
+
+    setSelectedCashier(
+      "ALL"
+    );
+
+    setSelectedStatus(
+      "ALL"
+    );
+
+    setSelectedShiftId(
+      ""
+    );
+
     setReport(null);
 
     loadShifts();
@@ -786,41 +783,56 @@ export default function AdminReportsPanel({
   ]);
 
   // ==================================================
-  // CHOOSE LATEST BUSINESS DATE
+  // KEEP FILTERS VALID
   // ==================================================
 
   useEffect(() => {
     if (
-      businessDates.length === 0
+      selectedBusinessDate !==
+        "ALL" &&
+      !businessDates.includes(
+        selectedBusinessDate
+      )
     ) {
-      setSelectedBusinessDate("");
-      return;
+      setSelectedBusinessDate(
+        "ALL"
+      );
     }
+  }, [
+    businessDates,
+    selectedBusinessDate,
+  ]);
 
-    setSelectedBusinessDate(
-      (current) => {
-        if (
-          businessDates.includes(
-            current
-          )
-        ) {
-          return current;
-        }
-
-        return businessDates[0];
-      }
-    );
-  }, [businessDates]);
+  useEffect(() => {
+    if (
+      selectedCashier !==
+        "ALL" &&
+      !cashiers.includes(
+        selectedCashier
+      )
+    ) {
+      setSelectedCashier(
+        "ALL"
+      );
+    }
+  }, [
+    cashiers,
+    selectedCashier,
+  ]);
 
   // ==================================================
-  // CHOOSE LATEST SHIFT FOR DATE
+  // CHOOSE FIRST MATCHING SHIFT
   // ==================================================
 
   useEffect(() => {
     if (
-      dateShifts.length === 0
+      filteredShifts.length ===
+      0
     ) {
-      setSelectedShiftId("");
+      setSelectedShiftId(
+        ""
+      );
+
       setReport(null);
       return;
     }
@@ -828,7 +840,7 @@ export default function AdminReportsPanel({
     setSelectedShiftId(
       (current) => {
         const exists =
-          dateShifts.some(
+          filteredShifts.some(
             (shift) =>
               String(
                 shift.id
@@ -838,17 +850,16 @@ export default function AdminReportsPanel({
               )
           );
 
-        if (exists) {
-          return current;
-        }
-
-        return dateShifts[0].id;
+        return exists
+          ? current
+          : filteredShifts[0]
+              .id;
       }
     );
-  }, [dateShifts]);
+  }, [filteredShifts]);
 
   // ==================================================
-  // LOAD REPORT WHEN SHIFT CHANGES
+  // LOAD REPORT
   // ==================================================
 
   useEffect(() => {
@@ -866,11 +877,9 @@ export default function AdminReportsPanel({
       </div>
 
       <div style={filterWrapStyle}>
-        <div style={filterFieldStyle}>
-          <label style={labelStyle}>
-            SHOP
-          </label>
-
+        <FilterField
+          label="SHOP"
+        >
           <select
             value={
               selectedShopId
@@ -878,9 +887,12 @@ export default function AdminReportsPanel({
             disabled={
               loadingShops
             }
-            onChange={(event) =>
+            onChange={(
+              event
+            ) =>
               setSelectedShopId(
-                event.target.value
+                event.target
+                  .value
               )
             }
             style={selectStyle}
@@ -895,52 +907,59 @@ export default function AdminReportsPanel({
             {shops.map(
               (shop) => (
                 <option
-                  key={shop.id}
-                  value={shop.id}
+                  key={
+                    shop.id
+                  }
+                  value={
+                    shop.id
+                  }
                 >
                   {shop.shop_name}
-                  {shop.shop_type
-                    ? ` (${shop.shop_type})`
+                  {" ("}
+                  {shop.shop_type}
+                  {")"}
+                  {!shop.is_active
+                    ? " - INACTIVE"
                     : ""}
                 </option>
               )
             )}
           </select>
-        </div>
+        </FilterField>
 
-        <div style={filterFieldStyle}>
-          <label style={labelStyle}>
-            BUSINESS DATE
-          </label>
-
+        <FilterField
+          label="BUSINESS DATE"
+        >
           <select
             value={
               selectedBusinessDate
             }
             disabled={
-              loadingShifts ||
-              businessDates.length ===
-                0
+              loadingShifts
             }
-            onChange={(event) =>
+            onChange={(
+              event
+            ) =>
               setSelectedBusinessDate(
-                event.target.value
+                event.target
+                  .value
               )
             }
             style={selectStyle}
           >
-            {businessDates.length ===
-              0 && (
-              <option value="">
-                No reports
-              </option>
-            )}
+            <option value="ALL">
+              ALL DATES
+            </option>
 
             {businessDates.map(
               (date) => (
                 <option
-                  key={date}
-                  value={date}
+                  key={
+                    date
+                  }
+                  value={
+                    date
+                  }
                 >
                   {formatBusinessDate(
                     date
@@ -949,51 +968,135 @@ export default function AdminReportsPanel({
               )
             )}
           </select>
-        </div>
+        </FilterField>
 
-        <div style={filterFieldStyle}>
-          <label style={labelStyle}>
-            SHIFT
-          </label>
+        <FilterField
+          label="CASHIER"
+        >
+          <select
+            value={
+              selectedCashier
+            }
+            disabled={
+              loadingShifts
+            }
+            onChange={(
+              event
+            ) =>
+              setSelectedCashier(
+                event.target
+                  .value
+              )
+            }
+            style={selectStyle}
+          >
+            <option value="ALL">
+              ALL CASHIERS
+            </option>
 
+            {cashiers.map(
+              (cashier) => (
+                <option
+                  key={
+                    cashier
+                  }
+                  value={
+                    cashier
+                  }
+                >
+                  {cashier}
+                </option>
+              )
+            )}
+          </select>
+        </FilterField>
+
+        <FilterField
+          label="STATUS"
+        >
+          <select
+            value={
+              selectedStatus
+            }
+            disabled={
+              loadingShifts
+            }
+            onChange={(
+              event
+            ) =>
+              setSelectedStatus(
+                event.target
+                  .value
+              )
+            }
+            style={selectStyle}
+          >
+            <option value="ALL">
+              ALL STATUS
+            </option>
+
+            <option value="OPEN">
+              OPEN
+            </option>
+
+            <option value="CLOSED">
+              CLOSED
+            </option>
+          </select>
+        </FilterField>
+
+        <FilterField
+          label="SHIFT"
+        >
           <select
             value={
               selectedShiftId
             }
             disabled={
               loadingShifts ||
-              dateShifts.length ===
+              filteredShifts.length ===
                 0
             }
-            onChange={(event) =>
+            onChange={(
+              event
+            ) =>
               setSelectedShiftId(
-                event.target.value
+                event.target
+                  .value
               )
             }
             style={selectStyle}
           >
-            {dateShifts.length ===
+            {filteredShifts.length ===
               0 && (
               <option value="">
-                No shifts
+                No matching shifts
               </option>
             )}
 
-            {dateShifts.map(
+            {filteredShifts.map(
               (shift) => (
                 <option
-                  key={shift.id}
-                  value={shift.id}
+                  key={
+                    shift.id
+                  }
+                  value={
+                    shift.id
+                  }
                 >
+                  {formatBusinessDate(
+                    shift.business_date
+                  )}
+                  {" | "}
                   {shift.shift_name ||
-                    "SHIFT"}{" "}
-                  |{" "}
-                  {shift.status ||
-                    "-"}{" "}
-                  |{" "}
+                    "SHIFT"}
+                  {" | "}
                   {shift.cashier_name ||
-                    "Cashier"}{" "}
-                  |{" "}
+                    "Cashier"}
+                  {" | "}
+                  {shift.status ||
+                    "-"}
+                  {" | "}
                   {formatTime(
                     shift.opened_at
                   )}
@@ -1001,7 +1104,7 @@ export default function AdminReportsPanel({
               )
             )}
           </select>
-        </div>
+        </FilterField>
 
         <button
           type="button"
@@ -1012,12 +1115,23 @@ export default function AdminReportsPanel({
             loadingReport ||
             !selectedShiftId
           }
-          style={refreshButtonStyle}
+          style={
+            refreshButtonStyle
+          }
         >
           {loadingReport
             ? "LOADING..."
             : "REFRESH REPORT"}
         </button>
+      </div>
+
+      <div style={resultCountStyle}>
+        MATCHING SHIFTS:{" "}
+        <strong>
+          {
+            filteredShifts.length
+          }
+        </strong>
       </div>
 
       {message && (
@@ -1027,7 +1141,11 @@ export default function AdminReportsPanel({
       )}
 
       {loadingReport && (
-        <div style={loadingStyle}>
+        <div
+          style={
+            loadingStyle
+          }
+        >
           Loading report...
         </div>
       )}
@@ -1035,9 +1153,12 @@ export default function AdminReportsPanel({
       {!loadingReport &&
         !report &&
         !message && (
-          <div style={emptyStyle}>
-            Select a shop, business date and shift
-            to view its report.
+          <div
+            style={
+              emptyStyle
+            }
+          >
+            No report matches the selected filters.
           </div>
         )}
 
@@ -1053,6 +1174,25 @@ export default function AdminReportsPanel({
           />
         )}
     </section>
+  );
+}
+
+// ==================================================
+// FILTER FIELD
+// ==================================================
+
+function FilterField({
+  label,
+  children,
+}) {
+  return (
+    <div style={filterFieldStyle}>
+      <label style={labelStyle}>
+        {label}
+      </label>
+
+      {children}
+    </div>
   );
 }
 
@@ -1094,13 +1234,13 @@ function ReportDisplay({
 
   return (
     <div style={reportStyle}>
-      {/* ======================================= */}
-      {/* REPORT HEADER */}
-      {/* ======================================= */}
-
       <div style={reportHeaderStyle}>
         <div style={shopCardStyle}>
-          <strong style={bigTextStyle}>
+          <strong
+            style={
+              bigTextStyle
+            }
+          >
             {shop?.shop_name ||
               "Shop"}
           </strong>
@@ -1186,16 +1326,24 @@ function ReportDisplay({
       </div>
 
       {shift.admin_manual_totals && (
-        <div style={manualBannerStyle}>
-          This report contains Admin manual totals.
+        <div
+          style={
+            manualBannerStyle
+          }
+        >
+          This shift contains Admin manual totals.
         </div>
       )}
 
-      {/* ======================================= */}
-      {/* SUMMARY */}
-      {/* ======================================= */}
-
       <div style={summaryGridStyle}>
+        <SummaryCard
+          label="BALANCE B/F"
+          value={
+            shift.opening_balance
+          }
+          background="#0e7490"
+        />
+
         <SummaryCard
           label="TOTAL SALES"
           value={
@@ -1213,14 +1361,6 @@ function ReportDisplay({
         />
 
         <SummaryCard
-          label="NET INCOME"
-          value={
-            shift.net_income
-          }
-          background="#7c3aed"
-        />
-
-        <SummaryCard
           label="CLOSING BALANCE"
           value={
             shift.closing_balance
@@ -1228,10 +1368,6 @@ function ReportDisplay({
           background="#0369a1"
         />
       </div>
-
-      {/* ======================================= */}
-      {/* INCOME + PLATFORM */}
-      {/* ======================================= */}
 
       <div style={twoColumnStyle}>
         <div style={sectionStyle}>
@@ -1305,7 +1441,11 @@ function ReportDisplay({
             PLATFORM SALES
           </SectionTitle>
 
-          <div style={platformHeaderStyle}>
+          <div
+            style={
+              platformHeaderStyle
+            }
+          >
             <div>
               PLATFORM
             </div>
@@ -1326,8 +1466,12 @@ function ReportDisplay({
           {platformRows.map(
             (platform) => (
               <div
-                key={platform.id}
-                style={platformRowStyle}
+                key={
+                  platform.id
+                }
+                style={
+                  platformRowStyle
+                }
               >
                 <strong>
                   {
@@ -1377,10 +1521,6 @@ function ReportDisplay({
         </div>
       </div>
 
-      {/* ======================================= */}
-      {/* EXPENSES */}
-      {/* ======================================= */}
-
       <div style={sectionStyle}>
         <SectionTitle
           background="#be123c"
@@ -1388,7 +1528,11 @@ function ReportDisplay({
           EXPENSES
         </SectionTitle>
 
-        <div style={expenseHeaderStyle}>
+        <div
+          style={
+            expenseHeaderStyle
+          }
+        >
           <div>
             NO.
           </div>
@@ -1404,7 +1548,11 @@ function ReportDisplay({
 
         {expenses.length ===
           0 && (
-          <div style={emptyRowStyle}>
+          <div
+            style={
+              emptyRowStyle
+            }
+          >
             No expenses recorded.
           </div>
         )}
@@ -1412,8 +1560,12 @@ function ReportDisplay({
         {expenses.map(
           (expense, index) => (
             <div
-              key={expense.id}
-              style={expenseRowStyle}
+              key={
+                expense.id
+              }
+              style={
+                expenseRowStyle
+              }
             >
               <span>
                 {index + 1}
@@ -1442,10 +1594,6 @@ function ReportDisplay({
         />
       </div>
 
-      {/* ======================================= */}
-      {/* SAVINGS / BANKING */}
-      {/* ======================================= */}
-
       <div style={sectionStyle}>
         <SectionTitle
           background="#0e7490"
@@ -1453,7 +1601,11 @@ function ReportDisplay({
           SAVINGS / BANKING
         </SectionTitle>
 
-        <div style={savingsSummaryStyle}>
+        <div
+          style={
+            savingsSummaryStyle
+          }
+        >
           <InfoLine
             label="Total Savings"
             value={`KES ${money(
@@ -1476,7 +1628,11 @@ function ReportDisplay({
           />
         </div>
 
-        <div style={savingsHeaderStyle}>
+        <div
+          style={
+            savingsHeaderStyle
+          }
+        >
           <div>
             DESCRIPTION
           </div>
@@ -1492,54 +1648,69 @@ function ReportDisplay({
 
         {savings.length ===
           0 && (
-          <div style={emptyRowStyle}>
+          <div
+            style={
+              emptyRowStyle
+            }
+          >
             No Savings / Banking records.
           </div>
         )}
 
         {savings.map(
-          (saving) => (
-            <div
-              key={saving.id}
-              style={savingsRowStyle}
-            >
-              <span>
-                {saving.description ||
-                  "-"}
-              </span>
+          (saving) => {
+            const paid =
+              String(
+                saving.payment_status ||
+                  ""
+              ).toUpperCase() ===
+              "PAID";
 
-              <strong>
-                KES{" "}
-                {money(
-                  saving.amount
-                )}
-              </strong>
-
-              <span
+            return (
+              <div
+                key={
+                  saving.id
+                }
                 style={
-                  String(
-                    saving.payment_status
-                  ).toUpperCase() ===
-                  "PAID"
-                    ? paidBadgeStyle
-                    : pendingBadgeStyle
+                  savingsRowStyle
                 }
               >
-                {saving.payment_status ||
-                  "PENDING"}
-              </span>
-            </div>
-          )
+                <span>
+                  {saving.description ||
+                    "-"}
+                </span>
+
+                <strong>
+                  KES{" "}
+                  {money(
+                    saving.amount
+                  )}
+                </strong>
+
+                <span
+                  style={
+                    paid
+                      ? paidBadgeStyle
+                      : pendingBadgeStyle
+                  }
+                >
+                  {paid
+                    ? "PAID"
+                    : "PENDING"}
+                </span>
+              </div>
+            );
+          }
         )}
 
-        <div style={savingsNoticeStyle}>
+        <div
+          style={
+            savingsNoticeStyle
+          }
+        >
           Savings / Banking does not reduce Closing Balance.
         </div>
       </div>
-
-      {/* ======================================= */}
-      {/* FINAL TOTALS */}
-      {/* ======================================= */}
 
       <div style={finalTotalsStyle}>
         <MoneySummary
@@ -1564,16 +1735,16 @@ function ReportDisplay({
         />
 
         <MoneySummary
-          label="EXPENSES"
+          label="TOTAL SALES"
           value={
-            shift.total_expenses
+            totalSales
           }
         />
 
         <MoneySummary
-          label="NET INCOME"
+          label="EXPENSES"
           value={
-            shift.net_income
+            shift.total_expenses
           }
         />
 
@@ -1587,16 +1758,26 @@ function ReportDisplay({
       </div>
 
       {shift.admin_override_note && (
-        <div style={adminNoteStyle}>
+        <div
+          style={
+            adminNoteStyle
+          }
+        >
           <strong>
             Admin Note:
           </strong>{" "}
-          {shift.admin_override_note}
+          {
+            shift.admin_override_note
+          }
         </div>
       )}
 
-      <div style={readOnlyNoticeStyle}>
-        READ ONLY REPORT — figures cannot be edited from View Reports.
+      <div
+        style={
+          readOnlyNoticeStyle
+        }
+      >
+        READ ONLY REPORT — use Shift Corrections for any Admin changes.
       </div>
     </div>
   );
@@ -1649,7 +1830,6 @@ function SummaryCard({
     <div
       style={{
         ...summaryCardStyle,
-
         borderTop:
           `5px solid ${background}`,
       }}
@@ -1657,7 +1837,6 @@ function SummaryCard({
       <div
         style={{
           ...summaryTitleStyle,
-
           backgroundColor:
             background,
         }}
@@ -1665,9 +1844,12 @@ function SummaryCard({
         {label}
       </div>
 
-      <strong style={summaryValueStyle}>
-        KES{" "}
-        {money(value)}
+      <strong
+        style={
+          summaryValueStyle
+        }
+      >
+        KES {money(value)}
       </strong>
     </div>
   );
@@ -1681,7 +1863,6 @@ function SectionTitle({
     <div
       style={{
         ...sectionTitleStyle,
-
         backgroundColor:
           background,
       }}
@@ -1700,7 +1881,6 @@ function MoneyRow({
     <div
       style={{
         ...moneyRowStyle,
-
         ...(strong
           ? strongMoneyRowStyle
           : {}),
@@ -1711,8 +1891,7 @@ function MoneyRow({
       </span>
 
       <strong>
-        KES{" "}
-        {money(value)}
+        KES {money(value)}
       </strong>
     </div>
   );
@@ -1727,7 +1906,6 @@ function MoneySummary({
     <div
       style={{
         ...moneySummaryStyle,
-
         ...(strong
           ? strongSummaryStyle
           : {}),
@@ -1738,8 +1916,7 @@ function MoneySummary({
       </small>
 
       <strong>
-        KES{" "}
-        {money(value)}
+        KES {money(value)}
       </strong>
     </div>
   );
@@ -1767,7 +1944,6 @@ function money(value) {
     {
       minimumFractionDigits:
         2,
-
       maximumFractionDigits:
         2,
     }
@@ -1934,10 +2110,10 @@ const filterWrapStyle = {
     "grid",
 
   gridTemplateColumns:
-    "1.2fr 1fr 2fr 0.8fr",
+    "1.25fr 1fr 1fr 0.8fr 2fr 0.9fr",
 
   gap:
-    "10px",
+    "8px",
 
   alignItems:
     "end",
@@ -1992,6 +2168,9 @@ const selectStyle = {
 
   backgroundColor:
     "white",
+
+  fontSize:
+    "11px",
 };
 
 const refreshButtonStyle = {
@@ -2015,6 +2194,23 @@ const refreshButtonStyle = {
 
   cursor:
     "pointer",
+};
+
+const resultCountStyle = {
+  padding:
+    "7px 15px",
+
+  backgroundColor:
+    "#e0f2fe",
+
+  color:
+    "#075985",
+
+  fontSize:
+    "10px",
+
+  borderBottom:
+    "1px solid #bae6fd",
 };
 
 const reportStyle = {
