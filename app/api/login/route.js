@@ -1,217 +1,474 @@
 import { NextResponse } from "next/server";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
 export async function POST(request) {
   try {
-    const { username, password } = await request.json();
+    // ==================================================
+    // REQUEST
+    // ==================================================
+
+    const body = await request.json();
+
+    const username = String(
+      body?.username || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const password = String(
+      body?.password || ""
+    );
 
     if (!username || !password) {
       return NextResponse.json(
-        { message: "Username and password are required." },
-        { status: 400 }
-      );
-    }
-
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      console.error("Supabase environment variables are missing.");
-
-      return NextResponse.json(
-        { message: "Server configuration error." },
-        { status: 500 }
-      );
-    }
-
-    // Convert username entered on login page
-    // into the email used by Supabase Authentication.
-    const cleanUsername = username.trim().toLowerCase();
-
-    const usernameMap = {
-      admin: "admin@teamlegend.local",
-      mirriams: "mirriams@teamlegend.local",
-      shopkings: "shopkings@teamlegend.local",
-    };
-
-    // Also allow the actual email address to be entered.
-    const email = cleanUsername.includes("@")
-      ? cleanUsername
-      : usernameMap[cleanUsername];
-
-    if (!email) {
-      return NextResponse.json(
-        { message: "Invalid username or password." },
-        { status: 401 }
-      );
-    }
-
-    // Authenticate with Supabase.
-    const authResponse = await fetch(
-      `${SUPABASE_URL}/auth/v1/token?grant_type=password`,
-      {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-        cache: "no-store",
-      }
-    );
-
-    const authData = await authResponse.json();
-
-    if (!authResponse.ok || !authData.user) {
-      console.error("Supabase login failed:", authData);
-
-      return NextResponse.json(
-        { message: "Invalid username or password." },
-        { status: 401 }
-      );
-    }
-
-    // Get this user's profile.
-    const profileResponse = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?auth_user_id=eq.${authData.user.id}&select=id,auth_user_id,full_name,role,shop_id,is_active`,
-      {
-        method: "GET",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${authData.access_token}`,
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-      }
-    );
-
-    const profiles = await profileResponse.json();
-
-    if (!profileResponse.ok) {
-      console.error("Profile lookup failed:", profiles);
-
-      return NextResponse.json(
-        { message: "Unable to load user profile." },
-        { status: 500 }
-      );
-    }
-
-    if (!Array.isArray(profiles) || profiles.length === 0) {
-      return NextResponse.json(
-        { message: "No staff profile is connected to this account." },
-        { status: 403 }
-      );
-    }
-
-    const profile = profiles[0];
-
-    if (!profile.is_active) {
-      return NextResponse.json(
-        { message: "This staff account is inactive." },
-        { status: 403 }
-      );
-    }
-
-    const role = String(profile.role || "").toUpperCase();
-
-    if (role !== "ADMIN" && role !== "CASHIER") {
-      return NextResponse.json(
-        { message: "This account does not have permission to sign in." },
-        { status: 403 }
-      );
-    }
-
-    // Cashiers must belong to a shop.
-    if (role === "CASHIER" && !profile.shop_id) {
-      return NextResponse.json(
-        { message: "This cashier has not been assigned to a shop." },
-        { status: 403 }
-      );
-    }
-
-    // -------------------------------------------------
-    // GET THE REAL SHOP NAME FROM THE SHOPS TABLE
-    // -------------------------------------------------
-
-    let shopName = null;
-
-    if (profile.shop_id) {
-      const shopResponse = await fetch(
-        `${SUPABASE_URL}/rest/v1/shops?id=eq.${profile.shop_id}&select=id,shop_name,is_active`,
         {
-          method: "GET",
+          message:
+            "Username and password are required.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    // ==================================================
+    // USERNAME VALIDATION
+    // ==================================================
+
+    const usernamePattern =
+      /^[a-z0-9._-]+$/;
+
+    if (!usernamePattern.test(username)) {
+      return NextResponse.json(
+        {
+          message:
+            "Invalid username.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    // ==================================================
+    // ENVIRONMENT
+    // ==================================================
+
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const supabaseAnonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (
+      !supabaseUrl ||
+      !supabaseAnonKey
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Server configuration is incomplete.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    // ==================================================
+    // DYNAMIC LOGIN EMAIL
+    //
+    // admin      -> admin@teamlegend.local
+    // mirriams   -> mirriams@teamlegend.local
+    // shopkings  -> shopkings@teamlegend.local
+    //
+    // Future accounts work automatically.
+    // ==================================================
+
+    const loginEmail =
+      `${username}@teamlegend.local`;
+
+    // ==================================================
+    // SUPABASE PASSWORD LOGIN
+    // ==================================================
+
+    const authResponse =
+      await fetch(
+        `${supabaseUrl}/auth/v1/token?grant_type=password`,
+        {
+          method: "POST",
+
           headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${authData.access_token}`,
-            "Content-Type": "application/json",
+            apikey:
+              supabaseAnonKey,
+
+            "Content-Type":
+              "application/json",
           },
+
+          body: JSON.stringify({
+            email:
+              loginEmail,
+
+            password,
+          }),
+
           cache: "no-store",
         }
       );
 
-      const shops = await shopResponse.json();
+    let authData = null;
+
+    try {
+      authData =
+        await authResponse.json();
+    } catch {
+      authData = null;
+    }
+
+    if (
+      !authResponse.ok ||
+      !authData?.access_token ||
+      !authData?.user?.id
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Invalid username or password.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    const accessToken =
+      authData.access_token;
+
+    const authUserId =
+      authData.user.id;
+
+    // ==================================================
+    // LOAD PROFILE
+    // ==================================================
+
+    const profileResponse =
+      await fetch(
+        `${supabaseUrl}/rest/v1/profiles` +
+          `?auth_user_id=eq.${encodeURIComponent(
+            authUserId
+          )}` +
+          `&select=` +
+          `id,auth_user_id,username,full_name,role,shop_id,is_active` +
+          `&limit=1`,
+        {
+          method: "GET",
+
+          headers: {
+            apikey:
+              supabaseAnonKey,
+
+            Authorization:
+              `Bearer ${accessToken}`,
+
+            "Content-Type":
+              "application/json",
+          },
+
+          cache: "no-store",
+        }
+      );
+
+    let profileResult = null;
+
+    try {
+      profileResult =
+        await profileResponse.json();
+    } catch {
+      profileResult = null;
+    }
+
+    if (!profileResponse.ok) {
+      console.error(
+        "LOGIN PROFILE ERROR:",
+        profileResult
+      );
+
+      return NextResponse.json(
+        {
+          message:
+            "Unable to load account profile.",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    if (
+      !Array.isArray(
+        profileResult
+      ) ||
+      profileResult.length === 0
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Account profile was not found.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    const profile =
+      profileResult[0];
+
+    // ==================================================
+    // ACCOUNT ACTIVE?
+    // ==================================================
+
+    if (!profile.is_active) {
+      return NextResponse.json(
+        {
+          message:
+            "This account has been disabled. Contact Admin.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    // ==================================================
+    // USERNAME MUST MATCH PROFILE
+    // ==================================================
+
+    const profileUsername =
+      String(
+        profile.username || ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      !profileUsername ||
+      profileUsername !== username
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Username does not match this account.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    // ==================================================
+    // ROLE
+    // ==================================================
+
+    const role =
+      String(
+        profile.role || ""
+      ).toUpperCase();
+
+    if (
+      role !== "ADMIN" &&
+      role !== "CASHIER"
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "This account does not have a valid system role.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    // ==================================================
+    // CASHIER MUST HAVE SHOP
+    // ==================================================
+
+    if (
+      role === "CASHIER" &&
+      !profile.shop_id
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Cashier account has no assigned shop.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    // ==================================================
+    // LOAD SHOP
+    // ==================================================
+
+    let shop = null;
+
+    if (profile.shop_id) {
+      const shopResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/shops` +
+            `?id=eq.${encodeURIComponent(
+              profile.shop_id
+            )}` +
+            `&select=id,shop_name,shop_type,is_active,timezone` +
+            `&limit=1`,
+          {
+            method: "GET",
+
+            headers: {
+              apikey:
+                supabaseAnonKey,
+
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+            },
+
+            cache: "no-store",
+          }
+        );
+
+      let shopResult = null;
+
+      try {
+        shopResult =
+          await shopResponse.json();
+      } catch {
+        shopResult = null;
+      }
 
       if (!shopResponse.ok) {
-        console.error("Shop lookup failed:", shops);
+        console.error(
+          "LOGIN SHOP ERROR:",
+          shopResult
+        );
 
         return NextResponse.json(
-          { message: "Unable to load assigned shop." },
-          { status: 500 }
+          {
+            message:
+              "Unable to load assigned shop.",
+          },
+          {
+            status: 500,
+          }
         );
       }
 
-      if (!Array.isArray(shops) || shops.length === 0) {
+      if (
+        !Array.isArray(
+          shopResult
+        ) ||
+        shopResult.length === 0
+      ) {
         return NextResponse.json(
-          { message: "Assigned shop could not be found." },
-          { status: 403 }
+          {
+            message:
+              "Assigned shop was not found.",
+          },
+          {
+            status: 403,
+          }
         );
       }
 
-      const shop = shops[0];
+      shop =
+        shopResult[0];
 
       if (!shop.is_active) {
         return NextResponse.json(
-          { message: "This shop is currently inactive." },
-          { status: 403 }
+          {
+            message:
+              "Assigned shop is currently inactive.",
+          },
+          {
+            status: 403,
+          }
         );
       }
-
-      shopName = shop.shop_name;
     }
 
-    // Successful login.
-    // Return the Supabase access token so authenticated
-    // database requests can be made from the dashboard.
+    // ==================================================
+    // SUCCESS
+    // ==================================================
+
     return NextResponse.json(
       {
         success: true,
 
-        access_token: authData.access_token,
+        id:
+          authUserId,
 
-        user: {
-          id: authData.user.id,
-          profile_id: profile.id,
-          name: profile.full_name,
-          role: role,
+        auth_user_id:
+          authUserId,
 
-          // Real shop name shown on dashboard.
-          shop: shopName,
+        profile_id:
+          profile.id,
 
-          // Shop UUID used when saving shifts.
-          shop_id: profile.shop_id,
-        },
+        username:
+          profile.username,
+
+        name:
+          profile.full_name,
+
+        full_name:
+          profile.full_name,
+
+        role,
+
+        shop_id:
+          profile.shop_id,
+
+        shop:
+          shop?.shop_name ||
+          null,
+
+        shop_name:
+          shop?.shop_name ||
+          null,
+
+        shop_type:
+          shop?.shop_type ||
+          null,
+
+        timezone:
+          shop?.timezone ||
+          "Africa/Nairobi",
+
+        access_token:
+          accessToken,
       },
-      { status: 200 }
+      {
+        status: 200,
+      }
     );
   } catch (error) {
-    console.error("Login API error:", error);
+    console.error(
+      "LOGIN ROUTE ERROR:",
+      error
+    );
 
     return NextResponse.json(
-      { message: "Something went wrong while signing in." },
-      { status: 500 }
+      {
+        message:
+          "Unable to log in. Please try again.",
+      },
+      {
+        status: 500,
+      }
     );
   }
 }
