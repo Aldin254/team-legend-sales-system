@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import AdminAccountsPanel from "./AdminAccountsPanel";
-import AdminShiftOverride from "./AdminShiftOverride";
+import AdminShiftOverridePanel from "./AdminShiftOverridePanel";
 import AdminShiftCorrectionsPanel from "./AdminShiftCorrectionsPanel";
 import AdminReportsPanel from "./AdminReportsPanel";
 
@@ -203,9 +203,9 @@ export default function AdminDashboard({
                 subtitle="Admin control of shop shifts, corrections, overrides and audit history."
               />
 
-              <AdminShiftOverride
-                user={user}
-              />
+             <AdminShiftOverridePanel
+  user={user}
+/>
 
               <AdminShiftCorrectionsPanel
                 user={user}
