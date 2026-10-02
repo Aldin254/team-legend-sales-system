@@ -7,6 +7,7 @@ import CashierReport from "./CashierReport";
 import AdminAccountsPanel from "./AdminAccountsPanel";
 import AdminShiftOverridePanel from "./AdminShiftOverridePanel";
 import AdminShiftCorrectionsPanel from "./AdminShiftCorrectionsPanel";
+import AdminReportsPanel from "./AdminReportsPanel";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -1025,6 +1026,9 @@ export default function Dashboard() {
   user={user}
 />
     <AdminShiftCorrectionsPanel
+  user={user}
+/>
+    <AdminReportsPanel
   user={user}
 />
         </section>
