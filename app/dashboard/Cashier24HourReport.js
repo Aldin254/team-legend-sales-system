@@ -1471,6 +1471,9 @@ export default function Cashier24HourReport({
               shift ||
               currentShift
             }
+            onReadingsChanged={
+              loadReport
+            }
           />
 
           {/* ========================================
