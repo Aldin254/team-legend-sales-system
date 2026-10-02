@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 export default function CashierCloseShiftButton({
   user,
@@ -8,6 +11,7 @@ export default function CashierCloseShiftButton({
 }) {
   const [closing, setClosing] = useState(false);
   const [message, setMessage] = useState("");
+  const [now, setNow] = useState(() => new Date());
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -26,11 +30,51 @@ export default function CashierCloseShiftButton({
   const shiftId =
     currentShift?.id || null;
 
+  const shiftStatus =
+    String(
+      currentShift?.status || ""
+    ).toUpperCase();
+
+  // ==================================================
+  // LIVE NAIROBI CLOCK
+  // ==================================================
+
+  useEffect(() => {
+    setNow(new Date());
+
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 15000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  const closingWindowOpen =
+    is12HourClosingWindow(now);
+
   // ==================================================
   // CLOSE SHIFT
   // ==================================================
 
   async function closeShift() {
+    // ==============================================
+    // 0. CASHIER TIME WINDOW CHECK
+    // ==============================================
+
+    if (
+      !is12HourClosingWindow(
+        new Date()
+      )
+    ) {
+      setMessage(
+        "Shift change is available only from 9:30 PM to midnight (Nairobi time)."
+      );
+
+      return;
+    }
+
     if (
       !shiftId ||
       !shopId ||
@@ -40,6 +84,18 @@ export default function CashierCloseShiftButton({
     ) {
       setMessage(
         "Shift or login information is missing."
+      );
+
+      return;
+    }
+
+    if (
+      String(
+        currentShift?.status || ""
+      ).toUpperCase() !== "OPEN"
+    ) {
+      setMessage(
+        "This shift is already closed."
       );
 
       return;
@@ -63,7 +119,21 @@ export default function CashierCloseShiftButton({
       setMessage("");
 
       // ==============================================
-      // 1. LOAD ACTIVE PLATFORMS
+      // 1. RECHECK TIME AFTER CONFIRMATION
+      // ==============================================
+
+      if (
+        !is12HourClosingWindow(
+          new Date()
+        )
+      ) {
+        throw new Error(
+          "Shift change is available only from 9:30 PM to midnight (Nairobi time)."
+        );
+      }
+
+      // ==============================================
+      // 2. LOAD ACTIVE PLATFORMS
       // ==============================================
 
       const platformResponse =
@@ -119,7 +189,7 @@ export default function CashierCloseShiftButton({
       }
 
       // ==============================================
-      // 2. LOAD CLOSING READINGS
+      // 3. LOAD CLOSING READINGS
       // ==============================================
 
       const readingResponse =
@@ -167,7 +237,12 @@ export default function CashierCloseShiftButton({
           : [];
 
       // ==============================================
-      // 3. CHECK EVERY PLATFORM HAS CLOSING
+      // 4. CHECK EVERY PLATFORM HAS A CLOSING READING
+      //
+      // IMPORTANT:
+      // reading_value = 0 IS VALID.
+      // We check existence by platform_id only.
+      // We do NOT use truthiness on reading_value.
       // ==============================================
 
       const closingPlatformIds =
@@ -203,7 +278,41 @@ export default function CashierCloseShiftButton({
       }
 
       // ==============================================
-      // 4. CHECK SHIFT IS STILL OPEN
+      // 5. VALIDATE CLOSING VALUES
+      //
+      // ZERO IS VALID.
+      // ==============================================
+
+      for (
+        const reading of closingReadings
+      ) {
+        if (
+          reading.reading_value === null ||
+          reading.reading_value === undefined ||
+          reading.reading_value === ""
+        ) {
+          throw new Error(
+            "One or more closing readings are invalid."
+          );
+        }
+
+        const value =
+          Number(
+            reading.reading_value
+          );
+
+        if (
+          Number.isNaN(value) ||
+          value < 0
+        ) {
+          throw new Error(
+            "One or more closing readings are invalid."
+          );
+        }
+      }
+
+      // ==============================================
+      // 6. CHECK SHIFT IS STILL OPEN
       // ==============================================
 
       const shiftResponse =
@@ -270,7 +379,24 @@ export default function CashierCloseShiftButton({
       }
 
       // ==============================================
-      // 5. CLOSE SHIFT
+      // 7. FINAL TIME CHECK
+      //
+      // This is intentionally immediately before
+      // the PATCH that closes the shift.
+      // ==============================================
+
+      if (
+        !is12HourClosingWindow(
+          new Date()
+        )
+      ) {
+        throw new Error(
+          "Shift change is available only from 9:30 PM to midnight (Nairobi time)."
+        );
+      }
+
+      // ==============================================
+      // 8. CLOSE SHIFT
       // ==============================================
 
       const closeResponse =
@@ -333,16 +459,30 @@ export default function CashierCloseShiftButton({
       }
 
       // ==============================================
-      // 6. SUCCESS
+      // 9. SUCCESS
       // ==============================================
 
       setMessage(
         "Shift closed successfully."
       );
 
-      // Reload dashboard.
-      // It will find no OPEN shift and prepare
-      // the next Balance B/F automatically.
+      /*
+       * Dashboard reload:
+       *
+       * page.js will then use:
+       *
+       * Previous Closing Balance
+       *          ↓
+       * Next Balance B/F
+       *
+       * Previous TABLE Closing
+       *          ↓
+       * Next TABLE Opening
+       *
+       * Other platform openings
+       *          ↓
+       * 0
+       */
 
       setTimeout(() => {
         window.location.reload();
@@ -361,6 +501,28 @@ export default function CashierCloseShiftButton({
       setClosing(false);
     }
   }
+
+  // ==================================================
+  // DO NOT SHOW BUTTON FOR CLOSED SHIFT
+  // ==================================================
+
+  if (
+    shiftStatus !== "OPEN"
+  ) {
+    return null;
+  }
+
+  // ==================================================
+  // HIDE COMPLETELY OUTSIDE 9:30 PM - MIDNIGHT
+  // ==================================================
+
+  if (!closingWindowOpen) {
+    return null;
+  }
+
+  // ==================================================
+  // RENDER
+  // ==================================================
 
   return (
     <div>
@@ -399,6 +561,7 @@ export default function CashierCloseShiftButton({
         style={{
           width: "100%",
           border: "none",
+
           backgroundColor:
             closing
               ? "#64748b"
@@ -410,6 +573,7 @@ export default function CashierCloseShiftButton({
           textAlign: "center",
           fontWeight: "bold",
           fontSize: "13px",
+
           cursor:
             closing
               ? "default"
@@ -421,6 +585,79 @@ export default function CashierCloseShiftButton({
           : "✓ CLOSE SHIFT & HAND OVER"}
       </button>
     </div>
+  );
+}
+
+// ==================================================
+// 12-HOUR CASHIER CLOSING WINDOW
+//
+// Nairobi time:
+// 9:30 PM inclusive
+// Midnight exclusive
+// ==================================================
+
+function is12HourClosingWindow(
+  date = new Date()
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          "Africa/Nairobi",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
+
+        second:
+          "2-digit",
+
+        hourCycle:
+          "h23",
+      }
+    );
+
+  const parts =
+    formatter.formatToParts(
+      date
+    );
+
+  const values = {};
+
+  for (const part of parts) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[
+        part.type
+      ] =
+        part.value;
+    }
+  }
+
+  const hour =
+    Number(
+      values.hour
+    );
+
+  const minute =
+    Number(
+      values.minute
+    );
+
+  const minutesSinceMidnight =
+    hour * 60 +
+    minute;
+
+  return (
+    minutesSinceMidnight >=
+      21 * 60 + 30 &&
+    minutesSinceMidnight <
+      24 * 60
   );
 }
 
