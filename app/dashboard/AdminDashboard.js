@@ -8,6 +8,7 @@ import AdminShiftCorrectionsPanel from "./AdminShiftCorrectionsPanel";
 import AdminReportsPanel from "./AdminReportsPanel";
 import AdminUserAccountsPanel from "./AdminUserAccountsPanel";
 import AdminShopManagementPanel from "./AdminShopManagementPanel";
+import AdminManagementStatusPanel from "./AdminManagementStatusPanel";
 
 export default function AdminDashboard({
   user,
@@ -48,6 +49,10 @@ export default function AdminDashboard({
       icon: "₿",
     },
     {
+  id: "MANAGEMENT",
+  label: "Management Status",
+  icon: "📋",
+},
       id: "SETTINGS",
       label: "Settings",
       icon: "⚙",
@@ -232,7 +237,18 @@ export default function AdminDashboard({
               />
             </>
           )}
+{activeSection === "MANAGEMENT" && (
+  <>
+    <PageHeading
+      title="Management Status"
+      subtitle="Manage salaries, banking, rent, DSTV, WIFI and other payment obligations for each shop."
+    />
 
+    <AdminManagementStatusPanel
+      user={user}
+    />
+  </>
+)}
           {/* ===================================== */}
           {/* SETTINGS */}
           {/* ===================================== */}
