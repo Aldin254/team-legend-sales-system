@@ -6,6 +6,7 @@ export default function CloseShift24Hour({
   user,
   currentShift,
   onShiftClosed,
+  refreshKey = 0,
 }) {
   const [platforms, setPlatforms] = useState([]);
   const [readings, setReadings] = useState([]);
@@ -78,8 +79,9 @@ export default function CloseShift24Hour({
     async function loadData() {
       try {
         setLoading(true);
-        setMessage("");
-        setMessageType("");
+
+        // Do not clear an existing success/error message
+        // just because refreshKey caused a background reload.
 
         // ------------------------------------------
         // CURRENT SHIFT
@@ -253,6 +255,7 @@ export default function CloseShift24Hour({
     accessToken,
     supabaseUrl,
     supabaseAnonKey,
+    refreshKey,
   ]);
 
   // ==================================================
@@ -898,6 +901,23 @@ export default function CloseShift24Hour({
         </div>
       )}
 
+      {loading && (
+        <div
+          style={{
+            marginBottom:
+              "12px",
+
+            color:
+              "#64748b",
+
+            fontSize:
+              "13px",
+          }}
+        >
+          Refreshing shift information...
+        </div>
+      )}
+
       {status ===
       "CLOSED" ? (
         <div
@@ -932,6 +952,7 @@ export default function CloseShift24Hour({
             }
             disabled={
               closing ||
+              loading ||
               !canClose
             }
             style={{
@@ -949,6 +970,7 @@ export default function CloseShift24Hour({
 
               backgroundColor:
                 closing ||
+                loading ||
                 !canClose
                   ? "#94a3b8"
                   : "#168d32",
@@ -964,6 +986,7 @@ export default function CloseShift24Hour({
 
               cursor:
                 closing ||
+                loading ||
                 !canClose
                   ? "not-allowed"
                   : "pointer",
@@ -971,6 +994,8 @@ export default function CloseShift24Hour({
           >
             {closing
               ? "Completing Handover..."
+              : loading
+              ? "Refreshing..."
               : correctWindow
               ? `Close ${shiftName} & Hand Over`
               : "Shift Change Disabled"}
