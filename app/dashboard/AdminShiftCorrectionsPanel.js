@@ -13,6 +13,7 @@ import AdminExpenseCorrections from "./AdminExpenseCorrections";
 import AdminSavingsCorrections from "./AdminSavingsCorrections";
 import AdminAuditLogPanel from "./AdminAuditLogPanel";
 import AdminCarryForwardSync from "./AdminCarryForwardSync";
+import Admin24HourShiftHandover from "./Admin24HourShiftHandover";
 
 export default function AdminShiftCorrectionsPanel({
   user,
@@ -1253,6 +1254,20 @@ export default function AdminShiftCorrectionsPanel({
                 loadShifts
               }
             />
+                {/* ADMIN 24-HOUR SHIFT HANDOVER */}
+
+<Admin24HourShiftHandover
+  user={user}
+  selectedShift={
+    selectedShift
+  }
+  selectedShop={
+    selectedShop
+  }
+  onChanged={
+    loadShifts
+  }
+/>
 
             {/* CORRECTION FIELDS */}
 
