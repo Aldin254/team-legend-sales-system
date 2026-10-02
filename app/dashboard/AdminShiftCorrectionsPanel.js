@@ -6,7 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
-
+import AdminFloatCorrections from "./AdminFloatCorrections";
 export default function AdminShiftCorrectionsPanel({
   user,
 }) {
@@ -910,7 +910,6 @@ export default function AdminShiftCorrectionsPanel({
                 }
               />
             </div>
-
             {/* CURRENT CALCULATION INFORMATION */}
 
             <div style={currentTotalsStyle}>
@@ -953,7 +952,12 @@ export default function AdminShiftCorrectionsPanel({
                 </strong>
               </div>
             </div>
-
+<AdminFloatCorrections
+  user={user}
+  selectedShift={selectedShift}
+  selectedShop={selectedShop}
+  onChanged={loadShifts}
+/>
             {/* CORRECTION FIELDS */}
 
             <div style={sectionTitleStyle}>
