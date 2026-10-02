@@ -405,56 +405,48 @@ export async function POST(request) {
     // SUCCESS
     // ==================================================
 
-    return NextResponse.json(
-      {
-        success: true,
+    // ==================================================
+// SUCCESS
+// ==================================================
 
-        id:
-          authUserId,
+const userData = {
+  id: authUserId,
 
-        auth_user_id:
-          authUserId,
+  auth_user_id: authUserId,
 
-        profile_id:
-          profile.id,
+  profile_id: profile.id,
 
-        username:
-          profile.username,
+  username: profile.username,
 
-        name:
-          profile.full_name,
+  name: profile.full_name,
 
-        full_name:
-          profile.full_name,
+  full_name: profile.full_name,
 
-        role,
+  role,
 
-        shop_id:
-          profile.shop_id,
+  shop_id: profile.shop_id,
 
-        shop:
-          shop?.shop_name ||
-          null,
+  shop: shop?.shop_name || null,
 
-        shop_name:
-          shop?.shop_name ||
-          null,
+  shop_name: shop?.shop_name || null,
 
-        shop_type:
-          shop?.shop_type ||
-          null,
+  shop_type: shop?.shop_type || null,
 
-        timezone:
-          shop?.timezone ||
-          "Africa/Nairobi",
+  timezone: shop?.timezone || "Africa/Nairobi",
 
-        access_token:
-          accessToken,
-      },
-      {
-        status: 200,
-      }
-    );
+  access_token: accessToken,
+};
+
+return NextResponse.json(
+  {
+    success: true,
+    user: userData,
+    ...userData,
+  },
+  {
+    status: 200,
+  }
+);
   } catch (error) {
     console.error(
       "LOGIN ROUTE ERROR:",
