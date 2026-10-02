@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import CashierReport from "./CashierReport";
 import AdminAccountsPanel from "./AdminAccountsPanel";
 import AdminShiftOverridePanel from "./AdminShiftOverridePanel";
+import AdminShiftCorrectionsPanel from "./AdminShiftCorrectionsPanel";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -1021,6 +1022,9 @@ export default function Dashboard() {
             user={user}
           />
               <AdminShiftOverridePanel
+  user={user}
+/>
+    <AdminShiftCorrectionsPanel
   user={user}
 />
         </section>
