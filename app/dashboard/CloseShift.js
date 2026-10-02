@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+
+// 12-HOUR CASHIER SHIFT CHANGE WINDOW
+// Opens: 9:30 PM Nairobi time
+// Closes: 12:00 AM Nairobi time
+const HANDOVER_START_MINUTES = 21 * 60 + 30; // 21:30
+const HANDOVER_END_MINUTES = 24 * 60; // 24:00
 
 export default function CloseShift({
   user,
@@ -18,6 +26,10 @@ export default function CloseShift({
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
 
+  // Live clock so the button changes automatically
+  // without needing a browser refresh.
+  const [now, setNow] = useState(() => new Date());
+
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -34,6 +46,34 @@ export default function CloseShift({
 
   const shiftId =
     currentShift?.id || null;
+
+  // --------------------------------------------------
+  // LIVE CLOCK
+  // --------------------------------------------------
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 15000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  // --------------------------------------------------
+  // NAIROBI HANDOVER WINDOW
+  // --------------------------------------------------
+
+  const nairobiTime = useMemo(() => {
+    return getNairobiTime(now);
+  }, [now]);
+
+  const handoverWindowOpen =
+    nairobiTime.minutesSinceMidnight >=
+      HANDOVER_START_MINUTES &&
+    nairobiTime.minutesSinceMidnight <
+      HANDOVER_END_MINUTES;
 
   // --------------------------------------------------
   // LOAD FINAL SHIFT INFORMATION
@@ -267,6 +307,27 @@ export default function CloseShift({
   // --------------------------------------------------
 
   async function closeShift() {
+    // --------------------------------------------
+    // RECHECK NAIROBI TIME
+    // --------------------------------------------
+
+    const freshNairobiTime =
+      getNairobiTime(new Date());
+
+    const freshWindowOpen =
+      freshNairobiTime.minutesSinceMidnight >=
+        HANDOVER_START_MINUTES &&
+      freshNairobiTime.minutesSinceMidnight <
+        HANDOVER_END_MINUTES;
+
+    if (!freshWindowOpen) {
+      setMessage(
+        "Shift change is only available from 9:30 PM to 12:00 midnight Nairobi time."
+      );
+      setMessageType("error");
+      return;
+    }
+
     if (!shiftId) {
       setMessage(
         "No open shift was found."
@@ -450,6 +511,25 @@ export default function CloseShift({
       }
 
       // --------------------------------------------
+      // FINAL TIME CHECK
+      // --------------------------------------------
+
+      const finalNairobiTime =
+        getNairobiTime(new Date());
+
+      const finalWindowOpen =
+        finalNairobiTime.minutesSinceMidnight >=
+          HANDOVER_START_MINUTES &&
+        finalNairobiTime.minutesSinceMidnight <
+          HANDOVER_END_MINUTES;
+
+      if (!finalWindowOpen) {
+        throw new Error(
+          "The 12-hour shift-change window has closed."
+        );
+      }
+
+      // --------------------------------------------
       // CLOSE SHIFT
       // --------------------------------------------
 
@@ -522,7 +602,7 @@ export default function CloseShift({
         typeof onShiftClosed ===
         "function"
       ) {
-        onShiftClosed(closedShift);
+        await onShiftClosed(closedShift);
       }
     } catch (error) {
       console.error(
@@ -574,6 +654,16 @@ export default function CloseShift({
         "OPEN"
     ).toUpperCase();
 
+  // A completed shift can remain visible.
+  // An OPEN shift does not show its closing panel
+  // until 9:30 PM Nairobi time.
+  if (
+    status !== "CLOSED" &&
+    !handoverWindowOpen
+  ) {
+    return null;
+  }
+
   return (
     <div
       style={{
@@ -592,7 +682,7 @@ export default function CloseShift({
           marginBottom: "7px",
         }}
       >
-        Close Shift
+        Shift Change / Handover
       </h2>
 
       <p
@@ -602,8 +692,8 @@ export default function CloseShift({
           marginBottom: "20px",
         }}
       >
-        Confirm the final figures before closing
-        this shift.
+        Cashier handover is available from
+        9:30 PM until midnight Nairobi time.
       </p>
 
       {loading ? (
@@ -762,7 +852,8 @@ export default function CloseShift({
               onClick={closeShift}
               disabled={
                 closing ||
-                !allClosingsSaved
+                !allClosingsSaved ||
+                !handoverWindowOpen
               }
               style={{
                 width: "100%",
@@ -771,7 +862,8 @@ export default function CloseShift({
                 borderRadius: "8px",
                 backgroundColor:
                   closing ||
-                  !allClosingsSaved
+                  !allClosingsSaved ||
+                  !handoverWindowOpen
                     ? "#94a3b8"
                     : "#dc2626",
                 color: "white",
@@ -779,18 +871,64 @@ export default function CloseShift({
                 fontSize: "16px",
                 cursor:
                   closing ||
-                  !allClosingsSaved
+                  !allClosingsSaved ||
+                  !handoverWindowOpen
                     ? "not-allowed"
                     : "pointer",
               }}
             >
               {closing
-                ? "Closing Shift..."
-                : "Close Shift"}
+                ? "Changing Shift..."
+                : "Close Shift & Hand Over"}
             </button>
           )}
         </>
       )}
     </div>
   );
+}
+
+// --------------------------------------------------
+// NAIROBI CLOCK
+// --------------------------------------------------
+
+function getNairobiTime(date) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          NAIROBI_TIME_ZONE,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }
+    ).formatToParts(date);
+
+  const values = {};
+
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      values[part.type] =
+        part.value;
+    }
+  }
+
+  const hour =
+    Number(values.hour || 0);
+
+  const minute =
+    Number(values.minute || 0);
+
+  const second =
+    Number(values.second || 0);
+
+  return {
+    hour,
+    minute,
+    second,
+    minutesSinceMidnight:
+      hour * 60 + minute,
+  };
 }
