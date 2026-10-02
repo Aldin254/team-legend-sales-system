@@ -53,6 +53,7 @@ export default function AdminDashboard({
   label: "Management Status",
   icon: "📋",
 },
+{
       id: "SETTINGS",
       label: "Settings",
       icon: "⚙",
