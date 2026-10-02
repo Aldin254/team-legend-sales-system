@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+
+// 12-HOUR CASHIER CLOSING WINDOW
+// Opens: 9:30 PM Nairobi time
+// Ends: 12:00 AM Nairobi time
+const CLOSING_START_MINUTES = 21 * 60 + 30; // 21:30
+
 export default function ClosingPlatformReadings({
   user,
   currentShift,
@@ -16,6 +23,10 @@ export default function ClosingPlatformReadings({
 
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
+
+  // Used so the screen automatically changes at 9:30 PM
+  // without requiring a browser refresh.
+  const [now, setNow] = useState(() => new Date());
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -40,6 +51,41 @@ export default function ClosingPlatformReadings({
 
   const shiftId =
     currentShift?.id || null;
+
+  // --------------------------------------------------
+  // LIVE CLOCK
+  // --------------------------------------------------
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 15000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  // --------------------------------------------------
+  // NAIROBI TIME
+  // --------------------------------------------------
+
+  const nairobiTime = useMemo(() => {
+    return getNairobiTime(now);
+  }, [now]);
+
+  const closingWindowOpen =
+    nairobiTime.minutesSinceMidnight >=
+    CLOSING_START_MINUTES;
+
+  // If readings were already saved, keep them visible.
+  // Otherwise hide today's closing section until 9:30 PM.
+  const hasSavedClosingReadings =
+    Object.keys(closingRows).length > 0;
+
+  const showClosingSection =
+    closingWindowOpen ||
+    hasSavedClosingReadings;
 
   // --------------------------------------------------
   // LOAD PLATFORMS + OPENING/CLOSING READINGS
@@ -382,6 +428,23 @@ export default function ClosingPlatformReadings({
   // --------------------------------------------------
 
   async function saveClosingReadings() {
+    // IMPORTANT:
+    // Recheck the real Nairobi time here.
+    // Hiding the UI alone is not enough.
+    const freshNairobiTime =
+      getNairobiTime(new Date());
+
+    if (
+      freshNairobiTime.minutesSinceMidnight <
+      CLOSING_START_MINUTES
+    ) {
+      setMessage(
+        "Closing readings become available at 9:30 PM Nairobi time."
+      );
+      setMessageType("error");
+      return;
+    }
+
     if (!shiftId) {
       setMessage(
         "No open shift was found."
@@ -638,6 +701,31 @@ export default function ClosingPlatformReadings({
     return null;
   }
 
+  if (loading) {
+    return (
+      <div
+        style={{
+          marginTop: "24px",
+          backgroundColor: "white",
+          padding: "25px",
+          borderRadius: "12px",
+          boxShadow:
+            "0 2px 10px rgba(0,0,0,0.08)",
+          maxWidth: "700px",
+          color: "#64748b",
+        }}
+      >
+        Loading closing readings...
+      </div>
+    );
+  }
+
+  // Before 9:30 PM:
+  // Completely hide today's closing-reading section.
+  if (!showClosingSection) {
+    return null;
+  }
+
   return (
     <div
       style={{
@@ -720,11 +808,7 @@ export default function ClosingPlatformReadings({
         </div>
       </div>
 
-      {loading ? (
-        <div>
-          Loading closing readings...
-        </div>
-      ) : platforms.length === 0 ? (
+      {platforms.length === 0 ? (
         <div
           style={{
             padding: "12px",
@@ -946,6 +1030,52 @@ export default function ClosingPlatformReadings({
       )}
     </div>
   );
+}
+
+// --------------------------------------------------
+// NAIROBI CLOCK
+// --------------------------------------------------
+
+function getNairobiTime(date) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          NAIROBI_TIME_ZONE,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }
+    ).formatToParts(date);
+
+  const values = {};
+
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      values[part.type] =
+        part.value;
+    }
+  }
+
+  const hour =
+    Number(values.hour || 0);
+
+  const minute =
+    Number(values.minute || 0);
+
+  const second =
+    Number(values.second || 0);
+
+  return {
+    hour,
+    minute,
+    second,
+
+    minutesSinceMidnight:
+      hour * 60 + minute,
+  };
 }
 
 // --------------------------------------------------
