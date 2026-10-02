@@ -7,6 +7,16 @@ import {
   useState,
 } from "react";
 
+const TABLE_NAME = "TABLE";
+
+const READING_KINDS = [
+  "OPENING",
+  "CLOSING",
+  "HANDOVER_9PM",
+  "MIDNIGHT_CLOSE",
+  "CLOSING_9AM",
+];
+
 export default function AdminPlatformCorrections({
   user,
   selectedShift,
@@ -16,8 +26,7 @@ export default function AdminPlatformCorrections({
   const [platforms, setPlatforms] = useState([]);
   const [readings, setReadings] = useState([]);
 
-  const [openingInputs, setOpeningInputs] = useState({});
-  const [closingInputs, setClosingInputs] = useState({});
+  const [inputs, setInputs] = useState({});
 
   const [reason, setReason] = useState("");
 
@@ -37,7 +46,6 @@ export default function AdminPlatformCorrections({
   const accessToken =
     user?.access_token || null;
 
-  // audit_log.user_id -> profiles.id
   const adminProfileId =
     user?.profile_id || null;
 
@@ -48,6 +56,36 @@ export default function AdminPlatformCorrections({
     selectedShift?.shop_id ||
     selectedShop?.id ||
     null;
+
+  // ==================================================
+  // SHOP / SHIFT TYPE
+  // ==================================================
+
+  const shopType =
+    normalizeShopType(
+      selectedShop?.shop_type ||
+        selectedShift?.shop_type ||
+        ""
+    );
+
+  const shiftName =
+    normalizeShiftName(
+      selectedShift?.shift_name ||
+        ""
+    );
+
+  const is24Hour =
+    shopType === "24_HOUR" ||
+    shiftName === "SHIFT1" ||
+    shiftName === "SHIFT2";
+
+  const isShift1 =
+    is24Hour &&
+    shiftName === "SHIFT1";
+
+  const isShift2 =
+    is24Hour &&
+    shiftName === "SHIFT2";
 
   // ==================================================
   // HEADERS
@@ -76,42 +114,9 @@ export default function AdminPlatformCorrections({
 
   const readingMap =
     useMemo(() => {
-      const map = {};
-
-      for (const reading of readings) {
-        const key =
-          `${reading.platform_id}-${reading.reading_kind}`;
-
-        const existing =
-          map[key];
-
-        if (!existing) {
-          map[key] =
-            reading;
-
-          continue;
-        }
-
-        const existingTime =
-          new Date(
-            existing.recorded_at || 0
-          ).getTime();
-
-        const readingTime =
-          new Date(
-            reading.recorded_at || 0
-          ).getTime();
-
-        if (
-          readingTime >=
-          existingTime
-        ) {
-          map[key] =
-            reading;
-        }
-      }
-
-      return map;
+      return buildLatestReadingMap(
+        readings
+      );
     }, [readings]);
 
   // ==================================================
@@ -120,41 +125,19 @@ export default function AdminPlatformCorrections({
 
   const calculatedOutput =
     useMemo(() => {
-      let total = 0;
-
-      for (const platform of platforms) {
-        const opening =
-          readingMap[
-            `${platform.id}-OPENING`
-          ];
-
-        const closing =
-          readingMap[
-            `${platform.id}-CLOSING`
-          ];
-
-        if (
-          !opening ||
-          !closing
-        ) {
-          continue;
-        }
-
-        total +=
-          Number(
-            closing.reading_value || 0
-          ) -
-          Number(
-            opening.reading_value || 0
-          );
-      }
-
-      return roundMoney(
-        total
-      );
+      return calculateTotalOutput({
+        platforms,
+        readingMap,
+        is24Hour,
+        isShift1,
+        isShift2,
+      });
     }, [
       platforms,
       readingMap,
+      is24Hour,
+      isShift1,
+      isShift2,
     ]);
 
   // ==================================================
@@ -173,16 +156,18 @@ export default function AdminPlatformCorrections({
         ) {
           setPlatforms([]);
           setReadings([]);
-          setOpeningInputs({});
-          setClosingInputs({});
+          setInputs({});
           return;
         }
 
         try {
           setLoading(true);
 
+          setMessage("");
+          setMessageType("");
+
           // ========================================
-          // SHOP PLATFORMS
+          // 1. SHOP PLATFORMS
           // ========================================
 
           const platformResponse =
@@ -209,9 +194,7 @@ export default function AdminPlatformCorrections({
               platformResponse
             );
 
-          if (
-            !platformResponse.ok
-          ) {
+          if (!platformResponse.ok) {
             throw new Error(
               platformResult?.message ||
                 platformResult?.details ||
@@ -231,7 +214,7 @@ export default function AdminPlatformCorrections({
           );
 
           // ========================================
-          // SHIFT READINGS
+          // 2. ALL SUPPORTED SHIFT READINGS
           // ========================================
 
           const readingResponse =
@@ -240,7 +223,9 @@ export default function AdminPlatformCorrections({
                 `?shift_id=eq.${encodeURIComponent(
                   shiftId
                 )}` +
-                `&reading_kind=in.(OPENING,CLOSING)` +
+                `&reading_kind=in.(${READING_KINDS.join(
+                  ","
+                )})` +
                 `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by`,
               {
                 method: "GET",
@@ -258,9 +243,7 @@ export default function AdminPlatformCorrections({
               readingResponse
             );
 
-          if (
-            !readingResponse.ok
-          ) {
+          if (!readingResponse.ok) {
             throw new Error(
               readingResult?.message ||
                 readingResult?.details ||
@@ -280,95 +263,42 @@ export default function AdminPlatformCorrections({
           );
 
           // ========================================
-          // BUILD LATEST READING MAP LOCALLY
+          // 3. BUILD INPUT VALUES
           // ========================================
 
-          const latestMap = {};
+          const latestMap =
+            buildLatestReadingMap(
+              loadedReadings
+            );
 
-          for (
-            const reading
-            of loadedReadings
-          ) {
-            const key =
-              `${reading.platform_id}-${reading.reading_kind}`;
-
-            const existing =
-              latestMap[key];
-
-            if (!existing) {
-              latestMap[key] =
-                reading;
-
-              continue;
-            }
-
-            const existingTime =
-              new Date(
-                existing.recorded_at || 0
-              ).getTime();
-
-            const readingTime =
-              new Date(
-                reading.recorded_at || 0
-              ).getTime();
-
-            if (
-              readingTime >=
-              existingTime
-            ) {
-              latestMap[key] =
-                reading;
-            }
-          }
-
-          // ========================================
-          // LOAD INPUT VALUES
-          // ========================================
-
-          const openingValues = {};
-          const closingValues = {};
+          const nextInputs = {};
 
           for (
             const platform
             of loadedPlatforms
           ) {
-            const opening =
-              latestMap[
-                `${platform.id}-OPENING`
-              ];
+            for (
+              const kind
+              of READING_KINDS
+            ) {
+              const key =
+                `${platform.id}-${kind}`;
 
-            const closing =
-              latestMap[
-                `${platform.id}-CLOSING`
-              ];
+              const reading =
+                latestMap[key];
 
-            openingValues[
-              platform.id
-            ] =
-              opening
-                ? String(
-                    opening.reading_value ??
-                      ""
-                  )
-                : "";
-
-            closingValues[
-              platform.id
-            ] =
-              closing
-                ? String(
-                    closing.reading_value ??
-                      ""
-                  )
-                : "";
+              nextInputs[key] =
+                reading
+                  ? String(
+                      reading.reading_value ??
+                        ""
+                    )
+                  : "";
+            }
           }
 
-          setOpeningInputs(
-            openingValues
-          );
-
-          setClosingInputs(
-            closingValues
+          setInputs(
+            nextInputs
           );
         } catch (error) {
           console.error(
@@ -484,29 +414,38 @@ export default function AdminPlatformCorrections({
       return;
     }
 
-    const isOpening =
-      kind ===
-      "OPENING";
+    if (
+      !readingAllowed({
+        platform,
+        kind,
+        is24Hour,
+        isShift1,
+        isShift2,
+      })
+    ) {
+      setMessage(
+        `${kind} is not applicable to ${platform.platform_name} for this shift.`
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const inputKey =
+      `${platform.id}-${kind}`;
 
     const rawValue =
-      isOpening
-        ? openingInputs[
-            platform.id
-          ]
-        : closingInputs[
-            platform.id
-          ];
+      inputs[inputKey] ?? "";
 
     const value =
-      Number(
-        rawValue
-      );
+      Number(rawValue);
 
     if (
       rawValue === "" ||
-      Number.isNaN(
-        value
-      ) ||
+      Number.isNaN(value) ||
       value < 0
     ) {
       setMessage(
@@ -521,23 +460,20 @@ export default function AdminPlatformCorrections({
     }
 
     const existing =
-      readingMap[
-        `${platform.id}-${kind}`
-      ];
+      readingMap[inputKey];
 
     const cleanReason =
       String(
         reason
       ).trim();
 
-    const actionKey =
-      `${platform.id}-${kind}`;
-
     const confirmed =
       window.confirm(
         "ADMIN PLATFORM CORRECTION\n\n" +
           `${platform.platform_name}\n` +
-          `${kind}: ${money(
+          `${readingLabel(
+            kind
+          )}: ${money(
             value
           )}\n\n` +
           `${
@@ -553,7 +489,7 @@ export default function AdminPlatformCorrections({
 
     try {
       setSavingKey(
-        actionKey
+        inputKey
       );
 
       setMessage("");
@@ -563,7 +499,7 @@ export default function AdminPlatformCorrections({
       let oldData = {};
 
       // ========================================
-      // UPDATE EXISTING READING
+      // UPDATE EXISTING
       // ========================================
 
       if (existing) {
@@ -628,7 +564,7 @@ export default function AdminPlatformCorrections({
       }
 
       // ========================================
-      // ADD MISSING READING
+      // ADD MISSING
       // ========================================
 
       else {
@@ -706,14 +642,14 @@ export default function AdminPlatformCorrections({
       }
 
       // ========================================
-      // RECALCULATE TOTAL OUTPUT
+      // RECALCULATE OUTPUT
       // ========================================
 
       const newOutput =
         await syncShiftOutput();
 
       // ========================================
-      // AUDIT LOG
+      // AUDIT
       // ========================================
 
       const auditOk =
@@ -752,7 +688,9 @@ export default function AdminPlatformCorrections({
         );
       } else {
         setMessage(
-          `${platform.platform_name} ${kind} reading saved successfully.`
+          `${platform.platform_name} ${readingLabel(
+            kind
+          )} saved successfully.`
         );
 
         setMessageType(
@@ -819,7 +757,9 @@ export default function AdminPlatformCorrections({
       window.confirm(
         "ADMIN DELETE PLATFORM READING\n\n" +
           `${platform.platform_name}\n` +
-          `${kind}: ${money(
+          `${readingLabel(
+            kind
+          )}: ${money(
             existing.reading_value
           )}\n\n` +
           "Delete this reading?"
@@ -929,7 +869,9 @@ export default function AdminPlatformCorrections({
         );
       } else {
         setMessage(
-          `${platform.platform_name} ${kind} reading deleted successfully.`
+          `${platform.platform_name} ${readingLabel(
+            kind
+          )} deleted successfully.`
         );
 
         setMessageType(
@@ -971,15 +913,15 @@ export default function AdminPlatformCorrections({
   // ==================================================
 
   async function syncShiftOutput() {
-    // Load fresh readings after the change.
-
     const readingResponse =
       await fetch(
         `${supabaseUrl}/rest/v1/platform_readings` +
           `?shift_id=eq.${encodeURIComponent(
             shiftId
           )}` +
-          `&reading_kind=in.(OPENING,CLOSING)` +
+          `&reading_kind=in.(${READING_KINDS.join(
+            ","
+          )})` +
           `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
         {
           method:
@@ -998,9 +940,7 @@ export default function AdminPlatformCorrections({
         readingResponse
       );
 
-    if (
-      !readingResponse.ok
-    ) {
+    if (!readingResponse.ok) {
       throw new Error(
         readingResult?.message ||
           readingResult?.details ||
@@ -1015,86 +955,20 @@ export default function AdminPlatformCorrections({
         ? readingResult
         : [];
 
-    // Keep latest OPENING/CLOSING for each platform.
-
-    const latestMap = {};
-
-    for (
-      const reading
-      of freshReadings
-    ) {
-      const key =
-        `${reading.platform_id}-${reading.reading_kind}`;
-
-      const existing =
-        latestMap[key];
-
-      if (!existing) {
-        latestMap[key] =
-          reading;
-
-        continue;
-      }
-
-      const existingTime =
-        new Date(
-          existing.recorded_at || 0
-        ).getTime();
-
-      const readingTime =
-        new Date(
-          reading.recorded_at || 0
-        ).getTime();
-
-      if (
-        readingTime >=
-        existingTime
-      ) {
-        latestMap[key] =
-          reading;
-      }
-    }
-
-    let total = 0;
-
-    for (
-      const platform
-      of platforms
-    ) {
-      const opening =
-        latestMap[
-          `${platform.id}-OPENING`
-        ];
-
-      const closing =
-        latestMap[
-          `${platform.id}-CLOSING`
-        ];
-
-      if (
-        !opening ||
-        !closing
-      ) {
-        continue;
-      }
-
-      total +=
-        Number(
-          closing.reading_value || 0
-        ) -
-        Number(
-          opening.reading_value || 0
-        );
-    }
-
-    const totalOutput =
-      roundMoney(
-        total
+    const latestMap =
+      buildLatestReadingMap(
+        freshReadings
       );
 
-    // Update shifts.total_output.
-    // Existing shift trigger recalculates Net Income
-    // and Closing Balance unless Manual Admin Totals is ON.
+    const totalOutput =
+      calculateTotalOutput({
+        platforms,
+        readingMap:
+          latestMap,
+        is24Hour,
+        isShift1,
+        isShift2,
+      });
 
     const shiftResponse =
       await fetch(
@@ -1221,31 +1095,31 @@ export default function AdminPlatformCorrections({
     platform,
     kind,
   }) {
-    const isOpening =
-      kind ===
-      "OPENING";
+    const allowed =
+      readingAllowed({
+        platform,
+        kind,
+        is24Hour,
+        isShift1,
+        isShift2,
+      });
+
+    if (!allowed) {
+      return (
+        <div style={notApplicableStyle}>
+          NOT APPLICABLE
+        </div>
+      );
+    }
+
+    const inputKey =
+      `${platform.id}-${kind}`;
 
     const existing =
-      readingMap[
-        `${platform.id}-${kind}`
-      ];
+      readingMap[inputKey];
 
     const value =
-      isOpening
-        ? openingInputs[
-            platform.id
-          ] ?? ""
-        : closingInputs[
-            platform.id
-          ] ?? "";
-
-    const setValues =
-      isOpening
-        ? setOpeningInputs
-        : setClosingInputs;
-
-    const actionKey =
-      `${platform.id}-${kind}`;
+      inputs[inputKey] ?? "";
 
     return (
       <div style={readingControlStyle}>
@@ -1258,11 +1132,11 @@ export default function AdminPlatformCorrections({
             const nextValue =
               event.target.value;
 
-            setValues(
+            setInputs(
               (previous) => ({
                 ...previous,
 
-                [platform.id]:
+                [inputKey]:
                   nextValue,
               })
             );
@@ -1291,7 +1165,7 @@ export default function AdminPlatformCorrections({
             type="button"
             disabled={
               savingKey ===
-                actionKey ||
+                inputKey ||
               Boolean(
                 deletingId
               )
@@ -1305,7 +1179,7 @@ export default function AdminPlatformCorrections({
             style={saveButtonStyle}
           >
             {savingKey ===
-            actionKey
+            inputKey
               ? "SAVING..."
               : existing
               ? "UPDATE"
@@ -1396,6 +1270,17 @@ export default function AdminPlatformCorrections({
           </div>
         </div>
 
+        {is24Hour && (
+          <div style={modeNoticeStyle}>
+            24-HOUR MODE —{" "}
+            {isShift1
+              ? "SHIFT 1: 9 AM → 9 PM"
+              : isShift2
+              ? "SHIFT 2: 9 PM → 9 AM"
+              : "24-HOUR SHIFT"}
+          </div>
+        )}
+
         {selectedShift.admin_manual_totals && (
           <div style={manualWarningStyle}>
             Manual Admin Totals is ON. Platform corrections will
@@ -1404,91 +1289,227 @@ export default function AdminPlatformCorrections({
           </div>
         )}
 
-        <div style={headerStyle}>
-          <div>
-            PLATFORM
-          </div>
+        {/* ===================================== */}
+        {/* 12-HOUR */}
+        {/* ===================================== */}
 
-          <div>
-            OPENING
-          </div>
-
-          <div>
-            CLOSING
-          </div>
-
-          <div>
-            OUTPUT
-          </div>
-        </div>
-
-        {platforms.map(
-          (platform) => {
-            const opening =
-              readingMap[
-                `${platform.id}-OPENING`
-              ];
-
-            const closing =
-              readingMap[
-                `${platform.id}-CLOSING`
-              ];
-
-            const output =
-              opening &&
-              closing
-                ? roundMoney(
-                    Number(
-                      closing.reading_value ||
-                        0
-                    ) -
-                      Number(
-                        opening.reading_value ||
-                          0
-                      )
-                  )
-                : 0;
-
-            return (
-              <div
-                key={platform.id}
-                style={platformRowStyle}
-              >
-                <div>
-                  <strong>
-                    {
-                      platform.platform_name
-                    }
-                  </strong>
-
-                  <div style={metaStyle}>
-                    {platform.is_active
-                      ? "Active"
-                      : "Inactive"}
-                  </div>
-                </div>
-
-                {renderReadingControl({
-                  platform,
-                  kind:
-                    "OPENING",
-                })}
-
-                {renderReadingControl({
-                  platform,
-                  kind:
-                    "CLOSING",
-                })}
-
-                <div style={outputStyle}>
-                  KES{" "}
-                  {money(
-                    output
-                  )}
-                </div>
+        {!is24Hour && (
+          <>
+            <div style={header12Style}>
+              <div>
+                PLATFORM
               </div>
-            );
-          }
+
+              <div>
+                OPENING
+              </div>
+
+              <div>
+                CLOSING
+              </div>
+
+              <div>
+                OUTPUT
+              </div>
+            </div>
+
+            {platforms.map(
+              (platform) => {
+                const output =
+                  calculatePlatformOutput({
+                    platform,
+                    readingMap,
+                    is24Hour,
+                    isShift1,
+                    isShift2,
+                  });
+
+                return (
+                  <div
+                    key={platform.id}
+                    style={platformRow12Style}
+                  >
+                    <PlatformName
+                      platform={
+                        platform
+                      }
+                    />
+
+                    {renderReadingControl({
+                      platform,
+                      kind:
+                        "OPENING",
+                    })}
+
+                    {renderReadingControl({
+                      platform,
+                      kind:
+                        "CLOSING",
+                    })}
+
+                    <div style={outputStyle}>
+                      KES{" "}
+                      {money(
+                        output
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+            )}
+          </>
+        )}
+
+        {/* ===================================== */}
+        {/* 24-HOUR SHIFT 1 */}
+        {/* ===================================== */}
+
+        {isShift1 && (
+          <>
+            <div style={header12Style}>
+              <div>
+                PLATFORM
+              </div>
+
+              <div>
+                9 AM OPENING
+              </div>
+
+              <div>
+                9 PM HANDOVER
+              </div>
+
+              <div>
+                OUTPUT
+              </div>
+            </div>
+
+            {platforms.map(
+              (platform) => {
+                const output =
+                  calculatePlatformOutput({
+                    platform,
+                    readingMap,
+                    is24Hour,
+                    isShift1,
+                    isShift2,
+                  });
+
+                return (
+                  <div
+                    key={platform.id}
+                    style={platformRow12Style}
+                  >
+                    <PlatformName
+                      platform={
+                        platform
+                      }
+                    />
+
+                    {renderReadingControl({
+                      platform,
+                      kind:
+                        "OPENING",
+                    })}
+
+                    {renderReadingControl({
+                      platform,
+                      kind:
+                        "HANDOVER_9PM",
+                    })}
+
+                    <div style={outputStyle}>
+                      KES{" "}
+                      {money(
+                        output
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+            )}
+          </>
+        )}
+
+        {/* ===================================== */}
+        {/* 24-HOUR SHIFT 2 */}
+        {/* ===================================== */}
+
+        {isShift2 && (
+          <>
+            <div style={header24Shift2Style}>
+              <div>
+                PLATFORM
+              </div>
+
+              <div>
+                9 PM OPENING
+              </div>
+
+              <div>
+                11:59 PM
+              </div>
+
+              <div>
+                9 AM CLOSING
+              </div>
+
+              <div>
+                OUTPUT
+              </div>
+            </div>
+
+            {platforms.map(
+              (platform) => {
+                const output =
+                  calculatePlatformOutput({
+                    platform,
+                    readingMap,
+                    is24Hour,
+                    isShift1,
+                    isShift2,
+                  });
+
+                return (
+                  <div
+                    key={platform.id}
+                    style={platformRow24Shift2Style}
+                  >
+                    <PlatformName
+                      platform={
+                        platform
+                      }
+                    />
+
+                    {renderReadingControl({
+                      platform,
+                      kind:
+                        "OPENING",
+                    })}
+
+                    {renderReadingControl({
+                      platform,
+                      kind:
+                        "MIDNIGHT_CLOSE",
+                    })}
+
+                    {renderReadingControl({
+                      platform,
+                      kind:
+                        "CLOSING_9AM",
+                    })}
+
+                    <div style={outputStyle}>
+                      KES{" "}
+                      {money(
+                        output
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+            )}
+          </>
         )}
 
         <div style={reasonWrapStyle}>
@@ -1506,7 +1527,7 @@ export default function AdminPlatformCorrections({
               setMessage("");
             }}
             rows={2}
-            placeholder="Example: Cashier entered the wrong PILOT closing reading."
+            placeholder="Example: Cashier entered the wrong PILOT platform reading."
             style={textareaStyle}
           />
         </div>
@@ -1540,9 +1561,11 @@ export default function AdminPlatformCorrections({
         )}
 
         <div style={noticeStyle}>
-          Admin can add, update or delete Opening and Closing
-          readings. Platform Output is recalculated automatically
-          and every correction is written to the audit log.
+          {isShift1
+            ? "SHIFT 1 output = 9 PM Handover − 9 AM Opening."
+            : isShift2
+            ? "SHIFT 2 resettable output = (11:59 PM − 9 PM Opening) + 9 AM Closing. TABLE output = 9 AM Closing − 9 PM Opening. TABLE never resets at midnight."
+            : "12-hour output = Closing − Opening. Admin corrections are recorded in the audit log."}
         </div>
       </div>
     </section>
@@ -1550,8 +1573,376 @@ export default function AdminPlatformCorrections({
 }
 
 // ==================================================
+// PLATFORM NAME
+// ==================================================
+
+function PlatformName({
+  platform,
+}) {
+  return (
+    <div>
+      <strong>
+        {platform.platform_name}
+      </strong>
+
+      <div style={metaStyle}>
+        {platform.is_active
+          ? "Active"
+          : "Inactive"}
+      </div>
+    </div>
+  );
+}
+
+// ==================================================
+// OUTPUT CALCULATION
+// ==================================================
+
+function calculateTotalOutput({
+  platforms,
+  readingMap,
+  is24Hour,
+  isShift1,
+  isShift2,
+}) {
+  let total = 0;
+
+  for (
+    const platform
+    of platforms
+  ) {
+    total +=
+      calculatePlatformOutput({
+        platform,
+        readingMap,
+        is24Hour,
+        isShift1,
+        isShift2,
+      });
+  }
+
+  return roundMoney(
+    total
+  );
+}
+
+function calculatePlatformOutput({
+  platform,
+  readingMap,
+  is24Hour,
+  isShift1,
+  isShift2,
+}) {
+  const opening =
+    readingMap[
+      `${platform.id}-OPENING`
+    ];
+
+  if (!opening) {
+    return 0;
+  }
+
+  const openingValue =
+    Number(
+      opening.reading_value || 0
+    );
+
+  // ================================================
+  // 12-HOUR
+  // ================================================
+
+  if (!is24Hour) {
+    const closing =
+      readingMap[
+        `${platform.id}-CLOSING`
+      ];
+
+    if (!closing) {
+      return 0;
+    }
+
+    return roundMoney(
+      Number(
+        closing.reading_value || 0
+      ) -
+        openingValue
+    );
+  }
+
+  // ================================================
+  // 24-HOUR SHIFT 1
+  // ================================================
+
+  if (isShift1) {
+    const handover =
+      readingMap[
+        `${platform.id}-HANDOVER_9PM`
+      ];
+
+    if (!handover) {
+      return 0;
+    }
+
+    return roundMoney(
+      Number(
+        handover.reading_value ||
+          0
+      ) -
+        openingValue
+    );
+  }
+
+  // ================================================
+  // 24-HOUR SHIFT 2
+  // ================================================
+
+  if (isShift2) {
+    const closing9AM =
+      readingMap[
+        `${platform.id}-CLOSING_9AM`
+      ];
+
+    if (!closing9AM) {
+      return 0;
+    }
+
+    // TABLE NEVER RESETS AT MIDNIGHT
+
+    if (isTable(platform)) {
+      return roundMoney(
+        Number(
+          closing9AM.reading_value ||
+            0
+        ) -
+          openingValue
+      );
+    }
+
+    // RESETTABLE PLATFORMS
+
+    const midnight =
+      readingMap[
+        `${platform.id}-MIDNIGHT_CLOSE`
+      ];
+
+    if (!midnight) {
+      return 0;
+    }
+
+    const beforeMidnight =
+      Number(
+        midnight.reading_value || 0
+      ) -
+      openingValue;
+
+    const afterMidnight =
+      Number(
+        closing9AM.reading_value ||
+          0
+      );
+
+    return roundMoney(
+      beforeMidnight +
+        afterMidnight
+    );
+  }
+
+  return 0;
+}
+
+// ==================================================
+// READING RULES
+// ==================================================
+
+function readingAllowed({
+  platform,
+  kind,
+  is24Hour,
+  isShift1,
+  isShift2,
+}) {
+  // 12-HOUR
+
+  if (!is24Hour) {
+    return (
+      kind === "OPENING" ||
+      kind === "CLOSING"
+    );
+  }
+
+  // SHIFT 1
+
+  if (isShift1) {
+    return (
+      kind === "OPENING" ||
+      kind === "HANDOVER_9PM"
+    );
+  }
+
+  // SHIFT 2
+
+  if (isShift2) {
+    if (
+      kind === "OPENING" ||
+      kind === "CLOSING_9AM"
+    ) {
+      return true;
+    }
+
+    if (
+      kind ===
+      "MIDNIGHT_CLOSE"
+    ) {
+      return !isTable(
+        platform
+      );
+    }
+  }
+
+  return false;
+}
+
+// ==================================================
+// READING MAP
+// ==================================================
+
+function buildLatestReadingMap(
+  readings
+) {
+  const map = {};
+
+  for (
+    const reading
+    of readings || []
+  ) {
+    const key =
+      `${reading.platform_id}-${reading.reading_kind}`;
+
+    const existing =
+      map[key];
+
+    if (!existing) {
+      map[key] =
+        reading;
+
+      continue;
+    }
+
+    const existingTime =
+      new Date(
+        existing.recorded_at || 0
+      ).getTime();
+
+    const readingTime =
+      new Date(
+        reading.recorded_at || 0
+      ).getTime();
+
+    if (
+      readingTime >=
+      existingTime
+    ) {
+      map[key] =
+        reading;
+    }
+  }
+
+  return map;
+}
+
+// ==================================================
 // HELPERS
 // ==================================================
+
+function normalizeShopType(
+  value
+) {
+  return String(
+    value || ""
+  )
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function normalizeShiftName(
+  value
+) {
+  const normalized =
+    String(
+      value || ""
+    )
+      .trim()
+      .toUpperCase()
+      .replace(/[\s_-]+/g, "");
+
+  if (
+    normalized === "SHIFT1"
+  ) {
+    return "SHIFT1";
+  }
+
+  if (
+    normalized === "SHIFT2"
+  ) {
+    return "SHIFT2";
+  }
+
+  return normalized;
+}
+
+function isTable(
+  platform
+) {
+  return (
+    String(
+      platform?.platform_name ||
+        ""
+    )
+      .trim()
+      .toUpperCase() ===
+    TABLE_NAME
+  );
+}
+
+function readingLabel(
+  kind
+) {
+  if (
+    kind === "OPENING"
+  ) {
+    return "Opening";
+  }
+
+  if (
+    kind === "CLOSING"
+  ) {
+    return "Closing";
+  }
+
+  if (
+    kind ===
+    "HANDOVER_9PM"
+  ) {
+    return "9 PM Handover";
+  }
+
+  if (
+    kind ===
+    "MIDNIGHT_CLOSE"
+  ) {
+    return "11:59 PM";
+  }
+
+  if (
+    kind ===
+    "CLOSING_9AM"
+  ) {
+    return "9 AM Closing";
+  }
+
+  return kind;
+}
 
 async function safeJson(
   response
@@ -1593,18 +1984,11 @@ function roundMoney(value) {
 // ==================================================
 
 const panelStyle = {
-  marginTop:
-    "18px",
-
+  marginTop: "18px",
   border:
     "1px solid #bbf7d0",
-
-  borderRadius:
-    "7px",
-
-  overflow:
-    "hidden",
-
+  borderRadius: "7px",
+  overflow: "hidden",
   backgroundColor:
     "#ffffff",
 };
@@ -1612,377 +1996,252 @@ const panelStyle = {
 const titleStyle = {
   backgroundColor:
     "#15803d",
-
-  color:
-    "white",
-
+  color: "white",
   padding:
     "10px 12px",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "13px",
+  fontWeight: "bold",
+  fontSize: "13px",
 };
 
 const bodyStyle = {
-  padding:
-    "12px",
+  padding: "12px",
 };
 
 const summaryGridStyle = {
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "repeat(3,1fr)",
+  gap: "8px",
+  marginBottom: "10px",
+};
 
-  gap:
-    "8px",
-
-  marginBottom:
-    "10px",
+const modeNoticeStyle = {
+  padding: "9px",
+  marginBottom: "10px",
+  backgroundColor:
+    "#ecfdf5",
+  border:
+    "1px solid #86efac",
+  color: "#166534",
+  borderRadius: "5px",
+  fontWeight: "bold",
+  fontSize: "10px",
+  textAlign: "center",
 };
 
 const manualWarningStyle = {
-  padding:
-    "9px",
-
-  marginBottom:
-    "10px",
-
+  padding: "9px",
+  marginBottom: "10px",
   backgroundColor:
     "#fef3c7",
-
   border:
     "1px solid #fde68a",
-
-  color:
-    "#92400e",
-
-  borderRadius:
-    "5px",
-
-  fontSize:
-    "10px",
+  color: "#92400e",
+  borderRadius: "5px",
+  fontSize: "10px",
 };
 
-const headerStyle = {
-  display:
-    "grid",
-
+const header12Style = {
+  display: "grid",
   gridTemplateColumns:
     "0.75fr 1.6fr 1.6fr 0.65fr",
-
-  gap:
-    "8px",
-
-  padding:
-    "8px",
-
+  gap: "8px",
+  padding: "8px",
   backgroundColor:
     "#dcfce7",
-
-  color:
-    "#166534",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "9px",
-
-  textAlign:
-    "center",
+  color: "#166534",
+  fontWeight: "bold",
+  fontSize: "9px",
+  textAlign: "center",
 };
 
-const platformRowStyle = {
-  display:
-    "grid",
-
+const platformRow12Style = {
+  display: "grid",
   gridTemplateColumns:
     "0.75fr 1.6fr 1.6fr 0.65fr",
-
-  gap:
-    "8px",
-
-  alignItems:
-    "center",
-
-  padding:
-    "9px 8px",
-
+  gap: "8px",
+  alignItems: "center",
+  padding: "9px 8px",
   borderTop:
     "1px solid #e2e8f0",
+  fontSize: "10px",
+};
 
-  fontSize:
-    "10px",
+const header24Shift2Style = {
+  display: "grid",
+  gridTemplateColumns:
+    "0.7fr 1.35fr 1.35fr 1.35fr 0.6fr",
+  gap: "7px",
+  padding: "8px",
+  backgroundColor:
+    "#dcfce7",
+  color: "#166534",
+  fontWeight: "bold",
+  fontSize: "9px",
+  textAlign: "center",
+};
+
+const platformRow24Shift2Style = {
+  display: "grid",
+  gridTemplateColumns:
+    "0.7fr 1.35fr 1.35fr 1.35fr 0.6fr",
+  gap: "7px",
+  alignItems: "center",
+  padding: "9px 8px",
+  borderTop:
+    "1px solid #e2e8f0",
+  fontSize: "10px",
 };
 
 const readingControlStyle = {
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "1fr 0.9fr",
-
-  gap:
-    "5px",
+  gap: "5px",
 };
 
 const inputStyle = {
-  width:
-    "100%",
-
+  width: "100%",
   boxSizing:
     "border-box",
-
-  padding:
-    "7px",
-
+  padding: "7px",
   border:
     "1px solid #94a3b8",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "right",
+  borderRadius: "4px",
+  textAlign: "right",
 };
 
 const savedStyle = {
-  padding:
-    "7px 4px",
-
+  padding: "7px 4px",
   backgroundColor:
     "#ecfdf5",
-
   border:
     "1px solid #86efac",
-
-  borderRadius:
-    "4px",
-
-  color:
-    "#166534",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "8px",
+  borderRadius: "4px",
+  color: "#166534",
+  textAlign: "center",
+  fontSize: "8px",
 };
 
 const missingStyle = {
-  padding:
-    "7px 4px",
-
+  padding: "7px 4px",
   backgroundColor:
     "#f8fafc",
-
   border:
     "1px solid #cbd5e1",
+  borderRadius: "4px",
+  color: "#64748b",
+  textAlign: "center",
+  fontSize: "8px",
+};
 
-  borderRadius:
-    "4px",
-
-  color:
-    "#64748b",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "8px",
+const notApplicableStyle = {
+  padding: "12px 5px",
+  backgroundColor:
+    "#f8fafc",
+  border:
+    "1px dashed #cbd5e1",
+  borderRadius: "4px",
+  color: "#64748b",
+  textAlign: "center",
+  fontWeight: "bold",
+  fontSize: "8px",
 };
 
 const buttonRowStyle = {
   gridColumn:
     "1 / -1",
-
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "1fr 1fr",
-
-  gap:
-    "5px",
+  gap: "5px",
 };
 
 const saveButtonStyle = {
-  border:
-    "none",
-
-  borderRadius:
-    "4px",
-
-  padding:
-    "6px",
-
+  border: "none",
+  borderRadius: "4px",
+  padding: "6px",
   backgroundColor:
     "#16a34a",
-
-  color:
-    "white",
-
-  fontWeight:
-    "bold",
-
-  cursor:
-    "pointer",
-
-  fontSize:
-    "8px",
+  color: "white",
+  fontWeight: "bold",
+  cursor: "pointer",
+  fontSize: "8px",
 };
 
 const deleteButtonStyle = {
-  border:
-    "none",
-
-  borderRadius:
-    "4px",
-
-  padding:
-    "6px",
-
+  border: "none",
+  borderRadius: "4px",
+  padding: "6px",
   backgroundColor:
     "#dc2626",
-
-  color:
-    "white",
-
-  fontWeight:
-    "bold",
-
-  cursor:
-    "pointer",
-
-  fontSize:
-    "8px",
+  color: "white",
+  fontWeight: "bold",
+  cursor: "pointer",
+  fontSize: "8px",
 };
 
 const outputStyle = {
-  padding:
-    "9px 5px",
-
+  padding: "9px 5px",
   backgroundColor:
     "#f0fdf4",
-
   border:
     "1px solid #bbf7d0",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "center",
-
-  fontWeight:
-    "bold",
-
-  color:
-    "#166534",
+  borderRadius: "4px",
+  textAlign: "center",
+  fontWeight: "bold",
+  color: "#166534",
 };
 
 const metaStyle = {
-  marginTop:
-    "3px",
-
-  fontSize:
-    "8px",
-
-  color:
-    "#64748b",
+  marginTop: "3px",
+  fontSize: "8px",
+  color: "#64748b",
 };
 
 const reasonWrapStyle = {
-  marginTop:
-    "12px",
+  marginTop: "12px",
 };
 
 const labelStyle = {
-  display:
-    "block",
-
-  marginBottom:
-    "5px",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-
-  color:
-    "#334155",
+  display: "block",
+  marginBottom: "5px",
+  fontSize: "9px",
+  fontWeight: "bold",
+  color: "#334155",
 };
 
 const textareaStyle = {
-  width:
-    "100%",
-
+  width: "100%",
   boxSizing:
     "border-box",
-
-  padding:
-    "8px",
-
+  padding: "8px",
   border:
     "1px solid #94a3b8",
-
-  borderRadius:
-    "4px",
-
-  resize:
-    "vertical",
+  borderRadius: "4px",
+  resize: "vertical",
 };
 
 const messageStyle = {
-  marginTop:
-    "10px",
-
-  padding:
-    "9px",
-
-  borderRadius:
-    "5px",
-
-  fontSize:
-    "10px",
+  marginTop: "10px",
+  padding: "9px",
+  borderRadius: "5px",
+  fontSize: "10px",
 };
 
 const loadingStyle = {
-  padding:
-    "10px",
-
-  textAlign:
-    "center",
-
-  color:
-    "#64748b",
-
-  fontSize:
-    "10px",
+  padding: "10px",
+  textAlign: "center",
+  color: "#64748b",
+  fontSize: "10px",
 };
 
 const noticeStyle = {
-  marginTop:
-    "10px",
-
-  padding:
-    "8px",
-
+  marginTop: "10px",
+  padding: "8px",
   backgroundColor:
     "#f8fafc",
-
-  color:
-    "#64748b",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "9px",
+  color: "#64748b",
+  textAlign: "center",
+  fontSize: "9px",
 };
