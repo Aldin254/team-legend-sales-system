@@ -6,6 +6,7 @@ import AdminAccountsPanel from "./AdminAccountsPanel";
 import AdminShiftOverridePanel from "./AdminShiftOverridePanel";
 import AdminShiftCorrectionsPanel from "./AdminShiftCorrectionsPanel";
 import AdminReportsPanel from "./AdminReportsPanel";
+import AdminUserAccountsPanel from "./AdminUserAccountsPanel";
 
 export default function AdminDashboard({
   user,
@@ -521,6 +522,7 @@ function SettingsPanel({
           functions are unaffected.
         </div>
       </div>
+            <AdminUserAccountsPanel user={user} />
     </>
   );
 }
