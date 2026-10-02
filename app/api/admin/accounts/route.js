@@ -123,9 +123,6 @@ function serviceHeaders(
     apikey:
       config.serviceKey,
 
-    Authorization:
-      `Bearer ${config.serviceKey}`,
-
     "Content-Type":
       "application/json",
 
