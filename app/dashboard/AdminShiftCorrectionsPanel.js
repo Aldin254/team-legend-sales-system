@@ -9,6 +9,7 @@ import {
 import AdminFloatCorrections from "./AdminFloatCorrections";
 import AdminPlatformCorrections from "./AdminPlatformCorrections";
 import AdminExpenseCorrections from "./AdminExpenseCorrections";
+import AdminSavingsCorrections from "./AdminSavingsCorrections";
 export default function AdminShiftCorrectionsPanel({
   user,
 }) {
@@ -971,6 +972,11 @@ export default function AdminShiftCorrectionsPanel({
   selectedShift={selectedShift}
   selectedShop={selectedShop}
   onChanged={loadShifts}
+/>
+    <AdminSavingsCorrections
+  user={user}
+  selectedShift={selectedShift}
+  selectedShop={selectedShop}
 />
             {/* CORRECTION FIELDS */}
 
