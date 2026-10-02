@@ -2,13 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import CashierReport from "./CashierReport";
-import AdminAccountsPanel from "./AdminAccountsPanel";
-import AdminShiftOverridePanel from "./AdminShiftOverridePanel";
-import AdminShiftCorrectionsPanel from "./AdminShiftCorrectionsPanel";
-import AdminReportsPanel from "./AdminReportsPanel";
-
+import AdminDashboard from "./AdminDashboard";
 export default function Dashboard() {
   const router = useRouter();
 
@@ -885,157 +880,13 @@ export default function Dashboard() {
   // ==================================================
 
   if (isAdmin) {
-    return (
-      <main
-        style={{
-          minHeight:
-            "100vh",
-
-          backgroundColor:
-            "#edf2f7",
-
-          fontFamily:
-            "Arial, sans-serif",
-        }}
-      >
-        <header
-          style={{
-            background:
-              "linear-gradient(90deg,#052d4b,#063c63)",
-
-            color:
-              "white",
-
-            padding:
-              "18px 28px",
-
-            display:
-              "flex",
-
-            justifyContent:
-              "space-between",
-
-            alignItems:
-              "center",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize:
-                  "28px",
-
-                fontWeight:
-                  "900",
-              }}
-            >
-              ♛ TEAM LEGEND ADMIN
-            </div>
-
-            <div
-              style={{
-                fontSize:
-                  "11px",
-
-                letterSpacing:
-                  "3px",
-
-                marginTop:
-                  "3px",
-              }}
-            >
-              DISCIPLINE • FOCUS • RESULTS
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={logout}
-            style={{
-              padding:
-                "10px 18px",
-
-              backgroundColor:
-                "#dc2626",
-
-              color:
-                "white",
-
-              border:
-                "none",
-
-              borderRadius:
-                "7px",
-
-              fontWeight:
-                "bold",
-
-              cursor:
-                "pointer",
-            }}
-          >
-            Logout
-          </button>
-        </header>
-
-        <section
-          style={{
-            maxWidth:
-              "1400px",
-
-            margin:
-              "0 auto",
-
-            padding:
-              "25px",
-          }}
-        >
-          <div
-            style={{
-              marginBottom:
-                "18px",
-            }}
-          >
-            <h1
-              style={{
-                margin: 0,
-                color:
-                  "#0f172a",
-              }}
-            >
-              Admin Dashboard
-            </h1>
-
-            <p
-              style={{
-                marginTop:
-                  "5px",
-
-                color:
-                  "#64748b",
-              }}
-            >
-              Manage shop account information.
-            </p>
-          </div>
-
-          <AdminAccountsPanel
-            user={user}
-          />
-              <AdminShiftOverridePanel
-  user={user}
-/>
-    <AdminShiftCorrectionsPanel
-  user={user}
-/>
-    <AdminReportsPanel
-  user={user}
-/>
-        </section>
-      </main>
-    );
-  }
-
+  return (
+    <AdminDashboard
+      user={user}
+      onLogout={logout}
+    />
+  );
+}
   // ==================================================
   // CASHIER HAS OPEN SHIFT
   // ==================================================
