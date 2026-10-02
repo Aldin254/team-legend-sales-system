@@ -43,9 +43,7 @@ export default function DashboardPage() {
         setMessage("");
 
         const stored =
-          sessionStorage.getItem(
-            "teamLegendUser"
-          );
+          sessionStorage.getItem("teamLegendUser");
 
         if (!stored) {
           router.replace("/");
@@ -55,13 +53,9 @@ export default function DashboardPage() {
         let parsedUser;
 
         try {
-          parsedUser =
-            JSON.parse(stored);
+          parsedUser = JSON.parse(stored);
         } catch {
-          sessionStorage.removeItem(
-            "teamLegendUser"
-          );
-
+          sessionStorage.removeItem("teamLegendUser");
           router.replace("/");
           return;
         }
@@ -73,9 +67,7 @@ export default function DashboardPage() {
         setUser(parsedUser);
 
         const role =
-          String(
-            parsedUser?.role || ""
-          )
+          String(parsedUser?.role || "")
             .trim()
             .toUpperCase();
 
@@ -140,9 +132,7 @@ export default function DashboardPage() {
           return;
         }
 
-        setShopType(
-          loadedShopType
-        );
+        setShopType(loadedShopType);
 
         // ------------------------------------------
         // CURRENT OPEN SHIFT FOR THIS CASHIER
@@ -151,32 +141,24 @@ export default function DashboardPage() {
         const openShiftResponse =
           await fetch(
             `${supabaseUrl}/rest/v1/shifts` +
-              `?shop_id=eq.${encodeURIComponent(
-                shopId
-              )}` +
-              `&cashier_id=eq.${encodeURIComponent(
-                cashierId
-              )}` +
+              `?shop_id=eq.${encodeURIComponent(shopId)}` +
+              `&cashier_id=eq.${encodeURIComponent(cashierId)}` +
               `&status=eq.OPEN` +
               `&select=*` +
               `&order=opened_at.desc` +
               `&limit=1`,
             {
               method: "GET",
-
               headers: authHeaders(
                 supabaseAnonKey,
                 accessToken
               ),
-
               cache: "no-store",
             }
           );
 
         const openShiftResult =
-          await safeJson(
-            openShiftResponse
-          );
+          await safeJson(openShiftResponse);
 
         if (!openShiftResponse.ok) {
           throw new Error(
@@ -187,9 +169,7 @@ export default function DashboardPage() {
         }
 
         const openShift =
-          Array.isArray(
-            openShiftResult
-          ) &&
+          Array.isArray(openShiftResult) &&
           openShiftResult.length > 0
             ? openShiftResult[0]
             : null;
@@ -199,9 +179,7 @@ export default function DashboardPage() {
             return;
           }
 
-          setCurrentShift(
-            openShift
-          );
+          setCurrentShift(openShift);
 
           setBalanceBF(
             String(
@@ -243,9 +221,7 @@ export default function DashboardPage() {
               return;
             }
 
-            setClosedForToday(
-              true
-            );
+            setClosedForToday(true);
 
             setBalanceBF(
               String(
@@ -254,10 +230,7 @@ export default function DashboardPage() {
               )
             );
 
-            setBalanceLocked(
-              true
-            );
-
+            setBalanceLocked(true);
             setLoading(false);
 
             return;
@@ -281,6 +254,7 @@ export default function DashboardPage() {
         }
 
         if (previousShift) {
+          // B/F = PREVIOUS SHIFT CLOSING BALANCE
           setBalanceBF(
             String(
               previousShift.closing_balance ??
@@ -288,19 +262,13 @@ export default function DashboardPage() {
             )
           );
 
-          setBalanceLocked(
-            true
-          );
+          setBalanceLocked(true);
         } else {
           setBalanceBF("");
-          setBalanceLocked(
-            false
-          );
+          setBalanceLocked(false);
         }
 
-        setClosedForToday(
-          false
-        );
+        setClosedForToday(false);
       } catch (error) {
         console.error(
           "DASHBOARD INITIALISE ERROR:",
@@ -336,10 +304,7 @@ export default function DashboardPage() {
   // ==================================================
 
   function logout() {
-    sessionStorage.removeItem(
-      "teamLegendUser"
-    );
-
+    sessionStorage.removeItem("teamLegendUser");
     router.replace("/");
   }
 
@@ -413,9 +378,7 @@ export default function DashboardPage() {
           supabaseAnonKey,
         });
 
-      setShopType(
-        loadedShopType
-      );
+      setShopType(loadedShopType);
 
       // ------------------------------------------
       // 12-HOUR SAME-DAY LOCK
@@ -431,17 +394,14 @@ export default function DashboardPage() {
         const todayClosed =
           await getClosedShiftForDate({
             shopId,
-            businessDate:
-              today,
+            businessDate: today,
             accessToken,
             supabaseUrl,
             supabaseAnonKey,
           });
 
         if (todayClosed) {
-          setClosedForToday(
-            true
-          );
+          setClosedForToday(true);
 
           setBalanceBF(
             String(
@@ -450,9 +410,7 @@ export default function DashboardPage() {
             )
           );
 
-          setBalanceLocked(
-            true
-          );
+          setBalanceLocked(true);
 
           throw new Error(
             "This 12-hour shop has already completed today's shift."
@@ -462,36 +420,28 @@ export default function DashboardPage() {
 
       // ------------------------------------------
       // SHOP-WIDE OPEN SHIFT CHECK
-      //
-      // Prevent two simultaneous shifts in one shop.
       // ------------------------------------------
 
       const openResponse =
         await fetch(
           `${supabaseUrl}/rest/v1/shifts` +
-            `?shop_id=eq.${encodeURIComponent(
-              shopId
-            )}` +
+            `?shop_id=eq.${encodeURIComponent(shopId)}` +
             `&status=eq.OPEN` +
             `&select=*` +
             `&order=opened_at.desc` +
             `&limit=1`,
           {
             method: "GET",
-
             headers: authHeaders(
               supabaseAnonKey,
               accessToken
             ),
-
             cache: "no-store",
           }
         );
 
       const openResult =
-        await safeJson(
-          openResponse
-        );
+        await safeJson(openResponse);
 
       if (!openResponse.ok) {
         throw new Error(
@@ -502,9 +452,7 @@ export default function DashboardPage() {
       }
 
       if (
-        Array.isArray(
-          openResult
-        ) &&
+        Array.isArray(openResult) &&
         openResult.length > 0
       ) {
         const existingOpen =
@@ -531,9 +479,7 @@ export default function DashboardPage() {
             )
           );
 
-          setBalanceLocked(
-            true
-          );
+          setBalanceLocked(true);
 
           return;
         }
@@ -558,6 +504,9 @@ export default function DashboardPage() {
       let openingBalance;
 
       if (previousShift) {
+        // IMPORTANT:
+        // B/F always comes from previous
+        // shift Closing Balance.
         openingBalance =
           Number(
             previousShift.closing_balance ??
@@ -575,14 +524,10 @@ export default function DashboardPage() {
         }
 
         openingBalance =
-          Number(
-            balanceBF
-          );
+          Number(balanceBF);
 
         if (
-          Number.isNaN(
-            openingBalance
-          ) ||
+          Number.isNaN(openingBalance) ||
           openingBalance < 0
         ) {
           throw new Error(
@@ -614,20 +559,28 @@ export default function DashboardPage() {
         const businessDate =
           getNairobiBusinessDate();
 
-        let tableCarry =
-          null;
+        // ----------------------------------------
+        // PREPARE AUTOMATIC PLATFORM OPENINGS
+        //
+        // NON-TABLE = 0
+        // TABLE = PREVIOUS TABLE CLOSING
+        //
+        // A PREVIOUS TABLE VALUE OF ZERO
+        // REMAINS ZERO.
+        // ----------------------------------------
 
-        if (previousShift) {
-          tableCarry =
-            await get12HourTableCarryForward({
-              shopId,
-              previousShiftId:
-                previousShift.id,
-              accessToken,
-              supabaseUrl,
-              supabaseAnonKey,
-            });
-        }
+        const openingReadings =
+          await get12HourOpeningReadings({
+            shopId,
+            previousShift,
+            accessToken,
+            supabaseUrl,
+            supabaseAnonKey,
+          });
+
+        // ----------------------------------------
+        // CREATE SHIFT
+        // ----------------------------------------
 
         const newShift =
           await createShift({
@@ -666,6 +619,7 @@ export default function DashboardPage() {
               status:
                 "OPEN",
 
+              // B/F = PREVIOUS CLOSING BALANCE
               opening_balance:
                 roundMoney(
                   openingBalance
@@ -699,27 +653,24 @@ export default function DashboardPage() {
             supabaseAnonKey,
           });
 
-        if (tableCarry) {
-          await insertOpeningReading({
-            shiftId:
-              newShift.id,
+        // ----------------------------------------
+        // SAVE ALL AUTOMATIC OPENING READINGS
+        // ----------------------------------------
 
-            platformId:
-              tableCarry.platformId,
+        await insert12HourOpeningReadings({
+          shiftId:
+            newShift.id,
 
-            value:
-              tableCarry.value,
+          readings:
+            openingReadings,
 
-            cashierId,
-            accessToken,
-            supabaseUrl,
-            supabaseAnonKey,
-          });
-        }
+          cashierId,
+          accessToken,
+          supabaseUrl,
+          supabaseAnonKey,
+        });
 
-        setCurrentShift(
-          newShift
-        );
+        setCurrentShift(newShift);
 
         setBalanceBF(
           String(
@@ -728,10 +679,8 @@ export default function DashboardPage() {
           )
         );
 
-        setBalanceLocked(
-          true
-        );
-
+        setBalanceLocked(true);
+        setClosedForToday(false);
         setMessage("");
 
         return;
@@ -761,14 +710,12 @@ export default function DashboardPage() {
             ? {
                 start:
                   "09:00:00",
-
                 end:
                   "21:00:00",
               }
             : {
                 start:
                   "21:00:00",
-
                 end:
                   "09:00:00",
               };
@@ -783,8 +730,7 @@ export default function DashboardPage() {
         if (
           previousShift &&
           isProper24HourShift(
-            previousShift
-              .shift_name
+            previousShift.shift_name
           )
         ) {
           carryForwardReadings =
@@ -892,9 +838,7 @@ export default function DashboardPage() {
           });
         }
 
-        setCurrentShift(
-          newShift
-        );
+        setCurrentShift(newShift);
 
         setBalanceBF(
           String(
@@ -903,14 +847,8 @@ export default function DashboardPage() {
           )
         );
 
-        setBalanceLocked(
-          true
-        );
-
-        setClosedForToday(
-          false
-        );
-
+        setBalanceLocked(true);
+        setClosedForToday(false);
         setMessage("");
 
         return;
@@ -1032,16 +970,12 @@ export default function DashboardPage() {
 
           <div style={balancePreviewStyle}>
             Closing Balance: KES{" "}
-            {money(
-              balanceBF
-            )}
+            {money(balanceBF)}
           </div>
 
           <button
             type="button"
-            onClick={
-              logout
-            }
+            onClick={logout}
             style={logoutStartButtonStyle}
           >
             Logout
@@ -1123,12 +1057,8 @@ export default function DashboardPage() {
           type="number"
           min="0"
           step="0.01"
-          value={
-            balanceBF
-          }
-          disabled={
-            balanceLocked
-          }
+          value={balanceBF}
+          disabled={balanceLocked}
           onChange={(event) =>
             setBalanceBF(
               event.target.value
@@ -1158,12 +1088,8 @@ export default function DashboardPage() {
 
         <button
           type="button"
-          onClick={
-            startShift
-          }
-          disabled={
-            startingShift
-          }
+          onClick={startShift}
+          disabled={startingShift}
           style={{
             ...startButtonStyle,
 
@@ -1185,9 +1111,7 @@ export default function DashboardPage() {
 
         <button
           type="button"
-          onClick={
-            logout
-          }
+          onClick={logout}
           style={logoutStartButtonStyle}
         >
           Logout
@@ -1210,9 +1134,7 @@ async function getShopType({
   const response =
     await fetch(
       `${supabaseUrl}/rest/v1/shops` +
-        `?id=eq.${encodeURIComponent(
-          shopId
-        )}` +
+        `?id=eq.${encodeURIComponent(shopId)}` +
         `&select=id,shop_name,shop_type,is_active` +
         `&limit=1`,
       {
@@ -1228,9 +1150,7 @@ async function getShopType({
     );
 
   const result =
-    await safeJson(
-      response
-    );
+    await safeJson(response);
 
   if (!response.ok) {
     throw new Error(
@@ -1241,9 +1161,7 @@ async function getShopType({
   }
 
   if (
-    !Array.isArray(
-      result
-    ) ||
+    !Array.isArray(result) ||
     result.length === 0
   ) {
     throw new Error(
@@ -1282,12 +1200,8 @@ async function getClosedShiftForDate({
   const response =
     await fetch(
       `${supabaseUrl}/rest/v1/shifts` +
-        `?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
-        `&business_date=eq.${encodeURIComponent(
-          businessDate
-        )}` +
+        `?shop_id=eq.${encodeURIComponent(shopId)}` +
+        `&business_date=eq.${encodeURIComponent(businessDate)}` +
         `&status=eq.CLOSED` +
         `&select=*` +
         `&order=closed_at.desc` +
@@ -1305,9 +1219,7 @@ async function getClosedShiftForDate({
     );
 
   const result =
-    await safeJson(
-      response
-    );
+    await safeJson(response);
 
   if (!response.ok) {
     throw new Error(
@@ -1317,9 +1229,7 @@ async function getClosedShiftForDate({
     );
   }
 
-  return Array.isArray(
-    result
-  ) &&
+  return Array.isArray(result) &&
     result.length > 0
     ? result[0]
     : null;
@@ -1338,9 +1248,7 @@ async function getLatestClosedShift({
   const response =
     await fetch(
       `${supabaseUrl}/rest/v1/shifts` +
-        `?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
+        `?shop_id=eq.${encodeURIComponent(shopId)}` +
         `&status=eq.CLOSED` +
         `&select=*` +
         `&order=closed_at.desc` +
@@ -1358,9 +1266,7 @@ async function getLatestClosedShift({
     );
 
   const result =
-    await safeJson(
-      response
-    );
+    await safeJson(response);
 
   if (!response.ok) {
     throw new Error(
@@ -1370,35 +1276,34 @@ async function getLatestClosedShift({
     );
   }
 
-  return Array.isArray(
-    result
-  ) &&
+  return Array.isArray(result) &&
     result.length > 0
     ? result[0]
     : null;
 }
 
 // ==================================================
-// 12-HOUR TABLE CARRY FORWARD
+// 12-HOUR AUTOMATIC PLATFORM OPENINGS
 // ==================================================
 
-async function get12HourTableCarryForward({
+async function get12HourOpeningReadings({
   shopId,
-  previousShiftId,
+  previousShift,
   accessToken,
   supabaseUrl,
   supabaseAnonKey,
 }) {
+  // ----------------------------------------------
+  // LOAD ALL ACTIVE PLATFORMS
+  // ----------------------------------------------
+
   const platformResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/shop_platforms` +
-        `?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
+        `?shop_id=eq.${encodeURIComponent(shopId)}` +
         `&is_active=eq.true` +
-        `&platform_name=ilike.TABLE` +
-        `&select=id,platform_name` +
-        `&limit=1`,
+        `&select=id,platform_name,display_order` +
+        `&order=display_order.asc`,
       {
         method: "GET",
 
@@ -1420,80 +1325,225 @@ async function get12HourTableCarryForward({
     throw new Error(
       platformResult?.message ||
         platformResult?.details ||
-        "Unable to load TABLE platform."
+        "Unable to load 12-hour shop platforms."
     );
   }
 
+  const platforms =
+    Array.isArray(platformResult)
+      ? platformResult
+      : [];
+
   if (
-    !Array.isArray(
-      platformResult
-    ) ||
-    platformResult.length === 0
+    platforms.length === 0
   ) {
-    return null;
+    throw new Error(
+      "No active platforms were found for this shop."
+    );
   }
 
-  const table =
-    platformResult[0];
+  // ----------------------------------------------
+  // FIND TABLE IF THIS SHOP HAS ONE
+  // ----------------------------------------------
 
-  const readingResponse =
+  const tablePlatform =
+    platforms.find(
+      (platform) =>
+        isTablePlatform(
+          platform.platform_name
+        )
+    ) || null;
+
+  // Zero is a VALID value.
+  let tableOpening = 0;
+
+  // ----------------------------------------------
+  // PREVIOUS TABLE CLOSING
+  // ----------------------------------------------
+
+  if (
+    tablePlatform &&
+    previousShift?.id
+  ) {
+    const readingResponse =
+      await fetch(
+        `${supabaseUrl}/rest/v1/platform_readings` +
+          `?shift_id=eq.${encodeURIComponent(previousShift.id)}` +
+          `&platform_id=eq.${encodeURIComponent(tablePlatform.id)}` +
+          `&reading_kind=eq.CLOSING` +
+          `&select=id,platform_id,reading_value,recorded_at` +
+          `&order=recorded_at.desc` +
+          `&limit=1`,
+        {
+          method: "GET",
+
+          headers: authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
+
+          cache: "no-store",
+        }
+      );
+
+    const readingResult =
+      await safeJson(
+        readingResponse
+      );
+
+    if (!readingResponse.ok) {
+      throw new Error(
+        readingResult?.message ||
+          readingResult?.details ||
+          "Unable to load previous TABLE closing."
+      );
+    }
+
+    if (
+      Array.isArray(readingResult) &&
+      readingResult.length > 0
+    ) {
+      const rawValue =
+        readingResult[0]
+          ?.reading_value;
+
+      // Do not use:
+      // rawValue || anotherValue
+      //
+      // because zero is a real TABLE reading.
+
+      if (
+        rawValue !== null &&
+        rawValue !== undefined &&
+        rawValue !== ""
+      ) {
+        const numericValue =
+          Number(rawValue);
+
+        if (
+          !Number.isNaN(numericValue) &&
+          numericValue >= 0
+        ) {
+          tableOpening =
+            roundMoney(
+              numericValue
+            );
+        }
+      }
+    }
+  }
+
+  // ----------------------------------------------
+  // BUILD OPENINGS
+  //
+  // TABLE = previous TABLE closing
+  // EVERYTHING ELSE = 0
+  // ----------------------------------------------
+
+  return platforms.map(
+    (platform) => ({
+      platformId:
+        platform.id,
+
+      platformName:
+        platform.platform_name,
+
+      value:
+        isTablePlatform(
+          platform.platform_name
+        )
+          ? tableOpening
+          : 0,
+    })
+  );
+}
+
+// ==================================================
+// INSERT ALL 12-HOUR OPENING READINGS
+// ==================================================
+
+async function insert12HourOpeningReadings({
+  shiftId,
+  readings,
+  cashierId,
+  accessToken,
+  supabaseUrl,
+  supabaseAnonKey,
+}) {
+  if (
+    !Array.isArray(readings) ||
+    readings.length === 0
+  ) {
+    return;
+  }
+
+  const recordedAt =
+    new Date().toISOString();
+
+  const payload =
+    readings.map(
+      (reading) => ({
+        shift_id:
+          shiftId,
+
+        platform_id:
+          reading.platformId,
+
+        reading_kind:
+          "OPENING",
+
+        // Zero must remain zero.
+        reading_value:
+          roundMoney(
+            reading.value
+          ),
+
+        recorded_at:
+          recordedAt,
+
+        recorded_by:
+          cashierId,
+      })
+    );
+
+  const response =
     await fetch(
-      `${supabaseUrl}/rest/v1/platform_readings` +
-        `?shift_id=eq.${encodeURIComponent(
-          previousShiftId
-        )}` +
-        `&platform_id=eq.${encodeURIComponent(
-          table.id
-        )}` +
-        `&reading_kind=eq.CLOSING` +
-        `&select=id,platform_id,reading_value,recorded_at` +
-        `&order=recorded_at.desc` +
-        `&limit=1`,
+      `${supabaseUrl}/rest/v1/platform_readings`,
       {
-        method: "GET",
+        method: "POST",
 
-        headers: authHeaders(
-          supabaseAnonKey,
-          accessToken
-        ),
+        headers: {
+          apikey:
+            supabaseAnonKey,
 
-        cache: "no-store",
+          Authorization:
+            `Bearer ${accessToken}`,
+
+          "Content-Type":
+            "application/json",
+
+          Prefer:
+            "return=minimal",
+        },
+
+        body:
+          JSON.stringify(
+            payload
+          ),
       }
     );
 
-  const readingResult =
-    await safeJson(
-      readingResponse
-    );
+  if (!response.ok) {
+    const result =
+      await safeJson(response);
 
-  if (!readingResponse.ok) {
     throw new Error(
-      readingResult?.message ||
-        readingResult?.details ||
-        "Unable to load previous TABLE closing."
+      result?.message ||
+        result?.details ||
+        result?.hint ||
+        "Shift was created, but automatic 12-hour opening readings could not be saved."
     );
   }
-
-  if (
-    !Array.isArray(
-      readingResult
-    ) ||
-    readingResult.length === 0
-  ) {
-    return null;
-  }
-
-  return {
-    platformId:
-      table.id,
-
-    value:
-      Number(
-        readingResult[0]
-          .reading_value ||
-          0
-      ),
-  };
 }
 
 // ==================================================
@@ -1537,9 +1587,7 @@ async function get24HourCarryForwardReadings({
   const platformResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/shop_platforms` +
-        `?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
+        `?shop_id=eq.${encodeURIComponent(shopId)}` +
         `&is_active=eq.true` +
         `&select=id,platform_name,display_order` +
         `&order=display_order.asc`,
@@ -1569,9 +1617,7 @@ async function get24HourCarryForwardReadings({
   }
 
   const platforms =
-    Array.isArray(
-      platformResult
-    )
+    Array.isArray(platformResult)
       ? platformResult
       : [];
 
@@ -1588,12 +1634,8 @@ async function get24HourCarryForwardReadings({
   const readingResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/platform_readings` +
-        `?shift_id=eq.${encodeURIComponent(
-          previousShift.id
-        )}` +
-        `&reading_kind=eq.${encodeURIComponent(
-          requiredKind
-        )}` +
+        `?shift_id=eq.${encodeURIComponent(previousShift.id)}` +
+        `&reading_kind=eq.${encodeURIComponent(requiredKind)}` +
         `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
       {
         method: "GET",
@@ -1621,9 +1663,7 @@ async function get24HourCarryForwardReadings({
   }
 
   const readings =
-    Array.isArray(
-      readingResult
-    )
+    Array.isArray(readingResult)
       ? readingResult
       : [];
 
@@ -1710,16 +1750,12 @@ async function createShift({
         },
 
         body:
-          JSON.stringify(
-            shift
-          ),
+          JSON.stringify(shift),
       }
     );
 
   const result =
-    await safeJson(
-      response
-    );
+    await safeJson(response);
 
   if (!response.ok) {
     throw new Error(
@@ -1731,9 +1767,7 @@ async function createShift({
   }
 
   if (
-    !Array.isArray(
-      result
-    ) ||
+    !Array.isArray(result) ||
     result.length === 0
   ) {
     throw new Error(
@@ -1742,78 +1776,6 @@ async function createShift({
   }
 
   return result[0];
-}
-
-// ==================================================
-// INSERT ONE OPENING READING
-// ==================================================
-
-async function insertOpeningReading({
-  shiftId,
-  platformId,
-  value,
-  cashierId,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  const response =
-    await fetch(
-      `${supabaseUrl}/rest/v1/platform_readings`,
-      {
-        method: "POST",
-
-        headers: {
-          apikey:
-            supabaseAnonKey,
-
-          Authorization:
-            `Bearer ${accessToken}`,
-
-          "Content-Type":
-            "application/json",
-
-          Prefer:
-            "return=minimal",
-        },
-
-        body:
-          JSON.stringify({
-            shift_id:
-              shiftId,
-
-            platform_id:
-              platformId,
-
-            reading_kind:
-              "OPENING",
-
-            reading_value:
-              roundMoney(
-                value
-              ),
-
-            recorded_at:
-              new Date().toISOString(),
-
-            recorded_by:
-              cashierId,
-          }),
-      }
-    );
-
-  if (!response.ok) {
-    const result =
-      await safeJson(
-        response
-      );
-
-    throw new Error(
-      result?.message ||
-        result?.details ||
-        "Shift created, but TABLE opening could not be carried forward."
-    );
-  }
 }
 
 // ==================================================
@@ -1829,9 +1791,7 @@ async function insert24HourOpeningReadings({
   supabaseAnonKey,
 }) {
   if (
-    !Array.isArray(
-      readings
-    ) ||
+    !Array.isArray(readings) ||
     readings.length === 0
   ) {
     return;
@@ -1894,9 +1854,7 @@ async function insert24HourOpeningReadings({
 
   if (!response.ok) {
     const result =
-      await safeJson(
-        response
-      );
+      await safeJson(response);
 
     throw new Error(
       result?.message ||
@@ -1933,13 +1891,6 @@ function determineNext24HourShift(
     return "SHIFT 1";
   }
 
-  // ----------------------------------------------
-  // INITIAL / BOOTSTRAP SHIFT
-  //
-  // No valid previous 24-hour shift exists.
-  // Infer the operational shift from Nairobi time.
-  // ----------------------------------------------
-
   const parts =
     getNairobiDateParts();
 
@@ -1947,7 +1898,6 @@ function determineNext24HourShift(
     parts.hour * 60 +
     parts.minute;
 
-  // 9:00 AM -> before 9:00 PM
   if (
     minutes >=
       9 * 60 &&
@@ -1957,7 +1907,6 @@ function determineNext24HourShift(
     return "SHIFT 1";
   }
 
-  // 9:00 PM -> midnight
   if (
     minutes >=
     21 * 60
@@ -1965,7 +1914,6 @@ function determineNext24HourShift(
     return "SHIFT 2";
   }
 
-  // Midnight -> before 9:00 AM
   return "SHIFT 2";
 }
 
@@ -1993,11 +1941,6 @@ function get24HourBusinessDate(
     return today;
   }
 
-  // SHIFT 2 belongs to the evening on which it began.
-  //
-  // If a Shift 2 is being bootstrapped after midnight
-  // but before 9 AM, its business date is yesterday.
-
   if (
     parts.hour < 9
   ) {
@@ -2018,9 +1961,7 @@ function isProper24HourShift(
   value
 ) {
   const name =
-    normaliseShiftName(
-      value
-    );
+    normaliseShiftName(value);
 
   return (
     name === "SHIFT 1" ||
@@ -2088,43 +2029,29 @@ function getNairobiDateParts() {
       part.type !==
       "literal"
     ) {
-      map[
-        part.type
-      ] =
+      map[part.type] =
         part.value;
     }
   }
 
   return {
     year:
-      Number(
-        map.year
-      ),
+      Number(map.year),
 
     month:
-      Number(
-        map.month
-      ),
+      Number(map.month),
 
     day:
-      Number(
-        map.day
-      ),
+      Number(map.day),
 
     hour:
-      Number(
-        map.hour
-      ),
+      Number(map.hour),
 
     minute:
-      Number(
-        map.minute
-      ),
+      Number(map.minute),
 
     second:
-      Number(
-        map.second
-      ),
+      Number(map.second),
   };
 }
 
@@ -2133,19 +2060,13 @@ function datePartsToString(
   month,
   day
 ) {
-  return `${String(
-    year
-  ).padStart(
+  return `${String(year).padStart(
     4,
     "0"
-  )}-${String(
-    month
-  ).padStart(
+  )}-${String(month).padStart(
     2,
     "0"
-  )}-${String(
-    day
-  ).padStart(
+  )}-${String(day).padStart(
     2,
     "0"
   )}`;
@@ -2160,9 +2081,7 @@ function addDaysToDateString(
     month,
     day,
   ] =
-    String(
-      dateString
-    )
+    String(dateString)
       .split("-")
       .map(Number);
 
@@ -2236,9 +2155,7 @@ function formatNairobiTime(
       part.type !==
       "literal"
     ) {
-      map[
-        part.type
-      ] =
+      map[part.type] =
         part.value;
     }
   }
@@ -2250,13 +2167,22 @@ function formatNairobiTime(
 // GENERAL HELPERS
 // ==================================================
 
+function isTablePlatform(
+  value
+) {
+  return (
+    String(value || "")
+      .trim()
+      .toUpperCase() ===
+    "TABLE"
+  );
+}
+
 function normaliseShiftName(
   value
 ) {
   const text =
-    String(
-      value || ""
-    )
+    String(value || "")
       .trim()
       .toUpperCase()
       .replace(
@@ -2269,19 +2195,15 @@ function normaliseShiftName(
       );
 
   if (
-    text ===
-      "SHIFT 1" ||
-    text ===
-      "SHIFT1"
+    text === "SHIFT 1" ||
+    text === "SHIFT1"
   ) {
     return "SHIFT 1";
   }
 
   if (
-    text ===
-      "SHIFT 2" ||
-    text ===
-      "SHIFT2"
+    text === "SHIFT 2" ||
+    text === "SHIFT2"
   ) {
     return "SHIFT 2";
   }
