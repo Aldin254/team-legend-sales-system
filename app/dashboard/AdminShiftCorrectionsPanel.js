@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import AdminFloatCorrections from "./AdminFloatCorrections";
+import AdminPlatformCorrections from "./AdminPlatformCorrections";
 export default function AdminShiftCorrectionsPanel({
   user,
 }) {
@@ -953,6 +954,12 @@ export default function AdminShiftCorrectionsPanel({
               </div>
             </div>
 <AdminFloatCorrections
+  user={user}
+  selectedShift={selectedShift}
+  selectedShop={selectedShop}
+  onChanged={loadShifts}
+/>
+    <AdminPlatformCorrections
   user={user}
   selectedShift={selectedShift}
   selectedShop={selectedShop}
