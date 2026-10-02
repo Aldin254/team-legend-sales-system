@@ -6,34 +6,76 @@ import {
   useMemo,
   useState,
 } from "react";
+
 import AdminFloatCorrections from "./AdminFloatCorrections";
 import AdminPlatformCorrections from "./AdminPlatformCorrections";
 import AdminExpenseCorrections from "./AdminExpenseCorrections";
 import AdminSavingsCorrections from "./AdminSavingsCorrections";
 import AdminAuditLogPanel from "./AdminAuditLogPanel";
 import AdminCarryForwardSync from "./AdminCarryForwardSync";
+
 export default function AdminShiftCorrectionsPanel({
   user,
 }) {
-  const [shops, setShops] = useState([]);
-  const [selectedShopId, setSelectedShopId] = useState("");
+  const [shops, setShops] =
+    useState([]);
 
-  const [shifts, setShifts] = useState([]);
-  const [selectedShiftId, setSelectedShiftId] = useState("");
+  const [
+    selectedShopId,
+    setSelectedShopId,
+  ] = useState("");
 
-  const [openingBalance, setOpeningBalance] = useState("");
-  const [netIncome, setNetIncome] = useState("");
-  const [closingBalance, setClosingBalance] = useState("");
+  const [shifts, setShifts] =
+    useState([]);
 
-  const [manualTotals, setManualTotals] = useState(false);
-  const [reason, setReason] = useState("");
+  const [
+    selectedShiftId,
+    setSelectedShiftId,
+  ] = useState("");
 
-  const [loadingShops, setLoadingShops] = useState(true);
-  const [loadingShifts, setLoadingShifts] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [
+    openingBalance,
+    setOpeningBalance,
+  ] = useState("");
 
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
+  const [
+    netIncome,
+    setNetIncome,
+  ] = useState("");
+
+  const [
+    closingBalance,
+    setClosingBalance,
+  ] = useState("");
+
+  const [
+    manualTotals,
+    setManualTotals,
+  ] = useState(false);
+
+  const [reason, setReason] =
+    useState("");
+
+  const [
+    loadingShops,
+    setLoadingShops,
+  ] = useState(true);
+
+  const [
+    loadingShifts,
+    setLoadingShifts,
+  ] = useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [
+    messageType,
+    setMessageType,
+  ] = useState("");
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -42,7 +84,8 @@ export default function AdminShiftCorrectionsPanel({
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
-    user?.access_token || null;
+    user?.access_token ||
+    null;
 
   // audit_log.user_id points to profiles.id
   const adminProfileId =
@@ -100,6 +143,7 @@ export default function AdminShiftCorrectionsPanel({
 
   // ==================================================
   // LOAD SHOPS
+  // Includes ACTIVE and INACTIVE historical shops
   // ==================================================
 
   const loadShops =
@@ -110,23 +154,31 @@ export default function AdminShiftCorrectionsPanel({
           !supabaseAnonKey ||
           !accessToken
         ) {
-          setLoadingShops(false);
+          setLoadingShops(
+            false
+          );
           return;
         }
 
         try {
-          setLoadingShops(true);
+          setLoadingShops(
+            true
+          );
 
           const response =
             await fetch(
               `${supabaseUrl}/rest/v1/shops` +
-                `?is_active=eq.true` +
-                `&select=id,shop_name,shop_type,is_active` +
+                `?select=id,shop_name,shop_type,is_active` +
                 `&order=shop_name.asc`,
               {
-                method: "GET",
-                headers: authHeaders,
-                cache: "no-store",
+                method:
+                  "GET",
+
+                headers:
+                  authHeaders,
+
+                cache:
+                  "no-store",
               }
             );
 
@@ -144,17 +196,37 @@ export default function AdminShiftCorrectionsPanel({
           }
 
           const loaded =
-            Array.isArray(result)
+            Array.isArray(
+              result
+            )
               ? result
               : [];
 
-          setShops(loaded);
+          setShops(
+            loaded
+          );
 
           setSelectedShopId(
-            (previous) =>
-              previous ||
-              loaded[0]?.id ||
-              ""
+            (previous) => {
+              const stillExists =
+                loaded.some(
+                  (shop) =>
+                    shop.id ===
+                    previous
+                );
+
+              if (
+                previous &&
+                stillExists
+              ) {
+                return previous;
+              }
+
+              return (
+                loaded[0]?.id ||
+                ""
+              );
+            }
           );
         } catch (error) {
           console.error(
@@ -171,7 +243,9 @@ export default function AdminShiftCorrectionsPanel({
             "error"
           );
         } finally {
-          setLoadingShops(false);
+          setLoadingShops(
+            false
+          );
         }
       },
       [
@@ -184,6 +258,7 @@ export default function AdminShiftCorrectionsPanel({
 
   // ==================================================
   // LOAD SHIFTS
+  // Loads historical shifts too
   // ==================================================
 
   const loadShifts =
@@ -196,12 +271,16 @@ export default function AdminShiftCorrectionsPanel({
           !accessToken
         ) {
           setShifts([]);
-          setSelectedShiftId("");
+          setSelectedShiftId(
+            ""
+          );
           return;
         }
 
         try {
-          setLoadingShifts(true);
+          setLoadingShifts(
+            true
+          );
 
           const response =
             await fetch(
@@ -216,12 +295,17 @@ export default function AdminShiftCorrectionsPanel({
                 `total_expenses,net_income,closing_balance,` +
                 `admin_manual_totals,admin_override_note,` +
                 `admin_override_at,admin_override_by` +
-                `&order=opened_at.desc` +
-                `&limit=50`,
+                `&order=business_date.desc,opened_at.desc` +
+                `&limit=500`,
               {
-                method: "GET",
-                headers: authHeaders,
-                cache: "no-store",
+                method:
+                  "GET",
+
+                headers:
+                  authHeaders,
+
+                cache:
+                  "no-store",
               }
             );
 
@@ -239,11 +323,15 @@ export default function AdminShiftCorrectionsPanel({
           }
 
           const loaded =
-            Array.isArray(result)
+            Array.isArray(
+              result
+            )
               ? result
               : [];
 
-          setShifts(loaded);
+          setShifts(
+            loaded
+          );
 
           setSelectedShiftId(
             (previous) => {
@@ -282,7 +370,9 @@ export default function AdminShiftCorrectionsPanel({
             "error"
           );
         } finally {
-          setLoadingShifts(false);
+          setLoadingShifts(
+            false
+          );
         }
       },
       [
@@ -312,11 +402,26 @@ export default function AdminShiftCorrectionsPanel({
 
   useEffect(() => {
     if (!selectedShift) {
-      setOpeningBalance("");
-      setNetIncome("");
-      setClosingBalance("");
-      setManualTotals(false);
-      setReason("");
+      setOpeningBalance(
+        ""
+      );
+
+      setNetIncome(
+        ""
+      );
+
+      setClosingBalance(
+        ""
+      );
+
+      setManualTotals(
+        false
+      );
+
+      setReason(
+        ""
+      );
+
       return;
     }
 
@@ -347,8 +452,13 @@ export default function AdminShiftCorrectionsPanel({
       )
     );
 
-    setReason("");
-    setMessage("");
+    setReason(
+      ""
+    );
+
+    setMessage(
+      ""
+    );
   }, [selectedShift]);
 
   // ==================================================
@@ -387,8 +497,13 @@ export default function AdminShiftCorrectionsPanel({
       )
     );
 
-    setReason("");
-    setMessage("");
+    setReason(
+      ""
+    );
+
+    setMessage(
+      ""
+    );
   }
 
   // ==================================================
@@ -401,7 +516,10 @@ export default function AdminShiftCorrectionsPanel({
         "Select a shift first."
       );
 
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -410,7 +528,10 @@ export default function AdminShiftCorrectionsPanel({
         "Admin profile ID is missing. Please log in again."
       );
 
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -420,13 +541,17 @@ export default function AdminShiftCorrectionsPanel({
       ).trim();
 
     if (
-      cleanReason.length < 3
+      cleanReason.length <
+      3
     ) {
       setMessage(
         "Enter a correction reason before saving."
       );
 
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -436,22 +561,30 @@ export default function AdminShiftCorrectionsPanel({
       );
 
     if (
-      openingBalance === "" ||
+      openingBalance ===
+        "" ||
       Number.isNaN(
         newOpeningBalance
       ) ||
-      newOpeningBalance < 0
+      newOpeningBalance <
+        0
     ) {
       setMessage(
         "Enter a valid Balance B/F."
       );
 
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
-    let newNetIncome = null;
-    let newClosingBalance = null;
+    let newNetIncome =
+      null;
+
+    let newClosingBalance =
+      null;
 
     if (manualTotals) {
       newNetIncome =
@@ -465,7 +598,8 @@ export default function AdminShiftCorrectionsPanel({
         );
 
       if (
-        netIncome === "" ||
+        netIncome ===
+          "" ||
         Number.isNaN(
           newNetIncome
         )
@@ -474,12 +608,16 @@ export default function AdminShiftCorrectionsPanel({
           "Enter a valid Net Income."
         );
 
-        setMessageType("error");
+        setMessageType(
+          "error"
+        );
+
         return;
       }
 
       if (
-        closingBalance === "" ||
+        closingBalance ===
+          "" ||
         Number.isNaN(
           newClosingBalance
         )
@@ -488,7 +626,10 @@ export default function AdminShiftCorrectionsPanel({
           "Enter a valid Closing Balance."
         );
 
-        setMessageType("error");
+        setMessageType(
+          "error"
+        );
+
         return;
       }
     }
@@ -516,9 +657,17 @@ export default function AdminShiftCorrectionsPanel({
     }
 
     try {
-      setSaving(true);
-      setMessage("");
-      setMessageType("");
+      setSaving(
+        true
+      );
+
+      setMessage(
+        ""
+      );
+
+      setMessageType(
+        ""
+      );
 
       const oldSnapshot = {
         id:
@@ -622,7 +771,8 @@ export default function AdminShiftCorrectionsPanel({
               selectedShift.id
             )}`,
           {
-            method: "PATCH",
+            method:
+              "PATCH",
 
             headers: {
               ...authHeaders,
@@ -643,7 +793,9 @@ export default function AdminShiftCorrectionsPanel({
           shiftResponse
         );
 
-      if (!shiftResponse.ok) {
+      if (
+        !shiftResponse.ok
+      ) {
         throw new Error(
           shiftResult?.message ||
             shiftResult?.details ||
@@ -656,7 +808,8 @@ export default function AdminShiftCorrectionsPanel({
         !Array.isArray(
           shiftResult
         ) ||
-        shiftResult.length === 0
+        shiftResult.length ===
+          0
       ) {
         throw new Error(
           "Shift correction was not returned."
@@ -674,7 +827,8 @@ export default function AdminShiftCorrectionsPanel({
         await fetch(
           `${supabaseUrl}/rest/v1/audit_log`,
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               ...authHeaders,
@@ -725,7 +879,9 @@ export default function AdminShiftCorrectionsPanel({
           auditResponse
         );
 
-      if (!auditResponse.ok) {
+      if (
+        !auditResponse.ok
+      ) {
         console.error(
           "AUDIT LOG ERROR:",
           auditResult
@@ -740,6 +896,7 @@ export default function AdminShiftCorrectionsPanel({
         );
 
         await loadShifts();
+
         return;
       }
 
@@ -767,7 +924,9 @@ export default function AdminShiftCorrectionsPanel({
         "error"
       );
     } finally {
-      setSaving(false);
+      setSaving(
+        false
+      );
     }
   }
 
@@ -776,17 +935,37 @@ export default function AdminShiftCorrectionsPanel({
   // ==================================================
 
   return (
-    <section style={panelStyle}>
-      <div style={titleStyle}>
+    <section
+      style={
+        panelStyle
+      }
+    >
+      <div
+        style={
+          titleStyle
+        }
+      >
         ADMIN SHIFT CORRECTIONS
       </div>
 
-      <div style={bodyStyle}>
-        <div style={selectorGridStyle}>
+      <div
+        style={
+          bodyStyle
+        }
+      >
+        <div
+          style={
+            selectorGridStyle
+          }
+        >
           {/* SHOP */}
 
           <div>
-            <label style={labelStyle}>
+            <label
+              style={
+                labelStyle
+              }
+            >
               SELECT SHOP
             </label>
 
@@ -797,24 +976,41 @@ export default function AdminShiftCorrectionsPanel({
               disabled={
                 loadingShops
               }
-              onChange={(event) => {
+              onChange={(
+                event
+              ) => {
                 setSelectedShopId(
-                  event.target.value
+                  event.target
+                    .value
                 );
 
-                setSelectedShiftId("");
-                setMessage("");
+                setSelectedShiftId(
+                  ""
+                );
+
+                setMessage(
+                  ""
+                );
               }}
-              style={selectStyle}
+              style={
+                selectStyle
+              }
             >
               {shops.map(
                 (shop) => (
                   <option
-                    key={shop.id}
-                    value={shop.id}
+                    key={
+                      shop.id
+                    }
+                    value={
+                      shop.id
+                    }
                   >
                     {shop.shop_name}{" "}
                     ({shop.shop_type})
+                    {!shop.is_active
+                      ? " - INACTIVE"
+                      : ""}
                   </option>
                 )
               )}
@@ -824,7 +1020,11 @@ export default function AdminShiftCorrectionsPanel({
           {/* SHIFT */}
 
           <div>
-            <label style={labelStyle}>
+            <label
+              style={
+                labelStyle
+              }
+            >
               SELECT SHIFT
             </label>
 
@@ -834,16 +1034,24 @@ export default function AdminShiftCorrectionsPanel({
               }
               disabled={
                 loadingShifts ||
-                shifts.length === 0
+                shifts.length ===
+                  0
               }
-              onChange={(event) => {
+              onChange={(
+                event
+              ) => {
                 setSelectedShiftId(
-                  event.target.value
+                  event.target
+                    .value
                 );
 
-                setMessage("");
+                setMessage(
+                  ""
+                );
               }}
-              style={selectStyle}
+              style={
+                selectStyle
+              }
             >
               {shifts.length ===
               0 ? (
@@ -854,12 +1062,19 @@ export default function AdminShiftCorrectionsPanel({
                 shifts.map(
                   (shift) => (
                     <option
-                      key={shift.id}
-                      value={shift.id}
+                      key={
+                        shift.id
+                      }
+                      value={
+                        shift.id
+                      }
                     >
-                      {shift.business_date} |{" "}
-                      {shift.shift_name} |{" "}
-                      {shift.status} |{" "}
+                      {shift.business_date}
+                      {" | "}
+                      {shift.shift_name}
+                      {" | "}
+                      {shift.status}
+                      {" | "}
                       {shift.cashier_name}
                     </option>
                   )
@@ -873,7 +1088,11 @@ export default function AdminShiftCorrectionsPanel({
           <>
             {/* SHIFT INFORMATION */}
 
-            <div style={statusGridStyle}>
+            <div
+              style={
+                statusGridStyle
+              }
+            >
               <InfoBox
                 title="SHOP"
                 value={
@@ -915,9 +1134,14 @@ export default function AdminShiftCorrectionsPanel({
                 }
               />
             </div>
+
             {/* CURRENT CALCULATION INFORMATION */}
 
-            <div style={currentTotalsStyle}>
+            <div
+              style={
+                currentTotalsStyle
+              }
+            >
               <div>
                 <small>
                   Added Float
@@ -957,44 +1181,100 @@ export default function AdminShiftCorrectionsPanel({
                 </strong>
               </div>
             </div>
-<AdminFloatCorrections
-  user={user}
-  selectedShift={selectedShift}
-  selectedShop={selectedShop}
-  onChanged={loadShifts}
-/>
-    <AdminPlatformCorrections
-  user={user}
-  selectedShift={selectedShift}
-  selectedShop={selectedShop}
-  onChanged={loadShifts}
-/>
-    <AdminExpenseCorrections
-  user={user}
-  selectedShift={selectedShift}
-  selectedShop={selectedShop}
-  onChanged={loadShifts}
-/>
-    <AdminSavingsCorrections
-  user={user}
-  selectedShift={selectedShift}
-  selectedShop={selectedShop}
-/>
-    <AdminCarryForwardSync
-  user={user}
-  selectedShift={selectedShift}
-  selectedShop={selectedShop}
-  onChanged={loadShifts}
-/>
+
+            {/* FLOAT CORRECTIONS */}
+
+            <AdminFloatCorrections
+              user={user}
+              selectedShift={
+                selectedShift
+              }
+              selectedShop={
+                selectedShop
+              }
+              onChanged={
+                loadShifts
+              }
+            />
+
+            {/* PLATFORM CORRECTIONS */}
+
+            <AdminPlatformCorrections
+              user={user}
+              selectedShift={
+                selectedShift
+              }
+              selectedShop={
+                selectedShop
+              }
+              onChanged={
+                loadShifts
+              }
+            />
+
+            {/* EXPENSE CORRECTIONS */}
+
+            <AdminExpenseCorrections
+              user={user}
+              selectedShift={
+                selectedShift
+              }
+              selectedShop={
+                selectedShop
+              }
+              onChanged={
+                loadShifts
+              }
+            />
+
+            {/* SAVINGS CORRECTIONS */}
+
+            <AdminSavingsCorrections
+              user={user}
+              selectedShift={
+                selectedShift
+              }
+              selectedShop={
+                selectedShop
+              }
+            />
+
+            {/* CARRY FORWARD */}
+
+            <AdminCarryForwardSync
+              user={user}
+              selectedShift={
+                selectedShift
+              }
+              selectedShop={
+                selectedShop
+              }
+              onChanged={
+                loadShifts
+              }
+            />
+
             {/* CORRECTION FIELDS */}
 
-            <div style={sectionTitleStyle}>
+            <div
+              style={
+                sectionTitleStyle
+              }
+            >
               SHIFT TOTAL CORRECTION
             </div>
 
-            <div style={fieldGridStyle}>
+            <div
+              style={
+                fieldGridStyle
+              }
+            >
               <div>
-                <label style={labelStyle}>
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   BALANCE B/F
                 </label>
 
@@ -1005,17 +1285,26 @@ export default function AdminShiftCorrectionsPanel({
                   value={
                     openingBalance
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     setOpeningBalance(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
-                  style={inputStyle}
+                  style={
+                    inputStyle
+                  }
                 />
               </div>
 
               <div>
-                <label style={labelStyle}>
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   NET INCOME
                 </label>
 
@@ -1028,9 +1317,12 @@ export default function AdminShiftCorrectionsPanel({
                   disabled={
                     !manualTotals
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     setNetIncome(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   style={{
@@ -1045,7 +1337,11 @@ export default function AdminShiftCorrectionsPanel({
               </div>
 
               <div>
-                <label style={labelStyle}>
+                <label
+                  style={
+                    labelStyle
+                  }
+                >
                   CLOSING BALANCE
                 </label>
 
@@ -1058,9 +1354,12 @@ export default function AdminShiftCorrectionsPanel({
                   disabled={
                     !manualTotals
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     setClosingBalance(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   style={{
@@ -1077,15 +1376,22 @@ export default function AdminShiftCorrectionsPanel({
 
             {/* MANUAL TOTALS SWITCH */}
 
-            <label style={manualStyle}>
+            <label
+              style={
+                manualStyle
+              }
+            >
               <input
                 type="checkbox"
                 checked={
                   manualTotals
                 }
-                onChange={(event) => {
+                onChange={(
+                  event
+                ) => {
                   const checked =
-                    event.target.checked;
+                    event.target
+                      .checked;
 
                   setManualTotals(
                     checked
@@ -1114,7 +1420,11 @@ export default function AdminShiftCorrectionsPanel({
                   Manual Admin Totals
                 </strong>
 
-                <small style={manualHelpStyle}>
+                <small
+                  style={
+                    manualHelpStyle
+                  }
+                >
                   When ON, Admin can directly set Net Income and Closing Balance.
                   When OFF, the system calculates them automatically.
                 </small>
@@ -1123,8 +1433,16 @@ export default function AdminShiftCorrectionsPanel({
 
             {/* REASON */}
 
-            <div style={reasonWrapStyle}>
-              <label style={labelStyle}>
+            <div
+              style={
+                reasonWrapStyle
+              }
+            >
+              <label
+                style={
+                  labelStyle
+                }
+              >
                 CORRECTION REASON *
               </label>
 
@@ -1132,21 +1450,30 @@ export default function AdminShiftCorrectionsPanel({
                 value={
                   reason
                 }
-                onChange={(event) =>
+                onChange={(
+                  event
+                ) =>
                   setReason(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="Example: Cashier entered the wrong opening balance."
                 rows={3}
-                style={textareaStyle}
+                style={
+                  textareaStyle
+                }
               />
             </div>
 
             {/* EXISTING ADMIN CORRECTION */}
 
             {selectedShift.admin_override_note && (
-              <div style={previousCorrectionStyle}>
+              <div
+                style={
+                  previousCorrectionStyle
+                }
+              >
                 <strong>
                   Previous Admin Note:
                 </strong>{" "}
@@ -1182,7 +1509,11 @@ export default function AdminShiftCorrectionsPanel({
 
             {/* ACTIONS */}
 
-            <div style={buttonGridStyle}>
+            <div
+              style={
+                buttonGridStyle
+              }
+            >
               <button
                 type="button"
                 onClick={
@@ -1191,7 +1522,9 @@ export default function AdminShiftCorrectionsPanel({
                 disabled={
                   saving
                 }
-                style={resetButtonStyle}
+                style={
+                  resetButtonStyle
+                }
               >
                 RESET CHANGES
               </button>
@@ -1204,7 +1537,9 @@ export default function AdminShiftCorrectionsPanel({
                 disabled={
                   saving
                 }
-                style={saveButtonStyle}
+                style={
+                  saveButtonStyle
+                }
               >
                 {saving
                   ? "SAVING CORRECTION..."
@@ -1212,15 +1547,24 @@ export default function AdminShiftCorrectionsPanel({
               </button>
             </div>
 
-            <div style={auditNoticeStyle}>
+            <div
+              style={
+                auditNoticeStyle
+              }
+            >
               Every saved correction records the previous values, new values,
               Admin profile, shop, shift and correction reason in the audit log.
             </div>
-                <AdminAuditLogPanel
-  user={user}
-  selectedShift={selectedShift}
-  selectedShop={selectedShop}
-/>
+
+            <AdminAuditLogPanel
+              user={user}
+              selectedShift={
+                selectedShift
+              }
+              selectedShop={
+                selectedShop
+              }
+            />
           </>
         )}
       </div>
@@ -1243,8 +1587,16 @@ function InfoBox({
     ).toUpperCase();
 
   return (
-    <div style={infoBoxStyle}>
-      <div style={infoTitleStyle}>
+    <div
+      style={
+        infoBoxStyle
+      }
+    >
+      <div
+        style={
+          infoTitleStyle
+        }
+      >
         {title}
       </div>
 
