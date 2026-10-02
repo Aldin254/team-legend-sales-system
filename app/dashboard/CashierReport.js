@@ -11,6 +11,7 @@ import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierManagementPanel from "./CashierManagementPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
+
 export default function CashierReport({
   user,
   currentShift,
@@ -43,13 +44,15 @@ export default function CashierReport({
 
   const [loading, setLoading] = useState(true);
 
-  const [savingOpening, setSavingOpening] = useState(false);
   const [savingClosing, setSavingClosing] = useState(false);
   const [savingFloats, setSavingFloats] = useState(false);
   const [savingExpenses, setSavingExpenses] = useState(false);
 
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
+
+  // Live clock used for 9:30 PM Nairobi closing window.
+  const [now, setNow] = useState(() => new Date());
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -86,6 +89,25 @@ export default function CashierReport({
     user?.name ||
     user?.username ||
     "Cashier";
+
+  // ==================================================
+  // NAIROBI CLOCK
+  // ==================================================
+
+  useEffect(() => {
+    setNow(new Date());
+
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 15000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  const closingWindowOpen =
+    is12HourClosingWindow(now);
 
   // ==================================================
   // LOAD REPORT
@@ -292,7 +314,8 @@ export default function CashierReport({
           loadedExpenses
         );
 
-        // OPENING INPUTS
+        // OPENING VALUES
+        // These are display-only for the new 12-hour workflow.
 
         setOpeningInputs((previous) => {
           const next = {
@@ -543,6 +566,21 @@ export default function CashierReport({
     platforms.length > 0 &&
     savedClosingCount ===
       platforms.length;
+
+  /*
+   * Before 9:30 PM the Closing column is completely hidden.
+   *
+   * If closings have already been saved, we keep them visible and
+   * locked so a completed entry does not disappear from the report.
+   */
+  const showClosing =
+    closingWindowOpen ||
+    savedClosingCount > 0;
+
+  const platformGridColumns =
+    showClosing
+      ? "1.25fr 1fr 1fr 1fr"
+      : "1.25fr 1fr 1fr";
 
   // ==================================================
   // FLOAT DATA
@@ -1133,134 +1171,34 @@ export default function CashierReport({
   }
 
   // ==================================================
-  // SAVE OPENING READINGS
-  // ==================================================
-
-  async function saveOpeningReadings() {
-    const unsavedPlatforms =
-      platforms.filter(
-        (platform) =>
-          !savedOpeningIds.has(
-            platform.id
-          )
-      );
-
-    for (const platform of unsavedPlatforms) {
-      const raw =
-        openingInputs[
-          platform.id
-        ];
-
-      const value =
-        Number(raw);
-
-      if (
-        raw === "" ||
-        raw === undefined ||
-        Number.isNaN(value) ||
-        value < 0
-      ) {
-        setMessage(
-          `Enter a valid opening reading for ${platform.platform_name}.`
-        );
-
-        setMessageType("error");
-        return;
-      }
-    }
-
-    try {
-      setSavingOpening(true);
-      setMessage("");
-
-      const recordedAt =
-        new Date().toISOString();
-
-      for (const platform of unsavedPlatforms) {
-        const response =
-          await fetch(
-            `${supabaseUrl}/rest/v1/platform_readings`,
-            {
-              method: "POST",
-
-              headers: {
-                apikey:
-                  supabaseAnonKey,
-
-                Authorization:
-                  `Bearer ${accessToken}`,
-
-                "Content-Type":
-                  "application/json",
-              },
-
-              body: JSON.stringify({
-                shift_id:
-                  shiftId,
-
-                platform_id:
-                  platform.id,
-
-                reading_kind:
-                  "OPENING",
-
-                reading_value:
-                  roundMoney(
-                    Number(
-                      openingInputs[
-                        platform.id
-                      ]
-                    )
-                  ),
-
-                recorded_at:
-                  recordedAt,
-
-                recorded_by:
-                  cashierId,
-              }),
-            }
-          );
-
-        if (!response.ok) {
-          const result =
-            await safeJson(
-              response
-            );
-
-          throw new Error(
-            result?.message ||
-              `Unable to save ${platform.platform_name}.`
-          );
-        }
-      }
-
-      setMessage(
-        "Opening readings saved successfully."
-      );
-
-      setMessageType(
-        "success"
-      );
-
-      await loadReport();
-    } catch (error) {
-      setMessage(
-        error?.message ||
-          "Unable to save opening readings."
-      );
-
-      setMessageType("error");
-    } finally {
-      setSavingOpening(false);
-    }
-  }
-
-  // ==================================================
   // SAVE CLOSING READINGS
+  // 12-HOUR CASHIER WINDOW: 9:30 PM - MIDNIGHT NAIROBI
   // ==================================================
 
   async function saveClosingReadings() {
+    // Handler protection — not only UI hiding.
+    if (
+      !is12HourClosingWindow(
+        new Date()
+      )
+    ) {
+      setMessage(
+        "Closing readings can only be saved from 9:30 PM to midnight Nairobi time."
+      );
+
+      setMessageType("error");
+      return;
+    }
+
+    if (!allOpeningsSaved) {
+      setMessage(
+        "Automatic opening readings are incomplete. Contact Admin before closing this shift."
+      );
+
+      setMessageType("error");
+      return;
+    }
+
     const unsavedPlatforms =
       platforms.filter(
         (platform) =>
@@ -1268,6 +1206,17 @@ export default function CashierReport({
             platform.id
           )
       );
+
+    if (
+      unsavedPlatforms.length === 0
+    ) {
+      setMessage(
+        "Closing readings are already saved."
+      );
+
+      setMessageType("success");
+      return;
+    }
 
     for (const platform of unsavedPlatforms) {
       const openingRow =
@@ -1279,20 +1228,36 @@ export default function CashierReport({
               "OPENING"
         );
 
-      const opening =
-        Number(
-          openingRow?.reading_value
+      if (!openingRow) {
+        setMessage(
+          `Opening reading for ${platform.platform_name} is missing. Contact Admin.`
         );
+
+        setMessageType("error");
+        return;
+      }
+
+      const openingRaw =
+        openingRow.reading_value;
+
+      const closingRaw =
+        closingInputs[
+          platform.id
+        ];
+
+      const opening =
+        Number(openingRaw);
 
       const closing =
-        Number(
-          closingInputs[
-            platform.id
-          ]
-        );
+        Number(closingRaw);
 
       if (
+        closingRaw === "" ||
+        closingRaw === undefined ||
+        closingRaw === null ||
         Number.isNaN(closing) ||
+        closing < 0 ||
+        Number.isNaN(opening) ||
         closing < opening
       ) {
         setMessage(
@@ -1307,6 +1272,17 @@ export default function CashierReport({
     try {
       setSavingClosing(true);
       setMessage("");
+
+      // Recheck immediately before writing.
+      if (
+        !is12HourClosingWindow(
+          new Date()
+        )
+      ) {
+        throw new Error(
+          "The cashier closing window has ended. Closing readings can only be saved from 9:30 PM to midnight Nairobi time."
+        );
+      }
 
       const recordedAt =
         new Date().toISOString();
@@ -1358,8 +1334,15 @@ export default function CashierReport({
           );
 
         if (!response.ok) {
+          const result =
+            await safeJson(
+              response
+            );
+
           throw new Error(
-            `Unable to save ${platform.platform_name}.`
+            result?.message ||
+              result?.details ||
+              `Unable to save ${platform.platform_name}.`
           );
         }
       }
@@ -1376,7 +1359,7 @@ export default function CashierReport({
                 "OPENING"
           );
 
-        const closingRow =
+        const existingClosingRow =
           readings.find(
             (row) =>
               row.platform_id ===
@@ -1385,24 +1368,33 @@ export default function CashierReport({
                 "CLOSING"
           );
 
+        const openingRaw =
+          openingRow?.reading_value;
+
+        const closingRaw =
+          existingClosingRow
+            ? existingClosingRow.reading_value
+            : closingInputs[
+                platform.id
+              ];
+
+        /*
+         * Do not use `value || fallback` for readings.
+         * Zero is a real opening/closing value.
+         */
         const opening =
-          Number(
-            openingRow?.reading_value ||
-              0
-          );
+          openingRaw === null ||
+          openingRaw === undefined ||
+          openingRaw === ""
+            ? 0
+            : Number(openingRaw);
 
         const closing =
-          closingRow
-            ? Number(
-                closingRow.reading_value ||
-                  0
-              )
-            : Number(
-                closingInputs[
-                  platform.id
-                ] ||
-                  0
-              );
+          closingRaw === null ||
+          closingRaw === undefined ||
+          closingRaw === ""
+            ? 0
+            : Number(closingRaw);
 
         totalOutput +=
           closing -
@@ -1470,25 +1462,25 @@ export default function CashierReport({
 
   const openingBalance =
     Number(
-      shift?.opening_balance ||
+      shift?.opening_balance ??
         0
     );
 
   const savedTotalOutput =
     Number(
-      shift?.total_output ||
+      shift?.total_output ??
         0
     );
 
   const totalExpenses =
     Number(
-      shift?.total_expenses ||
+      shift?.total_expenses ??
         0
     );
 
   const closingBalance =
     Number(
-      shift?.closing_balance ||
+      shift?.closing_balance ??
         0
     );
 
@@ -1799,9 +1791,14 @@ export default function CashierReport({
                   onClick={
                     saveFloats
                   }
+                  disabled={
+                    savingFloats
+                  }
                   style={greenActionStyle}
                 >
-                  Save Added Float
+                  {savingFloats
+                    ? "Saving..."
+                    : "Save Added Float"}
                 </button>
               </div>
             </section>
@@ -1821,14 +1818,22 @@ export default function CashierReport({
                   {platforms.length}
                 </span>
 
-                <span>
-                  Closing:{" "}
-                  {savedClosingCount}/
-                  {platforms.length}
-                </span>
+                {showClosing && (
+                  <span>
+                    Closing:{" "}
+                    {savedClosingCount}/
+                    {platforms.length}
+                  </span>
+                )}
               </div>
 
-              <div style={platformHeaderStyle}>
+              <div
+                style={{
+                  ...platformHeaderStyle,
+                  gridTemplateColumns:
+                    platformGridColumns,
+                }}
+              >
                 <div>
                   SHOP / PLATFORM
                 </div>
@@ -1837,9 +1842,11 @@ export default function CashierReport({
                   OPENING
                 </div>
 
-                <div>
-                  CLOSING
-                </div>
+                {showClosing && (
+                  <div>
+                    CLOSING
+                  </div>
+                )}
 
                 <div>
                   SALES
@@ -1850,7 +1857,11 @@ export default function CashierReport({
                 (platform) => (
                   <div
                     key={platform.id}
-                    style={platformRowStyle}
+                    style={{
+                      ...platformRowStyle,
+                      gridTemplateColumns:
+                        platformGridColumns,
+                    }}
                   >
                     <div>
                       <strong>
@@ -1863,12 +1874,15 @@ export default function CashierReport({
                         </div>
                       )}
 
-                      {platform.closingSaved && (
-                        <div style={savedTextStyle}>
-                          Closing ✓
-                        </div>
-                      )}
+                      {showClosing &&
+                        platform.closingSaved && (
+                          <div style={savedTextStyle}>
+                            Closing ✓
+                          </div>
+                        )}
                     </div>
+
+                    {/* OPENING IS ALWAYS LOCKED */}
 
                     {platform.openingSaved ? (
                       <SavedReadingBox
@@ -1877,50 +1891,43 @@ export default function CashierReport({
                         }
                       />
                     ) : (
-                      <ReadingInput
-                        value={
-                          openingInputs[
-                            platform.id
-                          ] || ""
-                        }
-                        onChange={(value) =>
-                          setOpeningInputs(
-                            (previous) => ({
-                              ...previous,
-                              [platform.id]:
-                                value,
-                            })
-                          )
-                        }
-                      />
+                      <div style={missingReadingStyle}>
+                        Missing
+                      </div>
                     )}
 
-                    {platform.closingSaved ? (
-                      <SavedReadingBox
-                        value={
-                          platform.closing
-                        }
-                      />
-                    ) : (
-                      <ReadingInput
-                        value={
-                          closingInputs[
-                            platform.id
-                          ] || ""
-                        }
-                        disabled={
-                          !allOpeningsSaved
-                        }
-                        onChange={(value) =>
-                          setClosingInputs(
-                            (previous) => ({
-                              ...previous,
-                              [platform.id]:
-                                value,
-                            })
-                          )
-                        }
-                      />
+                    {/* CLOSING IS COMPLETELY HIDDEN BEFORE 9:30 PM */}
+
+                    {showClosing && (
+                      platform.closingSaved ? (
+                        <SavedReadingBox
+                          value={
+                            platform.closing
+                          }
+                        />
+                      ) : (
+                        <ReadingInput
+                          value={
+                            closingInputs[
+                              platform.id
+                            ] ?? ""
+                          }
+                          disabled={
+                            !closingWindowOpen ||
+                            !allOpeningsSaved ||
+                            savingClosing
+                          }
+                          onChange={(value) =>
+                            setClosingInputs(
+                              (previous) => ({
+                                ...previous,
+                                [platform.id]:
+                                  value,
+                              })
+                            )
+                          }
+                        />
+                      )
                     )}
 
                     <div style={outputBoxStyle}>
@@ -1934,25 +1941,34 @@ export default function CashierReport({
 
               <div style={platformActionsStyle}>
                 {!allOpeningsSaved && (
-                  <button
-                    onClick={
-                      saveOpeningReadings
-                    }
-                    style={greenActionStyle}
-                  >
-                    Save Opening Readings
-                  </button>
+                  <div style={warningStyle}>
+                    Automatic opening readings are incomplete. Contact Admin.
+                  </div>
                 )}
 
-                {allOpeningsSaved &&
+                {!showClosing &&
+                  allOpeningsSaved && (
+                    <div style={waitingStyle}>
+                      Closing readings will become available at 9:30 PM Nairobi time.
+                    </div>
+                  )}
+
+                {showClosing &&
+                  closingWindowOpen &&
+                  allOpeningsSaved &&
                   !allClosingsSaved && (
                     <button
                       onClick={
                         saveClosingReadings
                       }
+                      disabled={
+                        savingClosing
+                      }
                       style={blueActionStyle}
                     >
-                      Save Closing Readings
+                      {savingClosing
+                        ? "Saving Closing Readings..."
+                        : "Save Closing Readings"}
                     </button>
                   )}
 
@@ -2107,9 +2123,14 @@ export default function CashierReport({
                   onClick={
                     saveExpenses
                   }
+                  disabled={
+                    savingExpenses
+                  }
                   style={redActionStyle}
                 >
-                  Save Expenses
+                  {savingExpenses
+                    ? "Saving..."
+                    : "Save Expenses"}
                 </button>
               </div>
             </section>
@@ -2132,6 +2153,8 @@ export default function CashierReport({
               tone="red"
             />
 
+            {/* CLOSING BALANCE IS DISPLAY ONLY / LOCKED */}
+
             <SummaryBox
               title="CLOSING BALANCE"
               amount={
@@ -2153,22 +2176,22 @@ export default function CashierReport({
             />
 
             <CashierManagementPanel
-  user={user}
-  currentShift={
-    shift ||
-    currentShift
-  }
-/>
+              user={user}
+              currentShift={
+                shift ||
+                currentShift
+              }
+            />
 
             <CashierAccountsPanel
-  user={user}
-/>
+              user={user}
+            />
           </div>
 
           <CashierCloseShiftButton
-  user={user}
-  currentShift={shift}
-/>
+            user={user}
+            currentShift={shift}
+          />
         </main>
       </div>
     </div>
@@ -2356,6 +2379,7 @@ function ReadingInput({
   return (
     <input
       type="number"
+      min="0"
       value={value}
       disabled={disabled}
       onChange={(event) =>
@@ -2440,7 +2464,7 @@ async function safeJson(
 
 function money(value) {
   return Number(
-    value || 0
+    value ?? 0
   ).toLocaleString(
     "en-KE",
     {
@@ -2500,6 +2524,70 @@ function displayTime(value) {
   )
     .split(".")[0]
     .slice(0, 5);
+}
+
+// ==================================================
+// 12-HOUR CASHIER CLOSING WINDOW
+// NAIROBI: 21:30 INCLUSIVE TO MIDNIGHT EXCLUSIVE
+// ==================================================
+
+function is12HourClosingWindow(
+  date = new Date()
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          "Africa/Nairobi",
+        hour:
+          "2-digit",
+        minute:
+          "2-digit",
+        second:
+          "2-digit",
+        hourCycle:
+          "h23",
+      }
+    );
+
+  const parts =
+    formatter.formatToParts(
+      date
+    );
+
+  const values = {};
+
+  for (const part of parts) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[part.type] =
+        part.value;
+    }
+  }
+
+  const hour =
+    Number(
+      values.hour
+    );
+
+  const minute =
+    Number(
+      values.minute
+    );
+
+  const minutesSinceMidnight =
+    hour * 60 +
+    minute;
+
+  return (
+    minutesSinceMidnight >=
+      21 * 60 + 30 &&
+    minutesSinceMidnight <
+      24 * 60
+  );
 }
 
 // ==================================================
@@ -2672,6 +2760,16 @@ const savedMoneyStyle = {
   textAlign: "right",
 };
 
+const missingReadingStyle = {
+  padding: "7px",
+  border: "1px solid #fecaca",
+  backgroundColor: "#fef2f2",
+  color: "#991b1b",
+  borderRadius: "4px",
+  textAlign: "center",
+  fontWeight: "bold",
+};
+
 const savedInlineStyle = {
   color: "#15803d",
   fontWeight: "bold",
@@ -2697,8 +2795,6 @@ const platformStatusStyle = {
 
 const platformHeaderStyle = {
   display: "grid",
-  gridTemplateColumns:
-    "1.25fr 1fr 1fr 1fr",
   padding: "8px",
   textAlign: "center",
   backgroundColor: "#eaf6ef",
@@ -2708,8 +2804,6 @@ const platformHeaderStyle = {
 
 const platformRowStyle = {
   display: "grid",
-  gridTemplateColumns:
-    "1.25fr 1fr 1fr 1fr",
   gap: "6px",
   padding: "5px 8px",
   alignItems: "center",
@@ -2739,6 +2833,26 @@ const completeStyle = {
   backgroundColor: "#ecfdf5",
   color: "#166534",
   fontWeight: "bold",
+};
+
+const waitingStyle = {
+  padding: "8px",
+  textAlign: "center",
+  backgroundColor: "#eff6ff",
+  color: "#1e40af",
+  borderRadius: "5px",
+  fontWeight: "bold",
+  fontSize: "11px",
+};
+
+const warningStyle = {
+  padding: "8px",
+  textAlign: "center",
+  backgroundColor: "#fef2f2",
+  color: "#991b1b",
+  borderRadius: "5px",
+  fontWeight: "bold",
+  fontSize: "11px",
 };
 
 const greenActionStyle = {
@@ -2827,35 +2941,6 @@ const lowerGridStyle = {
   gap: "10px",
   marginTop: "10px",
   alignItems: "start",
-};
-
-const lowerPanelStyle = {
-  backgroundColor: "white",
-  borderRadius: "6px",
-  minHeight: "180px",
-  overflow: "hidden",
-};
-
-const lowerTitleStyle = {
-  backgroundColor: "#0873b9",
-  color: "white",
-  padding: "9px 12px",
-  fontWeight: "bold",
-};
-
-const placeholderTextStyle = {
-  fontSize: "11px",
-  color: "#64748b",
-  padding: "12px",
-};
-
-const closePreviewStyle = {
-  backgroundColor: "#07912a",
-  color: "white",
-  padding: "12px",
-  marginTop: "10px",
-  textAlign: "center",
-  fontWeight: "bold",
 };
 
 const messageStyle = {
