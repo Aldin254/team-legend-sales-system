@@ -49,9 +49,11 @@ export default function CloseShift24Hour({
   // ==================================================
 
   useEffect(() => {
+    setNow(new Date());
+
     const timer = setInterval(() => {
       setNow(new Date());
-    }, 30000);
+    }, 15000);
 
     return () => {
       clearInterval(timer);
@@ -79,9 +81,6 @@ export default function CloseShift24Hour({
     async function loadData() {
       try {
         setLoading(true);
-
-        // Do not clear an existing success/error message
-        // just because refreshKey caused a background reload.
 
         // ------------------------------------------
         // CURRENT SHIFT
@@ -283,6 +282,12 @@ export default function CloseShift24Hour({
       readings,
       shiftName,
     ]);
+
+  // The current time window must belong specifically
+  // to the currently open shift.
+  //
+  // SHIFT 1 -> evening only
+  // SHIFT 2 -> morning only
 
   const correctWindow =
     handoverWindow.allowed &&
@@ -634,7 +639,7 @@ export default function CloseShift24Hour({
         typeof onShiftClosed ===
         "function"
       ) {
-        onShiftClosed(
+        await onShiftClosed(
           closedShift
         );
       }
@@ -1017,7 +1022,11 @@ export default function CloseShift24Hour({
                   "13px",
               }}
             >
-              Shift change works only 9:00 AM–11:00 AM and 9:00 PM–11:00 PM Nairobi time.
+              {shiftName === "SHIFT 1"
+                ? "SHIFT 1 change works only from 9:00 PM to before 11:00 PM Nairobi time."
+                : shiftName === "SHIFT 2"
+                ? "SHIFT 2 change works only from 9:00 AM to before 11:00 AM Nairobi time."
+                : "Shift change is currently unavailable."}
             </div>
           )}
         </>
@@ -1188,6 +1197,12 @@ function calculateReadingStatus({
 
 // ==================================================
 // NAIROBI HANDOVER WINDOW
+//
+// MORNING:
+// 09:00 <= time < 11:00
+//
+// EVENING:
+// 21:00 <= time < 23:00
 // ==================================================
 
 function get24HourHandoverWindow(
@@ -1209,8 +1224,8 @@ function get24HourHandoverWindow(
         second:
           "2-digit",
 
-        hour12:
-          false,
+        hourCycle:
+          "h23",
       }
     ).formatToParts(date);
 
@@ -1232,28 +1247,40 @@ function get24HourHandoverWindow(
       )?.value || 0
     );
 
-  const minutesNow =
-    hour * 60 +
-    minute;
+  const second =
+    Number(
+      parts.find(
+        (part) =>
+          part.type ===
+          "second"
+      )?.value || 0
+    );
 
-  // 09:00 through 11:00
+  const secondsNow =
+    hour * 3600 +
+    minute * 60 +
+    second;
+
+  // 09:00:00 inclusive
   const morningStart =
-    9 * 60;
+    9 * 3600;
 
+  // 11:00:00 exclusive
   const morningEnd =
-    11 * 60;
+    11 * 3600;
 
-  // 21:00 through 23:00
+  // 21:00:00 inclusive
   const eveningStart =
-    21 * 60;
+    21 * 3600;
 
+  // 23:00:00 exclusive
   const eveningEnd =
-    23 * 60;
+    23 * 3600;
 
   if (
-    minutesNow >=
+    secondsNow >=
       morningStart &&
-    minutesNow <=
+    secondsNow <
       morningEnd
   ) {
     return {
@@ -1271,9 +1298,9 @@ function get24HourHandoverWindow(
   }
 
   if (
-    minutesNow >=
+    secondsNow >=
       eveningStart &&
-    minutesNow <=
+    secondsNow <
       eveningEnd
   ) {
     return {
@@ -1326,14 +1353,14 @@ function getWindowMessage({
     shiftName ===
     "SHIFT 1"
   ) {
-    return "SHIFT 1 handover opens from 9:00 PM to 11:00 PM.";
+    return "SHIFT 1 handover opens from 9:00 PM until before 11:00 PM.";
   }
 
   if (
     shiftName ===
     "SHIFT 2"
   ) {
-    return "SHIFT 2 handover opens from 9:00 AM to 11:00 AM.";
+    return "SHIFT 2 handover opens from 9:00 AM until before 11:00 AM.";
   }
 
   return "Shift handover is currently unavailable.";
@@ -1347,6 +1374,16 @@ function TotalCard({
   title,
   value,
 }) {
+  const numeric =
+    Number(value);
+
+  const safeValue =
+    Number.isFinite(
+      numeric
+    )
+      ? numeric
+      : 0;
+
   return (
     <div
       style={{
@@ -1388,9 +1425,7 @@ function TotalCard({
         }}
       >
         KES{" "}
-        {Number(
-          value || 0
-        ).toLocaleString(
+        {safeValue.toLocaleString(
           "en-KE",
           {
             minimumFractionDigits:
