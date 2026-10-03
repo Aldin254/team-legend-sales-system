@@ -498,7 +498,8 @@ export default function CashierReport({
   // ==================================================
   // LOGOUT
   // ==================================================
-function logout() {
+
+  function logout() {
     sessionStorage.removeItem(
       "teamLegendUser"
     );
@@ -1174,7 +1175,8 @@ function logout() {
   // SAVE CLOSING READINGS
   // 12-HOUR CASHIER WINDOW: 9:30 PM - MIDNIGHT NAIROBI
   // ==================================================
-async function saveClosingReadings() {
+
+  async function saveClosingReadings() {
     // Handler protection — not only UI hiding.
     if (
       !is12HourClosingWindow(
@@ -1226,11 +1228,6 @@ async function saveClosingReadings() {
      * - a positive reading
      *
      * Closing does NOT have to be greater than Opening.
-     *
-     * Examples:
-     * Opening 350, Closing -200 = Output -550
-     * Opening -200, Closing 400 = Output +600
-     * Opening 0, Closing -500 = Output -500
      */
 
     for (const platform of unsavedPlatforms) {
@@ -1266,16 +1263,6 @@ async function saveClosingReadings() {
       const closing =
         Number(closingRaw);
 
-      /*
-       * IMPORTANT:
-       * We check for blank values explicitly.
-       *
-       * Do NOT use:
-       * if (!closingRaw)
-       *
-       * because zero is a valid reading.
-       */
-
       if (
         closingRaw === "" ||
         closingRaw === undefined ||
@@ -1296,7 +1283,6 @@ async function saveClosingReadings() {
       setSavingClosing(true);
       setMessage("");
 
-      // Recheck immediately before writing.
       if (
         !is12HourClosingWindow(
           new Date()
@@ -1345,10 +1331,6 @@ async function saveClosingReadings() {
                 reading_kind:
                   "CLOSING",
 
-                /*
-                 * Preserve the actual signed reading.
-                 * Negative, zero and positive are all valid.
-                 */
                 reading_value:
                   roundMoney(
                     closingValue
@@ -1376,18 +1358,6 @@ async function saveClosingReadings() {
           );
         }
       }
-
-      /*
-       * CALCULATE TOTAL PLATFORM OUTPUT
-       *
-       * Output for every platform:
-       *
-       * Closing - Opening
-       *
-       * No Math.max().
-       * No zero clamp.
-       * No closing >= opening requirement.
-       */
 
       let totalOutput = 0;
 
@@ -1419,14 +1389,6 @@ async function saveClosingReadings() {
             : closingInputs[
                 platform.id
               ];
-
-        /*
-         * Never use:
-         *
-         * value || fallback
-         *
-         * Zero and negative numbers are both legitimate readings.
-         */
 
         const openingMissing =
           openingRaw === null ||
@@ -1471,15 +1433,6 @@ async function saveClosingReadings() {
         roundMoney(
           totalOutput
         );
-
-      /*
-       * Negative total_output is valid.
-       *
-       * Example:
-       * Total platform losses = -500
-       *
-       * The shift calculation is allowed to use -500.
-       */
 
       const shiftResponse =
         await fetch(
@@ -1542,6 +1495,9 @@ async function saveClosingReadings() {
   }
 
   // ==================================================
+  // CONTINUE DIRECTLY WITH PART 2
+  // ==================================================
+// ==================================================
   // TOTALS
   // ==================================================
 
@@ -1576,13 +1532,6 @@ async function saveClosingReadings() {
         floatData.mshwariTotal
     );
 
-  /*
-   * Total Sales is allowed to become negative.
-   *
-   * B/F + Company Float + M-Shwari Float
-   * + signed platform output
-   */
-
   const totalSales =
     roundMoney(
       openingBalance +
@@ -1608,6 +1557,20 @@ async function saveClosingReadings() {
       shift?.status ||
         "OPEN"
     ).toUpperCase();
+
+  // ==================================================
+  // WELCOME / GOODBYE MESSAGE
+  // DISPLAY ONLY — DOES NOT CHANGE SHIFT LOGIC
+  // ==================================================
+
+  const shiftIsClosed =
+    shiftStatus === "CLOSED" ||
+    shiftStatus === "COMPLETED";
+
+  const shiftGreeting =
+    shiftIsClosed
+      ? "Good Bye 👋 — Shift 1 Closed"
+      : "Good Morning 🌞 — Welcome to Shift 1";
 
   if (
     loading &&
@@ -1738,6 +1701,19 @@ async function saveClosingReadings() {
               value={shiftStatus}
               tone="green"
             />
+          </div>
+
+          {/* WELCOME / GOODBYE BANNER */}
+
+          <div
+            style={{
+              ...shiftGreetingStyle,
+              ...(shiftIsClosed
+                ? shiftGoodbyeStyle
+                : shiftWelcomeStyle),
+            }}
+          >
+            {shiftGreeting}
           </div>
 
           {message && (
@@ -1944,7 +1920,8 @@ async function saveClosingReadings() {
                   SALES
                 </div>
               </div>
-{platformRows.map(
+
+              {platformRows.map(
                 (platform) => (
                   <div
                     key={platform.id}
@@ -2243,8 +2220,6 @@ async function saveClosingReadings() {
               }
               tone="red"
             />
-
-            {/* CLOSING BALANCE IS DISPLAY ONLY / LOCKED */}
 
             <SummaryBox
               title="CLOSING BALANCE"
@@ -2685,6 +2660,7 @@ function is12HourClosingWindow(
 // ==================================================
 // STYLES
 // ==================================================
+
 const pageStyle = {
   minHeight: "100vh",
   backgroundColor: "#edf2f7",
@@ -2769,6 +2745,34 @@ const topGridStyle = {
     "2fr repeat(5,1fr)",
   gap: "7px",
   marginBottom: "10px",
+};
+
+// ==================================================
+// WELCOME / GOODBYE BANNER STYLES
+// ==================================================
+
+const shiftGreetingStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "14px 18px",
+  marginBottom: "10px",
+  borderRadius: "8px",
+  textAlign: "center",
+  fontSize: "20px",
+  fontWeight: "900",
+  letterSpacing: "0.3px",
+};
+
+const shiftWelcomeStyle = {
+  backgroundColor: "#ecfdf5",
+  color: "#166534",
+  border: "1px solid #86efac",
+};
+
+const shiftGoodbyeStyle = {
+  backgroundColor: "#eff6ff",
+  color: "#1e3a8a",
+  border: "1px solid #93c5fd",
 };
 
 const shopCardStyle = {
