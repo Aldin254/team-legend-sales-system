@@ -498,8 +498,7 @@ export default function CashierReport({
   // ==================================================
   // LOGOUT
   // ==================================================
-
-  function logout() {
+function logout() {
     sessionStorage.removeItem(
       "teamLegendUser"
     );
@@ -659,6 +658,8 @@ export default function CashierReport({
   // ==================================================
   // PLATFORM ROWS
   // ==================================================
+  // All platform readings may be negative, zero, or positive.
+  // Output is always Closing - Opening.
 
   const platformRows =
     useMemo(() => {
@@ -715,9 +716,8 @@ export default function CashierReport({
           if (
             opening !== null &&
             closing !== null &&
-            !Number.isNaN(opening) &&
-            !Number.isNaN(closing) &&
-            closing >= opening
+            Number.isFinite(opening) &&
+            Number.isFinite(closing)
           ) {
             output =
               roundMoney(
@@ -1174,8 +1174,7 @@ export default function CashierReport({
   // SAVE CLOSING READINGS
   // 12-HOUR CASHIER WINDOW: 9:30 PM - MIDNIGHT NAIROBI
   // ==================================================
-
-  async function saveClosingReadings() {
+async function saveClosingReadings() {
     // Handler protection — not only UI hiding.
     if (
       !is12HourClosingWindow(
@@ -1218,6 +1217,22 @@ export default function CashierReport({
       return;
     }
 
+    /*
+     * SIGNED PLATFORM READING RULE
+     *
+     * Every platform may contain:
+     * - a negative reading
+     * - zero
+     * - a positive reading
+     *
+     * Closing does NOT have to be greater than Opening.
+     *
+     * Examples:
+     * Opening 350, Closing -200 = Output -550
+     * Opening -200, Closing 400 = Output +600
+     * Opening 0, Closing -500 = Output -500
+     */
+
     for (const platform of unsavedPlatforms) {
       const openingRow =
         readings.find(
@@ -1251,14 +1266,22 @@ export default function CashierReport({
       const closing =
         Number(closingRaw);
 
+      /*
+       * IMPORTANT:
+       * We check for blank values explicitly.
+       *
+       * Do NOT use:
+       * if (!closingRaw)
+       *
+       * because zero is a valid reading.
+       */
+
       if (
         closingRaw === "" ||
         closingRaw === undefined ||
         closingRaw === null ||
-        Number.isNaN(closing) ||
-        closing < 0 ||
-        Number.isNaN(opening) ||
-        closing < opening
+        !Number.isFinite(closing) ||
+        !Number.isFinite(opening)
       ) {
         setMessage(
           `Enter a valid closing reading for ${platform.platform_name}.`
@@ -1288,6 +1311,13 @@ export default function CashierReport({
         new Date().toISOString();
 
       for (const platform of unsavedPlatforms) {
+        const closingValue =
+          Number(
+            closingInputs[
+              platform.id
+            ]
+          );
+
         const response =
           await fetch(
             `${supabaseUrl}/rest/v1/platform_readings`,
@@ -1315,13 +1345,13 @@ export default function CashierReport({
                 reading_kind:
                   "CLOSING",
 
+                /*
+                 * Preserve the actual signed reading.
+                 * Negative, zero and positive are all valid.
+                 */
                 reading_value:
                   roundMoney(
-                    Number(
-                      closingInputs[
-                        platform.id
-                      ]
-                    )
+                    closingValue
                   ),
 
                 recorded_at:
@@ -1346,6 +1376,18 @@ export default function CashierReport({
           );
         }
       }
+
+      /*
+       * CALCULATE TOTAL PLATFORM OUTPUT
+       *
+       * Output for every platform:
+       *
+       * Closing - Opening
+       *
+       * No Math.max().
+       * No zero clamp.
+       * No closing >= opening requirement.
+       */
 
       let totalOutput = 0;
 
@@ -1379,27 +1421,65 @@ export default function CashierReport({
               ];
 
         /*
-         * Do not use `value || fallback` for readings.
-         * Zero is a real opening/closing value.
+         * Never use:
+         *
+         * value || fallback
+         *
+         * Zero and negative numbers are both legitimate readings.
          */
-        const opening =
+
+        const openingMissing =
           openingRaw === null ||
           openingRaw === undefined ||
-          openingRaw === ""
-            ? 0
-            : Number(openingRaw);
+          openingRaw === "";
 
-        const closing =
+        const closingMissing =
           closingRaw === null ||
           closingRaw === undefined ||
-          closingRaw === ""
-            ? 0
-            : Number(closingRaw);
+          closingRaw === "";
+
+        if (
+          openingMissing ||
+          closingMissing
+        ) {
+          throw new Error(
+            `Platform readings for ${platform.platform_name} are incomplete.`
+          );
+        }
+
+        const opening =
+          Number(openingRaw);
+
+        const closing =
+          Number(closingRaw);
+
+        if (
+          !Number.isFinite(opening) ||
+          !Number.isFinite(closing)
+        ) {
+          throw new Error(
+            `Platform readings for ${platform.platform_name} are invalid.`
+          );
+        }
 
         totalOutput +=
           closing -
           opening;
       }
+
+      totalOutput =
+        roundMoney(
+          totalOutput
+        );
+
+      /*
+       * Negative total_output is valid.
+       *
+       * Example:
+       * Total platform losses = -500
+       *
+       * The shift calculation is allowed to use -500.
+       */
 
       const shiftResponse =
         await fetch(
@@ -1422,16 +1502,21 @@ export default function CashierReport({
 
             body: JSON.stringify({
               total_output:
-                roundMoney(
-                  totalOutput
-                ),
+                totalOutput,
             }),
           }
         );
 
       if (!shiftResponse.ok) {
+        const shiftResult =
+          await safeJson(
+            shiftResponse
+          );
+
         throw new Error(
-          "Closing readings saved but sales total could not be updated."
+          shiftResult?.message ||
+            shiftResult?.details ||
+            "Closing readings saved but sales total could not be updated."
         );
       }
 
@@ -1490,6 +1575,13 @@ export default function CashierReport({
         floatData.companyTotal +
         floatData.mshwariTotal
     );
+
+  /*
+   * Total Sales is allowed to become negative.
+   *
+   * B/F + Company Float + M-Shwari Float
+   * + signed platform output
+   */
 
   const totalSales =
     roundMoney(
@@ -1852,8 +1944,7 @@ export default function CashierReport({
                   SALES
                 </div>
               </div>
-
-              {platformRows.map(
+{platformRows.map(
                 (platform) => (
                   <div
                     key={platform.id}
@@ -2371,6 +2462,15 @@ function EditableFloatRow({
   );
 }
 
+/*
+ * PLATFORM READING INPUT
+ *
+ * IMPORTANT:
+ * There is intentionally NO min="0".
+ *
+ * All platform readings may be:
+ * negative, zero or positive.
+ */
 function ReadingInput({
   value,
   onChange,
@@ -2379,7 +2479,7 @@ function ReadingInput({
   return (
     <input
       type="number"
-      min="0"
+      step="any"
       value={value}
       disabled={disabled}
       onChange={(event) =>
@@ -2544,8 +2644,6 @@ function is12HourClosingWindow(
           "2-digit",
         minute:
           "2-digit",
-        second:
-          "2-digit",
         hourCycle:
           "h23",
       }
@@ -2556,36 +2654,30 @@ function is12HourClosingWindow(
       date
     );
 
-  const values = {};
-
-  for (const part of parts) {
-    if (
-      part.type !==
-      "literal"
-    ) {
-      values[part.type] =
-        part.value;
-    }
-  }
-
   const hour =
     Number(
-      values.hour
+      parts.find(
+        (part) =>
+          part.type === "hour"
+      )?.value || 0
     );
 
   const minute =
     Number(
-      values.minute
+      parts.find(
+        (part) =>
+          part.type === "minute"
+      )?.value || 0
     );
 
-  const minutesSinceMidnight =
+  const totalMinutes =
     hour * 60 +
     minute;
 
   return (
-    minutesSinceMidnight >=
+    totalMinutes >=
       21 * 60 + 30 &&
-    minutesSinceMidnight <
+    totalMinutes <
       24 * 60
   );
 }
@@ -2593,7 +2685,6 @@ function is12HourClosingWindow(
 // ==================================================
 // STYLES
 // ==================================================
-
 const pageStyle = {
   minHeight: "100vh",
   backgroundColor: "#edf2f7",
