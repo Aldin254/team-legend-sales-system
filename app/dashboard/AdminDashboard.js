@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import AdminAccountsPanel from "./AdminAccountsPanel";
 import AdminShiftOverridePanel from "./AdminShiftOverridePanel";
@@ -13,8 +14,9 @@ import AdminSalaryManagementPanel from "./AdminSalaryManagementPanel";
 
 export default function AdminDashboard({
   user,
-  onLogout,
 }) {
+  const router = useRouter();
+
   const [activeSection, setActiveSection] =
     useState("DASHBOARD");
 
@@ -23,6 +25,18 @@ export default function AdminDashboard({
     user?.name ||
     user?.username ||
     "Team Legend Admin";
+
+  // ==================================================
+  // LOGOUT
+  // ==================================================
+
+  function logout() {
+    sessionStorage.removeItem(
+      "teamLegendUser"
+    );
+
+    router.replace("/");
+  }
 
   // ==================================================
   // MENU
@@ -94,14 +108,7 @@ export default function AdminDashboard({
 
           <button
             type="button"
-            onClick={() => {
-              if (
-                typeof onLogout ===
-                "function"
-              ) {
-                onLogout();
-              }
-            }}
+            onClick={logout}
             style={logoutButtonStyle}
           >
             Logout
