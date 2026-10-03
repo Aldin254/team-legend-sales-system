@@ -99,7 +99,9 @@ export default function AdminDashboard({
 
         <div style={headerRightStyle}>
           <div style={welcomeStyle}>
-            <small>WELCOME</small>
+            <small>
+              WELCOME
+            </small>
 
             <strong>
               {adminName}
@@ -130,37 +132,44 @@ export default function AdminDashboard({
             ADMIN MENU
           </div>
 
-          {menuItems.map((item) => {
-            const active =
-              activeSection === item.id;
+          {menuItems.map(
+            (item) => {
+              const active =
+                activeSection ===
+                item.id;
 
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() =>
-                  setActiveSection(
-                    item.id
-                  )
-                }
-                style={{
-                  ...menuButtonStyle,
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() =>
+                    setActiveSection(
+                      item.id
+                    )
+                  }
+                  style={{
+                    ...menuButtonStyle,
 
-                  ...(active
-                    ? activeMenuButtonStyle
-                    : {}),
-                }}
-              >
-                <span style={menuIconStyle}>
-                  {item.icon}
-                </span>
+                    ...(active
+                      ? activeMenuButtonStyle
+                      : {}),
+                  }}
+                >
+                  <span
+                    style={
+                      menuIconStyle
+                    }
+                  >
+                    {item.icon}
+                  </span>
 
-                <span>
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
+                  <span>
+                    {item.label}
+                  </span>
+                </button>
+              );
+            }
+          )}
 
           <div style={sidebarFooterStyle}>
             <div>
@@ -1211,6 +1220,9 @@ const settingsPanelStyle = {
 
   overflow:
     "hidden",
+
+  marginBottom:
+    "18px",
 };
 
 const settingsTitleStyle = {
