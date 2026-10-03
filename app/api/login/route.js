@@ -75,13 +75,7 @@ export async function POST(request) {
     }
 
     // ==================================================
-    // DYNAMIC LOGIN EMAIL
-    //
-    // admin      -> admin@teamlegend.local
-    // mirriams   -> mirriams@teamlegend.local
-    // shopkings  -> shopkings@teamlegend.local
-    //
-    // Future accounts work automatically.
+    // LOGIN EMAIL
     // ==================================================
 
     const loginEmail =
@@ -144,8 +138,44 @@ export async function POST(request) {
     const accessToken =
       authData.access_token;
 
+    const refreshToken =
+      authData.refresh_token ||
+      null;
+
     const authUserId =
       authData.user.id;
+
+    const expiresInRaw =
+      Number(
+        authData?.expires_in
+      );
+
+    const expiresIn =
+      Number.isFinite(
+        expiresInRaw
+      ) &&
+      expiresInRaw > 0
+        ? expiresInRaw
+        : null;
+
+    const directExpiresAt =
+      Number(
+        authData?.expires_at
+      );
+
+    const expiresAt =
+      Number.isFinite(
+        directExpiresAt
+      ) &&
+      directExpiresAt > 0
+        ? Math.floor(
+            directExpiresAt
+          )
+        : expiresIn
+        ? Math.floor(
+            Date.now() / 1000
+          ) + expiresIn
+        : null;
 
     // ==================================================
     // LOAD PROFILE
@@ -225,7 +255,7 @@ export async function POST(request) {
       profileResult[0];
 
     // ==================================================
-    // ACCOUNT ACTIVE?
+    // ACCOUNT ACTIVE
     // ==================================================
 
     if (!profile.is_active) {
@@ -241,7 +271,7 @@ export async function POST(request) {
     }
 
     // ==================================================
-    // USERNAME MUST MATCH PROFILE
+    // USERNAME MATCH
     // ==================================================
 
     const profileUsername =
@@ -273,7 +303,9 @@ export async function POST(request) {
     const role =
       String(
         profile.role || ""
-      ).toUpperCase();
+      )
+        .trim()
+        .toUpperCase();
 
     if (
       role !== "ADMIN" &&
@@ -402,51 +434,88 @@ export async function POST(request) {
     }
 
     // ==================================================
+    // USER DATA
+    //
+    // IMPORTANT:
+    // refresh_token + expires_at are saved so the
+    // dashboard can renew the JWT automatically.
+    // ==================================================
+
+    const userData = {
+      id:
+        authUserId,
+
+      auth_user_id:
+        authUserId,
+
+      profile_id:
+        profile.id,
+
+      username:
+        profile.username,
+
+      name:
+        profile.full_name,
+
+      full_name:
+        profile.full_name,
+
+      role,
+
+      shop_id:
+        profile.shop_id,
+
+      shop:
+        shop?.shop_name ||
+        null,
+
+      shop_name:
+        shop?.shop_name ||
+        null,
+
+      shop_type:
+        shop?.shop_type ||
+        null,
+
+      timezone:
+        shop?.timezone ||
+        "Africa/Nairobi",
+
+      access_token:
+        accessToken,
+
+      refresh_token:
+        refreshToken,
+
+      expires_in:
+        expiresIn,
+
+      expires_at:
+        expiresAt,
+
+      token_type:
+        authData?.token_type ||
+        "bearer",
+    };
+
+    // ==================================================
     // SUCCESS
     // ==================================================
 
-    // ==================================================
-// SUCCESS
-// ==================================================
+    return NextResponse.json(
+      {
+        success:
+          true,
 
-const userData = {
-  id: authUserId,
+        user:
+          userData,
 
-  auth_user_id: authUserId,
-
-  profile_id: profile.id,
-
-  username: profile.username,
-
-  name: profile.full_name,
-
-  full_name: profile.full_name,
-
-  role,
-
-  shop_id: profile.shop_id,
-
-  shop: shop?.shop_name || null,
-
-  shop_name: shop?.shop_name || null,
-
-  shop_type: shop?.shop_type || null,
-
-  timezone: shop?.timezone || "Africa/Nairobi",
-
-  access_token: accessToken,
-};
-
-return NextResponse.json(
-  {
-    success: true,
-    user: userData,
-    ...userData,
-  },
-  {
-    status: 200,
-  }
-);
+        ...userData,
+      },
+      {
+        status: 200,
+      }
+    );
   } catch (error) {
     console.error(
       "LOGIN ROUTE ERROR:",
