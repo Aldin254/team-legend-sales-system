@@ -932,28 +932,25 @@ export default function PlatformReadings24Hour({
     );
   }
 
-  return (
-    <div
-      style={{
-        marginTop:
-          "24px",
+ return (
+  <div
+    style={{
+      marginTop: "0",
 
-        backgroundColor:
-          "white",
+      width: "100%",
 
-        padding:
-          "25px",
+      boxSizing: "border-box",
 
-        borderRadius:
-          "12px",
+      backgroundColor: "white",
 
-        boxShadow:
-          "0 2px 10px rgba(0,0,0,0.08)",
+      padding: "25px",
 
-        maxWidth:
-          "1100px",
-      }}
-    >
+      borderRadius: "12px",
+
+      boxShadow:
+        "0 2px 10px rgba(0,0,0,0.08)",
+    }}
+  >
       <div
         style={{
           display:
