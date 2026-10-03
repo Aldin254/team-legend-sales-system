@@ -404,6 +404,13 @@ export default function AdminPlatformCorrections({
 
   // ==================================================
   // SAVE READING
+  //
+  // UNIVERSAL PLATFORM RULE:
+  // Negative = VALID
+  // Zero     = VALID
+  // Positive = VALID
+  //
+  // Only blank or non-finite values are invalid.
   // ==================================================
 
   async function saveReading({
@@ -440,16 +447,32 @@ export default function AdminPlatformCorrections({
     const rawValue =
       inputs[inputKey] ?? "";
 
+    if (
+      rawValue === "" ||
+      rawValue === null ||
+      rawValue === undefined
+    ) {
+      setMessage(
+        "Enter a valid platform reading."
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
     const value =
       Number(rawValue);
 
     if (
-      rawValue === "" ||
-      Number.isNaN(value) ||
-      value < 0
+      !Number.isFinite(
+        value
+      )
     ) {
       setMessage(
-        "Enter a valid reading of zero or greater."
+        "Enter a valid platform reading."
       );
 
       setMessageType(
@@ -1125,7 +1148,6 @@ export default function AdminPlatformCorrections({
       <div style={readingControlStyle}>
         <input
           type="number"
-          min="0"
           step="0.01"
           value={value}
           onChange={(event) => {
@@ -1562,10 +1584,10 @@ export default function AdminPlatformCorrections({
 
         <div style={noticeStyle}>
           {isShift1
-            ? "SHIFT 1 output = 9 PM Handover − 9 AM Opening."
+            ? "SHIFT 1 output = 9 PM Handover − 9 AM Opening. Negative, zero and positive platform readings are valid."
             : isShift2
-            ? "SHIFT 2 resettable output = (11:59 PM − 9 PM Opening) + 9 AM Closing. TABLE output = 9 AM Closing − 9 PM Opening. TABLE never resets at midnight."
-            : "12-hour output = Closing − Opening. Admin corrections are recorded in the audit log."}
+            ? "SHIFT 2 resettable output = (11:59 PM − 9 PM Opening) + 9 AM Closing. TABLE output = 9 AM Closing − 9 PM Opening. TABLE never resets at midnight. Negative, zero and positive platform readings are valid."
+            : "12-hour output = Closing − Opening. Negative, zero and positive platform readings are valid. Admin corrections are recorded in the audit log."}
         </div>
       </div>
     </section>
@@ -1596,6 +1618,9 @@ function PlatformName({
 
 // ==================================================
 // OUTPUT CALCULATION
+//
+// ALL RAW PLATFORM READINGS MAY BE:
+// NEGATIVE / ZERO / POSITIVE
 // ==================================================
 
 function calculateTotalOutput({
@@ -1643,12 +1668,19 @@ function calculatePlatformOutput({
   }
 
   const openingValue =
-    Number(
-      opening.reading_value || 0
+    finiteNumberOrNull(
+      opening.reading_value
     );
+
+  if (
+    openingValue === null
+  ) {
+    return 0;
+  }
 
   // ================================================
   // 12-HOUR
+  // OUTPUT = CLOSING - OPENING
   // ================================================
 
   if (!is24Hour) {
@@ -1661,16 +1693,26 @@ function calculatePlatformOutput({
       return 0;
     }
 
+    const closingValue =
+      finiteNumberOrNull(
+        closing.reading_value
+      );
+
+    if (
+      closingValue === null
+    ) {
+      return 0;
+    }
+
     return roundMoney(
-      Number(
-        closing.reading_value || 0
-      ) -
+      closingValue -
         openingValue
     );
   }
 
   // ================================================
   // 24-HOUR SHIFT 1
+  // OUTPUT = 9PM - 9AM OPENING
   // ================================================
 
   if (isShift1) {
@@ -1683,11 +1725,19 @@ function calculatePlatformOutput({
       return 0;
     }
 
+    const handoverValue =
+      finiteNumberOrNull(
+        handover.reading_value
+      );
+
+    if (
+      handoverValue === null
+    ) {
+      return 0;
+    }
+
     return roundMoney(
-      Number(
-        handover.reading_value ||
-          0
-      ) -
+      handoverValue -
         openingValue
     );
   }
@@ -1706,14 +1756,22 @@ function calculatePlatformOutput({
       return 0;
     }
 
+    const closing9AMValue =
+      finiteNumberOrNull(
+        closing9AM.reading_value
+      );
+
+    if (
+      closing9AMValue === null
+    ) {
+      return 0;
+    }
+
     // TABLE NEVER RESETS AT MIDNIGHT
 
     if (isTable(platform)) {
       return roundMoney(
-        Number(
-          closing9AM.reading_value ||
-            0
-        ) -
+        closing9AMValue -
           openingValue
       );
     }
@@ -1729,17 +1787,23 @@ function calculatePlatformOutput({
       return 0;
     }
 
+    const midnightValue =
+      finiteNumberOrNull(
+        midnight.reading_value
+      );
+
+    if (
+      midnightValue === null
+    ) {
+      return 0;
+    }
+
     const beforeMidnight =
-      Number(
-        midnight.reading_value || 0
-      ) -
+      midnightValue -
       openingValue;
 
     const afterMidnight =
-      Number(
-        closing9AM.reading_value ||
-          0
-      );
+      closing9AMValue;
 
     return roundMoney(
       beforeMidnight +
@@ -1944,6 +2008,27 @@ function readingLabel(
   return kind;
 }
 
+function finiteNumberOrNull(
+  value
+) {
+  if (
+    value === "" ||
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
+  const numericValue =
+    Number(value);
+
+  return Number.isFinite(
+    numericValue
+  )
+    ? numericValue
+    : null;
+}
+
 async function safeJson(
   response
 ) {
@@ -1955,9 +2040,19 @@ async function safeJson(
 }
 
 function money(value) {
-  return Number(
-    value || 0
-  ).toLocaleString(
+  const numericValue =
+    Number(
+      value ?? 0
+    );
+
+  const safeValue =
+    Number.isFinite(
+      numericValue
+    )
+      ? numericValue
+      : 0;
+
+  return safeValue.toLocaleString(
     "en-KE",
     {
       minimumFractionDigits:
