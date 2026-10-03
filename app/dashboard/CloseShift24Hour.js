@@ -667,17 +667,40 @@ export default function CloseShift24Hour({
   // ==================================================
 
   if (!currentShift) {
-    return null;
-  }
+  return null;
+}
 
-  const status =
-    String(
-      shiftData?.status ||
-        currentShift?.status ||
-        "OPEN"
-    ).toUpperCase();
+const status =
+  String(
+    shiftData?.status ||
+      currentShift?.status ||
+      "OPEN"
+  ).toUpperCase();
 
-  const netIncome =
+// ==================================================
+// HIDE SHIFT CHANGE OUTSIDE THE CORRECT WINDOW
+//
+// SHIFT 1:
+// Show this entire section only from
+// 9:00 PM up to but not including 11:00 PM.
+//
+// SHIFT 2:
+// Show this entire section only from
+// 9:00 AM up to but not including 11:00 AM.
+//
+// This prevents SHIFT 1 from seeing a morning
+// SHIFT 2 handover message and prevents SHIFT 2
+// from seeing an evening SHIFT 1 handover message.
+// ==================================================
+
+if (
+  status === "OPEN" &&
+  !correctWindow
+) {
+  return null;
+}
+
+const netIncome =
     Number(
       shiftData?.net_income ??
         currentShift?.net_income ??
