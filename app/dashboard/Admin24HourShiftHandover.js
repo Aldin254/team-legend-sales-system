@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
 export default function Admin24HourShiftHandover({
   user,
@@ -9,9 +13,60 @@ export default function Admin24HourShiftHandover({
   onChanged,
 }) {
   const [reason, setReason] = useState("");
-  const [closing, setClosing] = useState(false);
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
+
+  const [closing, setClosing] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [messageType, setMessageType] =
+    useState("");
+
+  // ==================================================
+  // ACTUAL CASHIER
+  // ==================================================
+
+  const [
+    actualCashierName,
+    setActualCashierName,
+  ] = useState("");
+
+  const [
+    savingCashier,
+    setSavingCashier,
+  ] = useState(false);
+
+  // ==================================================
+  // PERMANENT SALARY SETTINGS
+  // ==================================================
+
+  const [
+    salarySettings,
+    setSalarySettings,
+  ] = useState([]);
+
+  const [
+    salaryNames,
+    setSalaryNames,
+  ] = useState({
+    1: "",
+    2: "",
+  });
+
+  const [
+    loadingSalary,
+    setLoadingSalary,
+  ] = useState(false);
+
+  const [
+    savingSalarySlot,
+    setSavingSalarySlot,
+  ] = useState(null);
+
+  // ==================================================
+  // SUPABASE
+  // ==================================================
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -55,40 +110,34 @@ export default function Admin24HourShiftHandover({
     shiftName === "SHIFT 1" ||
     shiftName === "SHIFT 2";
 
+  // ==================================================
+  // RESET WHEN SHIFT CHANGES
+  // ==================================================
+
   useEffect(() => {
     setReason("");
+
     setMessage("");
     setMessageType("");
-  }, [selectedShift?.id]);
 
-  // ==================================================
-  // DO NOT SHOW FOR 12-HOUR SHOPS
-  // ==================================================
-
-  if (
-    !selectedShift ||
-    !selectedShop ||
-    !is24HourShop
-  ) {
-    return null;
-  }
+    setActualCashierName(
+      selectedShift?.cashier_name || ""
+    );
+  }, [
+    selectedShift?.id,
+    selectedShift?.cashier_name,
+  ]);
 
   // ==================================================
   // COMMON ADMIN VALIDATION
   // ==================================================
 
-  function validateAdminAccess() {
-    if (!selectedShift?.id) {
-      showError(
-        "Select an open shift first."
-      );
-      return false;
-    }
-
+  function validateAdminBasics() {
     if (!accessToken) {
       showError(
         "Admin authentication is missing. Please log in again."
       );
+
       return false;
     }
 
@@ -96,6 +145,31 @@ export default function Admin24HourShiftHandover({
       showError(
         "Admin profile ID is missing. Please log in again."
       );
+
+      return false;
+    }
+
+    if (!selectedShop?.id) {
+      showError(
+        "Selected shop information is missing."
+      );
+
+      return false;
+    }
+
+    return true;
+  }
+
+  function validateAdminAccess() {
+    if (!validateAdminBasics()) {
+      return false;
+    }
+
+    if (!selectedShift?.id) {
+      showError(
+        "Select a shift first."
+      );
+
       return false;
     }
 
@@ -114,15 +188,789 @@ export default function Admin24HourShiftHandover({
   }
 
   // ==================================================
+  // LOAD PERMANENT SALARY SETTINGS
+  // ==================================================
+
+  const loadSalarySettings =
+    useCallback(
+      async () => {
+        if (
+          !selectedShop?.id ||
+          !is24HourShop ||
+          !accessToken ||
+          !supabaseUrl ||
+          !supabaseAnonKey
+        ) {
+          setSalarySettings([]);
+
+          setSalaryNames({
+            1: "",
+            2: "",
+          });
+
+          return;
+        }
+
+        try {
+          setLoadingSalary(true);
+
+          const response =
+            await fetch(
+              `${supabaseUrl}/rest/v1/shop_salary_settings` +
+                `?shop_id=eq.${encodeURIComponent(
+                  selectedShop.id
+                )}` +
+                `&select=id,shop_id,salary_slot,description,is_active,created_at,updated_at` +
+                `&order=salary_slot.asc`,
+              {
+                method: "GET",
+
+                headers: {
+                  apikey:
+                    supabaseAnonKey,
+
+                  Authorization:
+                    `Bearer ${accessToken}`,
+
+                  "Content-Type":
+                    "application/json",
+                },
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          const result =
+            await safeJson(
+              response
+            );
+
+          if (!response.ok) {
+            throw new Error(
+              result?.message ||
+                result?.details ||
+                result?.hint ||
+                "Unable to load salary settings."
+            );
+          }
+
+          const loaded =
+            Array.isArray(result)
+              ? result
+              : [];
+
+          setSalarySettings(
+            loaded
+          );
+
+          const nextNames = {
+            1: "",
+            2: "",
+          };
+
+          for (
+            const row of loaded
+          ) {
+            const slot =
+              Number(
+                row.salary_slot
+              );
+
+            if (
+              slot === 1 ||
+              slot === 2
+            ) {
+              nextNames[slot] =
+                row.description || "";
+            }
+          }
+
+          setSalaryNames(
+            nextNames
+          );
+        } catch (error) {
+          console.error(
+            "LOAD SALARY SETTINGS ERROR:",
+            error
+          );
+
+          setMessage(
+            error?.message ||
+              "Unable to load salary settings."
+          );
+
+          setMessageType(
+            "error"
+          );
+        } finally {
+          setLoadingSalary(false);
+        }
+      },
+      [
+        selectedShop?.id,
+        is24HourShop,
+        accessToken,
+        supabaseUrl,
+        supabaseAnonKey,
+      ]
+    );
+
+  useEffect(() => {
+    loadSalarySettings();
+  }, [loadSalarySettings]);
+
+  // ==================================================
+  // SAVE ACTUAL CASHIER NAME
+  // ==================================================
+
+  async function saveActualCashierName() {
+    if (!validateAdminAccess()) {
+      return;
+    }
+
+    const cleanName =
+      String(
+        actualCashierName || ""
+      ).trim();
+
+    if (cleanName.length < 2) {
+      showError(
+        "Enter the actual cashier name."
+      );
+
+      return;
+    }
+
+    try {
+      setSavingCashier(true);
+
+      setMessage("");
+      setMessageType("");
+
+      // ==============================================
+      // GET FRESH SHIFT
+      // ==============================================
+
+      const freshResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/shifts` +
+            `?id=eq.${encodeURIComponent(
+              selectedShift.id
+            )}` +
+            `&select=*` +
+            `&limit=1`,
+          {
+            method: "GET",
+
+            headers: {
+              apikey:
+                supabaseAnonKey,
+
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+            },
+
+            cache:
+              "no-store",
+          }
+        );
+
+      const freshResult =
+        await safeJson(
+          freshResponse
+        );
+
+      if (!freshResponse.ok) {
+        throw new Error(
+          freshResult?.message ||
+            freshResult?.details ||
+            "Unable to verify the selected shift."
+        );
+      }
+
+      const freshShift =
+        Array.isArray(
+          freshResult
+        ) &&
+        freshResult.length > 0
+          ? freshResult[0]
+          : null;
+
+      if (!freshShift) {
+        throw new Error(
+          "The selected shift could not be found."
+        );
+      }
+
+      if (
+        String(
+          freshShift.shop_id || ""
+        ) !==
+        String(
+          selectedShop.id || ""
+        )
+      ) {
+        throw new Error(
+          "The selected shift does not belong to this shop."
+        );
+      }
+
+      const previousName =
+        String(
+          freshShift.cashier_name ||
+            ""
+        ).trim();
+
+      if (
+        previousName ===
+        cleanName
+      ) {
+        setMessage(
+          `${cleanName} is already saved as the cashier for this shift.`
+        );
+
+        setMessageType(
+          "success"
+        );
+
+        return;
+      }
+
+      // ==============================================
+      // UPDATE CASHIER NAME
+      //
+      // cashier_id stays unchanged because the
+      // physical cashiers share the same login.
+      // ==============================================
+
+      const updateResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/shifts` +
+            `?id=eq.${encodeURIComponent(
+              freshShift.id
+            )}`,
+          {
+            method: "PATCH",
+
+            headers: {
+              apikey:
+                supabaseAnonKey,
+
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+
+              Prefer:
+                "return=representation",
+            },
+
+            body:
+              JSON.stringify({
+                cashier_name:
+                  cleanName,
+              }),
+          }
+        );
+
+      const updateResult =
+        await safeJson(
+          updateResponse
+        );
+
+      if (!updateResponse.ok) {
+        throw new Error(
+          updateResult?.message ||
+            updateResult?.details ||
+            updateResult?.hint ||
+            "Unable to update the cashier name."
+        );
+      }
+
+      if (
+        !Array.isArray(
+          updateResult
+        ) ||
+        updateResult.length === 0
+      ) {
+        throw new Error(
+          "The updated shift was not returned."
+        );
+      }
+
+      const updatedShift =
+        updateResult[0];
+
+      // ==============================================
+      // AUDIT LOG
+      // ==============================================
+
+      const auditResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/audit_log`,
+          {
+            method: "POST",
+
+            headers: {
+              apikey:
+                supabaseAnonKey,
+
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+
+              Prefer:
+                "return=representation",
+            },
+
+            body:
+              JSON.stringify({
+                user_id:
+                  adminProfileId,
+
+                shop_id:
+                  freshShift.shop_id,
+
+                action:
+                  "ADMIN_CHANGE_SHIFT_CASHIER",
+
+                table_name:
+                  "shifts",
+
+                record_id:
+                  freshShift.id,
+
+                old_data: {
+                  cashier_id:
+                    freshShift.cashier_id,
+
+                  cashier_name:
+                    previousName,
+
+                  shift_name:
+                    freshShift.shift_name,
+
+                  business_date:
+                    freshShift.business_date,
+
+                  status:
+                    freshShift.status,
+                },
+
+                new_data: {
+                  cashier_id:
+                    updatedShift.cashier_id,
+
+                  cashier_name:
+                    updatedShift.cashier_name,
+
+                  shift_name:
+                    updatedShift.shift_name,
+
+                  business_date:
+                    updatedShift.business_date,
+
+                  status:
+                    updatedShift.status,
+
+                  shared_login_preserved:
+                    true,
+                },
+              }),
+          }
+        );
+
+      const auditResult =
+        await safeJson(
+          auditResponse
+        );
+
+      if (!auditResponse.ok) {
+        console.error(
+          "CASHIER CHANGE AUDIT ERROR:",
+          auditResult
+        );
+
+        setMessage(
+          `Cashier changed from ${
+            previousName || "-"
+          } to ${cleanName}, but the audit log could not be written.`
+        );
+
+        setMessageType(
+          "error"
+        );
+      } else {
+        setMessage(
+          `Cashier changed successfully from ${
+            previousName || "-"
+          } to ${cleanName}.`
+        );
+
+        setMessageType(
+          "success"
+        );
+      }
+
+      setActualCashierName(
+        cleanName
+      );
+
+      if (
+        typeof onChanged ===
+        "function"
+      ) {
+        await onChanged();
+      }
+    } catch (error) {
+      console.error(
+        "CHANGE SHIFT CASHIER ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to change the cashier."
+      );
+
+      setMessageType(
+        "error"
+      );
+    } finally {
+      setSavingCashier(false);
+    }
+  }
+
+  // ==================================================
+  // SAVE PERMANENT SALARY NAME
+  // ==================================================
+
+  async function saveSalaryName(
+    slot
+  ) {
+    if (!validateAdminBasics()) {
+      return;
+    }
+
+    const salarySlot =
+      Number(slot);
+
+    if (
+      salarySlot !== 1 &&
+      salarySlot !== 2
+    ) {
+      showError(
+        "Invalid salary slot."
+      );
+
+      return;
+    }
+
+    const cleanName =
+      String(
+        salaryNames[
+          salarySlot
+        ] || ""
+      ).trim();
+
+    if (cleanName.length < 2) {
+      showError(
+        `Enter a name for Salary Row ${salarySlot}.`
+      );
+
+      return;
+    }
+
+    const existing =
+      salarySettings.find(
+        (row) =>
+          Number(
+            row.salary_slot
+          ) === salarySlot
+      );
+
+    try {
+      setSavingSalarySlot(
+        salarySlot
+      );
+
+      setMessage("");
+      setMessageType("");
+
+      let savedRow = null;
+
+      // ==============================================
+      // UPDATE EXISTING
+      // ==============================================
+
+      if (existing?.id) {
+        const response =
+          await fetch(
+            `${supabaseUrl}/rest/v1/shop_salary_settings` +
+              `?id=eq.${encodeURIComponent(
+                existing.id
+              )}`,
+            {
+              method: "PATCH",
+
+              headers: {
+                apikey:
+                  supabaseAnonKey,
+
+                Authorization:
+                  `Bearer ${accessToken}`,
+
+                "Content-Type":
+                  "application/json",
+
+                Prefer:
+                  "return=representation",
+              },
+
+              body:
+                JSON.stringify({
+                  description:
+                    cleanName,
+
+                  is_active:
+                    true,
+
+                  updated_at:
+                    new Date().toISOString(),
+                }),
+            }
+          );
+
+        const result =
+          await safeJson(
+            response
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              result?.hint ||
+              "Unable to update salary name."
+          );
+        }
+
+        savedRow =
+          Array.isArray(result) &&
+          result.length > 0
+            ? result[0]
+            : null;
+      }
+
+      // ==============================================
+      // CREATE IF MISSING
+      // ==============================================
+
+      if (!existing?.id) {
+        const response =
+          await fetch(
+            `${supabaseUrl}/rest/v1/shop_salary_settings`,
+            {
+              method: "POST",
+
+              headers: {
+                apikey:
+                  supabaseAnonKey,
+
+                Authorization:
+                  `Bearer ${accessToken}`,
+
+                "Content-Type":
+                  "application/json",
+
+                Prefer:
+                  "return=representation",
+              },
+
+              body:
+                JSON.stringify({
+                  shop_id:
+                    selectedShop.id,
+
+                  salary_slot:
+                    salarySlot,
+
+                  description:
+                    cleanName,
+
+                  is_active:
+                    true,
+                }),
+            }
+          );
+
+        const result =
+          await safeJson(
+            response
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              result?.hint ||
+              "Unable to create salary name."
+          );
+        }
+
+        savedRow =
+          Array.isArray(result) &&
+          result.length > 0
+            ? result[0]
+            : null;
+      }
+
+      if (!savedRow) {
+        throw new Error(
+          "The saved salary row was not returned."
+        );
+      }
+
+      // ==============================================
+      // AUDIT LOG
+      // ==============================================
+
+      const auditResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/audit_log`,
+          {
+            method: "POST",
+
+            headers: {
+              apikey:
+                supabaseAnonKey,
+
+              Authorization:
+                `Bearer ${accessToken}`,
+
+              "Content-Type":
+                "application/json",
+
+              Prefer:
+                "return=representation",
+            },
+
+            body:
+              JSON.stringify({
+                user_id:
+                  adminProfileId,
+
+                shop_id:
+                  selectedShop.id,
+
+                action:
+                  "ADMIN_UPDATE_24H_SALARY_NAME",
+
+                table_name:
+                  "shop_salary_settings",
+
+                record_id:
+                  savedRow.id,
+
+                old_data:
+                  existing
+                    ? {
+                        salary_slot:
+                          existing.salary_slot,
+
+                        description:
+                          existing.description,
+
+                        is_active:
+                          existing.is_active,
+                      }
+                    : null,
+
+                new_data: {
+                  salary_slot:
+                    savedRow.salary_slot,
+
+                  description:
+                    savedRow.description,
+
+                  is_active:
+                    savedRow.is_active,
+                },
+              }),
+          }
+        );
+
+      const auditResult =
+        await safeJson(
+          auditResponse
+        );
+
+      if (!auditResponse.ok) {
+        console.error(
+          "SALARY SETTINGS AUDIT ERROR:",
+          auditResult
+        );
+
+        setMessage(
+          `Salary Row ${salarySlot} was saved, but the audit log could not be written.`
+        );
+
+        setMessageType(
+          "error"
+        );
+      } else {
+        setMessage(
+          `Salary Row ${salarySlot} saved permanently as "${cleanName}".`
+        );
+
+        setMessageType(
+          "success"
+        );
+      }
+
+      await loadSalarySettings();
+    } catch (error) {
+      console.error(
+        "SAVE SALARY NAME ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to save salary name."
+      );
+
+      setMessageType(
+        "error"
+      );
+    } finally {
+      setSavingSalarySlot(
+        null
+      );
+    }
+  }
+
+  // ==================================================
+  // DO NOT SHOW FOR 12-HOUR SHOPS
+  // ==================================================
+
+  if (
+    !selectedShift ||
+    !selectedShop ||
+    !is24HourShop
+  ) {
+    return null;
+  }
+
+  // ==================================================
   // LEGACY DAY SHIFT CLOSURE
-  //
-  // ONLY for old DAY shifts inside 24_HOUR shops.
-  //
-  // This does NOT perform normal 9PM / midnight / 9AM
-  // platform handover validation because the legacy
-  // record existed before the 24-hour engine.
-  //
-  // Existing financial values are preserved exactly.
   // ==================================================
 
   async function closeLegacyDayShift() {
@@ -134,6 +982,7 @@ export default function Admin24HourShiftHandover({
       showError(
         "This action is only for a legacy DAY shift."
       );
+
       return;
     }
 
@@ -141,6 +990,7 @@ export default function Admin24HourShiftHandover({
       showError(
         "This legacy shift is already closed."
       );
+
       return;
     }
 
@@ -151,6 +1001,7 @@ export default function Admin24HourShiftHandover({
       showError(
         "Enter the reason for closing this legacy DAY shift."
       );
+
       return;
     }
 
@@ -185,12 +1036,9 @@ export default function Admin24HourShiftHandover({
 
     try {
       setClosing(true);
+
       setMessage("");
       setMessageType("");
-
-      // ==============================================
-      // GET FRESH SHIFT
-      // ==============================================
 
       const shiftResponse =
         await fetch(
@@ -214,7 +1062,8 @@ export default function Admin24HourShiftHandover({
                 "application/json",
             },
 
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
@@ -286,10 +1135,6 @@ export default function Admin24HourShiftHandover({
         );
       }
 
-      // ==============================================
-      // PRESERVE OLD SNAPSHOT
-      // ==============================================
-
       const oldSnapshot = {
         id:
           freshShift.id,
@@ -345,22 +1190,6 @@ export default function Admin24HourShiftHandover({
         notes:
           freshShift.notes,
       };
-
-      // ==============================================
-      // CLOSE ONLY
-      //
-      // IMPORTANT:
-      // We deliberately do NOT change:
-      // opening_balance
-      // total_added_float
-      // total_output
-      // total_expenses
-      // net_income
-      // closing_balance
-      // shift_name
-      //
-      // This preserves the KES 100 legacy carry-forward.
-      // ==============================================
 
       const closedAt =
         new Date().toISOString();
@@ -439,10 +1268,6 @@ export default function Admin24HourShiftHandover({
 
       const closedShift =
         closeResult[0];
-
-      // ==============================================
-      // AUDIT LOG
-      // ==============================================
 
       const auditResponse =
         await fetch(
@@ -591,6 +1416,7 @@ export default function Admin24HourShiftHandover({
       showError(
         "This 24-hour shift must be SHIFT 1 or SHIFT 2."
       );
+
       return;
     }
 
@@ -601,6 +1427,7 @@ export default function Admin24HourShiftHandover({
       showError(
         "Enter the reason for the Admin handover."
       );
+
       return;
     }
 
@@ -630,6 +1457,7 @@ export default function Admin24HourShiftHandover({
 
     try {
       setClosing(true);
+
       setMessage("");
       setMessageType("");
 
@@ -659,7 +1487,8 @@ export default function Admin24HourShiftHandover({
                 "application/json",
             },
 
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
@@ -744,7 +1573,8 @@ export default function Admin24HourShiftHandover({
                 "application/json",
             },
 
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
@@ -801,7 +1631,8 @@ export default function Admin24HourShiftHandover({
                 "application/json",
             },
 
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
@@ -825,13 +1656,6 @@ export default function Admin24HourShiftHandover({
           ? readingsResult
           : [];
 
-      // ==============================================
-      // VERIFY REQUIRED READINGS
-      //
-      // Admin bypasses TIME restriction.
-      // Admin does NOT silently bypass missing figures.
-      // ==============================================
-
       const readingCheck =
         checkRequiredReadings({
           platforms,
@@ -847,10 +1671,6 @@ export default function Admin24HourShiftHandover({
           readingCheck.message
         );
       }
-
-      // ==============================================
-      // OLD SNAPSHOT FOR AUDIT
-      // ==============================================
 
       const oldSnapshot = {
         id:
@@ -898,10 +1718,6 @@ export default function Admin24HourShiftHandover({
         closing_balance:
           freshShift.closing_balance,
       };
-
-      // ==============================================
-      // CLOSE SHIFT
-      // ==============================================
 
       const closedAt =
         new Date().toISOString();
@@ -980,10 +1796,6 @@ export default function Admin24HourShiftHandover({
 
       const closedShift =
         closeResult[0];
-
-      // ==============================================
-      // AUDIT LOG
-      // ==============================================
 
       const auditResponse =
         await fetch(
@@ -1112,26 +1924,42 @@ export default function Admin24HourShiftHandover({
   return (
     <div
       style={{
-        marginTop: "16px",
-        marginBottom: "16px",
+        marginTop:
+          "16px",
+
+        marginBottom:
+          "16px",
+
         border:
           isLegacyDayShift
             ? "2px solid #dc2626"
             : "2px solid #f59e0b",
-        borderRadius: "7px",
-        overflow: "hidden",
+
+        borderRadius:
+          "7px",
+
+        overflow:
+          "hidden",
       }}
     >
       <div
         style={{
-          padding: "9px 12px",
+          padding:
+            "9px 12px",
+
           backgroundColor:
             isLegacyDayShift
               ? "#dc2626"
               : "#f59e0b",
-          color: "#ffffff",
-          fontSize: "11px",
-          fontWeight: "bold",
+
+          color:
+            "#ffffff",
+
+          fontSize:
+            "11px",
+
+          fontWeight:
+            "bold",
         }}
       >
         {isLegacyDayShift
@@ -1141,7 +1969,9 @@ export default function Admin24HourShiftHandover({
 
       <div
         style={{
-          padding: "14px",
+          padding:
+            "14px",
+
           backgroundColor:
             isLegacyDayShift
               ? "#fef2f2"
@@ -1150,11 +1980,17 @@ export default function Admin24HourShiftHandover({
       >
         <div
           style={{
-            display: "grid",
+            display:
+              "grid",
+
             gridTemplateColumns:
               "repeat(3, 1fr)",
-            gap: "8px",
-            marginBottom: "12px",
+
+            gap:
+              "8px",
+
+            marginBottom:
+              "12px",
           }}
         >
           <InfoBox
@@ -1172,7 +2008,7 @@ export default function Admin24HourShiftHandover({
           />
 
           <InfoBox
-            title="CASHIER"
+            title="SAVED CASHIER"
             value={
               selectedShift.cashier_name ||
               "-"
@@ -1180,14 +2016,188 @@ export default function Admin24HourShiftHandover({
           />
         </div>
 
+        {/* ===========================================
+            ACTUAL CASHIER ASSIGNMENT
+        ============================================ */}
+
+        <div style={adminSectionStyle}>
+          <div style={adminSectionTitleStyle}>
+            ACTUAL SHIFT CASHIER
+          </div>
+
+          <div style={helpTextStyle}>
+            Terry, Nancy, or a relief employee can use the same shared
+            shop login. Save the actual person who worked this shift
+            here.
+          </div>
+
+          <div style={cashierEditGridStyle}>
+            <input
+              type="text"
+              value={
+                actualCashierName
+              }
+              disabled={
+                savingCashier
+              }
+              onChange={(event) => {
+                setActualCashierName(
+                  event.target.value
+                );
+
+                setMessage("");
+              }}
+              placeholder="Example: TERRY"
+              style={adminInputStyle}
+            />
+
+            <button
+              type="button"
+              disabled={
+                savingCashier
+              }
+              onClick={
+                saveActualCashierName
+              }
+              style={{
+                ...greenButtonStyle,
+
+                backgroundColor:
+                  savingCashier
+                    ? "#94a3b8"
+                    : "#15803d",
+
+                cursor:
+                  savingCashier
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              {savingCashier
+                ? "SAVING..."
+                : "SAVE CASHIER"}
+            </button>
+          </div>
+
+          <div style={smallNoteStyle}>
+            This changes the cashier name on this shift only. The
+            shared login account is not changed.
+          </div>
+        </div>
+
+        {/* ===========================================
+            PERMANENT SALARY NAMES
+        ============================================ */}
+
+        <div style={adminSectionStyle}>
+          <div style={adminSectionTitleStyle}>
+            24-HOUR PERMANENT SALARY NAMES
+          </div>
+
+          <div style={helpTextStyle}>
+            These two names remain permanently for this shop. Paying a
+            salary later will not remove the name.
+          </div>
+
+          {loadingSalary ? (
+            <div style={loadingBoxStyle}>
+              Loading salary names...
+            </div>
+          ) : (
+            <>
+              {[1, 2].map(
+                (slot) => (
+                  <div
+                    key={slot}
+                    style={salaryRowStyle}
+                  >
+                    <div style={salaryLabelStyle}>
+                      SALARY ROW {slot}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={
+                        salaryNames[
+                          slot
+                        ] || ""
+                      }
+                      disabled={
+                        savingSalarySlot ===
+                        slot
+                      }
+                      onChange={(event) => {
+                        const value =
+                          event.target.value;
+
+                        setSalaryNames(
+                          (previous) => ({
+                            ...previous,
+
+                            [slot]:
+                              value,
+                          })
+                        );
+
+                        setMessage("");
+                      }}
+                      placeholder={`Salary Row ${slot} name`}
+                      style={adminInputStyle}
+                    />
+
+                    <button
+                      type="button"
+                      disabled={
+                        savingSalarySlot ===
+                        slot
+                      }
+                      onClick={() =>
+                        saveSalaryName(
+                          slot
+                        )
+                      }
+                      style={{
+                        ...greenButtonStyle,
+
+                        backgroundColor:
+                          savingSalarySlot ===
+                          slot
+                            ? "#94a3b8"
+                            : "#0873b9",
+
+                        cursor:
+                          savingSalarySlot ===
+                          slot
+                            ? "not-allowed"
+                            : "pointer",
+                      }}
+                    >
+                      {savingSalarySlot ===
+                      slot
+                        ? "SAVING..."
+                        : "SAVE"}
+                    </button>
+                  </div>
+                )
+              )}
+            </>
+          )}
+        </div>
+
         {isLegacyDayShift && (
           <div
             style={{
-              display: "grid",
+              display:
+                "grid",
+
               gridTemplateColumns:
                 "repeat(3, 1fr)",
-              gap: "8px",
-              marginBottom: "12px",
+
+              gap:
+                "8px",
+
+              marginBottom:
+                "12px",
             }}
           >
             <InfoBox
@@ -1218,14 +2228,26 @@ export default function Admin24HourShiftHandover({
             {isLegacyDayShift ? (
               <div
                 style={{
-                  padding: "10px",
-                  marginBottom: "12px",
-                  borderRadius: "5px",
+                  padding:
+                    "10px",
+
+                  marginBottom:
+                    "12px",
+
+                  borderRadius:
+                    "5px",
+
                   backgroundColor:
                     "#fee2e2",
-                  color: "#991b1b",
-                  fontSize: "11px",
-                  fontWeight: "bold",
+
+                  color:
+                    "#991b1b",
+
+                  fontSize:
+                    "11px",
+
+                  fontWeight:
+                    "bold",
                 }}
               >
                 This is an old DAY shift created before Kings was
@@ -1237,13 +2259,23 @@ export default function Admin24HourShiftHandover({
             ) : isProper24HourShift ? (
               <div
                 style={{
-                  padding: "10px",
-                  marginBottom: "12px",
-                  borderRadius: "5px",
+                  padding:
+                    "10px",
+
+                  marginBottom:
+                    "12px",
+
+                  borderRadius:
+                    "5px",
+
                   backgroundColor:
                     "#fef3c7",
-                  color: "#92400e",
-                  fontSize: "11px",
+
+                  color:
+                    "#92400e",
+
+                  fontSize:
+                    "11px",
                 }}
               >
                 Admin may close this shift outside the normal cashier
@@ -1253,13 +2285,23 @@ export default function Admin24HourShiftHandover({
             ) : (
               <div
                 style={{
-                  padding: "10px",
-                  marginBottom: "12px",
-                  borderRadius: "5px",
+                  padding:
+                    "10px",
+
+                  marginBottom:
+                    "12px",
+
+                  borderRadius:
+                    "5px",
+
                   backgroundColor:
                     "#fef2f2",
-                  color: "#991b1b",
-                  fontSize: "11px",
+
+                  color:
+                    "#991b1b",
+
+                  fontSize:
+                    "11px",
                 }}
               >
                 This shift is not a recognised SHIFT 1, SHIFT 2, or
@@ -1273,11 +2315,20 @@ export default function Admin24HourShiftHandover({
               <>
                 <label
                   style={{
-                    display: "block",
-                    fontSize: "10px",
-                    fontWeight: "bold",
-                    color: "#334155",
-                    marginBottom: "6px",
+                    display:
+                      "block",
+
+                    fontSize:
+                      "10px",
+
+                    fontWeight:
+                      "bold",
+
+                    color:
+                      "#334155",
+
+                    marginBottom:
+                      "6px",
                   }}
                 >
                   {isLegacyDayShift
@@ -1287,8 +2338,12 @@ export default function Admin24HourShiftHandover({
 
                 <textarea
                   rows={3}
-                  value={reason}
-                  disabled={closing}
+                  value={
+                    reason
+                  }
+                  disabled={
+                    closing
+                  }
                   onChange={(event) => {
                     setReason(
                       event.target.value
@@ -1302,19 +2357,31 @@ export default function Admin24HourShiftHandover({
                       : "Example: Cashier reported late; Admin completed the morning handover."
                   }
                   style={{
-                    width: "100%",
+                    width:
+                      "100%",
+
                     boxSizing:
                       "border-box",
-                    padding: "10px",
+
+                    padding:
+                      "10px",
+
                     border:
                       isLegacyDayShift
                         ? "1px solid #dc2626"
                         : "1px solid #d97706",
-                    borderRadius: "5px",
-                    resize: "vertical",
+
+                    borderRadius:
+                      "5px",
+
+                    resize:
+                      "vertical",
+
                     backgroundColor:
                       "#ffffff",
-                    marginBottom: "10px",
+
+                    marginBottom:
+                      "10px",
                   }}
                 />
 
@@ -1325,20 +2392,35 @@ export default function Admin24HourShiftHandover({
                       ? closeLegacyDayShift
                       : adminCloseShift
                   }
-                  disabled={closing}
+                  disabled={
+                    closing
+                  }
                   style={{
-                    width: "100%",
-                    padding: "11px",
-                    border: "none",
-                    borderRadius: "5px",
+                    width:
+                      "100%",
+
+                    padding:
+                      "11px",
+
+                    border:
+                      "none",
+
+                    borderRadius:
+                      "5px",
+
                     backgroundColor:
                       closing
                         ? "#94a3b8"
                         : isLegacyDayShift
                         ? "#dc2626"
                         : "#d97706",
-                    color: "white",
-                    fontWeight: "bold",
+
+                    color:
+                      "white",
+
+                    fontWeight:
+                      "bold",
+
                     cursor:
                       closing
                         ? "not-allowed"
@@ -1359,14 +2441,26 @@ export default function Admin24HourShiftHandover({
         ) : (
           <div
             style={{
-              padding: "10px",
-              borderRadius: "5px",
+              padding:
+                "10px",
+
+              borderRadius:
+                "5px",
+
               backgroundColor:
                 "#ecfdf5",
-              color: "#166534",
-              fontWeight: "bold",
-              fontSize: "11px",
-              textAlign: "center",
+
+              color:
+                "#166534",
+
+              fontWeight:
+                "bold",
+
+              fontSize:
+                "11px",
+
+              textAlign:
+                "center",
             }}
           >
             This shift is already closed.
@@ -1376,20 +2470,29 @@ export default function Admin24HourShiftHandover({
         {message && (
           <div
             style={{
-              padding: "10px",
-              marginTop: "12px",
-              borderRadius: "5px",
+              padding:
+                "10px",
+
+              marginTop:
+                "12px",
+
+              borderRadius:
+                "5px",
+
               backgroundColor:
                 messageType ===
                 "success"
                   ? "#ecfdf5"
                   : "#fef2f2",
+
               color:
                 messageType ===
                 "success"
                   ? "#166534"
                   : "#991b1b",
-              fontSize: "11px",
+
+              fontSize:
+                "11px",
             }}
           >
             {message}
@@ -1425,9 +2528,6 @@ function checkRequiredReadings({
     }
   }
 
-  // SHIFT 1 closes at 9 PM.
-  // Every platform needs HANDOVER_9PM.
-
   if (
     shiftName === "SHIFT 1"
   ) {
@@ -1443,7 +2543,8 @@ function checkRequiredReadings({
       missing.length > 0
     ) {
       return {
-        complete: false,
+        complete:
+          false,
 
         message:
           `Admin cannot close this shift yet. Missing 9 PM handover reading for: ${missing
@@ -1456,15 +2557,13 @@ function checkRequiredReadings({
     }
 
     return {
-      complete: true,
-      message: "",
+      complete:
+        true,
+
+      message:
+        "",
     };
   }
-
-  // SHIFT 2:
-  // Resettable platforms need midnight close.
-  // All platforms need CLOSING_9AM.
-  // TABLE does NOT need midnight close.
 
   if (
     shiftName === "SHIFT 2"
@@ -1472,7 +2571,9 @@ function checkRequiredReadings({
     const missingMidnight =
       platforms.filter(
         (platform) =>
-          !isTable(platform) &&
+          !isTable(
+            platform
+          ) &&
           !readingSet.has(
             `${platform.id}:MIDNIGHT_CLOSE`
           )
@@ -1483,7 +2584,8 @@ function checkRequiredReadings({
       0
     ) {
       return {
-        complete: false,
+        complete:
+          false,
 
         message:
           `Admin cannot close this shift yet. Missing 11:59 PM reading for: ${missingMidnight
@@ -1504,10 +2606,12 @@ function checkRequiredReadings({
       );
 
     if (
-      missing9am.length > 0
+      missing9am.length >
+      0
     ) {
       return {
-        complete: false,
+        complete:
+          false,
 
         message:
           `Admin cannot close this shift yet. Missing 9 AM handover reading for: ${missing9am
@@ -1520,13 +2624,17 @@ function checkRequiredReadings({
     }
 
     return {
-      complete: true,
-      message: "",
+      complete:
+        true,
+
+      message:
+        "",
     };
   }
 
   return {
-    complete: false,
+    complete:
+      false,
 
     message:
       "This is not a valid SHIFT 1 or SHIFT 2.",
@@ -1540,13 +2648,20 @@ function checkRequiredReadings({
 function normalizeShiftName(
   value
 ) {
-  const text = String(
-    value || ""
-  )
-    .trim()
-    .toUpperCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
+  const text =
+    String(
+      value || ""
+    )
+      .trim()
+      .toUpperCase()
+      .replace(
+        /[_-]+/g,
+        " "
+      )
+      .replace(
+        /\s+/g,
+        " "
+      );
 
   if (
     text === "SHIFT1" ||
@@ -1565,7 +2680,9 @@ function normalizeShiftName(
   return text;
 }
 
-function isTable(platform) {
+function isTable(
+  platform
+) {
   return (
     String(
       platform?.platform_name ||
@@ -1577,7 +2694,9 @@ function isTable(platform) {
   );
 }
 
-function money(value) {
+function money(
+  value
+) {
   return Number(
     value || 0
   ).toLocaleString(
@@ -1602,6 +2721,10 @@ async function safeJson(
   }
 }
 
+// ==================================================
+// INFO BOX
+// ==================================================
+
 function InfoBox({
   title,
   value,
@@ -1609,20 +2732,32 @@ function InfoBox({
   return (
     <div
       style={{
-        padding: "8px",
+        padding:
+          "8px",
+
         backgroundColor:
           "#ffffff",
+
         border:
           "1px solid #fde68a",
-        borderRadius: "5px",
-        textAlign: "center",
+
+        borderRadius:
+          "5px",
+
+        textAlign:
+          "center",
       }}
     >
       <div
         style={{
-          fontSize: "9px",
-          color: "#64748b",
-          fontWeight: "bold",
+          fontSize:
+            "9px",
+
+          color:
+            "#64748b",
+
+          fontWeight:
+            "bold",
         }}
       >
         {title}
@@ -1630,10 +2765,17 @@ function InfoBox({
 
       <div
         style={{
-          marginTop: "4px",
-          fontSize: "11px",
-          fontWeight: "bold",
-          color: "#0f172a",
+          marginTop:
+            "4px",
+
+          fontSize:
+            "11px",
+
+          fontWeight:
+            "bold",
+
+          color:
+            "#0f172a",
         }}
       >
         {value}
@@ -1641,3 +2783,165 @@ function InfoBox({
     </div>
   );
 }
+
+// ==================================================
+// NEW ADMIN CONTROL STYLES
+// ==================================================
+
+const adminSectionStyle = {
+  padding:
+    "12px",
+
+  marginBottom:
+    "12px",
+
+  backgroundColor:
+    "#ffffff",
+
+  border:
+    "1px solid #cbd5e1",
+
+  borderRadius:
+    "6px",
+};
+
+const adminSectionTitleStyle = {
+  fontSize:
+    "11px",
+
+  fontWeight:
+    "bold",
+
+  color:
+    "#0f172a",
+
+  marginBottom:
+    "5px",
+};
+
+const helpTextStyle = {
+  fontSize:
+    "10px",
+
+  color:
+    "#64748b",
+
+  marginBottom:
+    "9px",
+};
+
+const cashierEditGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "minmax(0, 1fr) 150px",
+
+  gap:
+    "8px",
+};
+
+const salaryRowStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "100px minmax(0, 1fr) 100px",
+
+  gap:
+    "8px",
+
+  alignItems:
+    "center",
+
+  marginTop:
+    "7px",
+};
+
+const salaryLabelStyle = {
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "bold",
+
+  color:
+    "#334155",
+};
+
+const adminInputStyle = {
+  width:
+    "100%",
+
+  boxSizing:
+    "border-box",
+
+  padding:
+    "9px",
+
+  border:
+    "1px solid #94a3b8",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#ffffff",
+
+  fontSize:
+    "11px",
+};
+
+const greenButtonStyle = {
+  width:
+    "100%",
+
+  padding:
+    "9px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "5px",
+
+  color:
+    "#ffffff",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "bold",
+};
+
+const smallNoteStyle = {
+  marginTop:
+    "7px",
+
+  fontSize:
+    "9px",
+
+  color:
+    "#64748b",
+};
+
+const loadingBoxStyle = {
+  padding:
+    "10px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  borderRadius:
+    "5px",
+
+  color:
+    "#64748b",
+
+  fontSize:
+    "10px",
+
+  textAlign:
+    "center",
+};
