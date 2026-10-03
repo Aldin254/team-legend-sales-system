@@ -19,6 +19,10 @@ export default function PlatformReadings24Hour({
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
 
+  // Live clock so stages appear automatically
+  // without requiring a page refresh.
+  const [now, setNow] = useState(() => new Date());
+
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -55,6 +59,32 @@ export default function PlatformReadings24Hour({
 
   const isShift2 =
     shiftName === "SHIFT 2";
+
+  // ==================================================
+  // LIVE NAIROBI CLOCK
+  // ==================================================
+
+  useEffect(() => {
+    setNow(new Date());
+
+    const timer =
+      setInterval(() => {
+        setNow(new Date());
+      }, 15000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  const nairobiTime =
+    useMemo(
+      () =>
+        getNairobiTimeParts(
+          now
+        ),
+      [now]
+    );
 
   // ==================================================
   // LOAD PLATFORMS + ALL READINGS
@@ -125,7 +155,9 @@ export default function PlatformReadings24Hour({
         }
 
         const activePlatforms =
-          Array.isArray(platformData)
+          Array.isArray(
+            platformData
+          )
             ? platformData
             : [];
 
@@ -295,6 +327,104 @@ export default function PlatformReadings24Hour({
   ]);
 
   // ==================================================
+  // STAGE SAVED STATUS
+  // ==================================================
+
+  const shift1HandoverSaved =
+    useMemo(
+      () =>
+        isStageCompletelySaved({
+          platforms,
+          rows,
+          readingKind:
+            "HANDOVER_9PM",
+        }),
+      [
+        platforms,
+        rows,
+      ]
+    );
+
+  const resettablePlatforms =
+    useMemo(
+      () =>
+        platforms.filter(
+          (platform) =>
+            !isTable(
+              platform
+            )
+        ),
+      [platforms]
+    );
+
+  const midnightSaved =
+    useMemo(
+      () =>
+        isStageCompletelySaved({
+          platforms:
+            resettablePlatforms,
+          rows,
+          readingKind:
+            "MIDNIGHT_CLOSE",
+        }),
+      [
+        resettablePlatforms,
+        rows,
+      ]
+    );
+
+  const closing9amSaved =
+    useMemo(
+      () =>
+        isStageCompletelySaved({
+          platforms,
+          rows,
+          readingKind:
+            "CLOSING_9AM",
+        }),
+      [
+        platforms,
+        rows,
+      ]
+    );
+
+  // ==================================================
+  // TIMED VISIBILITY
+  //
+  // IMPORTANT:
+  // Once a stage has been saved it remains visible.
+  // Future unsaved stages remain hidden until their
+  // exact Nairobi opening time.
+  // ==================================================
+
+  const showShift1Handover =
+    isShift1 &&
+    (
+      shift1HandoverSaved ||
+      isShift1NinePmStageOpen(
+        nairobiTime
+      )
+    );
+
+  const showMidnightStage =
+    isShift2 &&
+    (
+      midnightSaved ||
+      isShift2MidnightStageOpen(
+        nairobiTime
+      )
+    );
+
+  const showClosing9amStage =
+    isShift2 &&
+    (
+      closing9amSaved ||
+      isShift2NineAmStageOpen(
+        nairobiTime
+      )
+    );
+
+  // ==================================================
   // INPUT
   // ==================================================
 
@@ -346,6 +476,79 @@ export default function PlatformReadings24Hour({
     ) {
       setMessage(
         "Shift or login information is missing."
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------
+    // SERVER-ACTION-TIME STYLE CLOCK CHECK
+    //
+    // The UI being visible is not enough.
+    // We check the Nairobi clock again when Save
+    // is actually pressed.
+    // ----------------------------------------------
+
+    const freshTime =
+      getNairobiTimeParts(
+        new Date()
+      );
+
+    if (
+      readingKind ===
+        "HANDOVER_9PM" &&
+      shiftName ===
+        "SHIFT 1" &&
+      !isShift1NinePmStageOpen(
+        freshTime
+      )
+    ) {
+      setMessage(
+        "9 PM handover readings become available at exactly 9:00 PM Nairobi time."
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    if (
+      readingKind ===
+        "MIDNIGHT_CLOSE" &&
+      shiftName ===
+        "SHIFT 2" &&
+      !isShift2MidnightStageOpen(
+        freshTime
+      )
+    ) {
+      setMessage(
+        "11:59 PM closing readings become available at exactly 11:59 PM Nairobi time."
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    if (
+      readingKind ===
+        "CLOSING_9AM" &&
+      shiftName ===
+        "SHIFT 2" &&
+      !isShift2NineAmStageOpen(
+        freshTime
+      )
+    ) {
+      setMessage(
+        "9 AM handover readings become available at exactly 9:00 AM Nairobi time."
       );
 
       setMessageType(
@@ -422,11 +625,20 @@ export default function PlatformReadings24Hour({
       const numericValue =
         Number(raw);
 
+      // ------------------------------------------
+      // SIGNED READING RULE
+      //
+      // Negative = VALID
+      // Zero     = VALID
+      // Positive = VALID
+      //
+      // Only non-finite numbers are invalid.
+      // ------------------------------------------
+
       if (
-        Number.isNaN(
+        !Number.isFinite(
           numericValue
-        ) ||
-        numericValue < 0
+        )
       ) {
         setMessage(
           `Enter a valid reading for ${platform.platform_name}.`
@@ -585,7 +797,7 @@ export default function PlatformReadings24Hour({
         totalOutput
       );
 
-     setMessage(
+      setMessage(
         `${stageLabel(
           readingKind
         )} readings saved and locked successfully.`
@@ -595,8 +807,6 @@ export default function PlatformReadings24Hour({
         "success"
       );
 
-      // Tell the parent report that platform readings
-      // and shift totals have changed.
       if (
         typeof onReadingsChanged ===
         "function"
@@ -860,11 +1070,15 @@ export default function PlatformReadings24Hour({
         </div>
       ) : (
         <>
+          {/* ====================================== */}
+          {/* SHIFT 1 */}
+          {/* ====================================== */}
+
           {isShift1 && (
             <>
               <Stage
                 title="9:00 AM Opening"
-                description="Record the platform figures available at the 9 AM handover."
+                description="These are the platform figures received at the 9 AM opening."
                 platforms={
                   platforms
                 }
@@ -882,37 +1096,45 @@ export default function PlatformReadings24Hour({
                 onSave={
                   saveStage
                 }
+                forceReadOnly
+                hideSaveButton
               />
 
-              <Stage
-                title="9:00 PM Handover"
-                description="Record the 9 PM readings. These close Shift 1 and hand the platforms to Shift 2."
-                platforms={
-                  platforms
-                }
-                rows={rows}
-                values={
-                  values
-                }
-                readingKind="HANDOVER_9PM"
-                saving={
-                  saving
-                }
-                onChange={
-                  updateValue
-                }
-                onSave={
-                  saveStage
-                }
-              />
+              {showShift1Handover && (
+                <Stage
+                  title="9:00 PM Handover"
+                  description="Record the 9 PM readings. These close Shift 1 and hand the platforms to Shift 2."
+                  platforms={
+                    platforms
+                  }
+                  rows={rows}
+                  values={
+                    values
+                  }
+                  readingKind="HANDOVER_9PM"
+                  saving={
+                    saving
+                  }
+                  onChange={
+                    updateValue
+                  }
+                  onSave={
+                    saveStage
+                  }
+                />
+              )}
             </>
           )}
+
+          {/* ====================================== */}
+          {/* SHIFT 2 */}
+          {/* ====================================== */}
 
           {isShift2 && (
             <>
               <Stage
                 title="9:00 PM Opening / Handover"
-                description="These are the figures received from Shift 1."
+                description="These are the saved figures received from Shift 1."
                 platforms={
                   platforms
                 }
@@ -930,78 +1152,86 @@ export default function PlatformReadings24Hour({
                 onSave={
                   saveStage
                 }
+                forceReadOnly
+                hideSaveButton
               />
 
-              <Stage
-                title="11:59 PM Day Closing"
-                description="Record PILOT, WEKEZA, MBK777, SPIN, STELLAR and other resetting platforms before the midnight reset. TABLE is excluded."
-                platforms={platforms.filter(
-                  (platform) =>
-                    !isTable(
-                      platform
-                    )
-                )}
-                rows={rows}
-                values={
-                  values
-                }
-                readingKind="MIDNIGHT_CLOSE"
-                saving={
-                  saving
-                }
-                onChange={
-                  updateValue
-                }
-                onSave={
-                  saveStage
-                }
-              />
+              {showMidnightStage && (
+                <Stage
+                  title="11:59 PM Day Closing"
+                  description="Record the resettable platform readings before the midnight reset. TABLE is excluded."
+                  platforms={
+                    resettablePlatforms
+                  }
+                  rows={rows}
+                  values={
+                    values
+                  }
+                  readingKind="MIDNIGHT_CLOSE"
+                  saving={
+                    saving
+                  }
+                  onChange={
+                    updateValue
+                  }
+                  onSave={
+                    saveStage
+                  }
+                />
+              )}
 
-              <div
-                style={{
-                  padding:
-                    "14px",
+              {(
+                midnightSaved ||
+                showClosing9amStage
+              ) && (
+                <div
+                  style={{
+                    padding:
+                      "14px",
 
-                  margin:
-                    "18px 0",
+                    margin:
+                      "18px 0",
 
-                  backgroundColor:
-                    "#eff6ff",
+                    backgroundColor:
+                      "#eff6ff",
 
-                  color:
-                    "#1e3a8a",
+                    color:
+                      "#1e3a8a",
 
-                  borderRadius:
-                    "8px",
+                    borderRadius:
+                      "8px",
 
-                  fontWeight:
-                    "bold",
-                }}
-              >
-                12:00 AM — resetting platforms start again from 0. TABLE continues unchanged and has no midnight reading.
-              </div>
+                    fontWeight:
+                      "bold",
+                  }}
+                >
+                  12:00 AM — resetting platforms start again from 0. TABLE continues unchanged and has no midnight reading.
+                </div>
+              )}
 
-              <Stage
-                title="9:00 AM Shift Handover"
-                description="Record the final 9 AM readings. For resetting platforms this is the figure accumulated since midnight. TABLE is its normal continuous handover reading."
-                platforms={
-                  platforms
-                }
-                rows={rows}
-                values={
-                  values
-                }
-                readingKind="CLOSING_9AM"
-                saving={
-                  saving
-                }
-                onChange={
-                  updateValue
-                }
-                onSave={
-                  saveStage
-                }
-              />
+              {showClosing9amStage && (
+                <Stage
+                  title="9:00 AM Shift Handover"
+                  description="Record the final 9 AM readings. Resetting platforms show the figure accumulated since midnight. TABLE remains continuous."
+                  platforms={
+                    platforms
+                  }
+                  rows={rows}
+                  values={
+                    values
+                  }
+                  readingKind="CLOSING_9AM"
+                  saving={
+                    saving
+                  }
+                  onChange={
+                    updateValue
+                  }
+                  onSave={
+                    saveStage
+                  }
+                />
+              )}
             </>
           )}
         </>
@@ -1024,6 +1254,8 @@ function Stage({
   saving,
   onChange,
   onSave,
+  forceReadOnly = false,
+  hideSaveButton = false,
 }) {
   const savedCount =
     platforms.filter(
@@ -1123,6 +1355,10 @@ function Stage({
               ]?.id
             );
 
+          const readOnly =
+            forceReadOnly ||
+            saved;
+
           return (
             <div
               key={
@@ -1158,7 +1394,6 @@ function Stage({
 
               <input
                 type="number"
-                min="0"
                 step="0.01"
                 value={
                   values[
@@ -1171,7 +1406,7 @@ function Stage({
                   Boolean(
                     saving
                   ) ||
-                  saved
+                  readOnly
                 }
                 onChange={(
                   event
@@ -1193,7 +1428,7 @@ function Stage({
                     "11px",
 
                   border:
-                    saved
+                    readOnly
                       ? "1px solid #86efac"
                       : "1px solid #cbd5e1",
 
@@ -1201,7 +1436,7 @@ function Stage({
                     "7px",
 
                   backgroundColor:
-                    saved
+                    readOnly
                       ? "#f0fdf4"
                       : "white",
                 }}
@@ -1211,70 +1446,82 @@ function Stage({
         }
       )}
 
-      {!allSaved && (
-        <button
-          type="button"
-          onClick={() =>
-            onSave(
-              readingKind
-            )
-          }
-          disabled={
-            Boolean(
-              saving
-            )
-          }
-          style={{
-            width:
-              "100%",
+      {!allSaved &&
+        !hideSaveButton && (
+          <button
+            type="button"
+            onClick={() =>
+              onSave(
+                readingKind
+              )
+            }
+            disabled={
+              Boolean(
+                saving
+              )
+            }
+            style={{
+              width:
+                "100%",
 
-            marginTop:
-              "8px",
+              marginTop:
+                "8px",
 
-            padding:
-              "12px",
+              padding:
+                "12px",
 
-            border:
-              "none",
+              border:
+                "none",
 
-            borderRadius:
-              "7px",
+              borderRadius:
+                "7px",
 
-            backgroundColor:
-              saving
-                ? "#94a3b8"
-                : "#168d32",
+              backgroundColor:
+                saving
+                  ? "#94a3b8"
+                  : "#168d32",
 
-            color:
-              "white",
+              color:
+                "white",
 
-            fontWeight:
-              "bold",
+              fontWeight:
+                "bold",
 
-            cursor:
-              saving
-                ? "not-allowed"
-                : "pointer",
-          }}
-        >
-          {saving ===
-          readingKind
-            ? "Saving..."
-            : `Save ${title}`}
-        </button>
-      )}
+              cursor:
+                saving
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+          >
+            {saving ===
+            readingKind
+              ? "Saving..."
+              : `Save ${title}`}
+          </button>
+        )}
     </div>
   );
 }
 
 // ==================================================
 // VALIDATE READING
+//
+// UNIVERSAL PLATFORM RULE:
+// Any finite signed number is valid.
+//
+// There is NO:
+// - value >= 0 rule
+// - closing >= opening rule
+// - TABLE cannot go backwards rule
+//
+// The only sequencing rule retained is:
+// resettable SHIFT 2 platforms must have their
+// 11:59 PM reading before their 9 AM reading.
 // ==================================================
 
 function validateReading({
   platform,
   readingKind,
-  value,
   values,
   shiftName,
 }) {
@@ -1288,93 +1535,10 @@ function validateReading({
       platform
     );
 
-  const opening =
-    numericOrNull(
-      platformValues.OPENING
-    );
-
-  const handover =
-    numericOrNull(
-      platformValues.HANDOVER_9PM
-    );
-
   const midnight =
     numericOrNull(
       platformValues.MIDNIGHT_CLOSE
     );
-
-  // ==================================================
-  // SHIFT 1 - 9 PM HANDOVER
-  // Must be >= 9 AM opening.
-  // ==================================================
-
-  if (
-    shiftName ===
-      "SHIFT 1" &&
-    readingKind ===
-      "HANDOVER_9PM" &&
-    opening !== null &&
-    value < opening
-  ) {
-    return `${platform.platform_name} 9 PM reading cannot be lower than its 9 AM opening reading of ${opening}.`;
-  }
-
-  // ==================================================
-  // SHIFT 2 - 11:59 PM CLOSE
-  //
-  // SHIFT 2 receives the 9 PM figure as OPENING.
-  // Therefore MIDNIGHT_CLOSE must be compared to
-  // OPENING, not HANDOVER_9PM.
-  // TABLE never reaches this stage.
-  // ==================================================
-
-  if (
-    shiftName ===
-      "SHIFT 2" &&
-    readingKind ===
-      "MIDNIGHT_CLOSE" &&
-    opening !== null &&
-    value < opening
-  ) {
-    return `${platform.platform_name} 11:59 PM reading cannot be lower than its 9 PM opening reading of ${opening}.`;
-  }
-
-  // Defensive fallback for any future use where
-  // HANDOVER_9PM exists in the same shift.
-  if (
-    shiftName !==
-      "SHIFT 2" &&
-    readingKind ===
-      "MIDNIGHT_CLOSE" &&
-    handover !== null &&
-    value < handover
-  ) {
-    return `${platform.platform_name} 11:59 PM reading cannot be lower than its 9 PM reading of ${handover}.`;
-  }
-
-  // ==================================================
-  // TABLE - SHIFT 2 9 AM
-  //
-  // TABLE is continuous. It cannot go backwards.
-  // ==================================================
-
-  if (
-    readingKind ===
-      "CLOSING_9AM" &&
-    table &&
-    opening !== null &&
-    value < opening
-  ) {
-    return `TABLE 9 AM handover cannot be lower than its opening reading of ${opening}.`;
-  }
-
-  // ==================================================
-  // RESETTABLE PLATFORMS - SHIFT 2 9 AM
-  //
-  // Midnight reading must already exist.
-  // The 9 AM reading may be lower than the previous
-  // night because the platform reset to 0 at midnight.
-  // ==================================================
 
   if (
     shiftName ===
@@ -1392,6 +1556,19 @@ function validateReading({
 
 // ==================================================
 // CALCULATE SHIFT OUTPUT
+//
+// SIGNED ARITHMETIC:
+//
+// SHIFT 1:
+// 9 PM - 9 AM opening
+//
+// SHIFT 2 RESETTABLE:
+// (11:59 PM - 9 PM opening) + 9 AM
+//
+// SHIFT 2 TABLE:
+// 9 AM - 9 PM opening
+//
+// Negative results are valid.
 // ==================================================
 
 function calculateShiftOutput({
@@ -1418,8 +1595,6 @@ function calculateShiftOutput({
 
     // ==============================================
     // SHIFT 1
-    //
-    // 9 AM -> 9 PM
     // ==============================================
 
     if (
@@ -1435,9 +1610,7 @@ function calculateShiftOutput({
 
       if (
         opening !== null &&
-        handover !== null &&
-        handover >=
-          opening
+        handover !== null
       ) {
         total +=
           handover -
@@ -1464,9 +1637,6 @@ function calculateShiftOutput({
 
       // ------------------------------------------
       // TABLE
-      //
-      // Continuous:
-      // 9 PM opening -> next 9 AM closing
       // ------------------------------------------
 
       if (
@@ -1477,9 +1647,7 @@ function calculateShiftOutput({
         if (
           opening !== null &&
           closing9am !==
-            null &&
-          closing9am >=
-            opening
+            null
         ) {
           total +=
             closing9am -
@@ -1491,12 +1659,6 @@ function calculateShiftOutput({
 
       // ------------------------------------------
       // RESETTABLE PLATFORM
-      //
-      // 9 PM -> 11:59 PM
-      // +
-      // 12 AM -> 9 AM
-      //
-      // At midnight counter resets to 0.
       // ------------------------------------------
 
       const midnight =
@@ -1509,13 +1671,13 @@ function calculateShiftOutput({
       if (
         opening !== null &&
         midnight !== null &&
-        closing9am !== null &&
-        midnight >=
-          opening
+        closing9am !== null
       ) {
         total +=
-          midnight -
-          opening +
+          (
+            midnight -
+            opening
+          ) +
           closing9am;
       }
     }
@@ -1523,6 +1685,189 @@ function calculateShiftOutput({
 
   return roundMoney(
     total
+  );
+}
+
+// ==================================================
+// STAGE SAVED HELPER
+// ==================================================
+
+function isStageCompletelySaved({
+  platforms,
+  rows,
+  readingKind,
+}) {
+  if (
+    !Array.isArray(
+      platforms
+    ) ||
+    platforms.length === 0
+  ) {
+    return false;
+  }
+
+  return platforms.every(
+    (platform) =>
+      Boolean(
+        rows[
+          platform.id
+        ]?.[
+          readingKind
+        ]?.id
+      )
+  );
+}
+
+// ==================================================
+// NAIROBI TIME
+// ==================================================
+
+function getNairobiTimeParts(
+  date = new Date()
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          "Africa/Nairobi",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
+
+        second:
+          "2-digit",
+
+        hourCycle:
+          "h23",
+      }
+    );
+
+  const parts =
+    formatter.formatToParts(
+      date
+    );
+
+  const values = {};
+
+  for (
+    const part of parts
+  ) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[
+        part.type
+      ] =
+        part.value;
+    }
+  }
+
+  return {
+    year:
+      Number(
+        values.year
+      ),
+
+    month:
+      Number(
+        values.month
+      ),
+
+    day:
+      Number(
+        values.day
+      ),
+
+    hour:
+      Number(
+        values.hour
+      ),
+
+    minute:
+      Number(
+        values.minute
+      ),
+
+    second:
+      Number(
+        values.second
+      ),
+  };
+}
+
+// ==================================================
+// SHIFT 1 - 9 PM STAGE
+//
+// Visible from 21:00 onward.
+// If already saved it remains visible regardless
+// because saved-state visibility is handled above.
+// ==================================================
+
+function isShift1NinePmStageOpen(
+  time
+) {
+  return (
+    time.hour >= 21
+  );
+}
+
+// ==================================================
+// SHIFT 2 - 11:59 PM STAGE
+//
+// It appears at exactly 23:59 Nairobi time.
+//
+// It remains available through the early morning
+// until 9 AM if it was not completed at 11:59 PM.
+// This avoids making the one-minute stage impossible
+// to recover from after midnight.
+//
+// Once saved it stays visible/read-only.
+// ==================================================
+
+function isShift2MidnightStageOpen(
+  time
+) {
+  if (
+    time.hour === 23 &&
+    time.minute >= 59
+  ) {
+    return true;
+  }
+
+  return (
+    time.hour >= 0 &&
+    time.hour < 9
+  );
+}
+
+// ==================================================
+// SHIFT 2 - 9 AM STAGE
+//
+// Appears from exactly 09:00 onward.
+//
+// Shift 2 should then be handed over during the
+// 09:00-11:00 handover window.
+// ==================================================
+
+function isShift2NineAmStageOpen(
+  time
+) {
+  return (
+    time.hour >= 9
   );
 }
 
@@ -1631,11 +1976,11 @@ function numericOrNull(
   const number =
     Number(value);
 
-  return Number.isNaN(
+  return Number.isFinite(
     number
   )
-    ? null
-    : number;
+    ? number
+    : null;
 }
 
 function roundMoney(
@@ -1653,9 +1998,17 @@ function roundMoney(
 function money(
   value
 ) {
-  return Number(
-    value || 0
-  ).toLocaleString(
+  const numeric =
+    Number(value);
+
+  const safeValue =
+    Number.isFinite(
+      numeric
+    )
+      ? numeric
+      : 0;
+
+  return safeValue.toLocaleString(
     "en-KE",
     {
       minimumFractionDigits:
