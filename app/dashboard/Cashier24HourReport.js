@@ -5,9 +5,11 @@ import {
   useEffect,
   useState,
 } from "react";
+
 import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
+import CashierSalaryPanel from "./CashierSalaryPanel";
 import CashierManagementPanel from "./CashierManagementPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 
@@ -20,38 +22,67 @@ export default function Cashier24HourReport({
 }) {
   const router = useRouter();
 
-  const [shift, setShift] = useState(
-    currentShift || null
-  );
-
-  const [incomeEntries, setIncomeEntries] =
-    useState([]);
-
-  const [expenses, setExpenses] =
-    useState([]);
-
-  const [refreshKey, setRefreshKey] =
-    useState(0);
-
-  const [floatInputs, setFloatInputs] =
-    useState({
-      company: ["", "", ""],
-      mshwari: ["", "", ""],
-    });
-
-  const [expenseInputs, setExpenseInputs] =
+  const [shift, setShift] =
     useState(
-      Array.from(
-        { length: 10 },
-        () => ({
-          description: "",
-          amount: "",
-        })
-      )
+      currentShift || null
     );
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    incomeEntries,
+    setIncomeEntries,
+  ] = useState([]);
+
+  const [
+    expenses,
+    setExpenses,
+  ] = useState([]);
+
+  const [
+    refreshKey,
+    setRefreshKey,
+  ] = useState(0);
+
+  const [
+    floatInputs,
+    setFloatInputs,
+  ] = useState({
+    company: [
+      "",
+      "",
+      "",
+    ],
+
+    mshwari: [
+      "",
+      "",
+      "",
+    ],
+  });
+
+  const [
+    expenseInputs,
+    setExpenseInputs,
+  ] = useState(
+    Array.from(
+      {
+        length:
+          10,
+      },
+
+      () => ({
+        description:
+          "",
+
+        amount:
+          "",
+      })
+    )
+  );
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
   const [
     savingFloats,
@@ -63,16 +94,26 @@ export default function Cashier24HourReport({
     setSavingExpenses,
   ] = useState(false);
 
-  const [message, setMessage] =
-    useState("");
+  const [
+    message,
+    setMessage,
+  ] = useState("");
 
   const [
     messageType,
     setMessageType,
   ] = useState("");
 
-  const [now, setNow] =
-    useState(() => new Date());
+  const [
+    now,
+    setNow,
+  ] = useState(
+    () => new Date()
+  );
+
+  // ==================================================
+  // SUPABASE
+  // ==================================================
 
   const supabaseUrl =
     process.env
@@ -83,11 +124,13 @@ export default function Cashier24HourReport({
       .NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
-    user?.access_token || null;
+    user?.access_token ||
+    null;
 
   const shopId =
     user?.shop_id ||
     user?.shopId ||
+    currentShift?.shop_id ||
     null;
 
   const cashierId =
@@ -98,7 +141,8 @@ export default function Cashier24HourReport({
     null;
 
   const shiftId =
-    currentShift?.id || null;
+    currentShift?.id ||
+    null;
 
   const shopName =
     user?.shop ||
@@ -106,34 +150,51 @@ export default function Cashier24HourReport({
     user?.shopName ||
     "SHOP";
 
-  const sharedAccountName =
-  user?.full_name ||
-  user?.name ||
-  user?.username ||
-  "Cashier";
+  // ==================================================
+  // CASHIER NAME
+  //
+  // 24-hour shops may use one shared login.
+  // The actual person working is stored on the shift.
+  // ==================================================
 
-const cashierName =
-  String(
-    shift?.cashier_name ||
-      currentShift?.cashier_name ||
-      sharedAccountName ||
-      "Cashier"
-  ).trim() || "Cashier";
+  const sharedAccountName =
+    user?.full_name ||
+    user?.name ||
+    user?.username ||
+    "Cashier";
+
+  const cashierName =
+    String(
+      shift?.cashier_name ||
+        currentShift?.cashier_name ||
+        sharedAccountName ||
+        "Cashier"
+    ).trim() ||
+    "Cashier";
 
   // ==================================================
   // LIVE NAIROBI GREETING CLOCK
   // ==================================================
 
   useEffect(() => {
-    setNow(new Date());
+    setNow(
+      new Date()
+    );
 
     const timer =
-      setInterval(() => {
-        setNow(new Date());
-      }, 15000);
+      setInterval(
+        () => {
+          setNow(
+            new Date()
+          );
+        },
+        15000
+      );
 
     return () => {
-      clearInterval(timer);
+      clearInterval(
+        timer
+      );
     };
   }, []);
 
@@ -142,322 +203,411 @@ const cashierName =
   // ==================================================
 
   const loadReport =
-    useCallback(async () => {
-      if (
-        !shiftId ||
-        !shopId ||
-        !accessToken ||
-        !supabaseUrl ||
-        !supabaseAnonKey
-      ) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        // ------------------------------------------
-        // SHIFT
-        // ------------------------------------------
-
-        const shiftResponse =
-          await fetch(
-            `${supabaseUrl}/rest/v1/shifts` +
-              `?id=eq.${encodeURIComponent(
-                shiftId
-              )}` +
-              `&select=*` +
-              `&limit=1`,
-            {
-              method: "GET",
-
-              headers:
-                authHeaders(
-                  supabaseAnonKey,
-                  accessToken
-                ),
-
-              cache: "no-store",
-            }
+    useCallback(
+      async () => {
+        if (
+          !shiftId ||
+          !shopId ||
+          !accessToken ||
+          !supabaseUrl ||
+          !supabaseAnonKey
+        ) {
+          setLoading(
+            false
           );
 
-        const shiftResult =
-          await safeJson(
-            shiftResponse
-          );
-
-        if (!shiftResponse.ok) {
-          throw new Error(
-            shiftResult?.message ||
-              shiftResult?.details ||
-              "Unable to load shift."
-          );
+          return;
         }
 
-        const latestShift =
-          Array.isArray(
-            shiftResult
-          ) &&
-          shiftResult.length > 0
-            ? shiftResult[0]
-            : null;
+        try {
+          // ------------------------------------------
+          // SHIFT
+          // ------------------------------------------
 
-        // ------------------------------------------
-        // FLOATS
-        // ------------------------------------------
+          const shiftResponse =
+            await fetch(
+              `${supabaseUrl}/rest/v1/shifts` +
+                `?id=eq.${encodeURIComponent(
+                  shiftId
+                )}` +
+                `&select=*` +
+                `&limit=1`,
+              {
+                method:
+                  "GET",
 
-        const incomeResponse =
-          await fetch(
-            `${supabaseUrl}/rest/v1/shift_income_entries` +
-              `?shift_id=eq.${encodeURIComponent(
-                shiftId
-              )}` +
-              `&select=id,entry_type,description,amount,created_at` +
-              `&order=created_at.asc`,
-            {
-              method: "GET",
+                headers:
+                  authHeaders(
+                    supabaseAnonKey,
+                    accessToken
+                  ),
 
-              headers:
-                authHeaders(
-                  supabaseAnonKey,
-                  accessToken
-                ),
-
-              cache: "no-store",
-            }
-          );
-
-        const incomeResult =
-          await safeJson(
-            incomeResponse
-          );
-
-        if (!incomeResponse.ok) {
-          throw new Error(
-            incomeResult?.message ||
-              incomeResult?.details ||
-              "Unable to load float entries."
-          );
-        }
-
-        const loadedIncome =
-          Array.isArray(
-            incomeResult
-          )
-            ? incomeResult
-            : [];
-
-        // ------------------------------------------
-        // EXPENSES
-        // ------------------------------------------
-
-        const expenseResponse =
-          await fetch(
-            `${supabaseUrl}/rest/v1/expenses` +
-              `?shift_id=eq.${encodeURIComponent(
-                shiftId
-              )}` +
-              `&select=id,description,amount,created_at` +
-              `&order=created_at.asc`,
-            {
-              method: "GET",
-
-              headers:
-                authHeaders(
-                  supabaseAnonKey,
-                  accessToken
-                ),
-
-              cache: "no-store",
-            }
-          );
-
-        const expenseResult =
-          await safeJson(
-            expenseResponse
-          );
-
-        if (!expenseResponse.ok) {
-          throw new Error(
-            expenseResult?.message ||
-              expenseResult?.details ||
-              "Unable to load expenses."
-          );
-        }
-
-        const loadedExpenses =
-          Array.isArray(
-            expenseResult
-          )
-            ? expenseResult
-            : [];
-
-        setShift(
-          latestShift ||
-            currentShift
-        );
-
-        setIncomeEntries(
-          loadedIncome
-        );
-
-        setExpenses(
-          loadedExpenses
-        );
-
-        // ------------------------------------------
-        // FLOAT INPUTS
-        // ------------------------------------------
-
-        const companyRows =
-          loadedIncome.filter(
-            (entry) =>
-              entry.entry_type ===
-              "COMPANY_FLOAT"
-          );
-
-        const mshwariRows =
-          loadedIncome.filter(
-            (entry) =>
-              entry.entry_type ===
-              "MSHWARI_FLOAT"
-          );
-
-        setFloatInputs(
-          (previous) => {
-            const company = [
-              ...previous.company,
-            ];
-
-            const mshwari = [
-              ...previous.mshwari,
-            ];
-
-            for (
-              let i = 0;
-              i < 3;
-              i += 1
-            ) {
-              if (companyRows[i]) {
-                company[i] =
-                  String(
-                    companyRows[i]
-                      .amount ??
-                      ""
-                  );
+                cache:
+                  "no-store",
               }
+            );
 
-              if (mshwariRows[i]) {
-                mshwari[i] =
-                  String(
-                    mshwariRows[i]
-                      .amount ??
-                      ""
-                  );
-              }
-            }
+          const shiftResult =
+            await safeJson(
+              shiftResponse
+            );
 
-            return {
-              company,
-              mshwari,
-            };
+          if (
+            !shiftResponse.ok
+          ) {
+            throw new Error(
+              shiftResult?.message ||
+                shiftResult?.details ||
+                "Unable to load shift."
+            );
           }
-        );
 
-        // ------------------------------------------
-        // EXPENSE INPUTS
-        // ------------------------------------------
+          const latestShift =
+            Array.isArray(
+              shiftResult
+            ) &&
+            shiftResult.length >
+              0
+              ? shiftResult[0]
+              : null;
 
-        setExpenseInputs(
-          (previous) => {
-            const next =
-              Array.from(
-                { length: 10 },
-                (_, index) => ({
-                  description:
-                    previous[
-                      index
-                    ]
-                      ?.description ||
-                    "",
+          // ------------------------------------------
+          // FLOATS
+          // ------------------------------------------
 
-                  amount:
-                    previous[
-                      index
-                    ]
-                      ?.amount ||
-                    "",
-                })
-              );
+          const incomeResponse =
+            await fetch(
+              `${supabaseUrl}/rest/v1/shift_income_entries` +
+                `?shift_id=eq.${encodeURIComponent(
+                  shiftId
+                )}` +
+                `&select=id,entry_type,description,amount,created_at` +
+                `&order=created_at.asc`,
+              {
+                method:
+                  "GET",
 
-            for (
-              let i = 0;
-              i < 10;
-              i += 1
-            ) {
-              if (
-                loadedExpenses[i]
+                headers:
+                  authHeaders(
+                    supabaseAnonKey,
+                    accessToken
+                  ),
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          const incomeResult =
+            await safeJson(
+              incomeResponse
+            );
+
+          if (
+            !incomeResponse.ok
+          ) {
+            throw new Error(
+              incomeResult?.message ||
+                incomeResult?.details ||
+                "Unable to load float entries."
+            );
+          }
+
+          const loadedIncome =
+            Array.isArray(
+              incomeResult
+            )
+              ? incomeResult
+              : [];
+
+          // ------------------------------------------
+          // EXPENSES
+          //
+          // Salary expenses are included in totals
+          // but hidden from manual cashier rows.
+          // ------------------------------------------
+
+          const expenseResponse =
+            await fetch(
+              `${supabaseUrl}/rest/v1/expenses` +
+                `?shift_id=eq.${encodeURIComponent(
+                  shiftId
+                )}` +
+                `&select=id,description,amount,created_at,source_type,source_record_id,is_private` +
+                `&order=created_at.asc`,
+              {
+                method:
+                  "GET",
+
+                headers:
+                  authHeaders(
+                    supabaseAnonKey,
+                    accessToken
+                  ),
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          const expenseResult =
+            await safeJson(
+              expenseResponse
+            );
+
+          if (
+            !expenseResponse.ok
+          ) {
+            throw new Error(
+              expenseResult?.message ||
+                expenseResult?.details ||
+                "Unable to load expenses."
+            );
+          }
+
+          const loadedExpenses =
+            Array.isArray(
+              expenseResult
+            )
+              ? expenseResult
+              : [];
+
+          const loadedManualExpenses =
+            loadedExpenses.filter(
+              (
+                expense
+              ) =>
+                String(
+                  expense?.source_type ||
+                    "MANUAL"
+                )
+                  .trim()
+                  .toUpperCase() !==
+                  "SALARY" &&
+                expense?.is_private !==
+                  true
+            );
+
+          // ------------------------------------------
+          // SET STATE
+          // ------------------------------------------
+
+          setShift(
+            latestShift ||
+              currentShift
+          );
+
+          setIncomeEntries(
+            loadedIncome
+          );
+
+          // Keep ALL expenses in state because
+          // totals must include private salary.
+          setExpenses(
+            loadedExpenses
+          );
+
+          // ------------------------------------------
+          // FLOAT INPUTS
+          // ------------------------------------------
+
+          const companyRows =
+            loadedIncome.filter(
+              (
+                entry
+              ) =>
+                entry.entry_type ===
+                "COMPANY_FLOAT"
+            );
+
+          const mshwariRows =
+            loadedIncome.filter(
+              (
+                entry
+              ) =>
+                entry.entry_type ===
+                "MSHWARI_FLOAT"
+            );
+
+          setFloatInputs(
+            (
+              previous
+            ) => {
+              const company = [
+                ...previous.company,
+              ];
+
+              const mshwari = [
+                ...previous.mshwari,
+              ];
+
+              for (
+                let i = 0;
+                i < 3;
+                i += 1
               ) {
-                next[i] = {
-                  description:
-                    loadedExpenses[
-                      i
-                    ]
-                      .description ||
-                    "",
-
-                  amount:
+                if (
+                  companyRows[
+                    i
+                  ]
+                ) {
+                  company[
+                    i
+                  ] =
                     String(
-                      loadedExpenses[
+                      companyRows[
                         i
                       ].amount ??
                         ""
-                    ),
-                };
+                    );
+                }
+
+                if (
+                  mshwariRows[
+                    i
+                  ]
+                ) {
+                  mshwari[
+                    i
+                  ] =
+                    String(
+                      mshwariRows[
+                        i
+                      ].amount ??
+                        ""
+                    );
+                }
               }
+
+              return {
+                company,
+                mshwari,
+              };
             }
+          );
 
-            return next;
-          }
-        );
-      } catch (error) {
-        console.error(
-          "24H CASHIER REPORT ERROR:",
-          error
-        );
+          // ------------------------------------------
+          // MANUAL EXPENSE INPUTS
+          //
+          // IMPORTANT:
+          // Do NOT populate these inputs from
+          // private salary expenses.
+          // ------------------------------------------
 
-        setMessage(
-          error?.message ||
-            "Unable to load 24-hour cashier report."
-        );
+          setExpenseInputs(
+            (
+              previous
+            ) => {
+              const next =
+                Array.from(
+                  {
+                    length:
+                      10,
+                  },
 
-        setMessageType(
-          "error"
-        );
-      } finally {
-        setLoading(false);
-      }
-    }, [
-      shiftId,
-      shopId,
-      accessToken,
-      supabaseUrl,
-      supabaseAnonKey,
-      currentShift,
-    ]);
+                  (
+                    _,
+                    index
+                  ) => ({
+                    description:
+                      previous[
+                        index
+                      ]
+                        ?.description ||
+                      "",
+
+                    amount:
+                      previous[
+                        index
+                      ]
+                        ?.amount ||
+                      "",
+                  })
+                );
+
+              for (
+                let i = 0;
+                i < 10;
+                i += 1
+              ) {
+                if (
+                  loadedManualExpenses[
+                    i
+                  ]
+                ) {
+                  next[i] = {
+                    description:
+                      loadedManualExpenses[
+                        i
+                      ]
+                        .description ||
+                      "",
+
+                    amount:
+                      String(
+                        loadedManualExpenses[
+                          i
+                        ].amount ??
+                          ""
+                      ),
+                  };
+                }
+              }
+
+              return next;
+            }
+          );
+        } catch (error) {
+          console.error(
+            "24H CASHIER REPORT ERROR:",
+            error
+          );
+
+          setMessage(
+            error?.message ||
+              "Unable to load 24-hour cashier report."
+          );
+
+          setMessageType(
+            "error"
+          );
+        } finally {
+          setLoading(
+            false
+          );
+        }
+      },
+      [
+        shiftId,
+        shopId,
+        accessToken,
+        supabaseUrl,
+        supabaseAnonKey,
+        currentShift,
+      ]
+    );
 
   // ==================================================
   // REFRESH COMPLETE REPORT
   // ==================================================
 
   const refresh24HourReport =
-    useCallback(async () => {
-      await loadReport();
+    useCallback(
+      async () => {
+        await loadReport();
 
-      setRefreshKey(
-        (previous) =>
-          previous + 1
-      );
-    }, [loadReport]);
+        setRefreshKey(
+          (
+            previous
+          ) =>
+            previous +
+            1
+        );
+      },
+      [
+        loadReport,
+      ]
+    );
 
   // ==================================================
   // AUTO REFRESH EVERY 5 SECONDS
@@ -467,14 +617,21 @@ const cashierName =
     refresh24HourReport();
 
     const timer =
-      setInterval(() => {
-        refresh24HourReport();
-      }, 5000);
+      setInterval(
+        () => {
+          refresh24HourReport();
+        },
+        5000
+      );
 
     return () => {
-      clearInterval(timer);
+      clearInterval(
+        timer
+      );
     };
-  }, [refresh24HourReport]);
+  }, [
+    refresh24HourReport,
+  ]);
 
   // ==================================================
   // LOGOUT
@@ -485,7 +642,9 @@ const cashierName =
       "teamLegendUser"
     );
 
-    router.replace("/");
+    router.replace(
+      "/"
+    );
   }
 
   // ==================================================
@@ -494,14 +653,18 @@ const cashierName =
 
   const companyEntries =
     incomeEntries.filter(
-      (entry) =>
+      (
+        entry
+      ) =>
         entry.entry_type ===
         "COMPANY_FLOAT"
     );
 
   const mshwariEntries =
     incomeEntries.filter(
-      (entry) =>
+      (
+        entry
+      ) =>
         entry.entry_type ===
         "MSHWARI_FLOAT"
     );
@@ -509,10 +672,14 @@ const cashierName =
   const companyTotal =
     roundMoney(
       companyEntries.reduce(
-        (sum, entry) =>
+        (
+          sum,
+          entry
+        ) =>
           sum +
           Number(
-            entry.amount ?? 0
+            entry.amount ??
+              0
           ),
         0
       )
@@ -521,10 +688,14 @@ const cashierName =
   const mshwariTotal =
     roundMoney(
       mshwariEntries.reduce(
-        (sum, entry) =>
+        (
+          sum,
+          entry
+        ) =>
           sum +
           Number(
-            entry.amount ?? 0
+            entry.amount ??
+              0
           ),
         0
       )
@@ -532,18 +703,60 @@ const cashierName =
 
   const companySlots =
     Array.from(
-      { length: 3 },
-      (_, index) =>
-        companyEntries[index] ||
+      {
+        length:
+          3,
+      },
+
+      (
+        _,
+        index
+      ) =>
+        companyEntries[
+          index
+        ] ||
         null
     );
 
   const mshwariSlots =
     Array.from(
-      { length: 3 },
-      (_, index) =>
-        mshwariEntries[index] ||
+      {
+        length:
+          3,
+      },
+
+      (
+        _,
+        index
+      ) =>
+        mshwariEntries[
+          index
+        ] ||
         null
+    );
+
+  // ==================================================
+  // MANUAL EXPENSES
+  //
+  // Private salary expenses remain inside `expenses`
+  // for Total Expenses / Closing Balance calculations,
+  // but are completely excluded from cashier input rows.
+  // ==================================================
+
+  const manualExpenses =
+    expenses.filter(
+      (
+        expense
+      ) =>
+        String(
+          expense?.source_type ||
+            "MANUAL"
+        )
+          .trim()
+          .toUpperCase() !==
+          "SALARY" &&
+        expense?.is_private !==
+          true
     );
 
   // ==================================================
@@ -551,7 +764,8 @@ const cashierName =
   // ==================================================
 
   async function saveFloats() {
-    const rowsToSave = [];
+    const rowsToSave =
+      [];
 
     for (
       let i = 0;
@@ -560,10 +774,6 @@ const cashierName =
     ) {
       // ------------------------------------------
       // COMPANY FLOAT
-      //
-      // Float 1 is available first.
-      // Float 2 requires Float 1 saved.
-      // Float 3 requires Float 2 saved.
       // ------------------------------------------
 
       const companyUnlocked =
@@ -585,10 +795,13 @@ const cashierName =
 
         if (
           raw !== "" &&
-          raw !== undefined
+          raw !==
+            undefined
         ) {
           const value =
-            Number(raw);
+            Number(
+              raw
+            );
 
           if (
             !Number.isFinite(
@@ -631,10 +844,6 @@ const cashierName =
 
       // ------------------------------------------
       // M-SHWARI FLOAT
-      //
-      // M-Shwari 1 is available first.
-      // M-Shwari 2 requires 1 saved.
-      // M-Shwari 3 requires 2 saved.
       // ------------------------------------------
 
       const mshwariUnlocked =
@@ -656,10 +865,13 @@ const cashierName =
 
         if (
           raw !== "" &&
-          raw !== undefined
+          raw !==
+            undefined
         ) {
           const value =
-            Number(raw);
+            Number(
+              raw
+            );
 
           if (
             !Number.isFinite(
@@ -702,7 +914,8 @@ const cashierName =
     }
 
     if (
-      rowsToSave.length === 0
+      rowsToSave.length ===
+      0
     ) {
       setMessage(
         "Enter at least one active float amount."
@@ -720,7 +933,9 @@ const cashierName =
         true
       );
 
-      setMessage("");
+      setMessage(
+        ""
+      );
 
       const response =
         await fetch(
@@ -755,7 +970,9 @@ const cashierName =
           response
         );
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           result?.message ||
             result?.details ||
@@ -845,16 +1062,13 @@ const cashierName =
   // ==================================================
   // SAVE EXPENSES
   //
-  // Sequential rule:
-  // Expense 1 starts active.
-  // Expense 2 unlocks after Expense 1 is saved.
-  // Expense 3 unlocks after Expense 2 is saved.
-  // ... continuing through Expense 10.
+  // Private salary expenses DO NOT consume one of
+  // the 10 manual expense rows.
   // ==================================================
 
   async function saveExpenses() {
     const nextIndex =
-      expenses.length;
+      manualExpenses.length;
 
     if (
       nextIndex >= 10
@@ -884,7 +1098,8 @@ const cashierName =
       ]?.amount;
 
     if (
-      description === ""
+      description ===
+      ""
     ) {
       setMessage(
         `Enter the description for expense ${
@@ -901,8 +1116,10 @@ const cashierName =
 
     if (
       rawAmount === "" ||
-      rawAmount === null ||
-      rawAmount === undefined
+      rawAmount ===
+        null ||
+      rawAmount ===
+        undefined
     ) {
       setMessage(
         `Enter the amount for expense ${
@@ -954,6 +1171,12 @@ const cashierName =
 
       created_by:
         cashierId,
+
+      source_type:
+        "MANUAL",
+
+      is_private:
+        false,
     };
 
     try {
@@ -961,7 +1184,9 @@ const cashierName =
         true
       );
 
-      setMessage("");
+      setMessage(
+        ""
+      );
 
       const response =
         await fetch(
@@ -996,7 +1221,9 @@ const cashierName =
           response
         );
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           result?.message ||
             result?.details ||
@@ -1004,6 +1231,9 @@ const cashierName =
         );
       }
 
+      // IMPORTANT:
+      // Use ALL existing expenses here,
+      // including hidden salary expenses.
       const existingExpenseTotal =
         expenses.reduce(
           (
@@ -1158,9 +1388,11 @@ const cashierName =
     );
 
   const shiftLabel =
-    shiftName === "SHIFT 1"
+    shiftName ===
+    "SHIFT 1"
       ? "SHIFT 1"
-      : shiftName === "SHIFT 2"
+      : shiftName ===
+        "SHIFT 2"
       ? "SHIFT 2"
       : shift?.shift_name ||
         "24-HOUR SHIFT";
@@ -1188,7 +1420,9 @@ const cashierName =
 
   let shiftGreeting;
 
-  if (shiftIsClosed) {
+  if (
+    shiftIsClosed
+  ) {
     shiftGreeting =
       `Good Bye 👋 — Shift ${greetingShiftNumber} Closed`;
   } else if (
@@ -1513,7 +1747,8 @@ const cashierName =
                   index
                 ) => {
                   const companyUnlocked =
-                    index === 0 ||
+                    index ===
+                      0 ||
                     Boolean(
                       companySlots[
                         index -
@@ -1525,7 +1760,8 @@ const cashierName =
                     <EditableFloatRow
                       key={`company-${index}`}
                       label={`Added Float ${
-                        index + 1
+                        index +
+                        1
                       } From Company`}
                       savedEntry={
                         entry
@@ -1534,7 +1770,8 @@ const cashierName =
                         floatInputs
                           .company[
                           index
-                        ] || ""
+                        ] ||
+                        ""
                       }
                       disabled={
                         savingFloats ||
@@ -1575,7 +1812,8 @@ const cashierName =
                   index
                 ) => {
                   const mshwariUnlocked =
-                    index === 0 ||
+                    index ===
+                      0 ||
                     Boolean(
                       mshwariSlots[
                         index -
@@ -1587,7 +1825,8 @@ const cashierName =
                     <EditableFloatRow
                       key={`mshwari-${index}`}
                       label={`Added Float ${
-                        index + 1
+                        index +
+                        1
                       } From M-Shwari`}
                       savedEntry={
                         entry
@@ -1596,7 +1835,8 @@ const cashierName =
                         floatInputs
                           .mshwari[
                           index
-                        ] || ""
+                        ] ||
+                        ""
                       }
                       disabled={
                         savingFloats ||
@@ -1706,22 +1946,24 @@ const cashierName =
 
               {Array.from(
                 {
-                  length: 10,
+                  length:
+                    10,
                 },
-                (_, index) => {
+
+                (
+                  _,
+                  index
+                ) => {
                   const saved =
-                    expenses[
+                    manualExpenses[
                       index
                     ];
 
-                  // Expense 1 starts active.
-                  // Every later row unlocks only
-                  // after the previous expense
-                  // exists in the database.
                   const rowUnlocked =
-                    index === 0 ||
+                    index ===
+                      0 ||
                     Boolean(
-                      expenses[
+                      manualExpenses[
                         index -
                           1
                       ]
@@ -1929,7 +2171,7 @@ const cashierName =
                   }
                   disabled={
                     savingExpenses ||
-                    expenses.length >=
+                    manualExpenses.length >=
                       10
                   }
                   style={{
@@ -1937,7 +2179,7 @@ const cashierName =
 
                     backgroundColor:
                       savingExpenses ||
-                      expenses.length >=
+                      manualExpenses.length >=
                         10
                         ? "#94a3b8"
                         : "#c50000",
@@ -1945,11 +2187,11 @@ const cashierName =
                 >
                   {savingExpenses
                     ? "Saving..."
-                    : expenses.length >=
+                    : manualExpenses.length >=
                       10
                     ? "All Expenses Saved"
                     : `Save Expense ${
-                        expenses.length +
+                        manualExpenses.length +
                         1
                       }`}
                 </button>
@@ -1958,7 +2200,7 @@ const cashierName =
           </div>
 
           {/* ========================================= */}
-          {/* NEW 24-HOUR OPERATIONS LAYOUT             */}
+          {/* 24-HOUR OPERATIONS LAYOUT                 */}
           {/* ========================================= */}
 
           <div
@@ -1972,7 +2214,9 @@ const cashierName =
               }
             >
               <PlatformReadings24Hour
-                user={user}
+                user={
+                  user
+                }
                 currentShift={
                   shift ||
                   currentShift
@@ -1992,15 +2236,32 @@ const cashierName =
               }
             >
               <CashierSavingsPanel
-                user={user}
+                user={
+                  user
+                }
                 currentShift={
                   shift ||
                   currentShift
                 }
               />
 
+              <CashierSalaryPanel
+                user={
+                  user
+                }
+                currentShift={
+                  shift ||
+                  currentShift
+                }
+                onSalaryPaid={
+                  refresh24HourReport
+                }
+              />
+
               <CashierManagementPanel
-                user={user}
+                user={
+                  user
+                }
                 currentShift={
                   shift ||
                   currentShift
@@ -2008,7 +2269,9 @@ const cashierName =
               />
 
               <CashierAccountsPanel
-                user={user}
+                user={
+                  user
+                }
               />
             </div>
           </div>
@@ -2052,7 +2315,9 @@ const cashierName =
           </div>
 
           <CloseShift24Hour
-            user={user}
+            user={
+              user
+            }
             currentShift={
               shift ||
               currentShift
@@ -2106,11 +2371,15 @@ const cashierName =
               </div>
 
               <div>
-                6. Record all expenses before completing the shift handover.
+                6. Record all manual expenses before completing the shift handover.
               </div>
 
               <div>
-                7. Cashier handover is only available during the authorised morning or evening handover window.
+                7. Weekly salary payments automatically create a private expense after PIN confirmation.
+              </div>
+
+              <div>
+                8. Cashier handover is only available during the authorised morning or evening handover window.
               </div>
             </div>
           </section>
@@ -2136,10 +2405,18 @@ function SidebarItem({
   return (
     <div
       style={{
-        padding: "18px",
-        display: "flex",
-        gap: "12px",
-        color: "white",
+        padding:
+          "18px",
+
+        display:
+          "flex",
+
+        gap:
+          "12px",
+
+        color:
+          "white",
+
         backgroundColor:
           active
             ? "#1687ee"
@@ -2200,7 +2477,8 @@ function InfoCard({
   const background =
     tone === "green"
       ? "#07912a"
-      : tone === "brown"
+      : tone ===
+        "brown"
       ? "#99500d"
       : "#0873b9";
 
@@ -2392,9 +2670,11 @@ function SummaryBox({
   const background =
     tone === "red"
       ? "#ef233c"
-      : tone === "navy"
+      : tone ===
+        "navy"
       ? "#075b95"
-      : tone === "green"
+      : tone ===
+        "green"
       ? "#078a3b"
       : "#0789dd";
 
@@ -2499,7 +2779,9 @@ function roundMoney(
   return (
     Math.round(
       (
-        Number(value) +
+        Number(
+          value
+        ) +
         Number.EPSILON
       ) *
         100
@@ -2526,7 +2808,9 @@ function formatReportDate(
         "numeric",
     }
   ).format(
-    new Date(value)
+    new Date(
+      value
+    )
   );
 }
 
@@ -2543,7 +2827,9 @@ function formatReportDay(
         "long",
     }
   ).format(
-    new Date(value)
+    new Date(
+      value
+    )
   );
 }
 
@@ -2551,9 +2837,12 @@ function displayTime(
   value
 ) {
   return String(
-    value || ""
+    value ||
+      ""
   )
-    .split(".")[0]
+    .split(
+      "."
+    )[0]
     .slice(
       0,
       5
@@ -2565,7 +2854,8 @@ function normaliseShiftName(
 ) {
   const text =
     String(
-      value || ""
+      value ||
+        ""
     )
       .trim()
       .toUpperCase()
@@ -2600,7 +2890,8 @@ function normaliseShiftName(
 }
 
 function getNairobiHour(
-  date = new Date()
+  date =
+    new Date()
 ) {
   const formatter =
     new Intl.DateTimeFormat(
@@ -2624,7 +2915,9 @@ function getNairobiHour(
 
   const hourPart =
     parts.find(
-      (part) =>
+      (
+        part
+      ) =>
         part.type ===
         "hour"
     );
