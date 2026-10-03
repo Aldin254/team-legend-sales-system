@@ -27,8 +27,9 @@ export default function Cashier24HourReport({
   const [incomeEntries, setIncomeEntries] = useState([]);
   const [expenses, setExpenses] = useState([]);
 
-  // Used to tell CloseShift24Hour to reload
-  // its shift + platform reading information.
+  // Changes whenever the complete 24-hour report refreshes.
+  // PlatformReadings24Hour and CloseShift24Hour use this
+  // to reload their own database information.
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [floatInputs, setFloatInputs] = useState({
@@ -345,7 +346,7 @@ export default function Cashier24HourReport({
   );
 
   // ==================================================
-  // REFRESH REPORT + CLOSE SHIFT PANEL
+  // REFRESH COMPLETE 24-HOUR REPORT
   // ==================================================
 
   const refresh24HourReport =
@@ -359,21 +360,29 @@ export default function Cashier24HourReport({
 
   // ==================================================
   // AUTO REFRESH
+  //
+  // Every 5 seconds:
+  // 1. Reload shift totals / floats / expenses.
+  // 2. Increment refreshKey.
+  // 3. PlatformReadings24Hour reloads readings.
+  // 4. CloseShift24Hour reloads its information.
+  //
+  // This allows Admin corrections to appear on the
+  // cashier screen without a manual browser refresh.
   // ==================================================
 
   useEffect(() => {
-    loadReport();
+    refresh24HourReport();
 
     const timer =
-      setInterval(
-        loadReport,
-        5000
-      );
+      setInterval(() => {
+        refresh24HourReport();
+      }, 5000);
 
     return () => {
       clearInterval(timer);
     };
-  }, [loadReport]);
+  }, [refresh24HourReport]);
 
   // ==================================================
   // LOGOUT
@@ -411,7 +420,7 @@ export default function Cashier24HourReport({
         (sum, entry) =>
           sum +
           Number(
-            entry.amount || 0
+            entry.amount ?? 0
           ),
         0
       )
@@ -423,7 +432,7 @@ export default function Cashier24HourReport({
         (sum, entry) =>
           sum +
           Number(
-            entry.amount || 0
+            entry.amount ?? 0
           ),
         0
       )
@@ -465,7 +474,7 @@ export default function Cashier24HourReport({
             Number(raw);
 
           if (
-            Number.isNaN(value) ||
+            !Number.isFinite(value) ||
             value <= 0
           ) {
             setMessage(
@@ -506,7 +515,7 @@ export default function Cashier24HourReport({
             Number(raw);
 
           if (
-            Number.isNaN(value) ||
+            !Number.isFinite(value) ||
             value <= 0
           ) {
             setMessage(
@@ -599,7 +608,7 @@ export default function Cashier24HourReport({
               (sum, row) =>
                 sum +
                 Number(
-                  row.amount || 0
+                  row.amount ?? 0
                 ),
               0
             )
@@ -712,7 +721,7 @@ export default function Cashier24HourReport({
 
       if (
         !hasAmount ||
-        Number.isNaN(amount) ||
+        !Number.isFinite(amount) ||
         amount <= 0
       ) {
         setMessage(
@@ -801,7 +810,7 @@ export default function Cashier24HourReport({
           (sum, expense) =>
             sum +
             Number(
-              expense.amount ||
+              expense.amount ??
                 0
             ),
           0
@@ -814,7 +823,7 @@ export default function Cashier24HourReport({
               (sum, expense) =>
                 sum +
                 Number(
-                  expense.amount ||
+                  expense.amount ??
                     0
                 ),
               0
@@ -881,25 +890,25 @@ export default function Cashier24HourReport({
 
   const openingBalance =
     Number(
-      shift?.opening_balance ||
+      shift?.opening_balance ??
         0
     );
 
   const totalOutput =
     Number(
-      shift?.total_output ||
+      shift?.total_output ??
         0
     );
 
   const totalExpenses =
     Number(
-      shift?.total_expenses ||
+      shift?.total_expenses ??
         0
     );
 
   const closingBalance =
     Number(
-      shift?.closing_balance ||
+      shift?.closing_balance ??
         0
     );
 
@@ -974,10 +983,6 @@ export default function Cashier24HourReport({
 
   return (
     <div style={pageStyle}>
-      {/* ==========================================
-          HEADER
-      ========================================== */}
-
       <header style={topHeaderStyle}>
         <div style={brandWrapStyle}>
           <div style={crownStyle}>
@@ -1018,10 +1023,6 @@ export default function Cashier24HourReport({
       </header>
 
       <div style={bodyStyle}>
-        {/* ========================================
-            SIDEBAR
-        ======================================== */}
-
         <aside style={sidebarStyle}>
           <SidebarItem
             active
@@ -1050,13 +1051,7 @@ export default function Cashier24HourReport({
           />
         </aside>
 
-        {/* ========================================
-            MAIN
-        ======================================== */}
-
         <main style={mainStyle}>
-          {/* TOP CARDS */}
-
           <div style={topGridStyle}>
             <TopCard
               title={
@@ -1110,8 +1105,6 @@ export default function Cashier24HourReport({
             />
           </div>
 
-          {/* SHIFT DESCRIPTION */}
-
           <div style={shiftBannerStyle}>
             <strong>
               {shiftName === "SHIFT 1"
@@ -1152,13 +1145,7 @@ export default function Cashier24HourReport({
             </div>
           )}
 
-          {/* ========================================
-              INCOME + EXPENSES
-          ======================================== */}
-
           <div style={upperGridStyle}>
-            {/* INCOME */}
-
             <section style={panelStyle}>
               <PanelTitle
                 title="INCOME STATEMENT"
@@ -1300,8 +1287,6 @@ export default function Cashier24HourReport({
                 </button>
               </div>
             </section>
-
-            {/* EXPENSES */}
 
             <section style={panelStyle}>
               <PanelTitle
@@ -1478,24 +1463,19 @@ export default function Cashier24HourReport({
             </section>
           </div>
 
-          {/* ========================================
-              24-HOUR PLATFORM SYSTEM
-          ======================================== */}
-
           <PlatformReadings24Hour
             user={user}
             currentShift={
               shift ||
               currentShift
             }
+            refreshKey={
+              refreshKey
+            }
             onReadingsChanged={
               refresh24HourReport
             }
           />
-
-          {/* ========================================
-              SUMMARY
-          ======================================== */}
 
           <div style={summaryGridStyle}>
             <SummaryBox
@@ -1531,10 +1511,6 @@ export default function Cashier24HourReport({
             />
           </div>
 
-          {/* ========================================
-              SAVINGS / MANAGEMENT / ACCOUNTS
-          ======================================== */}
-
           <div style={lowerGridStyle}>
             <CashierSavingsPanel
               user={user}
@@ -1557,10 +1533,6 @@ export default function Cashier24HourReport({
             />
           </div>
 
-          {/* ========================================
-              24-HOUR HANDOVER
-          ======================================== */}
-
           <CloseShift24Hour
             user={user}
             currentShift={
@@ -1576,10 +1548,6 @@ export default function Cashier24HourReport({
               window.location.reload();
             }}
           />
-
-          {/* ========================================
-              INFORMATION
-          ======================================== */}
 
           <section style={informationStyle}>
             <div style={informationTitleStyle}>
@@ -1635,13 +1603,9 @@ function SidebarItem({
     <div
       style={{
         padding: "18px",
-
         display: "flex",
-
         gap: "12px",
-
         color: "white",
-
         backgroundColor:
           active
             ? "#1687ee"
@@ -1699,16 +1663,12 @@ function InfoCard({
       style={{
         backgroundColor:
           background,
-
         color:
           "white",
-
         borderRadius:
           "8px",
-
         padding:
           "12px",
-
         textAlign:
           "center",
       }}
@@ -1742,13 +1702,10 @@ function PanelTitle({
       style={{
         backgroundColor:
           background,
-
         color:
           "white",
-
         padding:
           "9px",
-
         fontWeight:
           "bold",
       }}
@@ -1842,19 +1799,14 @@ function SummaryBox({
       style={{
         backgroundColor:
           background,
-
         color:
           "white",
-
         padding:
           "13px",
-
         borderRadius:
           "7px",
-
         textAlign:
           "center",
-
         fontWeight:
           "bold",
       }}
@@ -1904,9 +1856,19 @@ async function safeJson(
 function money(
   value
 ) {
-  return Number(
-    value || 0
-  ).toLocaleString(
+  const numeric =
+    Number(
+      value ?? 0
+    );
+
+  const safeValue =
+    Number.isFinite(
+      numeric
+    )
+      ? numeric
+      : 0;
+
+  return safeValue.toLocaleString(
     "en-KE",
     {
       minimumFractionDigits:
@@ -2020,593 +1982,304 @@ function normaliseShiftName(
 // ==================================================
 
 const pageStyle = {
-  minHeight:
-    "100vh",
-
-  backgroundColor:
-    "#edf2f7",
-
-  fontFamily:
-    "Arial, sans-serif",
+  minHeight: "100vh",
+  backgroundColor: "#edf2f7",
+  fontFamily: "Arial, sans-serif",
 };
 
 const loadingStyle = {
-  minHeight:
-    "100vh",
-
-  display:
-    "flex",
-
-  justifyContent:
-    "center",
-
-  alignItems:
-    "center",
+  minHeight: "100vh",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
 };
 
 const topHeaderStyle = {
-  backgroundColor:
-    "#063c63",
-
-  color:
-    "white",
-
-  padding:
-    "12px 22px",
-
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
+  backgroundColor: "#063c63",
+  color: "white",
+  padding: "12px 22px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
 };
 
 const brandWrapStyle = {
-  display:
-    "flex",
-
-  gap:
-    "12px",
-
-  alignItems:
-    "center",
+  display: "flex",
+  gap: "12px",
+  alignItems: "center",
 };
 
 const crownStyle = {
-  fontSize:
-    "45px",
+  fontSize: "45px",
 };
 
 const brandStyle = {
-  fontSize:
-    "30px",
-
-  fontWeight:
-    "900",
+  fontSize: "30px",
+  fontWeight: "900",
 };
 
 const taglineStyle = {
-  fontSize:
-    "10px",
-
-  letterSpacing:
-    "3px",
+  fontSize: "10px",
+  letterSpacing: "3px",
 };
 
 const headerRightStyle = {
-  display:
-    "flex",
-
-  gap:
-    "18px",
-
-  alignItems:
-    "center",
-
-  textAlign:
-    "right",
+  display: "flex",
+  gap: "18px",
+  alignItems: "center",
+  textAlign: "right",
 };
 
 const headerShopStyle = {
-  fontSize:
-    "12px",
+  fontSize: "12px",
 };
 
 const logoutButtonStyle = {
-  background:
-    "transparent",
-
-  color:
-    "white",
-
-  border:
-    "1px solid white",
-
-  padding:
-    "8px 14px",
-
-  borderRadius:
-    "6px",
-
-  cursor:
-    "pointer",
+  background: "transparent",
+  color: "white",
+  border: "1px solid white",
+  padding: "8px 14px",
+  borderRadius: "6px",
+  cursor: "pointer",
 };
 
 const bodyStyle = {
-  display:
-    "flex",
+  display: "flex",
 };
 
 const sidebarStyle = {
-  width:
-    "190px",
-
-  backgroundColor:
-    "#073555",
-
-  minHeight:
-    "calc(100vh - 70px)",
+  width: "190px",
+  backgroundColor: "#073555",
+  minHeight: "calc(100vh - 70px)",
 };
 
 const mainStyle = {
-  flex:
-    1,
-
-  padding:
-    "12px",
-
-  minWidth:
-    0,
+  flex: 1,
+  padding: "12px",
+  minWidth: 0,
 };
 
 const topGridStyle = {
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "2fr repeat(5,1fr)",
-
-  gap:
-    "7px",
-
-  marginBottom:
-    "10px",
+  gap: "7px",
+  marginBottom: "10px",
 };
 
 const shopCardStyle = {
-  backgroundColor:
-    "#08628f",
-
-  color:
-    "white",
-
-  padding:
-    "12px",
-
-  borderRadius:
-    "8px",
-
-  textAlign:
-    "center",
+  backgroundColor: "#08628f",
+  color: "white",
+  padding: "12px",
+  borderRadius: "8px",
+  textAlign: "center",
 };
 
 const shopTitleStyle = {
-  fontSize:
-    "27px",
-
-  fontWeight:
-    "900",
+  fontSize: "27px",
+  fontWeight: "900",
 };
 
 const smallTextStyle = {
-  fontSize:
-    "10px",
-
-  marginTop:
-    "4px",
+  fontSize: "10px",
+  marginTop: "4px",
 };
 
 const infoValueStyle = {
-  fontSize:
-    "17px",
-
-  fontWeight:
-    "bold",
-
-  marginTop:
-    "8px",
+  fontSize: "17px",
+  fontWeight: "bold",
+  marginTop: "8px",
 };
 
 const shiftBannerStyle = {
-  backgroundColor:
-    "#ecfdf5",
-
-  color:
-    "#166534",
-
-  border:
-    "1px solid #86efac",
-
-  padding:
-    "10px 14px",
-
-  borderRadius:
-    "7px",
-
-  marginBottom:
-    "10px",
-
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  gap:
-    "10px",
+  backgroundColor: "#ecfdf5",
+  color: "#166534",
+  border: "1px solid #86efac",
+  padding: "10px 14px",
+  borderRadius: "7px",
+  marginBottom: "10px",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "10px",
 };
 
 const upperGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1fr 1fr",
-
-  gap:
-    "10px",
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "10px",
 };
 
 const panelStyle = {
-  backgroundColor:
-    "white",
-
-  borderRadius:
-    "6px",
-
-  overflow:
-    "hidden",
+  backgroundColor: "white",
+  borderRadius: "6px",
+  overflow: "hidden",
 };
 
 const tableHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.6fr 1fr",
-
-  padding:
-    "9px",
-
-  backgroundColor:
-    "#eef4f8",
-
-  fontSize:
-    "11px",
-
-  fontWeight:
-    "bold",
+  display: "grid",
+  gridTemplateColumns: "1.6fr 1fr",
+  padding: "9px",
+  backgroundColor: "#eef4f8",
+  fontSize: "11px",
+  fontWeight: "bold",
 };
 
 const incomeRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.6fr 1fr",
-
-  gap:
-    "8px",
-
-  padding:
-    "5px 9px",
-
-  alignItems:
-    "center",
-
-  fontSize:
-    "11px",
+  display: "grid",
+  gridTemplateColumns: "1.6fr 1fr",
+  gap: "8px",
+  padding: "5px 9px",
+  alignItems: "center",
+  fontSize: "11px",
 };
 
 const amountBoxStyle = {
-  padding:
-    "7px",
-
-  border:
-    "1px solid #ddd",
-
-  textAlign:
-    "right",
+  padding: "7px",
+  border: "1px solid #ddd",
+  textAlign: "right",
 };
 
 const moneyInputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "7px",
-
-  border:
-    "1px solid #94a3b8",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "right",
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "7px",
+  border: "1px solid #94a3b8",
+  borderRadius: "4px",
+  textAlign: "right",
 };
 
 const savedMoneyStyle = {
-  padding:
-    "7px",
-
-  border:
-    "1px solid #86efac",
-
-  backgroundColor:
-    "#ecfdf5",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "right",
+  padding: "7px",
+  border: "1px solid #86efac",
+  backgroundColor: "#ecfdf5",
+  borderRadius: "4px",
+  textAlign: "right",
 };
 
 const savedInlineStyle = {
-  color:
-    "#15803d",
-
-  fontWeight:
-    "bold",
+  color: "#15803d",
+  fontWeight: "bold",
 };
 
 const incomeTotalStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  padding:
-    "11px",
-
-  backgroundColor:
-    "#dcfce7",
+  display: "flex",
+  justifyContent: "space-between",
+  padding: "11px",
+  backgroundColor: "#dcfce7",
 };
 
 const panelButtonWrapStyle = {
-  padding:
-    "8px",
+  padding: "8px",
 };
 
 const greenActionStyle = {
-  width:
-    "100%",
-
-  padding:
-    "9px",
-
-  border:
-    "none",
-
-  backgroundColor:
-    "#07912a",
-
-  color:
-    "white",
-
-  borderRadius:
-    "5px",
-
-  fontWeight:
-    "bold",
-
-  cursor:
-    "pointer",
+  width: "100%",
+  padding: "9px",
+  border: "none",
+  backgroundColor: "#07912a",
+  color: "white",
+  borderRadius: "5px",
+  fontWeight: "bold",
+  cursor: "pointer",
 };
 
 const redActionStyle = {
   ...greenActionStyle,
-
-  backgroundColor:
-    "#c50000",
+  backgroundColor: "#c50000",
 };
 
 const expenseHeaderStyle = {
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "35px 1.5fr 1fr",
-
-  padding:
-    "8px",
-
-  backgroundColor:
-    "#fff0f0",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
+  padding: "8px",
+  backgroundColor: "#fff0f0",
+  fontSize: "10px",
+  fontWeight: "bold",
 };
 
 const expenseRowStyle = {
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "35px 1.5fr 1fr",
-
-  gap:
-    "6px",
-
-  padding:
-    "4px 8px",
-
-  alignItems:
-    "center",
+  gap: "6px",
+  padding: "4px 8px",
+  alignItems: "center",
 };
 
 const expenseInputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "6px",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "4px",
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "6px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "4px",
 };
 
 const savedExpenseStyle = {
-  padding:
-    "6px",
-
-  border:
-    "1px solid #86efac",
-
-  backgroundColor:
-    "#ecfdf5",
-
-  borderRadius:
-    "4px",
+  padding: "6px",
+  border: "1px solid #86efac",
+  backgroundColor: "#ecfdf5",
+  borderRadius: "4px",
 };
 
 const expenseTotalStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#c50000",
-
-  color:
-    "white",
+  display: "flex",
+  justifyContent: "space-between",
+  padding: "10px",
+  backgroundColor: "#c50000",
+  color: "white",
 };
 
 const summaryGridStyle = {
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "repeat(4,1fr)",
-
-  gap:
-    "10px",
-
-  marginTop:
-    "10px",
+  gap: "10px",
+  marginTop: "10px",
 };
 
 const summaryValueStyle = {
-  marginTop:
-    "8px",
-
-  padding:
-    "9px",
-
-  backgroundColor:
-    "white",
-
-  color:
-    "#111",
-
-  borderRadius:
-    "5px",
-
-  fontSize:
-    "20px",
+  marginTop: "8px",
+  padding: "9px",
+  backgroundColor: "white",
+  color: "#111",
+  borderRadius: "5px",
+  fontSize: "20px",
 };
 
 const lowerGridStyle = {
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "1fr 1.25fr 1fr",
-
-  gap:
-    "10px",
-
-  marginTop:
-    "10px",
-
-  alignItems:
-    "start",
+  gap: "10px",
+  marginTop: "10px",
+  alignItems: "start",
 };
 
 const messageStyle = {
-  padding:
-    "9px",
-
-  marginBottom:
-    "8px",
-
-  borderRadius:
-    "5px",
+  padding: "9px",
+  marginBottom: "8px",
+  borderRadius: "5px",
 };
 
 const informationStyle = {
-  backgroundColor:
-    "white",
-
-  marginTop:
-    "12px",
-
-  borderRadius:
-    "7px",
-
-  overflow:
-    "hidden",
-
-  border:
-    "1px solid #cbd5e1",
+  backgroundColor: "white",
+  marginTop: "12px",
+  borderRadius: "7px",
+  overflow: "hidden",
+  border: "1px solid #cbd5e1",
 };
 
 const informationTitleStyle = {
-  backgroundColor:
-    "#063c63",
-
-  color:
-    "white",
-
-  padding:
-    "10px 14px",
-
-  fontWeight:
-    "bold",
+  backgroundColor: "#063c63",
+  color: "white",
+  padding: "10px 14px",
+  fontWeight: "bold",
 };
 
 const informationBodyStyle = {
-  padding:
-    "14px",
-
-  fontSize:
-    "12px",
-
-  lineHeight:
-    "1.9",
-
-  color:
-    "#334155",
+  padding: "14px",
+  fontSize: "12px",
+  lineHeight: "1.9",
+  color: "#334155",
 };
