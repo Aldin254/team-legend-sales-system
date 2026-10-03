@@ -37,7 +37,11 @@ export async function POST(request) {
     const usernamePattern =
       /^[a-z0-9._-]+$/;
 
-    if (!usernamePattern.test(username)) {
+    if (
+      !usernamePattern.test(
+        username
+      )
+    ) {
       return NextResponse.json(
         {
           message:
@@ -89,7 +93,8 @@ export async function POST(request) {
       await fetch(
         `${supabaseUrl}/auth/v1/token?grant_type=password`,
         {
-          method: "POST",
+          method:
+            "POST",
 
           headers: {
             apikey:
@@ -99,24 +104,28 @@ export async function POST(request) {
               "application/json",
           },
 
-          body: JSON.stringify({
-            email:
-              loginEmail,
+          body:
+            JSON.stringify({
+              email:
+                loginEmail,
 
-            password,
-          }),
+              password,
+            }),
 
-          cache: "no-store",
+          cache:
+            "no-store",
         }
       );
 
-    let authData = null;
+    let authData =
+      null;
 
     try {
       authData =
         await authResponse.json();
     } catch {
-      authData = null;
+      authData =
+        null;
     }
 
     if (
@@ -134,6 +143,10 @@ export async function POST(request) {
         }
       );
     }
+
+    // ==================================================
+    // SESSION DATA
+    // ==================================================
 
     const accessToken =
       authData.access_token;
@@ -173,7 +186,8 @@ export async function POST(request) {
           )
         : expiresIn
         ? Math.floor(
-            Date.now() / 1000
+            Date.now() /
+              1000
           ) + expiresIn
         : null;
 
@@ -191,7 +205,8 @@ export async function POST(request) {
           `id,auth_user_id,username,full_name,role,shop_id,is_active` +
           `&limit=1`,
         {
-          method: "GET",
+          method:
+            "GET",
 
           headers: {
             apikey:
@@ -204,20 +219,25 @@ export async function POST(request) {
               "application/json",
           },
 
-          cache: "no-store",
+          cache:
+            "no-store",
         }
       );
 
-    let profileResult = null;
+    let profileResult =
+      null;
 
     try {
       profileResult =
         await profileResponse.json();
     } catch {
-      profileResult = null;
+      profileResult =
+        null;
     }
 
-    if (!profileResponse.ok) {
+    if (
+      !profileResponse.ok
+    ) {
       console.error(
         "LOGIN PROFILE ERROR:",
         profileResult
@@ -238,7 +258,8 @@ export async function POST(request) {
       !Array.isArray(
         profileResult
       ) ||
-      profileResult.length === 0
+      profileResult.length ===
+        0
     ) {
       return NextResponse.json(
         {
@@ -258,7 +279,9 @@ export async function POST(request) {
     // ACCOUNT ACTIVE
     // ==================================================
 
-    if (!profile.is_active) {
+    if (
+      !profile.is_active
+    ) {
       return NextResponse.json(
         {
           message:
@@ -276,14 +299,16 @@ export async function POST(request) {
 
     const profileUsername =
       String(
-        profile.username || ""
+        profile.username ||
+          ""
       )
         .trim()
         .toLowerCase();
 
     if (
       !profileUsername ||
-      profileUsername !== username
+      profileUsername !==
+        username
     ) {
       return NextResponse.json(
         {
@@ -298,18 +323,26 @@ export async function POST(request) {
 
     // ==================================================
     // ROLE
+    //
+    // SYSTEM ROLES CURRENTLY ALLOWED TO LOGIN:
+    //
+    // ADMIN
+    // CASHIER
+    // ACCOUNTANT
     // ==================================================
 
     const role =
       String(
-        profile.role || ""
+        profile.role ||
+          ""
       )
         .trim()
         .toUpperCase();
 
     if (
       role !== "ADMIN" &&
-      role !== "CASHIER"
+      role !== "CASHIER" &&
+      role !== "ACCOUNTANT"
     ) {
       return NextResponse.json(
         {
@@ -324,6 +357,8 @@ export async function POST(request) {
 
     // ==================================================
     // CASHIER MUST HAVE SHOP
+    //
+    // ADMIN and ACCOUNTANT do not require shop_id.
     // ==================================================
 
     if (
@@ -345,9 +380,12 @@ export async function POST(request) {
     // LOAD SHOP
     // ==================================================
 
-    let shop = null;
+    let shop =
+      null;
 
-    if (profile.shop_id) {
+    if (
+      profile.shop_id
+    ) {
       const shopResponse =
         await fetch(
           `${supabaseUrl}/rest/v1/shops` +
@@ -357,7 +395,8 @@ export async function POST(request) {
             `&select=id,shop_name,shop_type,is_active,timezone` +
             `&limit=1`,
           {
-            method: "GET",
+            method:
+              "GET",
 
             headers: {
               apikey:
@@ -370,20 +409,25 @@ export async function POST(request) {
                 "application/json",
             },
 
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
-      let shopResult = null;
+      let shopResult =
+        null;
 
       try {
         shopResult =
           await shopResponse.json();
       } catch {
-        shopResult = null;
+        shopResult =
+          null;
       }
 
-      if (!shopResponse.ok) {
+      if (
+        !shopResponse.ok
+      ) {
         console.error(
           "LOGIN SHOP ERROR:",
           shopResult
@@ -404,7 +448,8 @@ export async function POST(request) {
         !Array.isArray(
           shopResult
         ) ||
-        shopResult.length === 0
+        shopResult.length ===
+          0
       ) {
         return NextResponse.json(
           {
@@ -420,7 +465,9 @@ export async function POST(request) {
       shop =
         shopResult[0];
 
-      if (!shop.is_active) {
+      if (
+        !shop.is_active
+      ) {
         return NextResponse.json(
           {
             message:
@@ -436,9 +483,8 @@ export async function POST(request) {
     // ==================================================
     // USER DATA
     //
-    // IMPORTANT:
-    // refresh_token + expires_at are saved so the
-    // dashboard can renew the JWT automatically.
+    // refresh_token + expires_at allow page.js
+    // to renew the JWT automatically.
     // ==================================================
 
     const userData = {
