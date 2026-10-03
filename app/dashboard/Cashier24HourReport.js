@@ -53,7 +53,6 @@ export default function Cashier24HourReport({
   const [messageType, setMessageType] = useState("");
 
   // Live clock used only for the greeting banner.
-  // This does not change any 24-hour shift timing logic.
   const [now, setNow] = useState(() => new Date());
 
   const supabaseUrl =
@@ -382,15 +381,6 @@ export default function Cashier24HourReport({
 
   // ==================================================
   // AUTO REFRESH
-  //
-  // Every 5 seconds:
-  // 1. Reload shift totals / floats / expenses.
-  // 2. Increment refreshKey.
-  // 3. PlatformReadings24Hour reloads readings.
-  // 4. CloseShift24Hour reloads its information.
-  //
-  // This allows Admin corrections to appear on the
-  // cashier screen without a manual browser refresh.
   // ==================================================
 
   useEffect(() => {
@@ -982,8 +972,6 @@ export default function Cashier24HourReport({
 
   // ==================================================
   // WELCOME / GOODBYE MESSAGE
-  // AUTOMATICALLY FOLLOWS NAIROBI TIME
-  // DISPLAY ONLY — DOES NOT CHANGE SHIFT LOGIC
   // ==================================================
 
   const shiftIsClosed =
@@ -1167,8 +1155,6 @@ export default function Cashier24HourReport({
             />
           </div>
 
-          {/* WELCOME / GOODBYE BANNER */}
-
           <div
             style={{
               ...greetingBannerStyle,
@@ -1179,8 +1165,6 @@ export default function Cashier24HourReport({
           >
             {shiftGreeting}
           </div>
-
-          {/* EXISTING SHIFT INFORMATION BANNER */}
 
           <div style={shiftBannerStyle}>
             <strong>
@@ -1540,19 +1524,54 @@ export default function Cashier24HourReport({
             </section>
           </div>
 
-          <PlatformReadings24Hour
-            user={user}
-            currentShift={
-              shift ||
-              currentShift
-            }
-            refreshKey={
-              refreshKey
-            }
-            onReadingsChanged={
-              refresh24HourReport
-            }
-          />
+          {/* ========================================= */}
+          {/* NEW 24-HOUR OPERATIONS LAYOUT             */}
+          {/*                                           */}
+          {/* LEFT:  PLATFORM SALES                     */}
+          {/* RIGHT: SAVINGS / MANAGEMENT / ACCOUNTS    */}
+          {/* ========================================= */}
+
+          <div style={operationsGridStyle}>
+            <div style={platformColumnStyle}>
+              <PlatformReadings24Hour
+                user={user}
+                currentShift={
+                  shift ||
+                  currentShift
+                }
+                refreshKey={
+                  refreshKey
+                }
+                onReadingsChanged={
+                  refresh24HourReport
+                }
+              />
+            </div>
+
+            <div style={sidePanelsStyle}>
+              <CashierSavingsPanel
+                user={user}
+                currentShift={
+                  shift ||
+                  currentShift
+                }
+              />
+
+              <CashierManagementPanel
+                user={user}
+                currentShift={
+                  shift ||
+                  currentShift
+                }
+              />
+
+              <CashierAccountsPanel
+                user={user}
+              />
+            </div>
+          </div>
+
+          {/* FINANCIAL SUMMARY REMAINS FULL WIDTH */}
 
           <div style={summaryGridStyle}>
             <SummaryBox
@@ -1585,28 +1604,6 @@ export default function Cashier24HourReport({
                 closingBalance
               }
               tone="navy"
-            />
-          </div>
-
-          <div style={lowerGridStyle}>
-            <CashierSavingsPanel
-              user={user}
-              currentShift={
-                shift ||
-                currentShift
-              }
-            />
-
-            <CashierManagementPanel
-              user={user}
-              currentShift={
-                shift ||
-                currentShift
-              }
-            />
-
-            <CashierAccountsPanel
-              user={user}
             />
           </div>
 
@@ -2057,16 +2054,6 @@ function normaliseShiftName(
   return text;
 }
 
-// ==================================================
-// NAIROBI LIVE GREETING HELPER
-//
-// Morning:   05:00 - 11:59
-// Afternoon: 12:00 - 16:59
-// Evening:   17:00 - 04:59
-//
-// Uses Africa/Nairobi regardless of the device timezone.
-// ==================================================
-
 function getNairobiHour(
   date = new Date()
 ) {
@@ -2221,7 +2208,7 @@ const infoValueStyle = {
 };
 
 // ==================================================
-// LIVE WELCOME / GOODBYE BANNER
+// WELCOME / GOODBYE
 // ==================================================
 
 const greetingBannerStyle = {
@@ -2260,9 +2247,14 @@ const shiftBannerStyle = {
   gap: "10px",
 };
 
+// ==================================================
+// INCOME + EXPENSES
+// ==================================================
+
 const upperGridStyle = {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr",
+  gridTemplateColumns:
+    "minmax(0, 1fr) minmax(0, 1fr)",
   gap: "10px",
 };
 
@@ -2387,10 +2379,58 @@ const expenseTotalStyle = {
   color: "white",
 };
 
+// ==================================================
+// NEW OPERATIONS LAYOUT
+//
+// Desktop:
+// 55% Platform Sales
+// 45% Savings / Management / Accounts
+//
+// The right column stacks the three smaller panels
+// vertically so the old blank area is used.
+// ==================================================
+
+const operationsGridStyle = {
+  display: "grid",
+
+  gridTemplateColumns:
+    "minmax(0, 1.22fr) minmax(0, 1fr)",
+
+  gap: "12px",
+
+  marginTop: "10px",
+
+  alignItems: "start",
+};
+
+const platformColumnStyle = {
+  minWidth: 0,
+  width: "100%",
+};
+
+const sidePanelsStyle = {
+  minWidth: 0,
+
+  width: "100%",
+
+  display: "grid",
+
+  gridTemplateColumns:
+    "minmax(0, 1fr)",
+
+  gap: "10px",
+
+  alignContent: "start",
+};
+
+// ==================================================
+// FINANCIAL SUMMARY
+// ==================================================
+
 const summaryGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(4,1fr)",
+    "repeat(4, minmax(0, 1fr))",
   gap: "10px",
   marginTop: "10px",
 };
@@ -2404,14 +2444,9 @@ const summaryValueStyle = {
   fontSize: "20px",
 };
 
-const lowerGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "1fr 1.25fr 1fr",
-  gap: "10px",
-  marginTop: "10px",
-  alignItems: "start",
-};
+// ==================================================
+// MESSAGE + INFORMATION
+// ==================================================
 
 const messageStyle = {
   padding: "9px",
