@@ -1560,6 +1560,7 @@ export default function CashierReport({
 
   // ==================================================
   // WELCOME / GOODBYE MESSAGE
+  // AUTOMATICALLY FOLLOWS NAIROBI TIME
   // DISPLAY ONLY — DOES NOT CHANGE SHIFT LOGIC
   // ==================================================
 
@@ -1567,11 +1568,30 @@ export default function CashierReport({
     shiftStatus === "CLOSED" ||
     shiftStatus === "COMPLETED";
 
-  const shiftGreeting =
-    shiftIsClosed
-      ? "Good Bye 👋 — Shift 1 Closed"
-      : "Good Morning 🌞 — Welcome to Shift 1";
+  const nairobiHour =
+    getNairobiHour(now);
 
+  let shiftGreeting;
+
+  if (shiftIsClosed) {
+    shiftGreeting =
+      "Good Bye 👋 — Shift 1 Closed";
+  } else if (
+    nairobiHour >= 5 &&
+    nairobiHour < 12
+  ) {
+    shiftGreeting =
+      "Good Morning 🌞 — Welcome to Shift 1";
+  } else if (
+    nairobiHour >= 12 &&
+    nairobiHour < 17
+  ) {
+    shiftGreeting =
+      "Good Afternoon ☀️ — Welcome to Shift 1";
+  } else {
+    shiftGreeting =
+      "Good Evening 🌙 — Welcome to Shift 1";
+  }
   if (
     loading &&
     !shift
@@ -2605,7 +2625,38 @@ function displayTime(value) {
 // 12-HOUR CASHIER CLOSING WINDOW
 // NAIROBI: 21:30 INCLUSIVE TO MIDNIGHT EXCLUSIVE
 // ==================================================
+// ==================================================
+// NAIROBI GREETING HOUR
+// ==================================================
 
+function getNairobiHour(
+  date = new Date()
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          "Africa/Nairobi",
+        hour:
+          "2-digit",
+        hourCycle:
+          "h23",
+      }
+    );
+
+  const parts =
+    formatter.formatToParts(
+      date
+    );
+
+  return Number(
+    parts.find(
+      (part) =>
+        part.type === "hour"
+    )?.value || 0
+  );
+}
 function is12HourClosingWindow(
   date = new Date()
 ) {
