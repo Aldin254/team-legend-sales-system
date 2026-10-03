@@ -7,6 +7,7 @@ const TABLE_NAME = "TABLE";
 export default function PlatformReadings24Hour({
   user,
   currentShift,
+  refreshKey = 0,
   onReadingsChanged,
 }) {
   const [platforms, setPlatforms] = useState([]);
@@ -88,6 +89,13 @@ export default function PlatformReadings24Hour({
 
   // ==================================================
   // LOAD PLATFORMS + ALL READINGS
+  //
+  // refreshKey is intentionally included in the
+  // dependency list.
+  //
+  // Cashier24HourReport increments refreshKey every
+  // 5 seconds. This makes Admin platform corrections
+  // automatically appear on the cashier screen.
   // ==================================================
 
   useEffect(() => {
@@ -106,9 +114,14 @@ export default function PlatformReadings24Hour({
 
     async function loadData() {
       try {
-        setLoading(true);
-        setMessage("");
-        setMessageType("");
+        // Only show the full loading panel on the
+        // first load. Background refreshes should
+        // not make the platform panel flash.
+        if (
+          platforms.length === 0
+        ) {
+          setLoading(true);
+        }
 
         // ------------------------------------------
         // ACTIVE PLATFORMS
@@ -290,6 +303,20 @@ export default function PlatformReadings24Hour({
         setValues(
           initialValues
         );
+
+        // Clear an old loading error once a
+        // background refresh succeeds.
+        setMessage((previous) =>
+          messageType === "error"
+            ? ""
+            : previous
+        );
+
+        setMessageType((previous) =>
+          previous === "error"
+            ? ""
+            : previous
+        );
       } catch (error) {
         console.error(
           "24H PLATFORM LOAD ERROR:",
@@ -324,6 +351,7 @@ export default function PlatformReadings24Hour({
     accessToken,
     supabaseUrl,
     supabaseAnonKey,
+    refreshKey,
   ]);
 
   // ==================================================
@@ -390,11 +418,6 @@ export default function PlatformReadings24Hour({
 
   // ==================================================
   // TIMED VISIBILITY
-  //
-  // IMPORTANT:
-  // Once a stage has been saved it remains visible.
-  // Future unsaved stages remain hidden until their
-  // exact Nairobi opening time.
   // ==================================================
 
   const showShift1Handover =
@@ -484,14 +507,6 @@ export default function PlatformReadings24Hour({
 
       return;
     }
-
-    // ----------------------------------------------
-    // SERVER-ACTION-TIME STYLE CLOCK CHECK
-    //
-    // The UI being visible is not enough.
-    // We check the Nairobi clock again when Save
-    // is actually pressed.
-    // ----------------------------------------------
 
     const freshTime =
       getNairobiTimeParts(
@@ -626,13 +641,11 @@ export default function PlatformReadings24Hour({
         Number(raw);
 
       // ------------------------------------------
-      // SIGNED READING RULE
+      // UNIVERSAL SIGNED READING RULE
       //
-      // Negative = VALID
-      // Zero     = VALID
-      // Positive = VALID
-      //
-      // Only non-finite numbers are invalid.
+      // Negative = valid
+      // Zero     = valid
+      // Positive = valid
       // ------------------------------------------
 
       if (
@@ -655,8 +668,6 @@ export default function PlatformReadings24Hour({
         validateReading({
           platform,
           readingKind,
-          value:
-            numericValue,
           values,
           shiftName,
         });
@@ -1593,10 +1604,6 @@ function calculateShiftOutput({
           ?.reading_value
       );
 
-    // ==============================================
-    // SHIFT 1
-    // ==============================================
-
     if (
       shiftName ===
       "SHIFT 1"
@@ -1620,10 +1627,6 @@ function calculateShiftOutput({
       continue;
     }
 
-    // ==============================================
-    // SHIFT 2
-    // ==============================================
-
     if (
       shiftName ===
       "SHIFT 2"
@@ -1634,10 +1637,6 @@ function calculateShiftOutput({
             .CLOSING_9AM
             ?.reading_value
         );
-
-      // ------------------------------------------
-      // TABLE
-      // ------------------------------------------
 
       if (
         isTable(
@@ -1656,10 +1655,6 @@ function calculateShiftOutput({
 
         continue;
       }
-
-      // ------------------------------------------
-      // RESETTABLE PLATFORM
-      // ------------------------------------------
 
       const midnight =
         numericOrNull(
@@ -1811,10 +1806,6 @@ function getNairobiTimeParts(
 
 // ==================================================
 // SHIFT 1 - 9 PM STAGE
-//
-// Visible from 21:00 onward.
-// If already saved it remains visible regardless
-// because saved-state visibility is handled above.
 // ==================================================
 
 function isShift1NinePmStageOpen(
@@ -1827,15 +1818,6 @@ function isShift1NinePmStageOpen(
 
 // ==================================================
 // SHIFT 2 - 11:59 PM STAGE
-//
-// It appears at exactly 23:59 Nairobi time.
-//
-// It remains available through the early morning
-// until 9 AM if it was not completed at 11:59 PM.
-// This avoids making the one-minute stage impossible
-// to recover from after midnight.
-//
-// Once saved it stays visible/read-only.
 // ==================================================
 
 function isShift2MidnightStageOpen(
@@ -1856,11 +1838,6 @@ function isShift2MidnightStageOpen(
 
 // ==================================================
 // SHIFT 2 - 9 AM STAGE
-//
-// Appears from exactly 09:00 onward.
-//
-// Shift 2 should then be handed over during the
-// 09:00-11:00 handover window.
 // ==================================================
 
 function isShift2NineAmStageOpen(
