@@ -52,6 +52,10 @@ export default function Cashier24HourReport({
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
 
+  // Live clock used only for the greeting banner.
+  // This does not change any 24-hour shift timing logic.
+  const [now, setNow] = useState(() => new Date());
+
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -87,6 +91,24 @@ export default function Cashier24HourReport({
     user?.name ||
     user?.username ||
     "Cashier";
+
+  // ==================================================
+  // NAIROBI GREETING CLOCK
+  // DISPLAY ONLY
+  // ==================================================
+
+  useEffect(() => {
+    setNow(new Date());
+
+    const timer =
+      setInterval(() => {
+        setNow(new Date());
+      }, 15000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
 
   // ==================================================
   // LOAD REPORT
@@ -959,6 +981,46 @@ export default function Cashier24HourReport({
         "24-HOUR SHIFT";
 
   // ==================================================
+  // WELCOME / GOODBYE MESSAGE
+  // AUTOMATICALLY FOLLOWS NAIROBI TIME
+  // DISPLAY ONLY — DOES NOT CHANGE SHIFT LOGIC
+  // ==================================================
+
+  const shiftIsClosed =
+    shiftStatus === "CLOSED" ||
+    shiftStatus === "COMPLETED";
+
+  const greetingShiftNumber =
+    shiftName === "SHIFT 2"
+      ? "2"
+      : "1";
+
+  const nairobiHour =
+    getNairobiHour(now);
+
+  let shiftGreeting;
+
+  if (shiftIsClosed) {
+    shiftGreeting =
+      `Good Bye 👋 — Shift ${greetingShiftNumber} Closed`;
+  } else if (
+    nairobiHour >= 5 &&
+    nairobiHour < 12
+  ) {
+    shiftGreeting =
+      `Good Morning 🌞 — Welcome to Shift ${greetingShiftNumber}`;
+  } else if (
+    nairobiHour >= 12 &&
+    nairobiHour < 17
+  ) {
+    shiftGreeting =
+      `Good Afternoon ☀️ — Welcome to Shift ${greetingShiftNumber}`;
+  } else {
+    shiftGreeting =
+      `Good Evening 🌙 — Welcome to Shift ${greetingShiftNumber}`;
+  }
+
+  // ==================================================
   // LOADING
   // ==================================================
 
@@ -1104,6 +1166,21 @@ export default function Cashier24HourReport({
               tone="green"
             />
           </div>
+
+          {/* WELCOME / GOODBYE BANNER */}
+
+          <div
+            style={{
+              ...greetingBannerStyle,
+              ...(shiftIsClosed
+                ? greetingGoodbyeStyle
+                : greetingWelcomeStyle),
+            }}
+          >
+            {shiftGreeting}
+          </div>
+
+          {/* EXISTING SHIFT INFORMATION BANNER */}
 
           <div style={shiftBannerStyle}>
             <strong>
@@ -1591,6 +1668,9 @@ export default function Cashier24HourReport({
 }
 
 // ==================================================
+// CONTINUE DIRECTLY WITH PART 2
+// ==================================================
+// ==================================================
 // COMPONENTS
 // ==================================================
 
@@ -1978,6 +2058,55 @@ function normaliseShiftName(
 }
 
 // ==================================================
+// NAIROBI LIVE GREETING HELPER
+//
+// Morning:   05:00 - 11:59
+// Afternoon: 12:00 - 16:59
+// Evening:   17:00 - 04:59
+//
+// Uses Africa/Nairobi regardless of the device timezone.
+// ==================================================
+
+function getNairobiHour(
+  date = new Date()
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          "Africa/Nairobi",
+
+        hour:
+          "2-digit",
+
+        hourCycle:
+          "h23",
+      }
+    );
+
+  const parts =
+    formatter.formatToParts(
+      date
+    );
+
+  const hourPart =
+    parts.find(
+      (part) =>
+        part.type === "hour"
+    );
+
+  const hour =
+    Number(
+      hourPart?.value ?? 0
+    );
+
+  return Number.isFinite(hour)
+    ? hour
+    : 0;
+}
+
+// ==================================================
 // STYLES
 // ==================================================
 
@@ -2089,6 +2218,34 @@ const infoValueStyle = {
   fontSize: "17px",
   fontWeight: "bold",
   marginTop: "8px",
+};
+
+// ==================================================
+// LIVE WELCOME / GOODBYE BANNER
+// ==================================================
+
+const greetingBannerStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "11px 14px",
+  borderRadius: "7px",
+  marginBottom: "10px",
+  textAlign: "center",
+  fontSize: "18px",
+  fontWeight: "800",
+  letterSpacing: "0.2px",
+};
+
+const greetingWelcomeStyle = {
+  backgroundColor: "#f0fdf4",
+  color: "#166534",
+  border: "1px solid #86efac",
+};
+
+const greetingGoodbyeStyle = {
+  backgroundColor: "#fff7ed",
+  color: "#9a3412",
+  border: "1px solid #fdba74",
 };
 
 const shiftBannerStyle = {
