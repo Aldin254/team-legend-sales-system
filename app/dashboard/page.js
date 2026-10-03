@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import CashierReport from "./CashierReport";
@@ -24,6 +29,9 @@ export default function DashboardPage() {
   const [shopType, setShopType] = useState("");
   const [closedForToday, setClosedForToday] = useState(false);
 
+  const refreshPromiseRef =
+    useRef(null);
+
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -31,11 +39,264 @@ export default function DashboardPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   // ==================================================
+  // SAVE SESSION
+  // ==================================================
+
+  const saveUserSession =
+    useCallback(
+      (nextUser) => {
+        if (!nextUser) {
+          return;
+        }
+
+        sessionStorage.setItem(
+          "teamLegendUser",
+          JSON.stringify(
+            nextUser
+          )
+        );
+
+        setUser(
+          nextUser
+        );
+      },
+      []
+    );
+
+  // ==================================================
+  // REFRESH SUPABASE SESSION
+  // ==================================================
+
+  const refreshUserSession =
+    useCallback(
+      async (
+        sessionUser,
+        options = {}
+      ) => {
+        const force =
+          options?.force ===
+          true;
+
+        if (!sessionUser) {
+          throw makeSessionExpiredError();
+        }
+
+        const accessToken =
+          sessionUser?.access_token ||
+          null;
+
+        if (
+          !force &&
+          accessToken &&
+          !shouldRefreshToken(
+            sessionUser
+          )
+        ) {
+          return sessionUser;
+        }
+
+        const refreshToken =
+          sessionUser?.refresh_token ||
+          null;
+
+        if (!refreshToken) {
+          throw makeSessionExpiredError(
+            "Your previous login session has expired. Please log in again."
+          );
+        }
+
+        if (
+          !supabaseUrl ||
+          !supabaseAnonKey
+        ) {
+          throw new Error(
+            "Server configuration is incomplete."
+          );
+        }
+
+        if (
+          refreshPromiseRef.current
+        ) {
+          return await refreshPromiseRef.current;
+        }
+
+        const refreshPromise =
+          (async () => {
+            const response =
+              await fetch(
+                `${supabaseUrl}/auth/v1/token?grant_type=refresh_token`,
+                {
+                  method:
+                    "POST",
+
+                  headers: {
+                    apikey:
+                      supabaseAnonKey,
+
+                    "Content-Type":
+                      "application/json",
+                  },
+
+                  body:
+                    JSON.stringify({
+                      refresh_token:
+                        refreshToken,
+                    }),
+
+                  cache:
+                    "no-store",
+                }
+              );
+
+            const result =
+              await safeJson(
+                response
+              );
+
+            if (
+              !response.ok ||
+              !result?.access_token
+            ) {
+              console.error(
+                "TOKEN REFRESH ERROR:",
+                result
+              );
+
+              throw makeSessionExpiredError(
+                "Your login session has expired. Please log in again."
+              );
+            }
+
+            const expiresInRaw =
+              Number(
+                result?.expires_in
+              );
+
+            const expiresIn =
+              Number.isFinite(
+                expiresInRaw
+              ) &&
+              expiresInRaw > 0
+                ? expiresInRaw
+                : null;
+
+            const directExpiresAt =
+              Number(
+                result?.expires_at
+              );
+
+            let expiresAt =
+              null;
+
+            if (
+              Number.isFinite(
+                directExpiresAt
+              ) &&
+              directExpiresAt > 0
+            ) {
+              expiresAt =
+                Math.floor(
+                  directExpiresAt
+                );
+            } else if (
+              expiresIn
+            ) {
+              expiresAt =
+                Math.floor(
+                  Date.now() /
+                    1000
+                ) +
+                expiresIn;
+            } else {
+              expiresAt =
+                getJwtExpirySeconds(
+                  result?.access_token
+                );
+            }
+
+            const nextUser = {
+              ...sessionUser,
+
+              id:
+                result?.user?.id ||
+                sessionUser?.id,
+
+              auth_user_id:
+                result?.user?.id ||
+                sessionUser?.auth_user_id,
+
+              access_token:
+                result.access_token,
+
+              refresh_token:
+                result?.refresh_token ||
+                refreshToken,
+
+              expires_in:
+                expiresIn,
+
+              expires_at:
+                expiresAt,
+
+              token_type:
+                result?.token_type ||
+                sessionUser?.token_type ||
+                "bearer",
+            };
+
+            sessionStorage.setItem(
+              "teamLegendUser",
+              JSON.stringify(
+                nextUser
+              )
+            );
+
+            setUser(
+              nextUser
+            );
+
+            return nextUser;
+          })();
+
+        refreshPromiseRef.current =
+          refreshPromise;
+
+        try {
+          return await refreshPromise;
+        } finally {
+          refreshPromiseRef.current =
+            null;
+        }
+      },
+      [
+        supabaseUrl,
+        supabaseAnonKey,
+      ]
+    );
+
+  // ==================================================
+  // EXPIRED SESSION HANDLER
+  // ==================================================
+
+  const expireSession =
+    useCallback(() => {
+      sessionStorage.removeItem(
+        "teamLegendUser"
+      );
+
+      setUser(null);
+      setCurrentShift(null);
+
+      router.replace("/");
+    }, [router]);
+
+  // ==================================================
   // INITIAL LOAD
   // ==================================================
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled =
+      false;
 
     async function initialise() {
       try {
@@ -43,7 +304,9 @@ export default function DashboardPage() {
         setMessage("");
 
         const stored =
-          sessionStorage.getItem("teamLegendUser");
+          sessionStorage.getItem(
+            "teamLegendUser"
+          );
 
         if (!stored) {
           router.replace("/");
@@ -53,21 +316,44 @@ export default function DashboardPage() {
         let parsedUser;
 
         try {
-          parsedUser = JSON.parse(stored);
+          parsedUser =
+            JSON.parse(
+              stored
+            );
         } catch {
-          sessionStorage.removeItem("teamLegendUser");
+          sessionStorage.removeItem(
+            "teamLegendUser"
+          );
+
           router.replace("/");
           return;
         }
+
+        // ------------------------------------------
+        // MAKE SURE JWT IS STILL VALID
+        //
+        // If near expiry, refresh it before making
+        // any database requests.
+        // ------------------------------------------
+
+        const activeUser =
+          await refreshUserSession(
+            parsedUser
+          );
 
         if (cancelled) {
           return;
         }
 
-        setUser(parsedUser);
+        saveUserSession(
+          activeUser
+        );
 
         const role =
-          String(parsedUser?.role || "")
+          String(
+            activeUser?.role ||
+              ""
+          )
             .trim()
             .toUpperCase();
 
@@ -75,7 +361,10 @@ export default function DashboardPage() {
         // ADMIN
         // ------------------------------------------
 
-        if (role === "ADMIN") {
+        if (
+          role ===
+          "ADMIN"
+        ) {
           setLoading(false);
           return;
         }
@@ -84,26 +373,29 @@ export default function DashboardPage() {
         // CASHIER
         // ------------------------------------------
 
-        if (role !== "CASHIER") {
+        if (
+          role !==
+          "CASHIER"
+        ) {
           throw new Error(
             "This account does not have cashier access."
           );
         }
 
         const shopId =
-          parsedUser?.shop_id ||
-          parsedUser?.shopId ||
+          activeUser?.shop_id ||
+          activeUser?.shopId ||
           null;
 
         const cashierId =
-          parsedUser?.profile_id ||
-          parsedUser?.id ||
-          parsedUser?.user_id ||
-          parsedUser?.auth_user_id ||
+          activeUser?.profile_id ||
+          activeUser?.id ||
+          activeUser?.user_id ||
+          activeUser?.auth_user_id ||
           null;
 
         const accessToken =
-          parsedUser?.access_token ||
+          activeUser?.access_token ||
           null;
 
         if (
@@ -132,7 +424,9 @@ export default function DashboardPage() {
           return;
         }
 
-        setShopType(loadedShopType);
+        setShopType(
+          loadedShopType
+        );
 
         // ------------------------------------------
         // CURRENT OPEN SHIFT FOR THIS CASHIER
@@ -141,28 +435,39 @@ export default function DashboardPage() {
         const openShiftResponse =
           await fetch(
             `${supabaseUrl}/rest/v1/shifts` +
-              `?shop_id=eq.${encodeURIComponent(shopId)}` +
-              `&cashier_id=eq.${encodeURIComponent(cashierId)}` +
+              `?shop_id=eq.${encodeURIComponent(
+                shopId
+              )}` +
+              `&cashier_id=eq.${encodeURIComponent(
+                cashierId
+              )}` +
               `&status=eq.OPEN` +
               `&select=*` +
               `&order=opened_at.desc` +
               `&limit=1`,
             {
-              method: "GET",
+              method:
+                "GET",
 
-              headers: authHeaders(
-                supabaseAnonKey,
-                accessToken
-              ),
+              headers:
+                authHeaders(
+                  supabaseAnonKey,
+                  accessToken
+                ),
 
-              cache: "no-store",
+              cache:
+                "no-store",
             }
           );
 
         const openShiftResult =
-          await safeJson(openShiftResponse);
+          await safeJson(
+            openShiftResponse
+          );
 
-        if (!openShiftResponse.ok) {
+        if (
+          !openShiftResponse.ok
+        ) {
           throw new Error(
             openShiftResult?.message ||
               openShiftResult?.details ||
@@ -171,8 +476,11 @@ export default function DashboardPage() {
         }
 
         const openShift =
-          Array.isArray(openShiftResult) &&
-          openShiftResult.length > 0
+          Array.isArray(
+            openShiftResult
+          ) &&
+          openShiftResult.length >
+            0
             ? openShiftResult[0]
             : null;
 
@@ -184,19 +492,6 @@ export default function DashboardPage() {
           if (cancelled) {
             return;
           }
-
-          // ----------------------------------------
-          // REPAIR EXISTING 12-HOUR OPENINGS
-          //
-          // This covers shifts that were created
-          // before automatic opening creation.
-          //
-          // Existing readings are NEVER overwritten.
-          //
-          // Missing non-TABLE = 0
-          // Missing TABLE =
-          // previous CLOSED shift TABLE closing.
-          // ----------------------------------------
 
           if (
             loadedShopType ===
@@ -220,7 +515,9 @@ export default function DashboardPage() {
             return;
           }
 
-          setCurrentShift(openShift);
+          setCurrentShift(
+            openShift
+          );
 
           setBalanceBF(
             String(
@@ -229,9 +526,17 @@ export default function DashboardPage() {
             )
           );
 
-          setBalanceLocked(true);
-          setClosedForToday(false);
-          setLoading(false);
+          setBalanceLocked(
+            true
+          );
+
+          setClosedForToday(
+            false
+          );
+
+          setLoading(
+            false
+          );
 
           return;
         }
@@ -262,7 +567,9 @@ export default function DashboardPage() {
               return;
             }
 
-            setClosedForToday(true);
+            setClosedForToday(
+              true
+            );
 
             setBalanceBF(
               String(
@@ -271,8 +578,13 @@ export default function DashboardPage() {
               )
             );
 
-            setBalanceLocked(true);
-            setLoading(false);
+            setBalanceLocked(
+              true
+            );
+
+            setLoading(
+              false
+            );
 
             return;
           }
@@ -295,7 +607,6 @@ export default function DashboardPage() {
         }
 
         if (previousShift) {
-          // B/F = PREVIOUS SHIFT CLOSING BALANCE
           setBalanceBF(
             String(
               previousShift.closing_balance ??
@@ -303,18 +614,36 @@ export default function DashboardPage() {
             )
           );
 
-          setBalanceLocked(true);
+          setBalanceLocked(
+            true
+          );
         } else {
           setBalanceBF("");
-          setBalanceLocked(false);
+          setBalanceLocked(
+            false
+          );
         }
 
-        setClosedForToday(false);
+        setClosedForToday(
+          false
+        );
       } catch (error) {
         console.error(
           "DASHBOARD INITIALISE ERROR:",
           error
         );
+
+        if (
+          isSessionExpiredError(
+            error
+          )
+        ) {
+          if (!cancelled) {
+            expireSession();
+          }
+
+          return;
+        }
 
         if (!cancelled) {
           setMessage(
@@ -324,7 +653,9 @@ export default function DashboardPage() {
         }
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setLoading(
+            false
+          );
         }
       }
     }
@@ -338,6 +669,122 @@ export default function DashboardPage() {
     router,
     supabaseUrl,
     supabaseAnonKey,
+    refreshUserSession,
+    saveUserSession,
+    expireSession,
+  ]);
+
+  // ==================================================
+  // AUTOMATIC JWT REFRESH
+  //
+  // Checks every minute.
+  // Refreshes when token has 5 minutes or less left.
+  //
+  // Also checks when browser regains focus or the
+  // page becomes visible again after sleep.
+  // ==================================================
+
+  useEffect(() => {
+    if (
+      !user?.access_token
+    ) {
+      return;
+    }
+
+    let cancelled =
+      false;
+
+    async function checkSession() {
+      try {
+        const refreshedUser =
+          await refreshUserSession(
+            user
+          );
+
+        if (
+          cancelled
+        ) {
+          return;
+        }
+
+        if (
+          refreshedUser?.access_token !==
+            user?.access_token ||
+          refreshedUser?.refresh_token !==
+            user?.refresh_token
+        ) {
+          saveUserSession(
+            refreshedUser
+          );
+        }
+      } catch (error) {
+        console.error(
+          "AUTO SESSION REFRESH ERROR:",
+          error
+        );
+
+        if (
+          !cancelled &&
+          isSessionExpiredError(
+            error
+          )
+        ) {
+          expireSession();
+        }
+      }
+    }
+
+    const timer =
+      setInterval(
+        checkSession,
+        60 * 1000
+      );
+
+    function handleFocus() {
+      checkSession();
+    }
+
+    function handleVisibilityChange() {
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
+        checkSession();
+      }
+    }
+
+    window.addEventListener(
+      "focus",
+      handleFocus
+    );
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
+
+    return () => {
+      cancelled = true;
+
+      clearInterval(
+        timer
+      );
+
+      window.removeEventListener(
+        "focus",
+        handleFocus
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+  }, [
+    user,
+    refreshUserSession,
+    saveUserSession,
+    expireSession,
   ]);
 
   // ==================================================
@@ -345,7 +792,13 @@ export default function DashboardPage() {
   // ==================================================
 
   function logout() {
-    sessionStorage.removeItem("teamLegendUser");
+    sessionStorage.removeItem(
+      "teamLegendUser"
+    );
+
+    setUser(null);
+    setCurrentShift(null);
+
     router.replace("/");
   }
 
@@ -369,43 +822,57 @@ export default function DashboardPage() {
       return;
     }
 
-    const shopId =
-      user?.shop_id ||
-      user?.shopId ||
-      null;
-
-    const cashierId =
-      user?.profile_id ||
-      user?.id ||
-      user?.user_id ||
-      user?.auth_user_id ||
-      null;
-
-    const cashierName =
-      user?.full_name ||
-      user?.name ||
-      user?.username ||
-      "Cashier";
-
-    const accessToken =
-      user?.access_token ||
-      null;
-
-    if (
-      !shopId ||
-      !cashierId ||
-      !accessToken
-    ) {
-      setMessage(
-        "Cashier login information is incomplete."
+    try {
+      setStartingShift(
+        true
       );
 
-      return;
-    }
-
-    try {
-      setStartingShift(true);
       setMessage("");
+
+      // ------------------------------------------
+      // MAKE SURE TOKEN IS VALID BEFORE STARTING
+      // ------------------------------------------
+
+      const activeUser =
+        await refreshUserSession(
+          user
+        );
+
+      saveUserSession(
+        activeUser
+      );
+
+      const shopId =
+        activeUser?.shop_id ||
+        activeUser?.shopId ||
+        null;
+
+      const cashierId =
+        activeUser?.profile_id ||
+        activeUser?.id ||
+        activeUser?.user_id ||
+        activeUser?.auth_user_id ||
+        null;
+
+      const cashierName =
+        activeUser?.full_name ||
+        activeUser?.name ||
+        activeUser?.username ||
+        "Cashier";
+
+      const accessToken =
+        activeUser?.access_token ||
+        null;
+
+      if (
+        !shopId ||
+        !cashierId ||
+        !accessToken
+      ) {
+        throw new Error(
+          "Cashier login information is incomplete."
+        );
+      }
 
       // ------------------------------------------
       // FRESH SHOP TYPE
@@ -419,7 +886,9 @@ export default function DashboardPage() {
           supabaseAnonKey,
         });
 
-      setShopType(loadedShopType);
+      setShopType(
+        loadedShopType
+      );
 
       // ------------------------------------------
       // 12-HOUR SAME-DAY LOCK
@@ -435,14 +904,19 @@ export default function DashboardPage() {
         const todayClosed =
           await getClosedShiftForDate({
             shopId,
-            businessDate: today,
+
+            businessDate:
+              today,
+
             accessToken,
             supabaseUrl,
             supabaseAnonKey,
           });
 
         if (todayClosed) {
-          setClosedForToday(true);
+          setClosedForToday(
+            true
+          );
 
           setBalanceBF(
             String(
@@ -451,7 +925,9 @@ export default function DashboardPage() {
             )
           );
 
-          setBalanceLocked(true);
+          setBalanceLocked(
+            true
+          );
 
           throw new Error(
             "This 12-hour shop has already completed today's shift."
@@ -466,27 +942,36 @@ export default function DashboardPage() {
       const openResponse =
         await fetch(
           `${supabaseUrl}/rest/v1/shifts` +
-            `?shop_id=eq.${encodeURIComponent(shopId)}` +
+            `?shop_id=eq.${encodeURIComponent(
+              shopId
+            )}` +
             `&status=eq.OPEN` +
             `&select=*` +
             `&order=opened_at.desc` +
             `&limit=1`,
           {
-            method: "GET",
+            method:
+              "GET",
 
-            headers: authHeaders(
-              supabaseAnonKey,
-              accessToken
-            ),
+            headers:
+              authHeaders(
+                supabaseAnonKey,
+                accessToken
+              ),
 
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
       const openResult =
-        await safeJson(openResponse);
+        await safeJson(
+          openResponse
+        );
 
-      if (!openResponse.ok) {
+      if (
+        !openResponse.ok
+      ) {
         throw new Error(
           openResult?.message ||
             openResult?.details ||
@@ -495,8 +980,11 @@ export default function DashboardPage() {
       }
 
       if (
-        Array.isArray(openResult) &&
-        openResult.length > 0
+        Array.isArray(
+          openResult
+        ) &&
+        openResult.length >
+          0
       ) {
         const existingOpen =
           openResult[0];
@@ -509,10 +997,10 @@ export default function DashboardPage() {
 
         if (
           existingCashier ===
-          String(cashierId)
+          String(
+            cashierId
+          )
         ) {
-          // Repair existing 12-hour shift before
-          // displaying it.
           if (
             loadedShopType ===
             "12_HOUR"
@@ -542,7 +1030,9 @@ export default function DashboardPage() {
             )
           );
 
-          setBalanceLocked(true);
+          setBalanceLocked(
+            true
+          );
 
           return;
         }
@@ -567,10 +1057,6 @@ export default function DashboardPage() {
       let openingBalance;
 
       if (previousShift) {
-        // B/F ALWAYS comes from previous
-        // shift Closing Balance.
-        //
-        // Zero is valid.
         openingBalance =
           Number(
             previousShift.closing_balance ??
@@ -579,8 +1065,10 @@ export default function DashboardPage() {
       } else {
         if (
           balanceBF === "" ||
-          balanceBF === null ||
-          balanceBF === undefined
+          balanceBF ===
+            null ||
+          balanceBF ===
+            undefined
         ) {
           throw new Error(
             "Enter the opening Balance B/F."
@@ -588,11 +1076,16 @@ export default function DashboardPage() {
         }
 
         openingBalance =
-          Number(balanceBF);
+          Number(
+            balanceBF
+          );
 
         if (
-          Number.isNaN(openingBalance) ||
-          openingBalance < 0
+          Number.isNaN(
+            openingBalance
+          ) ||
+          openingBalance <
+            0
         ) {
           throw new Error(
             "Enter a valid Balance B/F."
@@ -624,12 +1117,12 @@ export default function DashboardPage() {
           getNairobiBusinessDate();
 
         // ----------------------------------------
-        // PREPARE AUTOMATIC PLATFORM OPENINGS
+        // AUTOMATIC PLATFORM OPENINGS
         //
         // NON-TABLE = 0
         // TABLE = PREVIOUS TABLE CLOSING
         //
-        // Previous TABLE value 0 remains 0.
+        // TABLE may be negative, zero or positive.
         // ----------------------------------------
 
         const openingReadings =
@@ -682,7 +1175,6 @@ export default function DashboardPage() {
               status:
                 "OPEN",
 
-              // B/F = previous Closing Balance.
               opening_balance:
                 roundMoney(
                   openingBalance
@@ -717,7 +1209,7 @@ export default function DashboardPage() {
           });
 
         // ----------------------------------------
-        // SAVE ALL AUTOMATIC OPENINGS
+        // SAVE AUTOMATIC OPENINGS
         // ----------------------------------------
 
         await insert12HourOpeningReadings({
@@ -733,7 +1225,9 @@ export default function DashboardPage() {
           supabaseAnonKey,
         });
 
-        setCurrentShift(newShift);
+        setCurrentShift(
+          newShift
+        );
 
         setBalanceBF(
           String(
@@ -742,8 +1236,14 @@ export default function DashboardPage() {
           )
         );
 
-        setBalanceLocked(true);
-        setClosedForToday(false);
+        setBalanceLocked(
+          true
+        );
+
+        setClosedForToday(
+          false
+        );
+
         setMessage("");
 
         return;
@@ -773,18 +1273,20 @@ export default function DashboardPage() {
             ? {
                 start:
                   "09:00:00",
+
                 end:
                   "21:00:00",
               }
             : {
                 start:
                   "21:00:00",
+
                 end:
                   "09:00:00",
               };
 
         // ----------------------------------------
-        // PLATFORM HANDOVER FROM PREVIOUS 24H SHIFT
+        // PLATFORM HANDOVER
         // ----------------------------------------
 
         let carryForwardReadings =
@@ -893,7 +1395,9 @@ export default function DashboardPage() {
           });
         }
 
-        setCurrentShift(newShift);
+        setCurrentShift(
+          newShift
+        );
 
         setBalanceBF(
           String(
@@ -902,8 +1406,14 @@ export default function DashboardPage() {
           )
         );
 
-        setBalanceLocked(true);
-        setClosedForToday(false);
+        setBalanceLocked(
+          true
+        );
+
+        setClosedForToday(
+          false
+        );
+
         setMessage("");
 
         return;
@@ -921,12 +1431,23 @@ export default function DashboardPage() {
         error
       );
 
+      if (
+        isSessionExpiredError(
+          error
+        )
+      ) {
+        expireSession();
+        return;
+      }
+
       setMessage(
         error?.message ||
           "Unable to start shift."
       );
     } finally {
-      setStartingShift(false);
+      setStartingShift(
+        false
+      );
     }
   }
 
@@ -952,7 +1473,8 @@ export default function DashboardPage() {
 
   if (
     String(
-      user?.role || ""
+      user?.role ||
+        ""
     )
       .trim()
       .toUpperCase() ===
@@ -961,7 +1483,9 @@ export default function DashboardPage() {
     return (
       <AdminDashboard
         user={user}
-        onLogout={logout}
+        onLogout={
+          logout
+        }
       />
     );
   }
@@ -1025,13 +1549,17 @@ export default function DashboardPage() {
 
           <div style={balancePreviewStyle}>
             Closing Balance: KES{" "}
-            {money(balanceBF)}
+            {money(
+              balanceBF
+            )}
           </div>
 
           <button
             type="button"
             onClick={logout}
-            style={logoutStartButtonStyle}
+            style={
+              logoutStartButtonStyle
+            }
           >
             Logout
           </button>
@@ -1112,11 +1640,18 @@ export default function DashboardPage() {
           type="number"
           min="0"
           step="0.01"
-          value={balanceBF}
-          disabled={balanceLocked}
-          onChange={(event) =>
+          value={
+            balanceBF
+          }
+          disabled={
+            balanceLocked
+          }
+          onChange={(
+            event
+          ) =>
             setBalanceBF(
-              event.target.value
+              event.target
+                .value
             )
           }
           style={{
@@ -1143,8 +1678,12 @@ export default function DashboardPage() {
 
         <button
           type="button"
-          onClick={startShift}
-          disabled={startingShift}
+          onClick={
+            startShift
+          }
+          disabled={
+            startingShift
+          }
           style={{
             ...startButtonStyle,
 
@@ -1166,8 +1705,12 @@ export default function DashboardPage() {
 
         <button
           type="button"
-          onClick={logout}
-          style={logoutStartButtonStyle}
+          onClick={
+            logout
+          }
+          style={
+            logoutStartButtonStyle
+          }
         >
           Logout
         </button>
@@ -1189,23 +1732,30 @@ async function getShopType({
   const response =
     await fetch(
       `${supabaseUrl}/rest/v1/shops` +
-        `?id=eq.${encodeURIComponent(shopId)}` +
+        `?id=eq.${encodeURIComponent(
+          shopId
+        )}` +
         `&select=id,shop_name,shop_type,is_active` +
         `&limit=1`,
       {
-        method: "GET",
+        method:
+          "GET",
 
-        headers: authHeaders(
-          supabaseAnonKey,
-          accessToken
-        ),
+        headers:
+          authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
   const result =
-    await safeJson(response);
+    await safeJson(
+      response
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -1216,8 +1766,11 @@ async function getShopType({
   }
 
   if (
-    !Array.isArray(result) ||
-    result.length === 0
+    !Array.isArray(
+      result
+    ) ||
+    result.length ===
+      0
   ) {
     throw new Error(
       "Shop was not found."
@@ -1255,26 +1808,35 @@ async function getClosedShiftForDate({
   const response =
     await fetch(
       `${supabaseUrl}/rest/v1/shifts` +
-        `?shop_id=eq.${encodeURIComponent(shopId)}` +
-        `&business_date=eq.${encodeURIComponent(businessDate)}` +
+        `?shop_id=eq.${encodeURIComponent(
+          shopId
+        )}` +
+        `&business_date=eq.${encodeURIComponent(
+          businessDate
+        )}` +
         `&status=eq.CLOSED` +
         `&select=*` +
         `&order=closed_at.desc` +
         `&limit=1`,
       {
-        method: "GET",
+        method:
+          "GET",
 
-        headers: authHeaders(
-          supabaseAnonKey,
-          accessToken
-        ),
+        headers:
+          authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
   const result =
-    await safeJson(response);
+    await safeJson(
+      response
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -1284,8 +1846,13 @@ async function getClosedShiftForDate({
     );
   }
 
-  return Array.isArray(result) &&
-    result.length > 0
+  return (
+    Array.isArray(
+      result
+    ) &&
+    result.length >
+      0
+  )
     ? result[0]
     : null;
 }
@@ -1303,25 +1870,32 @@ async function getLatestClosedShift({
   const response =
     await fetch(
       `${supabaseUrl}/rest/v1/shifts` +
-        `?shop_id=eq.${encodeURIComponent(shopId)}` +
+        `?shop_id=eq.${encodeURIComponent(
+          shopId
+        )}` +
         `&status=eq.CLOSED` +
         `&select=*` +
         `&order=closed_at.desc` +
         `&limit=1`,
       {
-        method: "GET",
+        method:
+          "GET",
 
-        headers: authHeaders(
-          supabaseAnonKey,
-          accessToken
-        ),
+        headers:
+          authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
   const result =
-    await safeJson(response);
+    await safeJson(
+      response
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -1331,8 +1905,13 @@ async function getLatestClosedShift({
     );
   }
 
-  return Array.isArray(result) &&
-    result.length > 0
+  return (
+    Array.isArray(
+      result
+    ) &&
+    result.length >
+      0
+  )
     ? result[0]
     : null;
 }
@@ -1360,25 +1939,30 @@ async function ensure12HourOpeningReadings({
   }
 
   // ----------------------------------------------
-  // 1. LOAD ACTIVE PLATFORMS
+  // ACTIVE PLATFORMS
   // ----------------------------------------------
 
   const platformResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/shop_platforms` +
-        `?shop_id=eq.${encodeURIComponent(shopId)}` +
+        `?shop_id=eq.${encodeURIComponent(
+          shopId
+        )}` +
         `&is_active=eq.true` +
         `&select=id,platform_name,display_order` +
         `&order=display_order.asc`,
       {
-        method: "GET",
+        method:
+          "GET",
 
-        headers: authHeaders(
-          supabaseAnonKey,
-          accessToken
-        ),
+        headers:
+          authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
@@ -1387,7 +1971,9 @@ async function ensure12HourOpeningReadings({
       platformResponse
     );
 
-  if (!platformResponse.ok) {
+  if (
+    !platformResponse.ok
+  ) {
     throw new Error(
       platformResult?.message ||
         platformResult?.details ||
@@ -1403,7 +1989,8 @@ async function ensure12HourOpeningReadings({
       : [];
 
   if (
-    platforms.length === 0
+    platforms.length ===
+    0
   ) {
     throw new Error(
       "No active platforms were found for this shop."
@@ -1411,24 +1998,29 @@ async function ensure12HourOpeningReadings({
   }
 
   // ----------------------------------------------
-  // 2. LOAD EXISTING OPENINGS
+  // EXISTING OPENINGS
   // ----------------------------------------------
 
   const existingResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/platform_readings` +
-        `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+        `?shift_id=eq.${encodeURIComponent(
+          shiftId
+        )}` +
         `&reading_kind=eq.OPENING` +
         `&select=id,platform_id,reading_value,recorded_at`,
       {
-        method: "GET",
+        method:
+          "GET",
 
-        headers: authHeaders(
-          supabaseAnonKey,
-          accessToken
-        ),
+        headers:
+          authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
@@ -1437,7 +2029,9 @@ async function ensure12HourOpeningReadings({
       existingResponse
     );
 
-  if (!existingResponse.ok) {
+  if (
+    !existingResponse.ok
+  ) {
     throw new Error(
       existingResult?.message ||
         existingResult?.details ||
@@ -1461,7 +2055,7 @@ async function ensure12HourOpeningReadings({
     );
 
   // ----------------------------------------------
-  // 3. FIND ONLY MISSING PLATFORMS
+  // MISSING PLATFORMS ONLY
   // ----------------------------------------------
 
   const missingPlatforms =
@@ -1473,7 +2067,8 @@ async function ensure12HourOpeningReadings({
     );
 
   if (
-    missingPlatforms.length === 0
+    missingPlatforms.length ===
+    0
   ) {
     return;
   }
@@ -1486,10 +2081,13 @@ async function ensure12HourOpeningReadings({
         )
     ) || null;
 
-  let tableOpening = 0;
+  let tableOpening =
+    0;
 
   // ----------------------------------------------
-  // 4. TABLE COMES FROM PREVIOUS CLOSED SHIFT
+  // TABLE FROM PREVIOUS CLOSED SHIFT
+  //
+  // SIGNED VALUE IS VALID.
   // ----------------------------------------------
 
   if (missingTable) {
@@ -1501,25 +2099,34 @@ async function ensure12HourOpeningReadings({
         supabaseAnonKey,
       });
 
-    if (previousShift?.id) {
+    if (
+      previousShift?.id
+    ) {
       const tableResponse =
         await fetch(
           `${supabaseUrl}/rest/v1/platform_readings` +
-            `?shift_id=eq.${encodeURIComponent(previousShift.id)}` +
-            `&platform_id=eq.${encodeURIComponent(missingTable.id)}` +
+            `?shift_id=eq.${encodeURIComponent(
+              previousShift.id
+            )}` +
+            `&platform_id=eq.${encodeURIComponent(
+              missingTable.id
+            )}` +
             `&reading_kind=eq.CLOSING` +
             `&select=id,platform_id,reading_value,recorded_at` +
             `&order=recorded_at.desc` +
             `&limit=1`,
           {
-            method: "GET",
+            method:
+              "GET",
 
-            headers: authHeaders(
-              supabaseAnonKey,
-              accessToken
-            ),
+            headers:
+              authHeaders(
+                supabaseAnonKey,
+                accessToken
+              ),
 
-            cache: "no-store",
+            cache:
+              "no-store",
           }
         );
 
@@ -1528,7 +2135,9 @@ async function ensure12HourOpeningReadings({
           tableResponse
         );
 
-      if (!tableResponse.ok) {
+      if (
+        !tableResponse.ok
+      ) {
         throw new Error(
           tableResult?.message ||
             tableResult?.details ||
@@ -1540,7 +2149,8 @@ async function ensure12HourOpeningReadings({
         !Array.isArray(
           tableResult
         ) ||
-        tableResult.length === 0
+        tableResult.length ===
+          0
       ) {
         throw new Error(
           "Previous shift TABLE closing is missing. Contact Admin."
@@ -1552,9 +2162,12 @@ async function ensure12HourOpeningReadings({
           ?.reading_value;
 
       if (
-        rawValue === null ||
-        rawValue === undefined ||
-        rawValue === ""
+        rawValue ===
+          null ||
+        rawValue ===
+          undefined ||
+        rawValue ===
+          ""
       ) {
         throw new Error(
           "Previous shift TABLE closing is missing. Contact Admin."
@@ -1562,35 +2175,32 @@ async function ensure12HourOpeningReadings({
       }
 
       const numericValue =
-        Number(rawValue);
+        Number(
+          rawValue
+        );
 
       if (
-        Number.isNaN(
+        !Number.isFinite(
           numericValue
-        ) ||
-        numericValue < 0
+        )
       ) {
         throw new Error(
           "Previous shift TABLE closing is invalid. Contact Admin."
         );
       }
 
-      // Zero remains zero.
       tableOpening =
         roundMoney(
           numericValue
         );
     } else {
-      // First-ever shift.
-      tableOpening = 0;
+      tableOpening =
+        0;
     }
   }
 
   // ----------------------------------------------
-  // 5. BUILD ONLY MISSING OPENINGS
-  //
-  // NON-TABLE = 0
-  // TABLE = previous TABLE closing
+  // BUILD MISSING OPENINGS
   // ----------------------------------------------
 
   const recordedAt =
@@ -1624,14 +2234,15 @@ async function ensure12HourOpeningReadings({
     );
 
   // ----------------------------------------------
-  // 6. INSERT ONLY MISSING ROWS
+  // INSERT
   // ----------------------------------------------
 
   const insertResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/platform_readings`,
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           apikey:
@@ -1654,7 +2265,9 @@ async function ensure12HourOpeningReadings({
       }
     );
 
-  if (!insertResponse.ok) {
+  if (
+    !insertResponse.ok
+  ) {
     const insertResult =
       await safeJson(
         insertResponse
@@ -1683,19 +2296,24 @@ async function get12HourOpeningReadings({
   const platformResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/shop_platforms` +
-        `?shop_id=eq.${encodeURIComponent(shopId)}` +
+        `?shop_id=eq.${encodeURIComponent(
+          shopId
+        )}` +
         `&is_active=eq.true` +
         `&select=id,platform_name,display_order` +
         `&order=display_order.asc`,
       {
-        method: "GET",
+        method:
+          "GET",
 
-        headers: authHeaders(
-          supabaseAnonKey,
-          accessToken
-        ),
+        headers:
+          authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
@@ -1704,7 +2322,9 @@ async function get12HourOpeningReadings({
       platformResponse
     );
 
-  if (!platformResponse.ok) {
+  if (
+    !platformResponse.ok
+  ) {
     throw new Error(
       platformResult?.message ||
         platformResult?.details ||
@@ -1713,12 +2333,15 @@ async function get12HourOpeningReadings({
   }
 
   const platforms =
-    Array.isArray(platformResult)
+    Array.isArray(
+      platformResult
+    )
       ? platformResult
       : [];
 
   if (
-    platforms.length === 0
+    platforms.length ===
+    0
   ) {
     throw new Error(
       "No active platforms were found for this shop."
@@ -1733,7 +2356,8 @@ async function get12HourOpeningReadings({
         )
     ) || null;
 
-  let tableOpening = 0;
+  let tableOpening =
+    0;
 
   if (
     tablePlatform &&
@@ -1742,21 +2366,28 @@ async function get12HourOpeningReadings({
     const readingResponse =
       await fetch(
         `${supabaseUrl}/rest/v1/platform_readings` +
-          `?shift_id=eq.${encodeURIComponent(previousShift.id)}` +
-          `&platform_id=eq.${encodeURIComponent(tablePlatform.id)}` +
+          `?shift_id=eq.${encodeURIComponent(
+            previousShift.id
+          )}` +
+          `&platform_id=eq.${encodeURIComponent(
+            tablePlatform.id
+          )}` +
           `&reading_kind=eq.CLOSING` +
           `&select=id,platform_id,reading_value,recorded_at` +
           `&order=recorded_at.desc` +
           `&limit=1`,
         {
-          method: "GET",
+          method:
+            "GET",
 
-          headers: authHeaders(
-            supabaseAnonKey,
-            accessToken
-          ),
+          headers:
+            authHeaders(
+              supabaseAnonKey,
+              accessToken
+            ),
 
-          cache: "no-store",
+          cache:
+            "no-store",
         }
       );
 
@@ -1765,7 +2396,9 @@ async function get12HourOpeningReadings({
         readingResponse
       );
 
-    if (!readingResponse.ok) {
+    if (
+      !readingResponse.ok
+    ) {
       throw new Error(
         readingResult?.message ||
           readingResult?.details ||
@@ -1773,15 +2406,12 @@ async function get12HourOpeningReadings({
       );
     }
 
-    // Previous shift exists and this shop has TABLE.
-    // Therefore TABLE closing must exist.
-    //
-    // A saved value of ZERO is valid.
     if (
       !Array.isArray(
         readingResult
       ) ||
-      readingResult.length === 0
+      readingResult.length ===
+        0
     ) {
       throw new Error(
         "Previous shift TABLE closing is missing. Contact Admin."
@@ -1803,13 +2433,16 @@ async function get12HourOpeningReadings({
     }
 
     const numericValue =
-      Number(rawValue);
+      Number(
+        rawValue
+      );
 
+    // IMPORTANT:
+    // Negative, zero and positive are all valid.
     if (
-      Number.isNaN(
+      !Number.isFinite(
         numericValue
-      ) ||
-      numericValue < 0
+      )
     ) {
       throw new Error(
         "Previous shift TABLE closing is invalid. Contact Admin."
@@ -1853,8 +2486,11 @@ async function insert12HourOpeningReadings({
   supabaseAnonKey,
 }) {
   if (
-    !Array.isArray(readings) ||
-    readings.length === 0
+    !Array.isArray(
+      readings
+    ) ||
+    readings.length ===
+      0
   ) {
     return;
   }
@@ -1891,7 +2527,8 @@ async function insert12HourOpeningReadings({
     await fetch(
       `${supabaseUrl}/rest/v1/platform_readings`,
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           apikey:
@@ -1916,7 +2553,9 @@ async function insert12HourOpeningReadings({
 
   if (!response.ok) {
     const result =
-      await safeJson(response);
+      await safeJson(
+        response
+      );
 
     throw new Error(
       result?.message ||
@@ -1926,6 +2565,7 @@ async function insert12HourOpeningReadings({
     );
   }
 }
+
 // ==================================================
 // 24-HOUR PLATFORM CARRY FORWARD
 // ==================================================
@@ -1967,19 +2607,24 @@ async function get24HourCarryForwardReadings({
   const platformResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/shop_platforms` +
-        `?shop_id=eq.${encodeURIComponent(shopId)}` +
+        `?shop_id=eq.${encodeURIComponent(
+          shopId
+        )}` +
         `&is_active=eq.true` +
         `&select=id,platform_name,display_order` +
         `&order=display_order.asc`,
       {
-        method: "GET",
+        method:
+          "GET",
 
-        headers: authHeaders(
-          supabaseAnonKey,
-          accessToken
-        ),
+        headers:
+          authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
@@ -1988,7 +2633,9 @@ async function get24HourCarryForwardReadings({
       platformResponse
     );
 
-  if (!platformResponse.ok) {
+  if (
+    !platformResponse.ok
+  ) {
     throw new Error(
       platformResult?.message ||
         platformResult?.details ||
@@ -1997,12 +2644,15 @@ async function get24HourCarryForwardReadings({
   }
 
   const platforms =
-    Array.isArray(platformResult)
+    Array.isArray(
+      platformResult
+    )
       ? platformResult
       : [];
 
   if (
-    platforms.length === 0
+    platforms.length ===
+    0
   ) {
     return [];
   }
@@ -2014,18 +2664,25 @@ async function get24HourCarryForwardReadings({
   const readingResponse =
     await fetch(
       `${supabaseUrl}/rest/v1/platform_readings` +
-        `?shift_id=eq.${encodeURIComponent(previousShift.id)}` +
-        `&reading_kind=eq.${encodeURIComponent(requiredKind)}` +
+        `?shift_id=eq.${encodeURIComponent(
+          previousShift.id
+        )}` +
+        `&reading_kind=eq.${encodeURIComponent(
+          requiredKind
+        )}` +
         `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
       {
-        method: "GET",
+        method:
+          "GET",
 
-        headers: authHeaders(
-          supabaseAnonKey,
-          accessToken
-        ),
+        headers:
+          authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
 
-        cache: "no-store",
+        cache:
+          "no-store",
       }
     );
 
@@ -2034,7 +2691,9 @@ async function get24HourCarryForwardReadings({
       readingResponse
     );
 
-  if (!readingResponse.ok) {
+  if (
+    !readingResponse.ok
+  ) {
     throw new Error(
       readingResult?.message ||
         readingResult?.details ||
@@ -2043,7 +2702,9 @@ async function get24HourCarryForwardReadings({
   }
 
   const readings =
-    Array.isArray(readingResult)
+    Array.isArray(
+      readingResult
+    )
       ? readingResult
       : [];
 
@@ -2068,7 +2729,8 @@ async function get24HourCarryForwardReadings({
     );
 
   if (
-    missing.length > 0
+    missing.length >
+    0
   ) {
     throw new Error(
       `Previous ${previousName} is missing ${requiredKind} reading(s) for: ${missing
@@ -2101,13 +2763,16 @@ async function get24HourCarryForwardReadings({
       }
 
       const numericValue =
-        Number(rawValue);
+        Number(
+          rawValue
+        );
 
+      // IMPORTANT:
+      // Signed readings are valid.
       if (
-        Number.isNaN(
+        !Number.isFinite(
           numericValue
-        ) ||
-        numericValue < 0
+        )
       ) {
         throw new Error(
           `Previous ${previousName} has an invalid ${requiredKind} reading for ${platform.platform_name}.`
@@ -2121,9 +2786,10 @@ async function get24HourCarryForwardReadings({
         platformName:
           platform.platform_name,
 
-        // Zero remains zero.
         value:
-          numericValue,
+          roundMoney(
+            numericValue
+          ),
       };
     }
   );
@@ -2143,7 +2809,8 @@ async function createShift({
     await fetch(
       `${supabaseUrl}/rest/v1/shifts`,
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           apikey:
@@ -2167,7 +2834,9 @@ async function createShift({
     );
 
   const result =
-    await safeJson(response);
+    await safeJson(
+      response
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -2179,8 +2848,11 @@ async function createShift({
   }
 
   if (
-    !Array.isArray(result) ||
-    result.length === 0
+    !Array.isArray(
+      result
+    ) ||
+    result.length ===
+      0
   ) {
     throw new Error(
       "Shift was created but could not be loaded."
@@ -2203,8 +2875,11 @@ async function insert24HourOpeningReadings({
   supabaseAnonKey,
 }) {
   if (
-    !Array.isArray(readings) ||
-    readings.length === 0
+    !Array.isArray(
+      readings
+    ) ||
+    readings.length ===
+      0
   ) {
     return;
   }
@@ -2241,7 +2916,8 @@ async function insert24HourOpeningReadings({
     await fetch(
       `${supabaseUrl}/rest/v1/platform_readings`,
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           apikey:
@@ -2266,7 +2942,9 @@ async function insert24HourOpeningReadings({
 
   if (!response.ok) {
     const result =
-      await safeJson(response);
+      await safeJson(
+        response
+      );
 
     throw new Error(
       result?.message ||
@@ -2307,7 +2985,8 @@ function determineNext24HourShift(
     getNairobiDateParts();
 
   const minutes =
-    parts.hour * 60 +
+    parts.hour *
+      60 +
     parts.minute;
 
   if (
@@ -2354,7 +3033,8 @@ function get24HourBusinessDate(
   }
 
   if (
-    parts.hour < 9
+    parts.hour <
+    9
   ) {
     return addDaysToDateString(
       today,
@@ -2373,11 +3053,15 @@ function isProper24HourShift(
   value
 ) {
   const name =
-    normaliseShiftName(value);
+    normaliseShiftName(
+      value
+    );
 
   return (
-    name === "SHIFT 1" ||
-    name === "SHIFT 2"
+    name ===
+      "SHIFT 1" ||
+    name ===
+      "SHIFT 2"
   );
 }
 
@@ -2441,29 +3125,43 @@ function getNairobiDateParts() {
       part.type !==
       "literal"
     ) {
-      map[part.type] =
+      map[
+        part.type
+      ] =
         part.value;
     }
   }
 
   return {
     year:
-      Number(map.year),
+      Number(
+        map.year
+      ),
 
     month:
-      Number(map.month),
+      Number(
+        map.month
+      ),
 
     day:
-      Number(map.day),
+      Number(
+        map.day
+      ),
 
     hour:
-      Number(map.hour),
+      Number(
+        map.hour
+      ),
 
     minute:
-      Number(map.minute),
+      Number(
+        map.minute
+      ),
 
     second:
-      Number(map.second),
+      Number(
+        map.second
+      ),
   };
 }
 
@@ -2472,13 +3170,19 @@ function datePartsToString(
   month,
   day
 ) {
-  return `${String(year).padStart(
+  return `${String(
+    year
+  ).padStart(
     4,
     "0"
-  )}-${String(month).padStart(
+  )}-${String(
+    month
+  ).padStart(
     2,
     "0"
-  )}-${String(day).padStart(
+  )}-${String(
+    day
+  ).padStart(
     2,
     "0"
   )}`;
@@ -2493,9 +3197,13 @@ function addDaysToDateString(
     month,
     day,
   ] =
-    String(dateString)
+    String(
+      dateString
+    )
       .split("-")
-      .map(Number);
+      .map(
+        Number
+      );
 
   const date =
     new Date(
@@ -2567,12 +3275,174 @@ function formatNairobiTime(
       part.type !==
       "literal"
     ) {
-      map[part.type] =
+      map[
+        part.type
+      ] =
         part.value;
     }
   }
 
   return `${map.hour}:${map.minute}:${map.second}`;
+}
+
+// ==================================================
+// SESSION HELPERS
+// ==================================================
+
+function shouldRefreshToken(
+  sessionUser
+) {
+  if (
+    !sessionUser?.access_token
+  ) {
+    return true;
+  }
+
+  const expirySeconds =
+    getStoredExpirySeconds(
+      sessionUser
+    );
+
+  // If expiry cannot be determined,
+  // keep the current token.
+  if (
+    !expirySeconds
+  ) {
+    return false;
+  }
+
+  const nowSeconds =
+    Math.floor(
+      Date.now() /
+        1000
+    );
+
+  // Refresh with five minutes remaining.
+  const refreshBuffer =
+    5 * 60;
+
+  return (
+    expirySeconds -
+      nowSeconds <=
+    refreshBuffer
+  );
+}
+
+function getStoredExpirySeconds(
+  sessionUser
+) {
+  const storedExpiry =
+    Number(
+      sessionUser?.expires_at
+    );
+
+  if (
+    Number.isFinite(
+      storedExpiry
+    ) &&
+    storedExpiry > 0
+  ) {
+    return Math.floor(
+      storedExpiry
+    );
+  }
+
+  return getJwtExpirySeconds(
+    sessionUser?.access_token
+  );
+}
+
+function getJwtExpirySeconds(
+  accessToken
+) {
+  try {
+    const token =
+      String(
+        accessToken ||
+          ""
+      );
+
+    const parts =
+      token.split(
+        "."
+      );
+
+    if (
+      parts.length <
+      2
+    ) {
+      return null;
+    }
+
+    let payload =
+      parts[1]
+        .replace(
+          /-/g,
+          "+"
+        )
+        .replace(
+          /_/g,
+          "/"
+        );
+
+    while (
+      payload.length %
+        4 !==
+      0
+    ) {
+      payload +=
+        "=";
+    }
+
+    const decoded =
+      JSON.parse(
+        atob(
+          payload
+        )
+      );
+
+    const exp =
+      Number(
+        decoded?.exp
+      );
+
+    return (
+      Number.isFinite(
+        exp
+      ) &&
+      exp > 0
+    )
+      ? Math.floor(
+          exp
+        )
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function makeSessionExpiredError(
+  message =
+    "Your login session has expired. Please log in again."
+) {
+  const error =
+    new Error(
+      message
+    );
+
+  error.name =
+    "SessionExpiredError";
+
+  return error;
+}
+
+function isSessionExpiredError(
+  error
+) {
+  return (
+    error?.name ===
+    "SessionExpiredError"
+  );
 }
 
 // ==================================================
@@ -2583,7 +3453,10 @@ function isTablePlatform(
   value
 ) {
   return (
-    String(value || "")
+    String(
+      value ||
+        ""
+    )
       .trim()
       .toUpperCase() ===
     "TABLE"
@@ -2594,7 +3467,10 @@ function normaliseShiftName(
   value
 ) {
   const text =
-    String(value || "")
+    String(
+      value ||
+        ""
+    )
       .trim()
       .toUpperCase()
       .replace(
@@ -2607,15 +3483,19 @@ function normaliseShiftName(
       );
 
   if (
-    text === "SHIFT 1" ||
-    text === "SHIFT1"
+    text ===
+      "SHIFT 1" ||
+    text ===
+      "SHIFT1"
   ) {
     return "SHIFT 1";
   }
 
   if (
-    text === "SHIFT 2" ||
-    text === "SHIFT2"
+    text ===
+      "SHIFT 2" ||
+    text ===
+      "SHIFT2"
   ) {
     return "SHIFT 2";
   }
@@ -2654,10 +3534,15 @@ function roundMoney(
 ) {
   return (
     Math.round(
-      (Number(value) +
-        Number.EPSILON) *
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
         100
-    ) / 100
+    ) /
+    100
   );
 }
 
@@ -2665,7 +3550,8 @@ function money(
   value
 ) {
   return Number(
-    value || 0
+    value ||
+      0
   ).toLocaleString(
     "en-KE",
     {
