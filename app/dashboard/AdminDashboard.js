@@ -9,6 +9,7 @@ import AdminReportsPanel from "./AdminReportsPanel";
 import AdminUserAccountsPanel from "./AdminUserAccountsPanel";
 import AdminShopManagementPanel from "./AdminShopManagementPanel";
 import AdminManagementStatusPanel from "./AdminManagementStatusPanel";
+import AdminSalaryManagementPanel from "./AdminSalaryManagementPanel";
 
 export default function AdminDashboard({
   user,
@@ -49,11 +50,16 @@ export default function AdminDashboard({
       icon: "₿",
     },
     {
-  id: "MANAGEMENT",
-  label: "Management Status",
-  icon: "📋",
-},
-{
+      id: "MANAGEMENT",
+      label: "Management Status",
+      icon: "📋",
+    },
+    {
+      id: "SALARY",
+      label: "Employee Salary",
+      icon: "💰",
+    },
+    {
       id: "SETTINGS",
       label: "Settings",
       icon: "⚙",
@@ -211,9 +217,9 @@ export default function AdminDashboard({
                 subtitle="Admin control of shop shifts, corrections, overrides and audit history."
               />
 
-             <AdminShiftOverridePanel
-  user={user}
-/>
+              <AdminShiftOverridePanel
+                user={user}
+              />
 
               <AdminShiftCorrectionsPanel
                 user={user}
@@ -238,18 +244,43 @@ export default function AdminDashboard({
               />
             </>
           )}
-{activeSection === "MANAGEMENT" && (
-  <>
-    <PageHeading
-      title="Management Status"
-      subtitle="Manage salaries, banking, rent, DSTV, WIFI and other payment obligations for each shop."
-    />
 
-    <AdminManagementStatusPanel
-      user={user}
-    />
-  </>
-)}
+          {/* ===================================== */}
+          {/* MANAGEMENT STATUS */}
+          {/* ===================================== */}
+
+          {activeSection ===
+            "MANAGEMENT" && (
+            <>
+              <PageHeading
+                title="Management Status"
+                subtitle="Manage banking, rent, DSTV, WIFI and other payment obligations for each shop."
+              />
+
+              <AdminManagementStatusPanel
+                user={user}
+              />
+            </>
+          )}
+
+          {/* ===================================== */}
+          {/* EMPLOYEE SALARY */}
+          {/* ===================================== */}
+
+          {activeSection ===
+            "SALARY" && (
+            <>
+              <PageHeading
+                title="Employee Salary"
+                subtitle="Manage weekly salaries, private Salary PINs, advances, deductions and employee salary access."
+              />
+
+              <AdminSalaryManagementPanel
+                user={user}
+              />
+            </>
+          )}
+
           {/* ===================================== */}
           {/* SETTINGS */}
           {/* ===================================== */}
@@ -335,8 +366,32 @@ function DashboardHome({
         />
 
         <DashboardCard
+          title="MANAGEMENT STATUS"
+          description="Manage shop banking, rent, DSTV, WIFI and other payment obligations."
+          accent="#d97706"
+          buttonText="Open Management"
+          onClick={() =>
+            setActiveSection(
+              "MANAGEMENT"
+            )
+          }
+        />
+
+        <DashboardCard
+          title="EMPLOYEE SALARY"
+          description="Manage employee salaries, 4-digit Salary PINs, advances, deductions and salary access."
+          accent="#4f46e5"
+          buttonText="Manage Salaries"
+          onClick={() =>
+            setActiveSection(
+              "SALARY"
+            )
+          }
+        />
+
+        <DashboardCard
           title="SETTINGS"
-          description="System configuration and future Admin controls."
+          description="Manage shops, user accounts and system configuration."
           accent="#475569"
           buttonText="Open Settings"
           onClick={() =>
@@ -382,12 +437,23 @@ function DashboardHome({
             label="Accounts Management"
             status="ACTIVE"
           />
+
+          <StatusItem
+            label="Salary Management"
+            status="ACTIVE"
+          />
+
+          <StatusItem
+            label="Salary PIN Protection"
+            status="ACTIVE"
+          />
         </div>
       </div>
 
       <div style={noticeStyle}>
-        Admin corrections are recorded in the audit log.
-        Closed-shift carry-forward protection remains active.
+        Admin corrections and salary-management actions are recorded
+        in the audit log. Closed-shift carry-forward protection
+        remains active.
       </div>
     </>
   );
@@ -539,12 +605,15 @@ function SettingsPanel({
           system expands. Existing sales and correction
           functions are unaffected.
         </div>
-     </div>
+      </div>
 
-      <AdminShopManagementPanel user={user} />
+      <AdminShopManagementPanel
+        user={user}
+      />
 
-      <AdminUserAccountsPanel user={user} />
-
+      <AdminUserAccountsPanel
+        user={user}
+      />
     </>
   );
 }
