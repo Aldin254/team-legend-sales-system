@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import CashierReport from "./CashierReport";
 import Cashier24HourReport from "./Cashier24HourReport";
 import AdminDashboard from "./AdminDashboard";
+import AccountantDashboard from "./AccountantDashboard";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -1468,71 +1469,20 @@ export default function DashboardPage() {
     );
   }
 
-  // ==================================================
-  // ACCOUNTANT
-  //
-  // Temporary safe screen.
-  // Full Accountant Dashboard is the next build step.
-  // ==================================================
+ // ==================================================
+// ACCOUNTANT
+// ==================================================
 
-  if (
-    userRole ===
-    "ACCOUNTANT"
-  ) {
-    return (
-      <div style={startPageStyle}>
-        <div style={startCardStyle}>
-          <h1 style={titleStyle}>
-            TEAM LEGEND
-          </h1>
-
-          <div style={subtitleStyle}>
-            Accounts Department
-          </div>
-
-          <div style={accountantBadgeStyle}>
-            ACCOUNTANT
-          </div>
-
-          <div style={detailsStyle}>
-            <div>
-              <strong>
-                Account:
-              </strong>{" "}
-              {user?.full_name ||
-                user?.name ||
-                user?.username ||
-                "Legend Accounts"}
-            </div>
-
-            <div>
-              <strong>
-                Username:
-              </strong>{" "}
-              {user?.username ||
-                "legend254"}
-            </div>
-          </div>
-
-          <div style={accountantInfoStyle}>
-            Accountant access is active.
-            The full Float, M-Pesa,
-            Expenses and Daily Closing
-            dashboard will be connected next.
-          </div>
-
-          <button
-            type="button"
-            onClick={logout}
-            style={logoutStartButtonStyle}
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+if (
+  userRole ===
+  "ACCOUNTANT"
+) {
+  return (
+    <AccountantDashboard
+      user={user}
+    />
+  );
+}
   // ==================================================
   // OPEN SHIFT
   // ==================================================
