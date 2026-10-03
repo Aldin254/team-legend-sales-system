@@ -240,7 +240,7 @@ export default function CashierCloseShiftButton({
       // 4. CHECK EVERY PLATFORM HAS A CLOSING READING
       //
       // IMPORTANT:
-      // reading_value = 0 IS VALID.
+      // Negative, zero and positive readings are valid.
       // We check existence by platform_id only.
       // We do NOT use truthiness on reading_value.
       // ==============================================
@@ -280,7 +280,14 @@ export default function CashierCloseShiftButton({
       // ==============================================
       // 5. VALIDATE CLOSING VALUES
       //
-      // ZERO IS VALID.
+      // SIGNED READING RULE:
+      //
+      // Negative = VALID
+      // Zero     = VALID
+      // Positive = VALID
+      //
+      // Only blank/null/undefined/non-finite values
+      // are invalid.
       // ==============================================
 
       for (
@@ -302,8 +309,7 @@ export default function CashierCloseShiftButton({
           );
 
         if (
-          Number.isNaN(value) ||
-          value < 0
+          !Number.isFinite(value)
         ) {
           throw new Error(
             "One or more closing readings are invalid."
@@ -479,6 +485,10 @@ export default function CashierCloseShiftButton({
        *          ↓
        * Next TABLE Opening
        *
+       * IMPORTANT:
+       * TABLE closing can itself be negative,
+       * zero or positive and must carry exactly.
+       *
        * Other platform openings
        *          ↓
        * 0
@@ -531,6 +541,7 @@ export default function CashierCloseShiftButton({
           style={{
             padding: "9px",
             marginTop: "10px",
+
             backgroundColor:
               message.includes(
                 "successfully"
