@@ -106,11 +106,19 @@ export default function Cashier24HourReport({
     user?.shopName ||
     "SHOP";
 
-  const cashierName =
-    user?.full_name ||
-    user?.name ||
-    user?.username ||
-    "Cashier";
+  const sharedAccountName =
+  user?.full_name ||
+  user?.name ||
+  user?.username ||
+  "Cashier";
+
+const cashierName =
+  String(
+    shift?.cashier_name ||
+      currentShift?.cashier_name ||
+      sharedAccountName ||
+      "Cashier"
+  ).trim() || "Cashier";
 
   // ==================================================
   // LIVE NAIROBI GREETING CLOCK
