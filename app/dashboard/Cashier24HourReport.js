@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
-import CashierManagementPanel from "./CashierManagementPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 
@@ -1508,11 +1507,6 @@ export default function Cashier24HourReport({
           />
 
           <SidebarItem
-            icon="▥"
-            label="Management"
-          />
-
-          <SidebarItem
             icon="▦"
             label="Accounts"
           />
@@ -2165,16 +2159,6 @@ export default function Cashier24HourReport({
                 }
                 onSalaryPaid={
                   refresh24HourReport
-                }
-              />
-
-              <CashierManagementPanel
-                user={
-                  user
-                }
-                currentShift={
-                  shift ||
-                  currentShift
                 }
               />
 
