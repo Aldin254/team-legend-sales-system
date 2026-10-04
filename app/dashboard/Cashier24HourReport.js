@@ -620,29 +620,35 @@ export default function Cashier24HourReport({
       ]
     );
 
-  // ==================================================
-  // AUTO REFRESH EVERY 5 SECONDS
-  // ==================================================
+ // ==================================================
+// AUTO REFRESH EVERY 5 SECONDS
+//
+// IMPORTANT:
+// Refresh the main report only.
+// DO NOT change refreshKey here because that would
+// reload PlatformReadings24Hour and erase unsaved
+// 9:00 AM / 9:00 PM handover figures while typing.
+// ==================================================
 
-  useEffect(() => {
-    refresh24HourReport();
+useEffect(() => {
+  loadReport();
 
-    const timer =
-      setInterval(
-        () => {
-          refresh24HourReport();
-        },
-        5000
-      );
+  const timer =
+    setInterval(
+      () => {
+        loadReport();
+      },
+      5000
+    );
 
-    return () => {
-      clearInterval(
-        timer
-      );
-    };
-  }, [
-    refresh24HourReport,
-  ]);
+  return () => {
+    clearInterval(
+      timer
+    );
+  };
+}, [
+  loadReport,
+]);
 
   // ==================================================
   // LOGOUT
