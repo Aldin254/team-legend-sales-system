@@ -1348,46 +1348,42 @@ shiftName ===
 // ==================================================
 
 const shiftIsClosed =
-shiftStatus ===
-"CLOSED" ||
-shiftStatus ===
-"COMPLETED";
+  shiftStatus === "CLOSED" ||
+  shiftStatus === "COMPLETED";
 
 const greetingShiftNumber =
-shiftName ===
-"SHIFT 2"
-? "2"
-: "1";
+  shiftName === "SHIFT 2"
+    ? "2"
+    : "1";
 
 const nairobiHour =
-getNairobiHour(
-now
-);
+  getNairobiHour(
+    now
+  );
 
 let shiftGreeting;
 
 if (
-shiftIsClosed
+  shiftIsClosed
 ) {
-shiftGreeting =
-Good Bye 👋 — Shift ${greetingShiftNumber} Closed;
+  shiftGreeting =
+    `Good Bye 👋 — Shift ${greetingShiftNumber} Closed`;
 } else if (
-nairobiHour >= 5 &&
-nairobiHour < 12
+  nairobiHour >= 5 &&
+  nairobiHour < 12
 ) {
-shiftGreeting =
-Good Morning 🌞 — Welcome to Shift ${greetingShiftNumber};
+  shiftGreeting =
+    `Good Morning 🌞 — Welcome to Shift ${greetingShiftNumber}`;
 } else if (
-nairobiHour >= 12 &&
-nairobiHour < 17
+  nairobiHour >= 12 &&
+  nairobiHour < 17
 ) {
-shiftGreeting =
-Good Afternoon ☀️ — Welcome to Shift ${greetingShiftNumber};
+  shiftGreeting =
+    `Good Afternoon ☀️ — Welcome to Shift ${greetingShiftNumber}`;
 } else {
-shiftGreeting =
-Good Evening 🌙 — Welcome to Shift ${greetingShiftNumber};
+  shiftGreeting =
+    `Good Evening 🌙 — Welcome to Shift ${greetingShiftNumber}`;
 }
-
 // ==================================================
 // LOADING
 // ==================================================
