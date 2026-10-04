@@ -24,6 +24,40 @@ export default function AdminAccountantPanel({
   const [error, setError] =
     useState("");
 
+  // ==================================================
+  // ADMIN B/F CORRECTION
+  // ==================================================
+
+  const [
+    bfInput,
+    setBfInput,
+  ] = useState("");
+
+  const [
+    bfReason,
+    setBfReason,
+  ] = useState("");
+
+  const [
+    bfDirty,
+    setBfDirty,
+  ] = useState(false);
+
+  const [
+    savingBf,
+    setSavingBf,
+  ] = useState(false);
+
+  const [
+    bfMessage,
+    setBfMessage,
+  ] = useState("");
+
+  const [
+    bfMessageType,
+    setBfMessageType,
+  ] = useState("");
+
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -33,6 +67,27 @@ export default function AdminAccountantPanel({
   const accessToken =
     user?.access_token ||
     null;
+
+  // ==================================================
+  // AUTH HEADERS
+  // ==================================================
+
+  const authHeaders =
+    useMemo(() => {
+      return {
+        apikey:
+          supabaseAnonKey,
+
+        Authorization:
+          `Bearer ${accessToken}`,
+
+        "Content-Type":
+          "application/json",
+      };
+    }, [
+      supabaseAnonKey,
+      accessToken,
+    ]);
 
   // ==================================================
   // LOAD ADMIN ACCOUNTANT SNAPSHOT
@@ -61,16 +116,8 @@ export default function AdminAccountantPanel({
                 method:
                   "POST",
 
-                headers: {
-                  apikey:
-                    supabaseAnonKey,
-
-                  Authorization:
-                    `Bearer ${accessToken}`,
-
-                  "Content-Type":
-                    "application/json",
-                },
+                headers:
+                  authHeaders,
 
                 body:
                   JSON.stringify({
@@ -123,6 +170,7 @@ export default function AdminAccountantPanel({
         supabaseUrl,
         supabaseAnonKey,
         reportDate,
+        authHeaders,
       ]
     );
 
@@ -249,6 +297,286 @@ export default function AdminAccountantPanel({
     )
       .trim()
       .toUpperCase();
+
+  // ==================================================
+  // KEEP B/F FORM IN SYNC
+  //
+  // Auto refresh must NOT overwrite Admin while typing.
+  // ==================================================
+
+  useEffect(() => {
+    if (!report) {
+      if (!bfDirty) {
+        setBfInput("");
+      }
+
+      return;
+    }
+
+    if (!bfDirty) {
+      setBfInput(
+        String(
+          report.opening_balance ??
+            0
+        )
+      );
+    }
+  }, [
+    report,
+    bfDirty,
+  ]);
+
+  // ==================================================
+  // RESET B/F FORM WHEN DATE CHANGES
+  // ==================================================
+
+  useEffect(() => {
+    setBfDirty(false);
+
+    setBfReason("");
+
+    setBfMessage("");
+
+    setBfMessageType("");
+
+    setBfInput("");
+  }, [
+    reportDate,
+  ]);
+
+  // ==================================================
+  // SAVE ADMIN ACCOUNTANT B/F
+  // ==================================================
+
+  async function saveAccountantBf() {
+    if (!reportDate) {
+      setBfMessage(
+        "Select an Accountant report date."
+      );
+
+      setBfMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    if (!report) {
+      setBfMessage(
+        "There is no Accountant report for this date."
+      );
+
+      setBfMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const cleanAmount =
+      String(
+        bfInput ?? ""
+      ).trim();
+
+    if (
+      cleanAmount ===
+      ""
+    ) {
+      setBfMessage(
+        "Enter the corrected Balance B/F."
+      );
+
+      setBfMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const newOpeningBalance =
+      Number(
+        cleanAmount
+      );
+
+    if (
+      !Number.isFinite(
+        newOpeningBalance
+      )
+    ) {
+      setBfMessage(
+        "Enter a valid Balance B/F."
+      );
+
+      setBfMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const cleanReason =
+      String(
+        bfReason ||
+          ""
+      ).trim();
+
+    if (
+      cleanReason.length <
+      3
+    ) {
+      setBfMessage(
+        "Enter a reason for the B/F correction."
+      );
+
+      setBfMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const oldBalance =
+      openingBalance;
+
+    if (
+      roundMoney(
+        oldBalance
+      ) ===
+      roundMoney(
+        newOpeningBalance
+      )
+    ) {
+      setBfMessage(
+        "The new Balance B/F is the same as the current Balance B/F."
+      );
+
+      setBfMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "ADMIN ACCOUNTANT BALANCE B/F CORRECTION\n\n" +
+          `Report Date: ${reportDate}\n` +
+          `Current B/F: KES ${money(
+            oldBalance
+          )}\n` +
+          `New B/F: KES ${money(
+            newOpeningBalance
+          )}\n\n` +
+          `Reason: ${cleanReason}\n\n` +
+          "This changes only the Accountant Balance B/F.\n\n" +
+          "Continue?"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setSavingBf(
+        true
+      );
+
+      setBfMessage("");
+
+      setBfMessageType("");
+
+      const response =
+        await fetch(
+          `${supabaseUrl}/rest/v1/rpc/tl_admin_set_accountant_bf`,
+          {
+            method:
+              "POST",
+
+            headers:
+              authHeaders,
+
+            body:
+              JSON.stringify({
+                p_report_date:
+                  reportDate,
+
+                p_opening_balance:
+                  roundMoney(
+                    newOpeningBalance
+                  ),
+
+                p_reason:
+                  cleanReason,
+              }),
+
+            cache:
+              "no-store",
+          }
+        );
+
+      const result =
+        await safeJson(
+          response
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            "Unable to update Accountant Balance B/F."
+        );
+      }
+
+      if (
+        result?.success ===
+        false
+      ) {
+        throw new Error(
+          result?.message ||
+            "Unable to update Accountant Balance B/F."
+        );
+      }
+
+      setBfDirty(
+        false
+      );
+
+      setBfReason("");
+
+      setBfMessage(
+        `Balance B/F updated from KES ${money(
+          oldBalance
+        )} to KES ${money(
+          newOpeningBalance
+        )}.`
+      );
+
+      setBfMessageType(
+        "success"
+      );
+
+      await loadSnapshot();
+    } catch (error) {
+      console.error(
+        "ADMIN ACCOUNTANT B/F ERROR:",
+        error
+      );
+
+      setBfMessage(
+        error?.message ||
+          "Unable to update Accountant Balance B/F."
+      );
+
+      setBfMessageType(
+        "error"
+      );
+    } finally {
+      setSavingBf(
+        false
+      );
+    }
+  }
 
   // ==================================================
   // TRANSACTION GROUPS
@@ -433,10 +761,260 @@ export default function AdminAccountantPanel({
             </div>
 
             <div style={reportNoteStyle}>
-              This section is read-only for Admin monitoring.
-              Accountant transactions and cashier-return confirmations
-              continue through their normal protected workflows.
+              Accountant transactions, Float Sent, Float Received,
+              transaction fees and Accountant expenses remain
+              read-only for Admin. Only Balance B/F can be corrected
+              below.
             </div>
+          </section>
+
+          {/* ===================================== */}
+          {/* ADMIN BALANCE B/F CORRECTION */}
+          {/* ===================================== */}
+
+          <section style={bfPanelStyle}>
+            <div style={bfHeaderStyle}>
+              <div>
+                <div style={bfTitleStyle}>
+                  ADMIN BALANCE B/F CORRECTION
+                </div>
+
+                <div style={bfSubtitleStyle}>
+                  Emergency correction for the selected Accountant day
+                </div>
+              </div>
+
+              <div style={bfOnlyBadgeStyle}>
+                B/F ONLY
+              </div>
+            </div>
+
+            {!report ? (
+              <div style={emptyStyle}>
+                No Accountant report exists for {reportDate}.
+              </div>
+            ) : (
+              <div style={bfBodyStyle}>
+                <div style={bfCurrentGridStyle}>
+                  <div style={bfInfoCardStyle}>
+                    <div style={bfInfoLabelStyle}>
+                      REPORT DATE
+                    </div>
+
+                    <div style={bfInfoValueStyle}>
+                      {report?.report_date ||
+                        reportDate}
+                    </div>
+                  </div>
+
+                  <div style={bfInfoCardStyle}>
+                    <div style={bfInfoLabelStyle}>
+                      CURRENT BALANCE B/F
+                    </div>
+
+                    <div style={bfInfoValueStyle}>
+                      KES{" "}
+                      {money(
+                        openingBalance
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={bfInfoCardStyle}>
+                    <div style={bfInfoLabelStyle}>
+                      CURRENT CLOSING BALANCE
+                    </div>
+
+                    <div style={bfInfoValueStyle}>
+                      KES{" "}
+                      {money(
+                        closingBalance
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={bfWarningStyle}>
+                  This control changes only the Accountant Balance B/F.
+                  It does not alter Float Sent, Float Received,
+                  transaction fees, Accountant expenses or cashier
+                  transactions.
+                </div>
+
+                <div style={bfFieldGridStyle}>
+                  <div>
+                    <label style={bfLabelStyle}>
+                      CORRECTED BALANCE B/F (KES)
+                    </label>
+
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={
+                        bfInput
+                      }
+                      disabled={
+                        savingBf
+                      }
+                      onChange={(
+                        event
+                      ) => {
+                        setBfInput(
+                          event.target.value
+                        );
+
+                        setBfDirty(
+                          true
+                        );
+
+                        setBfMessage(
+                          ""
+                        );
+                      }}
+                      placeholder="Enter corrected B/F"
+                      style={bfInputStyle}
+                    />
+
+                    <div style={bfInputHelpStyle}>
+                      Negative, zero and positive balances are allowed.
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={bfLabelStyle}>
+                      CORRECTION REASON *
+                    </label>
+
+                    <textarea
+                      value={
+                        bfReason
+                      }
+                      disabled={
+                        savingBf
+                      }
+                      onChange={(
+                        event
+                      ) => {
+                        setBfReason(
+                          event.target.value
+                        );
+
+                        setBfMessage(
+                          ""
+                        );
+                      }}
+                      rows={3}
+                      placeholder="Example: Accountant float discrepancy identified before the next business day."
+                      style={bfTextareaStyle}
+                    />
+                  </div>
+                </div>
+
+                {report?.admin_override_note && (
+                  <div style={previousOverrideStyle}>
+                    <strong>
+                      Previous Admin Correction:
+                    </strong>{" "}
+                    {
+                      report.admin_override_note
+                    }
+                  </div>
+                )}
+
+                {bfMessage && (
+                  <div
+                    style={{
+                      ...bfMessageStyle,
+
+                      backgroundColor:
+                        bfMessageType ===
+                        "success"
+                          ? "#ecfdf5"
+                          : "#fef2f2",
+
+                      borderColor:
+                        bfMessageType ===
+                        "success"
+                          ? "#86efac"
+                          : "#fecaca",
+
+                      color:
+                        bfMessageType ===
+                        "success"
+                          ? "#166534"
+                          : "#991b1b",
+                    }}
+                  >
+                    {bfMessage}
+                  </div>
+                )}
+
+                <div style={bfButtonGridStyle}>
+                  <button
+                    type="button"
+                    disabled={
+                      savingBf
+                    }
+                    onClick={() => {
+                      setBfInput(
+                        String(
+                          report?.opening_balance ??
+                            0
+                        )
+                      );
+
+                      setBfReason(
+                        ""
+                      );
+
+                      setBfDirty(
+                        false
+                      );
+
+                      setBfMessage(
+                        ""
+                      );
+                    }}
+                    style={bfResetButtonStyle}
+                  >
+                    RESET
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      savingBf
+                    }
+                    onClick={
+                      saveAccountantBf
+                    }
+                    style={{
+                      ...bfSaveButtonStyle,
+
+                      opacity:
+                        savingBf
+                          ? 0.65
+                          : 1,
+
+                      cursor:
+                        savingBf
+                          ? "not-allowed"
+                          : "pointer",
+                    }}
+                  >
+                    {savingBf
+                      ? "UPDATING BALANCE B/F..."
+                      : "UPDATE BALANCE B/F"}
+                  </button>
+                </div>
+
+                <div style={bfAuditNoticeStyle}>
+                  Admin B/F corrections are protected by the database
+                  function and recorded with the Admin override
+                  information and correction reason.
+                </div>
+              </div>
+            )}
           </section>
 
           {/* ===================================== */}
@@ -1091,6 +1669,18 @@ function money(
   );
 }
 
+function roundMoney(
+  value
+) {
+  return (
+    Math.round(
+      (Number(value) +
+        Number.EPSILON) *
+        100
+    ) / 100
+  );
+}
+
 function getNairobiDate() {
   const parts =
     new Intl.DateTimeFormat(
@@ -1446,6 +2036,372 @@ const reportNoteStyle = {
 
   fontSize:
     "9px",
+};
+
+// ==================================================
+// B/F CORRECTION STYLES
+// ==================================================
+
+const bfPanelStyle = {
+  backgroundColor:
+    "#ffffff",
+
+  border:
+    "2px solid #7c3aed",
+
+  borderRadius:
+    "7px",
+
+  overflow:
+    "hidden",
+};
+
+const bfHeaderStyle = {
+  backgroundColor:
+    "#7c3aed",
+
+  color:
+    "white",
+
+  padding:
+    "12px 14px",
+
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+};
+
+const bfTitleStyle = {
+  fontSize:
+    "13px",
+
+  fontWeight:
+    "900",
+};
+
+const bfSubtitleStyle = {
+  marginTop:
+    "3px",
+
+  fontSize:
+    "8px",
+
+  color:
+    "#ede9fe",
+};
+
+const bfOnlyBadgeStyle = {
+  padding:
+    "5px 9px",
+
+  border:
+    "1px solid rgba(255,255,255,0.55)",
+
+  borderRadius:
+    "12px",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "900",
+};
+
+const bfBodyStyle = {
+  padding:
+    "13px",
+};
+
+const bfCurrentGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(170px,1fr))",
+
+  gap:
+    "8px",
+
+  marginBottom:
+    "10px",
+};
+
+const bfInfoCardStyle = {
+  padding:
+    "10px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  border:
+    "1px solid #e2e8f0",
+
+  borderRadius:
+    "5px",
+};
+
+const bfInfoLabelStyle = {
+  color:
+    "#64748b",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "bold",
+};
+
+const bfInfoValueStyle = {
+  marginTop:
+    "5px",
+
+  color:
+    "#0f172a",
+
+  fontSize:
+    "13px",
+
+  fontWeight:
+    "900",
+};
+
+const bfWarningStyle = {
+  padding:
+    "9px",
+
+  marginBottom:
+    "12px",
+
+  border:
+    "1px solid #fde68a",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#fffbeb",
+
+  color:
+    "#92400e",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
+};
+
+const bfFieldGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "minmax(180px,0.7fr) minmax(280px,1.3fr)",
+
+  gap:
+    "10px",
+
+  marginBottom:
+    "10px",
+};
+
+const bfLabelStyle = {
+  display:
+    "block",
+
+  marginBottom:
+    "5px",
+
+  color:
+    "#334155",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
+};
+
+const bfInputStyle = {
+  width:
+    "100%",
+
+  boxSizing:
+    "border-box",
+
+  padding:
+    "10px",
+
+  border:
+    "1px solid #94a3b8",
+
+  borderRadius:
+    "5px",
+
+  fontWeight:
+    "bold",
+};
+
+const bfInputHelpStyle = {
+  marginTop:
+    "4px",
+
+  color:
+    "#64748b",
+
+  fontSize:
+    "8px",
+};
+
+const bfTextareaStyle = {
+  width:
+    "100%",
+
+  boxSizing:
+    "border-box",
+
+  padding:
+    "9px",
+
+  border:
+    "1px solid #94a3b8",
+
+  borderRadius:
+    "5px",
+
+  resize:
+    "vertical",
+};
+
+const previousOverrideStyle = {
+  padding:
+    "9px",
+
+  marginBottom:
+    "10px",
+
+  backgroundColor:
+    "#f1f5f9",
+
+  border:
+    "1px solid #cbd5e1",
+
+  borderRadius:
+    "5px",
+
+  color:
+    "#475569",
+
+  fontSize:
+    "9px",
+};
+
+const bfMessageStyle = {
+  padding:
+    "10px",
+
+  marginBottom:
+    "10px",
+
+  border:
+    "1px solid",
+
+  borderRadius:
+    "5px",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "bold",
+};
+
+const bfButtonGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "120px 1fr",
+
+  gap:
+    "8px",
+};
+
+const bfResetButtonStyle = {
+  padding:
+    "10px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#64748b",
+
+  color:
+    "white",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
+};
+
+const bfSaveButtonStyle = {
+  padding:
+    "10px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#7c3aed",
+
+  color:
+    "white",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "900",
+};
+
+const bfAuditNoticeStyle = {
+  marginTop:
+    "9px",
+
+  padding:
+    "7px",
+
+  backgroundColor:
+    "#faf5ff",
+
+  color:
+    "#6b21a8",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "8px",
 };
 
 const sectionTitleWrapStyle = {
