@@ -1320,18 +1320,30 @@ function Stage({
 
       {platforms.map(
         (platform) => {
-          const saved =
-            Boolean(
-              rows[
-                platform.id
-              ]?.[
-                readingKind
-              ]?.id
-            );
+          const savedRow =
+  rows[
+    platform.id
+  ]?.[
+    readingKind
+  ];
 
-          const readOnly =
-            forceReadOnly ||
-            saved;
+const saved =
+  Boolean(
+    savedRow?.id
+  );
+
+const readOnly =
+  forceReadOnly ||
+  saved;
+
+const displayValue =
+  saved
+    ? savedRow?.reading_value ?? ""
+    : values[
+        platform.id
+      ]?.[
+        readingKind
+      ] ?? "";
 
           return (
             <div
@@ -1369,13 +1381,9 @@ function Stage({
               <input
                 type="number"
                 step="0.01"
-                value={
-                  values[
-                    platform.id
-                  ]?.[
-                    readingKind
-                  ] ?? ""
-                }
+             value={
+  displayValue
+}
                 disabled={
                   Boolean(
                     saving
