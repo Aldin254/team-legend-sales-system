@@ -10,6 +10,8 @@ import {
 import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
+import CashierSalaryPanel from "./CashierSalaryPanel";
+import CashierManagementPanel from "./CashierManagementPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
@@ -1219,6 +1221,7 @@ export default function CashierReport({
         closingInputs,
       ]
     );
+
   // ==================================================
   // SAVE M-SHWARI FLOAT
   //
@@ -2145,6 +2148,20 @@ export default function CashierReport({
         "OPEN"
     ).toUpperCase();
 
+  // Separate shift greeting restored.
+  // Uses Nairobi time so the message stays correct on every device.
+  const shiftNumber =
+    getShiftNumber(
+      shift
+    );
+
+  const shiftGreeting =
+    getShiftGreeting(
+      now,
+      shiftStatus,
+      shiftNumber
+    );
+
   // ==================================================
   // LOADING
   // ==================================================
@@ -2169,6 +2186,7 @@ export default function CashierReport({
   ) {
     return null;
   }
+
   // ==================================================
   // DISPLAY
   // ==================================================
@@ -2270,6 +2288,12 @@ export default function CashierReport({
             icon="▤"
             label="View Reports"
           />
+
+          <SidebarItem
+            icon="▥"
+            label="Management"
+          />
+
           <SidebarItem
             icon="▦"
             label="Accounts"
@@ -2342,6 +2366,14 @@ export default function CashierReport({
               }
               tone="green"
             />
+          </div>
+
+          <div
+            style={
+              shiftGreetingStyle
+            }
+          >
+            {shiftGreeting}
           </div>
 
           {message && (
@@ -3068,6 +3100,26 @@ export default function CashierReport({
               }
             />
 
+            <CashierSalaryPanel
+              user={
+                user
+              }
+              currentShift={
+                shift ||
+                currentShift
+              }
+            />
+
+            <CashierManagementPanel
+              user={
+                user
+              }
+              currentShift={
+                shift ||
+                currentShift
+              }
+            />
+
             <CashierAccountsPanel
               user={
                 user
@@ -3496,6 +3548,7 @@ function SummaryBox({
     </div>
   );
 }
+
 // ==================================================
 // HELPERS
 // ==================================================
@@ -3629,6 +3682,91 @@ function displayTime(
       0,
       5
     );
+}
+
+// ==================================================
+// SHIFT GREETING
+// NAIROBI TIME
+// ==================================================
+
+function getShiftNumber(
+  shift
+) {
+  const raw =
+    String(
+      shift?.shift_name ||
+        shift?.name ||
+        ""
+    ).toUpperCase();
+
+  const match =
+    raw.match(
+      /(?:SHIFT\s*)?([12])/
+    );
+
+  return match
+    ? match[1]
+    : "1";
+}
+
+function getShiftGreeting(
+  date,
+  shiftStatus,
+  shiftNumber
+) {
+  const status =
+    String(
+      shiftStatus ||
+        ""
+    ).toUpperCase();
+
+  if (
+    status ===
+      "CLOSED" ||
+    status ===
+      "COMPLETED"
+  ) {
+    return `Good Bye 👋 — Shift ${shiftNumber} Closed`;
+  }
+
+  const formatter =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone:
+          "Africa/Nairobi",
+
+        hour:
+          "2-digit",
+
+        hourCycle:
+          "h23",
+      }
+    );
+
+  const hour =
+    Number(
+      formatter.format(
+        date ||
+          new Date()
+      )
+    );
+
+  if (
+    hour >= 5 &&
+    hour < 12
+  ) {
+    return `Good Morning 🌞 — Welcome to Shift ${shiftNumber}`;
+  }
+
+  if (
+    hour >= 12 &&
+    hour < 17
+  ) {
+    return `Good Afternoon ☀️ — Welcome to Shift ${shiftNumber}`;
+  }
+
+  return `Good Evening 🌙 — Welcome to Shift ${shiftNumber}`;
 }
 
 // ==================================================
@@ -4478,6 +4616,32 @@ const lowerGridStyle = {
 
   alignItems:
     "start",
+};
+
+const shiftGreetingStyle = {
+  padding:
+    "10px 14px",
+
+  marginBottom:
+    "8px",
+
+  borderRadius:
+    "6px",
+
+  backgroundColor:
+    "#eff6ff",
+
+  border:
+    "1px solid #bfdbfe",
+
+  color:
+    "#1e3a8a",
+
+  fontWeight:
+    "bold",
+
+  textAlign:
+    "center",
 };
 
 const messageStyle = {
