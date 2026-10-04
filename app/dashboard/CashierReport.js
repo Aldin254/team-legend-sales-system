@@ -1184,9 +1184,7 @@ export default function CashierReport({
               ) &&
               !Number.isNaN(
                 closing
-              ) &&
-              closing >=
-                opening
+              )
             ) {
               output =
                 roundMoney(
@@ -1833,7 +1831,7 @@ export default function CashierReport({
           closingRaw
         );
 
-      if (
+     if (
         closingRaw ===
           "" ||
         closingRaw ===
@@ -1843,12 +1841,9 @@ export default function CashierReport({
         Number.isNaN(
           closing
         ) ||
-        closing < 0 ||
         Number.isNaN(
           opening
-        ) ||
-        closing <
-          opening
+        )
       ) {
         setMessage(
           `Enter a valid closing reading for ${platform.platform_name}.`
@@ -3460,7 +3455,6 @@ function ReadingInput({
   return (
     <input
       type="number"
-      min="0"
       value={
         value
       }
