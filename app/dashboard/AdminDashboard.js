@@ -11,6 +11,7 @@ import AdminUserAccountsPanel from "./AdminUserAccountsPanel";
 import AdminShopManagementPanel from "./AdminShopManagementPanel";
 import AdminManagementStatusPanel from "./AdminManagementStatusPanel";
 import AdminSalaryManagementPanel from "./AdminSalaryManagementPanel";
+import AdminAccountantPanel from "./AdminAccountantPanel";
 
 export default function AdminDashboard({
   user,
@@ -72,6 +73,11 @@ export default function AdminDashboard({
       id: "SALARY",
       label: "Employee Salary",
       icon: "💰",
+    },
+    {
+      id: "ACCOUNTANT",
+      label: "Accountant Control",
+      icon: "₭",
     },
     {
       id: "SETTINGS",
@@ -298,6 +304,24 @@ export default function AdminDashboard({
           )}
 
           {/* ===================================== */}
+          {/* ACCOUNTANT CONTROL */}
+          {/* ===================================== */}
+
+          {activeSection ===
+            "ACCOUNTANT" && (
+            <>
+              <PageHeading
+                title="Accountant Control"
+                subtitle="Monitor Legend Accounts daily balances, accountant expenses, cashier returns, float transfers and transaction history."
+              />
+
+              <AdminAccountantPanel
+                user={user}
+              />
+            </>
+          )}
+
+          {/* ===================================== */}
           {/* SETTINGS */}
           {/* ===================================== */}
 
@@ -406,6 +430,18 @@ function DashboardHome({
         />
 
         <DashboardCard
+          title="ACCOUNTANT CONTROL"
+          description="View Legend Accounts daily report, manual accountant expenses, cashier returns, floats and transaction records."
+          accent="#0f766e"
+          buttonText="Open Accountant"
+          onClick={() =>
+            setActiveSection(
+              "ACCOUNTANT"
+            )
+          }
+        />
+
+        <DashboardCard
           title="SETTINGS"
           description="Manage shops, user accounts and system configuration."
           accent="#475569"
@@ -463,13 +499,24 @@ function DashboardHome({
             label="Salary PIN Protection"
             status="ACTIVE"
           />
+
+          <StatusItem
+            label="Accountant Monitoring"
+            status="ACTIVE"
+          />
+
+          <StatusItem
+            label="Cashier Return Tracking"
+            status="ACTIVE"
+          />
         </div>
       </div>
 
       <div style={noticeStyle}>
-        Admin corrections and salary-management actions are recorded
-        in the audit log. Closed-shift carry-forward protection
-        remains active.
+        Admin can monitor Legend Accounts activity, including
+        accountant-entered expenses, cashier returns, float transfers
+        and daily balances. Accountant transactions remain controlled
+        by the Accountant workflow and existing database protections.
       </div>
     </>
   );
@@ -618,8 +665,8 @@ function SettingsPanel({
 
         <div style={settingsNoticeStyle}>
           Additional settings will be connected here as the
-          system expands. Existing sales and correction
-          functions are unaffected.
+          system expands. Existing sales, Accountant and
+          correction functions are unaffected.
         </div>
       </div>
 
@@ -655,6 +702,10 @@ function SettingRow({
   );
 }
 
+// ==================================================
+// END OF PART 1
+// PASTE PART 2 DIRECTLY BELOW THIS LINE
+// ==================================================
 // ==================================================
 // STYLES
 // ==================================================
