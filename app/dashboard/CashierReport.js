@@ -10,9 +10,9 @@ import {
 import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
-import CashierSalaryPanel from "./CashierSalaryPanel";
 import CashierManagementPanel from "./CashierManagementPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
+import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
 
 export default function CashierReport({
@@ -21,9 +21,10 @@ export default function CashierReport({
 }) {
   const router = useRouter();
 
-  const [shift, setShift] = useState(
-    currentShift || null
-  );
+  const [shift, setShift] =
+    useState(
+      currentShift || null
+    );
 
   const [
     platforms,
@@ -78,12 +79,16 @@ export default function CashierReport({
   ] = useState(
     Array.from(
       {
-        length: 10,
+        length:
+          10,
       },
 
       () => ({
-        description: "",
-        amount: "",
+        description:
+          "",
+
+        amount:
+          "",
       })
     )
   );
@@ -118,11 +123,13 @@ export default function CashierReport({
     setMessageType,
   ] = useState("");
 
+  // Live clock used for 9:30 PM Nairobi closing window.
   const [
     now,
     setNow,
   ] = useState(
-    () => new Date()
+    () =>
+      new Date()
   );
 
   // ==================================================
@@ -144,7 +151,6 @@ export default function CashierReport({
   const shopId =
     user?.shop_id ||
     user?.shopId ||
-    currentShift?.shop_id ||
     null;
 
   const cashierId =
@@ -325,7 +331,7 @@ export default function CashierReport({
               : [];
 
           // ------------------------------------------
-          // READINGS
+          // PLATFORM READINGS
           // ------------------------------------------
 
           const readingResponse =
@@ -424,9 +430,13 @@ export default function CashierReport({
           // ------------------------------------------
           // EXPENSES
           //
-          // ALL expenses are loaded for financial totals.
-          // Private salary expenses are filtered from
-          // the cashier's 10 manual expense rows.
+          // ALL expenses are loaded for totals.
+          //
+          // Only MANUAL non-private expenses occupy
+          // the cashier's 10 manual expense positions.
+          //
+          // Salary and Cashier -> Accounts expenses
+          // therefore never consume a manual row.
           // ------------------------------------------
 
           const expenseResponse =
@@ -478,20 +488,31 @@ export default function CashierReport({
             loadedExpenses.filter(
               (
                 expense
-              ) =>
-                String(
-                  expense?.source_type ||
-                    "MANUAL"
-                )
-                  .trim()
-                  .toUpperCase() !==
-                  "SALARY" &&
-                expense?.is_private !==
-                  true
+              ) => {
+                const sourceType =
+                  String(
+                    expense?.source_type ||
+                      ""
+                  )
+                    .trim()
+                    .toUpperCase();
+
+                const manualSource =
+                  sourceType ===
+                    "" ||
+                  sourceType ===
+                    "MANUAL";
+
+                return (
+                  manualSource &&
+                  expense?.is_private !==
+                    true
+                );
+              }
             );
 
           // ------------------------------------------
-          // STATE
+          // SET STATE
           // ------------------------------------------
 
           setShift(
@@ -511,14 +532,14 @@ export default function CashierReport({
             loadedIncome
           );
 
-          // Keep ALL expenses here.
-          // Salary expenses must still affect totals.
+          // Keep ALL expenses for total calculations.
           setExpenses(
             loadedExpenses
           );
 
           // ------------------------------------------
           // OPENING VALUES
+          // DISPLAY ONLY
           // ------------------------------------------
 
           setOpeningInputs(
@@ -530,7 +551,8 @@ export default function CashierReport({
               };
 
               for (
-                const platform of loadedPlatforms
+                const platform of
+                loadedPlatforms
               ) {
                 const saved =
                   loadedReadings.find(
@@ -583,7 +605,8 @@ export default function CashierReport({
               };
 
               for (
-                const platform of loadedPlatforms
+                const platform of
+                loadedPlatforms
               ) {
                 const saved =
                   loadedReadings.find(
@@ -704,9 +727,6 @@ export default function CashierReport({
 
           // ------------------------------------------
           // MANUAL EXPENSE INPUTS
-          //
-          // Salary-generated private expenses
-          // NEVER occupy these 10 rows.
           // ------------------------------------------
 
           setExpenseInputs(
@@ -750,9 +770,7 @@ export default function CashierReport({
                     i
                   ]
                 ) {
-                  next[
-                    i
-                  ] = {
+                  next[i] = {
                     description:
                       loadedManualExpenses[
                         i
@@ -846,8 +864,8 @@ export default function CashierReport({
 
   const savedOpeningIds =
     useMemo(
-      () => {
-        return new Set(
+      () =>
+        new Set(
           readings
             .filter(
               (
@@ -862,8 +880,7 @@ export default function CashierReport({
               ) =>
                 row.platform_id
             )
-        );
-      },
+        ),
       [
         readings,
       ]
@@ -871,8 +888,8 @@ export default function CashierReport({
 
   const savedClosingIds =
     useMemo(
-      () => {
-        return new Set(
+      () =>
+        new Set(
           readings
             .filter(
               (
@@ -887,8 +904,7 @@ export default function CashierReport({
               ) =>
                 row.platform_id
             )
-        );
-      },
+        ),
       [
         readings,
       ]
@@ -969,7 +985,7 @@ export default function CashierReport({
             ) =>
               sum +
               Number(
-                entry.amount ||
+                entry.amount ??
                   0
               ),
             0
@@ -983,7 +999,7 @@ export default function CashierReport({
             ) =>
               sum +
               Number(
-                entry.amount ||
+                entry.amount ??
                   0
               ),
             0
@@ -991,7 +1007,6 @@ export default function CashierReport({
 
         return {
           companyEntries,
-
           mshwariEntries,
 
           companyTotal:
@@ -1046,71 +1061,50 @@ export default function CashierReport({
         null
     );
 
-  const activeCompanyIndex =
-    companySlots.findIndex(
-      (
-        entry
-      ) =>
-        !entry
-    );
-
-  const activeMshwariIndex =
-    mshwariSlots.findIndex(
-      (
-        entry
-      ) =>
-        !entry
-    );
-
   // ==================================================
   // MANUAL EXPENSES
-  //
-  // Salary expense stays in `expenses` for totals,
-  // but never appears in cashier's manual rows.
   // ==================================================
 
   const manualExpenses =
     useMemo(
-      () => {
-        return expenses.filter(
+      () =>
+        expenses.filter(
           (
             expense
-          ) =>
-            String(
-              expense?.source_type ||
-                "MANUAL"
-            )
-              .trim()
-              .toUpperCase() !==
-              "SALARY" &&
-            expense?.is_private !==
-              true
-        );
-      },
+          ) => {
+            const sourceType =
+              String(
+                expense?.source_type ||
+                  ""
+              )
+                .trim()
+                .toUpperCase();
+
+            return (
+              (
+                sourceType ===
+                  "" ||
+                sourceType ===
+                  "MANUAL"
+              ) &&
+              expense?.is_private !==
+                true
+            );
+          }
+        ),
       [
         expenses,
       ]
     );
 
   // ==================================================
-  // EXPENSE SEQUENTIAL UNLOCKING
-  // ==================================================
-
-  const activeExpenseIndex =
-    manualExpenses.length <
-    10
-      ? manualExpenses.length
-      : -1;
-
-  // ==================================================
   // PLATFORM ROWS
-  // ALL readings may be negative, zero or positive.
   // ==================================================
 
   const platformRows =
     useMemo(
-      () => {
-        return platforms.map(
+      () =>
+        platforms.map(
           (
             platform
           ) => {
@@ -1138,14 +1132,16 @@ export default function CashierReport({
 
             const openingRaw =
               openingRow
-                ? openingRow.reading_value
+                ? openingRow
+                    .reading_value
                 : openingInputs[
                     platform.id
                   ];
 
             const closingRaw =
               closingRow
-                ? closingRow.reading_value
+                ? closingRow
+                    .reading_value
                 : closingInputs[
                     platform.id
                   ];
@@ -1182,12 +1178,14 @@ export default function CashierReport({
                 null &&
               closing !==
                 null &&
-              Number.isFinite(
+              !Number.isNaN(
                 opening
               ) &&
-              Number.isFinite(
+              !Number.isNaN(
                 closing
-              )
+              ) &&
+              closing >=
+                opening
             ) {
               output =
                 roundMoney(
@@ -1200,9 +1198,7 @@ export default function CashierReport({
               ...platform,
 
               opening,
-
               closing,
-
               output,
 
               openingSaved:
@@ -1216,8 +1212,7 @@ export default function CashierReport({
                 ),
             };
           }
-        );
-      },
+        ),
       [
         platforms,
         readings,
@@ -1225,150 +1220,80 @@ export default function CashierReport({
         closingInputs,
       ]
     );
-
   // ==================================================
-  // SAVE FLOATS
+  // SAVE M-SHWARI FLOAT
+  //
+  // COMPANY FLOAT IS READ-ONLY.
+  // It is posted by Legend Accounts only.
   // ==================================================
 
   async function saveFloats() {
     const rowsToSave =
       [];
 
-    // ------------------------------------------
-    // CURRENT COMPANY SLOT
-    // ------------------------------------------
-
-    if (
-      activeCompanyIndex >=
-        0 &&
-      !companySlots[
-        activeCompanyIndex
-      ]
+    for (
+      let i = 0;
+      i < 3;
+      i += 1
     ) {
-      const raw =
-        floatInputs.company[
-          activeCompanyIndex
-        ];
-
       if (
-        raw !== "" &&
-        raw !==
-          undefined &&
-        raw !==
-          null
+        !mshwariSlots[
+          i
+        ]
       ) {
-        const value =
-          Number(
-            raw
-          );
+        const raw =
+          floatInputs
+            .mshwari[
+            i
+          ];
 
         if (
-          !Number.isFinite(
-            value
-          ) ||
-          value <= 0
+          raw !== "" &&
+          raw !==
+            undefined
         ) {
-          setMessage(
-            `Enter a valid Company Float ${
-              activeCompanyIndex +
-              1
-            }.`
-          );
+          const value =
+            Number(
+              raw
+            );
 
-          setMessageType(
-            "error"
-          );
-
-          return;
-        }
-
-        rowsToSave.push({
-          shift_id:
-            shiftId,
-
-          entry_type:
-            "COMPANY_FLOAT",
-
-          description:
-            `Float ${
-              activeCompanyIndex +
-              1
-            } from company`,
-
-          amount:
-            roundMoney(
+          if (
+            !Number.isFinite(
               value
-            ),
-        });
-      }
-    }
+            ) ||
+            value <= 0
+          ) {
+            setMessage(
+              `Enter a valid M-Shwari Float ${
+                i + 1
+              }.`
+            );
 
-    // ------------------------------------------
-    // CURRENT M-SHWARI SLOT
-    // ------------------------------------------
+            setMessageType(
+              "error"
+            );
 
-    if (
-      activeMshwariIndex >=
-        0 &&
-      !mshwariSlots[
-        activeMshwariIndex
-      ]
-    ) {
-      const raw =
-        floatInputs.mshwari[
-          activeMshwariIndex
-        ];
+            return;
+          }
 
-      if (
-        raw !== "" &&
-        raw !==
-          undefined &&
-        raw !==
-          null
-      ) {
-        const value =
-          Number(
-            raw
-          );
+          rowsToSave.push({
+            shift_id:
+              shiftId,
 
-        if (
-          !Number.isFinite(
-            value
-          ) ||
-          value <= 0
-        ) {
-          setMessage(
-            `Enter a valid M-Shwari Float ${
-              activeMshwariIndex +
-              1
-            }.`
-          );
+            entry_type:
+              "MSHWARI_FLOAT",
 
-          setMessageType(
-            "error"
-          );
+            description:
+              `Float ${
+                i + 1
+              } from M-Shwari`,
 
-          return;
+            amount:
+              roundMoney(
+                value
+              ),
+          });
         }
-
-        rowsToSave.push({
-          shift_id:
-            shiftId,
-
-          entry_type:
-            "MSHWARI_FLOAT",
-
-          description:
-            `Float ${
-              activeMshwariIndex +
-              1
-            } from M-Shwari`,
-
-          amount:
-            roundMoney(
-              value
-            ),
-        });
       }
     }
 
@@ -1377,7 +1302,7 @@ export default function CashierReport({
       0
     ) {
       setMessage(
-        "Enter an amount in the active Company or M-Shwari float row."
+        "Enter at least one M-Shwari float amount."
       );
 
       setMessageType(
@@ -1435,16 +1360,14 @@ export default function CashierReport({
         throw new Error(
           result?.message ||
             result?.details ||
-            "Unable to save float."
+            "Unable to save M-Shwari float."
         );
       }
 
       const newFloatTotal =
         roundMoney(
-          floatData
-            .companyTotal +
-            floatData
-              .mshwariTotal +
+          floatData.companyTotal +
+            floatData.mshwariTotal +
             rowsToSave.reduce(
               (
                 sum,
@@ -1452,7 +1375,7 @@ export default function CashierReport({
               ) =>
                 sum +
                 Number(
-                  row.amount ||
+                  row.amount ??
                     0
                 ),
               0
@@ -1491,12 +1414,12 @@ export default function CashierReport({
         !shiftResponse.ok
       ) {
         throw new Error(
-          "Float saved but shift total could not be updated."
+          "M-Shwari float saved but shift total could not be updated."
         );
       }
 
       setMessage(
-        "Float saved successfully. The next float row is now available."
+        "M-Shwari float saved successfully."
       );
 
       setMessageType(
@@ -1507,7 +1430,7 @@ export default function CashierReport({
     } catch (error) {
       setMessage(
         error?.message ||
-          "Unable to save float."
+          "Unable to save M-Shwari float."
       );
 
       setMessageType(
@@ -1521,49 +1444,129 @@ export default function CashierReport({
   }
 
   // ==================================================
-  // SAVE MANUAL EXPENSE
+  // SAVE MANUAL EXPENSES
   //
-  // Salary-generated private expenses are excluded
-  // from the 10-row cashier sequence.
+  // Automatic Cashier -> Accounts expenses and
+  // private expenses do not occupy these 10 rows.
   // ==================================================
 
   async function saveExpenses() {
+    const rowsToSave =
+      [];
+
+    for (
+      let i = 0;
+      i < 10;
+      i += 1
+    ) {
+      if (
+        manualExpenses[
+          i
+        ]
+      ) {
+        continue;
+      }
+
+      const description =
+        String(
+          expenseInputs[
+            i
+          ]?.description ||
+            ""
+        ).trim();
+
+      const rawAmount =
+        expenseInputs[
+          i
+        ]?.amount;
+
+      const hasDescription =
+        description !==
+        "";
+
+      const hasAmount =
+        rawAmount !== "" &&
+        rawAmount !==
+          undefined &&
+        rawAmount !==
+          null;
+
+      if (
+        !hasDescription &&
+        !hasAmount
+      ) {
+        continue;
+      }
+
+      if (
+        !hasDescription
+      ) {
+        setMessage(
+          `Enter the description for expense ${
+            i + 1
+          }.`
+        );
+
+        setMessageType(
+          "error"
+        );
+
+        return;
+      }
+
+      const amount =
+        Number(
+          rawAmount
+        );
+
+      if (
+        !hasAmount ||
+        !Number.isFinite(
+          amount
+        ) ||
+        amount <= 0
+      ) {
+        setMessage(
+          `Enter a valid amount for expense ${
+            i + 1
+          }.`
+        );
+
+        setMessageType(
+          "error"
+        );
+
+        return;
+      }
+
+      rowsToSave.push({
+        shift_id:
+          shiftId,
+
+        description,
+
+        amount:
+          roundMoney(
+            amount
+          ),
+
+        created_by:
+          cashierId,
+
+        source_type:
+          "MANUAL",
+
+        is_private:
+          false,
+      });
+    }
+
     if (
-      activeExpenseIndex <
+      rowsToSave.length ===
       0
     ) {
       setMessage(
-        "All 10 expense rows are already saved."
-      );
-
-      setMessageType(
-        "success"
-      );
-
-      return;
-    }
-
-    const description =
-      String(
-        expenseInputs[
-          activeExpenseIndex
-        ]?.description ||
-          ""
-      ).trim();
-
-    const rawAmount =
-      expenseInputs[
-        activeExpenseIndex
-      ]?.amount;
-
-    if (
-      !description
-    ) {
-      setMessage(
-        `Enter the description for expense ${
-          activeExpenseIndex +
-          1
-        }.`
+        "Enter at least one manual expense."
       );
 
       setMessageType(
@@ -1572,73 +1575,6 @@ export default function CashierReport({
 
       return;
     }
-
-    if (
-      rawAmount === "" ||
-      rawAmount ===
-        undefined ||
-      rawAmount ===
-        null
-    ) {
-      setMessage(
-        `Enter the amount for expense ${
-          activeExpenseIndex +
-          1
-        }.`
-      );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    const amount =
-      Number(
-        rawAmount
-      );
-
-    if (
-      !Number.isFinite(
-        amount
-      ) ||
-      amount <= 0
-    ) {
-      setMessage(
-        `Enter a valid amount for expense ${
-          activeExpenseIndex +
-          1
-        }.`
-      );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    const rowToSave = {
-      shift_id:
-        shiftId,
-
-      description,
-
-      amount:
-        roundMoney(
-          amount
-        ),
-
-      created_by:
-        cashierId,
-
-      source_type:
-        "MANUAL",
-
-      is_private:
-        false,
-    };
 
     try {
       setSavingExpenses(
@@ -1672,7 +1608,7 @@ export default function CashierReport({
 
             body:
               JSON.stringify(
-                rowToSave
+                rowsToSave
               ),
           }
         );
@@ -1688,14 +1624,12 @@ export default function CashierReport({
         throw new Error(
           result?.message ||
             result?.details ||
-            "Unable to save expense."
+            "Unable to save expenses."
         );
       }
 
-      // IMPORTANT:
-      // Include ALL expenses here.
-      // Hidden salary expenses still count financially.
-
+      // ALL expenses count toward total,
+      // including automatic return expenses.
       const existingExpenseTotal =
         expenses.reduce(
           (
@@ -1704,7 +1638,7 @@ export default function CashierReport({
           ) =>
             sum +
             Number(
-              expense.amount ||
+              expense.amount ??
                 0
             ),
           0
@@ -1713,8 +1647,17 @@ export default function CashierReport({
       const newExpenseTotal =
         roundMoney(
           existingExpenseTotal +
-            Number(
-              rowToSave.amount
+            rowsToSave.reduce(
+              (
+                sum,
+                expense
+              ) =>
+                sum +
+                Number(
+                  expense.amount ??
+                    0
+                ),
+              0
             )
         );
 
@@ -1750,15 +1693,12 @@ export default function CashierReport({
         !shiftResponse.ok
       ) {
         throw new Error(
-          "Expense saved but shift total could not be updated."
+          "Expenses saved but shift total could not be updated."
         );
       }
 
       setMessage(
-        `Expense ${
-          activeExpenseIndex +
-          1
-        } saved successfully.`
+        "Expenses saved successfully."
       );
 
       setMessageType(
@@ -1769,7 +1709,7 @@ export default function CashierReport({
     } catch (error) {
       setMessage(
         error?.message ||
-          "Unable to save expense."
+          "Unable to save expenses."
       );
 
       setMessageType(
@@ -1784,7 +1724,7 @@ export default function CashierReport({
 
   // ==================================================
   // SAVE CLOSING READINGS
-  // 9:30 PM - MIDNIGHT NAIROBI
+  // 12-HOUR CASHIER WINDOW: 9:30 PM - MIDNIGHT
   // ==================================================
 
   async function saveClosingReadings() {
@@ -1844,7 +1784,8 @@ export default function CashierReport({
     }
 
     for (
-      const platform of unsavedPlatforms
+      const platform of
+      unsavedPlatforms
     ) {
       const openingRow =
         readings.find(
@@ -1872,7 +1813,8 @@ export default function CashierReport({
       }
 
       const openingRaw =
-        openingRow.reading_value;
+        openingRow
+          .reading_value;
 
       const closingRaw =
         closingInputs[
@@ -1890,17 +1832,21 @@ export default function CashierReport({
         );
 
       if (
-        closingRaw === "" ||
+        closingRaw ===
+          "" ||
         closingRaw ===
           undefined ||
         closingRaw ===
           null ||
-        !Number.isFinite(
+        Number.isNaN(
           closing
         ) ||
-        !Number.isFinite(
+        closing < 0 ||
+        Number.isNaN(
           opening
-        )
+        ) ||
+        closing <
+          opening
       ) {
         setMessage(
           `Enter a valid closing reading for ${platform.platform_name}.`
@@ -1934,18 +1880,13 @@ export default function CashierReport({
       }
 
       const recordedAt =
-        new Date().toISOString();
+        new Date()
+          .toISOString();
 
       for (
-        const platform of unsavedPlatforms
+        const platform of
+        unsavedPlatforms
       ) {
-        const closingValue =
-          Number(
-            closingInputs[
-              platform.id
-            ]
-          );
-
         const response =
           await fetch(
             `${supabaseUrl}/rest/v1/platform_readings`,
@@ -1977,7 +1918,11 @@ export default function CashierReport({
 
                   reading_value:
                     roundMoney(
-                      closingValue
+                      Number(
+                        closingInputs[
+                          platform.id
+                        ]
+                      )
                     ),
 
                   recorded_at:
@@ -2009,7 +1954,8 @@ export default function CashierReport({
         0;
 
       for (
-        const platform of platforms
+        const platform of
+        platforms
       ) {
         const openingRow =
           readings.find(
@@ -2045,63 +1991,34 @@ export default function CashierReport({
                 platform.id
               ];
 
-        const openingMissing =
-          openingRaw ===
-            null ||
-          openingRaw ===
-            undefined ||
-          openingRaw ===
-            "";
-
-        const closingMissing =
-          closingRaw ===
-            null ||
-          closingRaw ===
-            undefined ||
-          closingRaw ===
-            "";
-
-        if (
-          openingMissing ||
-          closingMissing
-        ) {
-          throw new Error(
-            `Platform readings for ${platform.platform_name} are incomplete.`
-          );
-        }
-
         const opening =
-          Number(
-            openingRaw
-          );
+          openingRaw ===
+            null ||
+          openingRaw ===
+            undefined ||
+          openingRaw ===
+            ""
+            ? 0
+            : Number(
+                openingRaw
+              );
 
         const closing =
-          Number(
-            closingRaw
-          );
-
-        if (
-          !Number.isFinite(
-            opening
-          ) ||
-          !Number.isFinite(
-            closing
-          )
-        ) {
-          throw new Error(
-            `Platform readings for ${platform.platform_name} are invalid.`
-          );
-        }
+          closingRaw ===
+            null ||
+          closingRaw ===
+            undefined ||
+          closingRaw ===
+            ""
+            ? 0
+            : Number(
+                closingRaw
+              );
 
         totalOutput +=
           closing -
           opening;
       }
-
-      totalOutput =
-        roundMoney(
-          totalOutput
-        );
 
       const shiftResponse =
         await fetch(
@@ -2126,7 +2043,9 @@ export default function CashierReport({
             body:
               JSON.stringify({
                 total_output:
-                  totalOutput,
+                  roundMoney(
+                    totalOutput
+                  ),
               }),
           }
         );
@@ -2134,15 +2053,8 @@ export default function CashierReport({
       if (
         !shiftResponse.ok
       ) {
-        const shiftResult =
-          await safeJson(
-            shiftResponse
-          );
-
         throw new Error(
-          shiftResult?.message ||
-            shiftResult?.details ||
-            "Closing readings saved but sales total could not be updated."
+          "Closing readings saved but sales total could not be updated."
         );
       }
 
@@ -2172,9 +2084,6 @@ export default function CashierReport({
   }
 
   // ==================================================
-  // CONTINUE WITH PART 2 DIRECTLY BELOW
-  // ==================================================
-// ==================================================
   // TOTALS
   // ==================================================
 
@@ -2205,32 +2114,30 @@ export default function CashierReport({
   const totalAdded =
     roundMoney(
       openingBalance +
-        floatData
-          .companyTotal +
-        floatData
-          .mshwariTotal
+        floatData.companyTotal +
+        floatData.mshwariTotal
     );
 
   const totalSales =
     roundMoney(
       openingBalance +
-        floatData
-          .companyTotal +
-        floatData
-          .mshwariTotal +
+        floatData.companyTotal +
+        floatData.mshwariTotal +
         savedTotalOutput
     );
 
   const reportDate =
     formatReportDate(
       shift?.opened_at ||
-        new Date().toISOString()
+        new Date()
+          .toISOString()
     );
 
   const reportDay =
     formatReportDay(
       shift?.opened_at ||
-        new Date().toISOString()
+        new Date()
+          .toISOString()
     );
 
   const shiftStatus =
@@ -2238,45 +2145,6 @@ export default function CashierReport({
       shift?.status ||
         "OPEN"
     ).toUpperCase();
-
-  // ==================================================
-  // WELCOME / GOODBYE MESSAGE
-  // ==================================================
-
-  const shiftIsClosed =
-    shiftStatus ===
-      "CLOSED" ||
-    shiftStatus ===
-      "COMPLETED";
-
-  const nairobiHour =
-    getNairobiHour(
-      now
-    );
-
-  let shiftGreeting;
-
-  if (
-    shiftIsClosed
-  ) {
-    shiftGreeting =
-      "Good Bye 👋 — Shift 1 Closed";
-  } else if (
-    nairobiHour >= 5 &&
-    nairobiHour < 12
-  ) {
-    shiftGreeting =
-      "Good Morning 🌞 — Welcome to Shift 1";
-  } else if (
-    nairobiHour >= 12 &&
-    nairobiHour < 17
-  ) {
-    shiftGreeting =
-      "Good Afternoon ☀️ — Welcome to Shift 1";
-  } else {
-    shiftGreeting =
-      "Good Evening 🌙 — Welcome to Shift 1";
-  }
 
   // ==================================================
   // LOADING
@@ -2302,7 +2170,6 @@ export default function CashierReport({
   ) {
     return null;
   }
-
   // ==================================================
   // DISPLAY
   // ==================================================
@@ -2484,26 +2351,6 @@ export default function CashierReport({
             />
           </div>
 
-          {/* ======================================= */}
-          {/* GREETING */}
-          {/* ======================================= */}
-
-          <div
-            style={{
-              ...shiftGreetingStyle,
-
-              ...(shiftIsClosed
-                ? shiftGoodbyeStyle
-                : shiftWelcomeStyle),
-            }}
-          >
-            {shiftGreeting}
-          </div>
-
-          {/* ======================================= */}
-          {/* MESSAGE */}
-          {/* ======================================= */}
-
           {message && (
             <div
               style={{
@@ -2525,10 +2372,6 @@ export default function CashierReport({
               {message}
             </div>
           )}
-
-          {/* ======================================= */}
-          {/* MAIN REPORT GRID */}
-          {/* ======================================= */}
 
           <div
             style={
@@ -2570,132 +2413,78 @@ export default function CashierReport({
                 }
               />
 
+              {/* COMPANY FLOAT - READ ONLY */}
+
               {companySlots.map(
                 (
                   entry,
                   index
-                ) => {
-                  const isActive =
-                    !entry &&
-                    index ===
-                      activeCompanyIndex;
-
-                  return (
-                    <EditableFloatRow
-                      key={`company-${index}`}
-                      label={`Added Float ${
-                        index +
-                        1
-                      } From Company`}
-                      savedEntry={
-                        entry
-                      }
-                      value={
-                        floatInputs
-                          .company[
-                          index
-                        ] ||
-                        ""
-                      }
-                      locked={
-                        !entry &&
-                        !isActive
-                      }
-                      disabled={
-                        savingFloats ||
-                        !isActive
-                      }
-                      onChange={(
-                        value
-                      ) => {
-                        setFloatInputs(
-                          (
-                            previous
-                          ) => {
-                            const company =
-                              [
-                                ...previous.company,
-                              ];
-
-                            company[
-                              index
-                            ] =
-                              value;
-
-                            return {
-                              ...previous,
-                              company,
-                            };
-                          }
-                        );
-                      }}
-                    />
-                  );
-                }
+                ) => (
+                  <ReadOnlyCompanyFloatRow
+                    key={`company-${index}`}
+                    label={`Added Float ${
+                      index +
+                      1
+                    } From Company`}
+                    entry={
+                      entry
+                    }
+                  />
+                )
               )}
+
+              {/* M-SHWARI FLOAT */}
 
               {mshwariSlots.map(
                 (
                   entry,
                   index
-                ) => {
-                  const isActive =
-                    !entry &&
-                    index ===
-                      activeMshwariIndex;
+                ) => (
+                  <EditableFloatRow
+                    key={`mshwari-${index}`}
+                    label={`Added Float ${
+                      index +
+                      1
+                    } From M-Shwari`}
+                    savedEntry={
+                      entry
+                    }
+                    value={
+                      floatInputs
+                        .mshwari[
+                        index
+                      ] ||
+                      ""
+                    }
+                    disabled={
+                      savingFloats
+                    }
+                    onChange={(
+                      value
+                    ) => {
+                      setFloatInputs(
+                        (
+                          previous
+                        ) => {
+                          const mshwari =
+                            [
+                              ...previous.mshwari,
+                            ];
 
-                  return (
-                    <EditableFloatRow
-                      key={`mshwari-${index}`}
-                      label={`Added Float ${
-                        index +
-                        1
-                      } From M-Shwari`}
-                      savedEntry={
-                        entry
-                      }
-                      value={
-                        floatInputs
-                          .mshwari[
-                          index
-                        ] ||
-                        ""
-                      }
-                      locked={
-                        !entry &&
-                        !isActive
-                      }
-                      disabled={
-                        savingFloats ||
-                        !isActive
-                      }
-                      onChange={(
-                        value
-                      ) => {
-                        setFloatInputs(
-                          (
-                            previous
-                          ) => {
-                            const mshwari =
-                              [
-                                ...previous.mshwari,
-                              ];
+                          mshwari[
+                            index
+                          ] =
+                            value;
 
-                            mshwari[
-                              index
-                            ] =
-                              value;
-
-                            return {
-                              ...previous,
-                              mshwari,
-                            };
-                          }
-                        );
-                      }}
-                    />
-                  );
-                }
+                          return {
+                            ...previous,
+                            mshwari,
+                          };
+                        }
+                      );
+                    }}
+                  />
+                )
               )}
 
               <div
@@ -2716,6 +2505,15 @@ export default function CashierReport({
 
               <div
                 style={
+                  companyFloatNoticeStyle
+                }
+              >
+                Company Float 1, 2 and 3 are read-only.
+                Legend Accounts posts them automatically.
+              </div>
+
+              <div
+                style={
                   panelButtonWrapStyle
                 }
               >
@@ -2725,39 +2523,20 @@ export default function CashierReport({
                     saveFloats
                   }
                   disabled={
-                    savingFloats ||
-                    (
-                      activeCompanyIndex <
-                        0 &&
-                      activeMshwariIndex <
-                        0
-                    )
+                    savingFloats
                   }
                   style={{
                     ...greenActionStyle,
 
-                    backgroundColor:
-                      savingFloats ||
-                      (
-                        activeCompanyIndex <
-                          0 &&
-                        activeMshwariIndex <
-                          0
-                      )
-                        ? "#94a3b8"
-                        : "#07912a",
+                    opacity:
+                      savingFloats
+                        ? 0.6
+                        : 1,
                   }}
                 >
                   {savingFloats
                     ? "Saving..."
-                    : (
-                        activeCompanyIndex <
-                          0 &&
-                        activeMshwariIndex <
-                          0
-                      )
-                    ? "All Floats Saved"
-                    : "Save Added Float"}
+                    : "Save M-Shwari Float"}
                 </button>
               </div>
             </section>
@@ -2883,44 +2662,43 @@ export default function CashierReport({
                       </div>
                     )}
 
-                    {showClosing &&
-                      (
-                        platform.closingSaved ? (
-                          <SavedReadingBox
-                            value={
-                              platform.closing
-                            }
-                          />
-                        ) : (
-                          <ReadingInput
-                            value={
-                              closingInputs[
-                                platform.id
-                              ] ??
-                              ""
-                            }
-                            disabled={
-                              !closingWindowOpen ||
-                              !allOpeningsSaved ||
-                              savingClosing
-                            }
-                            onChange={(
-                              value
-                            ) =>
-                              setClosingInputs(
-                                (
-                                  previous
-                                ) => ({
-                                  ...previous,
+                    {showClosing && (
+                      platform.closingSaved ? (
+                        <SavedReadingBox
+                          value={
+                            platform.closing
+                          }
+                        />
+                      ) : (
+                        <ReadingInput
+                          value={
+                            closingInputs[
+                              platform.id
+                            ] ??
+                            ""
+                          }
+                          disabled={
+                            !closingWindowOpen ||
+                            !allOpeningsSaved ||
+                            savingClosing
+                          }
+                          onChange={(
+                            value
+                          ) =>
+                            setClosingInputs(
+                              (
+                                previous
+                              ) => ({
+                                ...previous,
 
-                                  [platform.id]:
-                                    value,
-                                })
-                              )
-                            }
-                          />
-                        )
-                      )}
+                                [platform.id]:
+                                  value,
+                              })
+                            )
+                          }
+                        />
+                      )
+                    )}
 
                     <div
                       style={
@@ -3052,15 +2830,6 @@ export default function CashierReport({
                       index
                     ];
 
-                  const isActive =
-                    !saved &&
-                    index ===
-                      activeExpenseIndex;
-
-                  const isLocked =
-                    !saved &&
-                    !isActive;
-
                   return (
                     <div
                       key={
@@ -3098,24 +2867,6 @@ export default function CashierReport({
                             ✓
                           </div>
                         </>
-                      ) : isLocked ? (
-                        <>
-                          <div
-                            style={
-                              lockedExpenseStyle
-                            }
-                          >
-                            Locked
-                          </div>
-
-                          <div
-                            style={
-                              lockedExpenseStyle
-                            }
-                          >
-                            Locked
-                          </div>
-                        </>
                       ) : (
                         <>
                           <input
@@ -3127,9 +2878,6 @@ export default function CashierReport({
                               ""
                             }
                             placeholder="Description"
-                            disabled={
-                              savingExpenses
-                            }
                             onChange={(
                               event
                             ) => {
@@ -3177,9 +2925,6 @@ export default function CashierReport({
                               ""
                             }
                             placeholder="0.00"
-                            disabled={
-                              savingExpenses
-                            }
                             onChange={(
                               event
                             ) => {
@@ -3239,6 +2984,16 @@ export default function CashierReport({
 
               <div
                 style={
+                  automaticExpenseNoticeStyle
+                }
+              >
+                Cashier → Legend Accounts transfers are added
+                automatically to Total Expenses after Accounts
+                confirms receipt.
+              </div>
+
+              <div
+                style={
                   panelButtonWrapStyle
                 }
               >
@@ -3248,30 +3003,20 @@ export default function CashierReport({
                     saveExpenses
                   }
                   disabled={
-                    savingExpenses ||
-                    activeExpenseIndex <
-                      0
+                    savingExpenses
                   }
                   style={{
                     ...redActionStyle,
 
-                    backgroundColor:
-                      savingExpenses ||
-                      activeExpenseIndex <
-                        0
-                        ? "#94a3b8"
-                        : "#c50000",
+                    opacity:
+                      savingExpenses
+                        ? 0.6
+                        : 1,
                   }}
                 >
                   {savingExpenses
                     ? "Saving..."
-                    : activeExpenseIndex >=
-                      0
-                    ? `Save Expense ${
-                        activeExpenseIndex +
-                        1
-                      }`
-                    : "All Expenses Saved"}
+                    : "Save Expenses"}
                 </button>
               </div>
             </section>
@@ -3330,19 +3075,6 @@ export default function CashierReport({
               }
             />
 
-            <CashierSalaryPanel
-              user={
-                user
-              }
-              currentShift={
-                shift ||
-                currentShift
-              }
-              onSalaryPaid={
-                loadReport
-              }
-            />
-
             <CashierManagementPanel
               user={
                 user
@@ -3356,6 +3088,19 @@ export default function CashierReport({
             <CashierAccountsPanel
               user={
                 user
+              }
+            />
+
+            <CashierAccountsReturnPanel
+              user={
+                user
+              }
+              currentShift={
+                shift ||
+                currentShift
+              }
+              onReturnChanged={
+                loadReport
               }
             />
           </div>
@@ -3374,9 +3119,6 @@ export default function CashierReport({
   );
 }
 
-// ==================================================
-// CONTINUE WITH PART 3 DIRECTLY BELOW
-// ==================================================
 // ==================================================
 // COMPONENTS
 // ==================================================
@@ -3459,7 +3201,8 @@ function InfoCard({
   tone,
 }) {
   const background =
-    tone === "green"
+    tone ===
+    "green"
       ? "#07912a"
       : tone ===
         "brown"
@@ -3509,7 +3252,8 @@ function PanelTitle({
   tone,
 }) {
   const background =
-    tone === "green"
+    tone ===
+    "green"
       ? "#087c33"
       : tone ===
         "red"
@@ -3564,13 +3308,57 @@ function IncomeDisplayRow({
   );
 }
 
+// ==================================================
+// COMPANY FLOAT - READ ONLY
+// ==================================================
+
+function ReadOnlyCompanyFloatRow({
+  label,
+  entry,
+}) {
+  return (
+    <div
+      style={
+        incomeRowStyle
+      }
+    >
+      <div>
+        {label}{" "}
+
+        <span
+          style={
+            readOnlyInlineStyle
+          }
+        >
+          {entry
+            ? "✓"
+            : "🔒"}
+        </span>
+      </div>
+
+      <div
+        style={
+          entry
+            ? savedMoneyStyle
+            : lockedMoneyStyle
+        }
+      >
+        {entry
+          ? money(
+              entry.amount
+            )
+          : "0.00"}
+      </div>
+    </div>
+  );
+}
+
 function EditableFloatRow({
   label,
   savedEntry,
   value,
   onChange,
   disabled,
-  locked,
 }) {
   return (
     <div
@@ -3602,14 +3390,6 @@ function EditableFloatRow({
             savedEntry.amount
           )}
         </div>
-      ) : locked ? (
-        <div
-          style={
-            lockedFloatStyle
-          }
-        >
-          Locked
-        </div>
       ) : (
         <input
           type="number"
@@ -3637,14 +3417,6 @@ function EditableFloatRow({
   );
 }
 
-// ==================================================
-// PLATFORM READING INPUT
-//
-// IMPORTANT:
-// NO minimum.
-// Negative / zero / positive are all valid.
-// ==================================================
-
 function ReadingInput({
   value,
   onChange,
@@ -3653,7 +3425,7 @@ function ReadingInput({
   return (
     <input
       type="number"
-      step="any"
+      min="0"
       value={
         value
       }
@@ -3696,7 +3468,8 @@ function SummaryBox({
   tone,
 }) {
   const background =
-    tone === "red"
+    tone ===
+    "red"
       ? "#ef233c"
       : tone ===
         "navy"
@@ -3740,7 +3513,6 @@ function SummaryBox({
     </div>
   );
 }
-
 // ==================================================
 // HELPERS
 // ==================================================
@@ -3811,7 +3583,8 @@ function roundMoney(
         Number.EPSILON
       ) *
         100
-    ) / 100
+    ) /
+    100
   );
 }
 
@@ -3876,48 +3649,8 @@ function displayTime(
 }
 
 // ==================================================
-// NAIROBI GREETING HOUR
-// ==================================================
-
-function getNairobiHour(
-  date =
-    new Date()
-) {
-  const formatter =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone:
-          "Africa/Nairobi",
-
-        hour:
-          "2-digit",
-
-        hourCycle:
-          "h23",
-      }
-    );
-
-  const parts =
-    formatter.formatToParts(
-      date
-    );
-
-  return Number(
-    parts.find(
-      (
-        part
-      ) =>
-        part.type ===
-        "hour"
-    )?.value ||
-      0
-  );
-}
-
-// ==================================================
 // 12-HOUR CASHIER CLOSING WINDOW
-// 21:30 INCLUSIVE TO MIDNIGHT EXCLUSIVE
+// NAIROBI: 21:30 INCLUSIVE TO MIDNIGHT EXCLUSIVE
 // ==================================================
 
 function is12HourClosingWindow(
@@ -3937,6 +3670,9 @@ function is12HourClosingWindow(
         minute:
           "2-digit",
 
+        second:
+          "2-digit",
+
         hourCycle:
           "h23",
       }
@@ -3947,41 +3683,44 @@ function is12HourClosingWindow(
       date
     );
 
+  const values = {};
+
+  for (
+    const part of
+    parts
+  ) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[
+        part.type
+      ] =
+        part.value;
+    }
+  }
+
   const hour =
     Number(
-      parts.find(
-        (
-          part
-        ) =>
-          part.type ===
-          "hour"
-      )?.value ||
-        0
+      values.hour
     );
 
   const minute =
     Number(
-      parts.find(
-        (
-          part
-        ) =>
-          part.type ===
-          "minute"
-      )?.value ||
-        0
+      values.minute
     );
 
-  const totalMinutes =
+  const minutesSinceMidnight =
     hour *
       60 +
     minute;
 
   return (
-    totalMinutes >=
+    minutesSinceMidnight >=
       21 *
         60 +
         30 &&
-    totalMinutes <
+    minutesSinceMidnight <
       24 *
         60
   );
@@ -4148,57 +3887,6 @@ const topGridStyle = {
     "10px",
 };
 
-const shiftGreetingStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "14px 18px",
-
-  marginBottom:
-    "10px",
-
-  borderRadius:
-    "8px",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "20px",
-
-  fontWeight:
-    "900",
-
-  letterSpacing:
-    "0.3px",
-};
-
-const shiftWelcomeStyle = {
-  backgroundColor:
-    "#ecfdf5",
-
-  color:
-    "#166534",
-
-  border:
-    "1px solid #86efac",
-};
-
-const shiftGoodbyeStyle = {
-  backgroundColor:
-    "#eff6ff",
-
-  color:
-    "#1e3a8a",
-
-  border:
-    "1px solid #93c5fd",
-};
-
 const shopCardStyle = {
   backgroundColor:
     "#08628f",
@@ -4353,24 +4041,27 @@ const savedMoneyStyle = {
     "right",
 };
 
-const lockedFloatStyle = {
+const lockedMoneyStyle = {
   padding:
     "7px",
 
   border:
-    "1px solid #d1d5db",
+    "1px solid #cbd5e1",
 
   backgroundColor:
-    "#f3f4f6",
+    "#f1f5f9",
 
   color:
-    "#6b7280",
+    "#64748b",
 
   borderRadius:
     "4px",
 
   textAlign:
-    "center",
+    "right",
+
+  fontWeight:
+    "bold",
 };
 
 const missingReadingStyle = {
@@ -4404,6 +4095,14 @@ const savedInlineStyle = {
     "bold",
 };
 
+const readOnlyInlineStyle = {
+  color:
+    "#1d4ed8",
+
+  fontWeight:
+    "bold",
+};
+
 const incomeTotalStyle = {
   display:
     "flex",
@@ -4416,6 +4115,61 @@ const incomeTotalStyle = {
 
   backgroundColor:
     "#dcfce7",
+};
+
+const companyFloatNoticeStyle = {
+  margin:
+    "8px",
+
+  padding:
+    "8px",
+
+  backgroundColor:
+    "#eff6ff",
+
+  color:
+    "#1e40af",
+
+  border:
+    "1px solid #bfdbfe",
+
+  borderRadius:
+    "5px",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "9px",
+};
+
+const automaticExpenseNoticeStyle = {
+  margin:
+    "8px",
+
+  padding:
+    "8px",
+
+  backgroundColor:
+    "#fff7ed",
+
+  color:
+    "#9a3412",
+
+  border:
+    "1px solid #fed7aa",
+
+  borderRadius:
+    "5px",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "9px",
+
+  lineHeight:
+    "1.4",
 };
 
 const panelButtonWrapStyle = {
@@ -4675,23 +4429,6 @@ const savedExpenseStyle = {
     "4px",
 };
 
-const lockedExpenseStyle = {
-  padding:
-    "6px",
-
-  border:
-    "1px solid #d1d5db",
-
-  backgroundColor:
-    "#f3f4f6",
-
-  color:
-    "#6b7280",
-
-  borderRadius:
-    "4px",
-};
-
 const expenseTotalStyle = {
   display:
     "flex",
@@ -4723,26 +4460,6 @@ const summaryGridStyle = {
     "10px",
 };
 
-// Four lower modules:
-// Savings, Salary, Management, Accounts.
-// Two columns keeps the Salary panel readable.
-const lowerGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(2, minmax(0, 1fr))",
-
-  gap:
-    "10px",
-
-  marginTop:
-    "10px",
-
-  alignItems:
-    "start",
-};
-
 const summaryValueStyle = {
   marginTop:
     "8px",
@@ -4761,6 +4478,23 @@ const summaryValueStyle = {
 
   fontSize:
     "20px",
+};
+
+const lowerGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(280px,1fr))",
+
+  gap:
+    "10px",
+
+  marginTop:
+    "10px",
+
+  alignItems:
+    "start",
 };
 
 const messageStyle = {
