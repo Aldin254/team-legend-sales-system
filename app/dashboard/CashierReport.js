@@ -11,7 +11,6 @@ import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
-import CashierManagementPanel from "./CashierManagementPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
@@ -3096,16 +3095,6 @@ export default function CashierReport({
             />
 
             <CashierSalaryPanel
-              user={
-                user
-              }
-              currentShift={
-                shift ||
-                currentShift
-              }
-            />
-
-            <CashierManagementPanel
               user={
                 user
               }
