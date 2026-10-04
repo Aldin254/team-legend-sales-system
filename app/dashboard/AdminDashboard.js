@@ -399,14 +399,6 @@ function DashboardHome({
         <DashboardCard
           title="SHIFT CORRECTIONS"
 Continue directly from:
-
-```jsx
-<DashboardCard
-  title="SHIFT CORRECTIONS"
-```
-
-Paste this underneath:
-
 ```javascript
           description="Correct Balance B/F, platform readings, expenses, savings and protected shift figures."
           accent="#7c3aed"
