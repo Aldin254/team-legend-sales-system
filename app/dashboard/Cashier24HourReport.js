@@ -12,6 +12,7 @@ import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
 import CashierManagementPanel from "./CashierManagementPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
+import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 
 import PlatformReadings24Hour from "./PlatformReadings24Hour";
 import CloseShift24Hour from "./CloseShift24Hour";
@@ -152,9 +153,6 @@ export default function Cashier24HourReport({
 
   // ==================================================
   // CASHIER NAME
-  //
-  // 24-hour shops may use one shared login.
-  // The actual person working is stored on the shift.
   // ==================================================
 
   const sharedAccountName =
@@ -323,8 +321,14 @@ export default function Cashier24HourReport({
           // ------------------------------------------
           // EXPENSES
           //
-          // Salary expenses are included in totals
-          // but hidden from manual cashier rows.
+          // All expenses remain included in totals.
+          //
+          // Only true MANUAL expenses populate the
+          // cashier's 10 editable rows.
+          //
+          // Salary and Cashier -> Accounts automatic
+          // expenses therefore do NOT consume a
+          // manual expense position.
           // ------------------------------------------
 
           const expenseResponse =
@@ -376,16 +380,27 @@ export default function Cashier24HourReport({
             loadedExpenses.filter(
               (
                 expense
-              ) =>
-                String(
-                  expense?.source_type ||
-                    "MANUAL"
-                )
-                  .trim()
-                  .toUpperCase() !==
-                  "SALARY" &&
-                expense?.is_private !==
-                  true
+              ) => {
+                const sourceType =
+                  String(
+                    expense?.source_type ||
+                      ""
+                  )
+                    .trim()
+                    .toUpperCase();
+
+                const manualSource =
+                  sourceType ===
+                    "" ||
+                  sourceType ===
+                    "MANUAL";
+
+                return (
+                  manualSource &&
+                  expense?.is_private !==
+                    true
+                );
+              }
             );
 
           // ------------------------------------------
@@ -401,8 +416,9 @@ export default function Cashier24HourReport({
             loadedIncome
           );
 
-          // Keep ALL expenses in state because
-          // totals must include private salary.
+          // Keep ALL expenses.
+          // Total Expenses must include:
+          // manual + salary + cashier return expenses.
           setExpenses(
             loadedExpenses
           );
@@ -488,10 +504,6 @@ export default function Cashier24HourReport({
 
           // ------------------------------------------
           // MANUAL EXPENSE INPUTS
-          //
-          // IMPORTANT:
-          // Do NOT populate these inputs from
-          // private salary expenses.
           // ------------------------------------------
 
           setExpenseInputs(
@@ -737,30 +749,39 @@ export default function Cashier24HourReport({
 
   // ==================================================
   // MANUAL EXPENSES
-  //
-  // Private salary expenses remain inside `expenses`
-  // for Total Expenses / Closing Balance calculations,
-  // but are completely excluded from cashier input rows.
   // ==================================================
 
   const manualExpenses =
     expenses.filter(
       (
         expense
-      ) =>
-        String(
-          expense?.source_type ||
-            "MANUAL"
-        )
-          .trim()
-          .toUpperCase() !==
-          "SALARY" &&
-        expense?.is_private !==
-          true
+      ) => {
+        const sourceType =
+          String(
+            expense?.source_type ||
+              ""
+          )
+            .trim()
+            .toUpperCase();
+
+        return (
+          (
+            sourceType ===
+              "" ||
+            sourceType ===
+              "MANUAL"
+          ) &&
+          expense?.is_private !==
+            true
+        );
+      }
     );
 
   // ==================================================
-  // SAVE FLOATS
+  // SAVE M-SHWARI FLOATS
+  //
+  // COMPANY FLOAT IS NEVER CREATED BY CASHIER.
+  // Accountant transfer backend is the only writer.
   // ==================================================
 
   async function saveFloats() {
@@ -772,80 +793,6 @@ export default function Cashier24HourReport({
       i < 3;
       i += 1
     ) {
-      // ------------------------------------------
-      // COMPANY FLOAT
-      // ------------------------------------------
-
-      const companyUnlocked =
-        i === 0 ||
-        Boolean(
-          companySlots[
-            i - 1
-          ]
-        );
-
-      if (
-        companyUnlocked &&
-        !companySlots[i]
-      ) {
-        const raw =
-          floatInputs.company[
-            i
-          ];
-
-        if (
-          raw !== "" &&
-          raw !==
-            undefined
-        ) {
-          const value =
-            Number(
-              raw
-            );
-
-          if (
-            !Number.isFinite(
-              value
-            ) ||
-            value <= 0
-          ) {
-            setMessage(
-              `Enter a valid Company Float ${
-                i + 1
-              }.`
-            );
-
-            setMessageType(
-              "error"
-            );
-
-            return;
-          }
-
-          rowsToSave.push({
-            shift_id:
-              shiftId,
-
-            entry_type:
-              "COMPANY_FLOAT",
-
-            description:
-              `Float ${
-                i + 1
-              } from company`,
-
-            amount:
-              roundMoney(
-                value
-              ),
-          });
-        }
-      }
-
-      // ------------------------------------------
-      // M-SHWARI FLOAT
-      // ------------------------------------------
-
       const mshwariUnlocked =
         i === 0 ||
         Boolean(
@@ -918,7 +865,7 @@ export default function Cashier24HourReport({
       0
     ) {
       setMessage(
-        "Enter at least one active float amount."
+        "Enter at least one active M-Shwari float amount."
       );
 
       setMessageType(
@@ -976,7 +923,7 @@ export default function Cashier24HourReport({
         throw new Error(
           result?.message ||
             result?.details ||
-            "Unable to save float."
+            "Unable to save M-Shwari float."
         );
       }
 
@@ -1030,12 +977,12 @@ export default function Cashier24HourReport({
         !shiftResponse.ok
       ) {
         throw new Error(
-          "Float saved but shift total could not be updated."
+          "M-Shwari float saved but shift total could not be updated."
         );
       }
 
       setMessage(
-        "Float saved successfully. The next row is now available."
+        "M-Shwari float saved successfully."
       );
 
       setMessageType(
@@ -1046,7 +993,7 @@ export default function Cashier24HourReport({
     } catch (error) {
       setMessage(
         error?.message ||
-          "Unable to save float."
+          "Unable to save M-Shwari float."
       );
 
       setMessageType(
@@ -1058,12 +1005,8 @@ export default function Cashier24HourReport({
       );
     }
   }
-
   // ==================================================
-  // SAVE EXPENSES
-  //
-  // Private salary expenses DO NOT consume one of
-  // the 10 manual expense rows.
+  // SAVE MANUAL EXPENSES
   // ==================================================
 
   async function saveExpenses() {
@@ -1074,7 +1017,7 @@ export default function Cashier24HourReport({
       nextIndex >= 10
     ) {
       setMessage(
-        "All 10 expense rows have already been saved."
+        "All 10 manual expense rows have already been saved."
       );
 
       setMessageType(
@@ -1231,9 +1174,6 @@ export default function Cashier24HourReport({
         );
       }
 
-      // IMPORTANT:
-      // Use ALL existing expenses here,
-      // including hidden salary expenses.
       const existingExpenseTotal =
         expenses.reduce(
           (
@@ -1745,65 +1685,18 @@ export default function Cashier24HourReport({
                 (
                   entry,
                   index
-                ) => {
-                  const companyUnlocked =
-                    index ===
-                      0 ||
-                    Boolean(
-                      companySlots[
-                        index -
-                          1
-                      ]
-                    );
-
-                  return (
-                    <EditableFloatRow
-                      key={`company-${index}`}
-                      label={`Added Float ${
-                        index +
-                        1
-                      } From Company`}
-                      savedEntry={
-                        entry
-                      }
-                      value={
-                        floatInputs
-                          .company[
-                          index
-                        ] ||
-                        ""
-                      }
-                      disabled={
-                        savingFloats ||
-                        !companyUnlocked
-                      }
-                      onChange={(
-                        value
-                      ) => {
-                        setFloatInputs(
-                          (
-                            previous
-                          ) => {
-                            const company =
-                              [
-                                ...previous.company,
-                              ];
-
-                            company[
-                              index
-                            ] =
-                              value;
-
-                            return {
-                              ...previous,
-                              company,
-                            };
-                          }
-                        );
-                      }}
-                    />
-                  );
-                }
+                ) => (
+                  <ReadOnlyCompanyFloatRow
+                    key={`company-${index}`}
+                    label={`Added Float ${
+                      index +
+                      1
+                    } From Company`}
+                    entry={
+                      entry
+                    }
+                  />
+                )
               )}
 
               {mshwariSlots.map(
@@ -1889,6 +1782,15 @@ export default function Cashier24HourReport({
 
               <div
                 style={
+                  companyFloatNoticeStyle
+                }
+              >
+                Company Float 1, 2 and 3 are read-only.
+                They are posted automatically by Legend Accounts.
+              </div>
+
+              <div
+                style={
                   panelButtonWrapStyle
                 }
               >
@@ -1911,7 +1813,7 @@ export default function Cashier24HourReport({
                 >
                   {savingFloats
                     ? "Saving..."
-                    : "Save Added Float"}
+                    : "Save M-Shwari Float"}
                 </button>
               </div>
             </section>
@@ -2161,6 +2063,15 @@ export default function Cashier24HourReport({
 
               <div
                 style={
+                  automaticExpenseNoticeStyle
+                }
+              >
+                Cashier → Legend Accounts transfers are added to
+                Total Expenses automatically after Accounts confirms receipt.
+              </div>
+
+              <div
+                style={
                   panelButtonWrapStyle
                 }
               >
@@ -2198,9 +2109,8 @@ export default function Cashier24HourReport({
               </div>
             </section>
           </div>
-
-          {/* ========================================= */}
-          {/* 24-HOUR OPERATIONS LAYOUT                 */}
+{/* ========================================= */}
+          {/* 24-HOUR OPERATIONS LAYOUT */}
           {/* ========================================= */}
 
           <div
@@ -2271,6 +2181,19 @@ export default function Cashier24HourReport({
               <CashierAccountsPanel
                 user={
                   user
+                }
+              />
+
+              <CashierAccountsReturnPanel
+                user={
+                  user
+                }
+                currentShift={
+                  shift ||
+                  currentShift
+                }
+                onReturnChanged={
+                  refresh24HourReport
                 }
               />
             </div>
@@ -2371,15 +2294,19 @@ export default function Cashier24HourReport({
               </div>
 
               <div>
-                6. Record all manual expenses before completing the shift handover.
+                6. Company Float 1, 2 and 3 are controlled by Legend Accounts and are read-only for the cashier.
               </div>
 
               <div>
-                7. Weekly salary payments automatically create a private expense after PIN confirmation.
+                7. Cashier → Legend Accounts returns automatically become expenses after Accounts confirms receipt.
               </div>
 
               <div>
-                8. Cashier handover is only available during the authorised morning or evening handover window.
+                8. Weekly salary payments automatically create a private expense after PIN confirmation.
+              </div>
+
+              <div>
+                9. Cashier handover is only available during the authorised morning or evening handover window.
               </div>
             </div>
           </section>
@@ -2389,10 +2316,6 @@ export default function Cashier24HourReport({
   );
 }
 
-// ==================================================
-// END OF PART 1
-// PASTE PART 2 DIRECTLY BELOW THIS LINE
-// ==================================================
 // ==================================================
 // COMPONENTS
 // ==================================================
@@ -2572,6 +2495,51 @@ function IncomeDisplayRow({
         {money(
           amount
         )}
+      </div>
+    </div>
+  );
+}
+
+// ==================================================
+// COMPANY FLOAT - ALWAYS READ ONLY
+// ==================================================
+
+function ReadOnlyCompanyFloatRow({
+  label,
+  entry,
+}) {
+  return (
+    <div
+      style={
+        incomeRowStyle
+      }
+    >
+      <div>
+        {label}{" "}
+
+        <span
+          style={
+            readOnlyInlineStyle
+          }
+        >
+          {entry
+            ? "✓"
+            : "🔒"}
+        </span>
+      </div>
+
+      <div
+        style={
+          entry
+            ? savedMoneyStyle
+            : lockedMoneyStyle
+        }
+      >
+        {entry
+          ? money(
+              entry.amount
+            )
+          : "0.00"}
       </div>
     </div>
   );
@@ -2934,7 +2902,6 @@ function getNairobiHour(
     ? hour
     : 0;
 }
-
 // ==================================================
 // STYLES
 // ==================================================
@@ -3338,9 +3305,40 @@ const savedMoneyStyle = {
     "right",
 };
 
+const lockedMoneyStyle = {
+  padding:
+    "7px",
+
+  border:
+    "1px solid #cbd5e1",
+
+  backgroundColor:
+    "#f1f5f9",
+
+  color:
+    "#64748b",
+
+  borderRadius:
+    "4px",
+
+  textAlign:
+    "right",
+
+  fontWeight:
+    "bold",
+};
+
 const savedInlineStyle = {
   color:
     "#15803d",
+
+  fontWeight:
+    "bold",
+};
+
+const readOnlyInlineStyle = {
+  color:
+    "#1d4ed8",
 
   fontWeight:
     "bold",
@@ -3358,6 +3356,58 @@ const incomeTotalStyle = {
 
   backgroundColor:
     "#dcfce7",
+};
+
+const companyFloatNoticeStyle = {
+  margin:
+    "8px",
+
+  padding:
+    "8px",
+
+  backgroundColor:
+    "#eff6ff",
+
+  color:
+    "#1e40af",
+
+  border:
+    "1px solid #bfdbfe",
+
+  borderRadius:
+    "5px",
+
+  fontSize:
+    "9px",
+
+  textAlign:
+    "center",
+};
+
+const automaticExpenseNoticeStyle = {
+  margin:
+    "8px",
+
+  padding:
+    "8px",
+
+  backgroundColor:
+    "#fff7ed",
+
+  color:
+    "#9a3412",
+
+  border:
+    "1px solid #fed7aa",
+
+  borderRadius:
+    "5px",
+
+  fontSize:
+    "9px",
+
+  textAlign:
+    "center",
 };
 
 const panelButtonWrapStyle = {
