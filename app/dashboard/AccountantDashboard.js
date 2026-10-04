@@ -41,6 +41,9 @@ export default function AccountantDashboard({
   const [successMessage, setSuccessMessage] =
     useState("");
 
+  const [declinedSendMessage, setDeclinedSendMessage] =
+    useState("");
+
   const [report, setReport] =
     useState(null);
 
@@ -797,6 +800,8 @@ export default function AccountantDashboard({
         sendAmount
       );
 
+    setDeclinedSendMessage("");
+
     if (
       !selectedRecipientId
     ) {
@@ -827,6 +832,7 @@ export default function AccountantDashboard({
 
       setMessage("");
       setSuccessMessage("");
+      setDeclinedSendMessage("");
 
       const result =
         await callRpc(
@@ -845,14 +851,38 @@ export default function AccountantDashboard({
           }
         );
 
+      const returnedSlot =
+        Number(
+          result?.company_float_slot
+        );
+
+      if (
+        !result ||
+        result?.success === false ||
+        !result?.transaction_id ||
+        !Number.isInteger(
+          returnedSlot
+        ) ||
+        returnedSlot < 1 ||
+        returnedSlot > 3
+      ) {
+        throw new Error(
+          result?.message ||
+            result?.error ||
+            "The float transfer was declined."
+        );
+      }
+
       setPreparedSend(
         result
       );
 
       setSendReceipt("");
 
+      setDeclinedSendMessage("");
+
       setSuccessMessage(
-        "Transfer prepared. Send the money through M-Pesa, then enter the receipt number below."
+        `Transfer prepared for Company Float ${returnedSlot}. Send the money through M-Pesa, then enter the receipt number below.`
       );
 
       await refreshData({
@@ -865,10 +895,28 @@ export default function AccountantDashboard({
         error
       );
 
-      setMessage(
+      const errorMessage =
         error?.message ||
-          "Unable to prepare float transfer."
+        "Unable to prepare float transfer.";
+
+      setPreparedSend(
+        null
       );
+
+      setSendReceipt("");
+
+      setSuccessMessage("");
+
+      setMessage("");
+
+      setDeclinedSendMessage(
+        `DECLINED — ${errorMessage} No float was approved or posted. Do not send the money.`
+      );
+
+      await refreshData({
+        silent:
+          true,
+      });
     } finally {
       setPreparingSend(
         false
@@ -924,6 +972,7 @@ export default function AccountantDashboard({
 
       setMessage("");
       setSuccessMessage("");
+      setDeclinedSendMessage("");
 
       const result =
         await callRpc(
@@ -1054,7 +1103,6 @@ export default function AccountantDashboard({
       );
     }
   }
-
   // ==================================================
   // ADD ACCOUNTANT EXPENSE
   // ==================================================
@@ -1442,14 +1490,19 @@ export default function AccountantDashboard({
                     preparedSend
                   )
                 }
-                onChange={(
-                  event
-                ) =>
+                onChange={(event) => {
                   setSelectedRecipientId(
-                    event.target
-                      .value
-                  )
-                }
+                    event.target.value
+                  );
+
+                  setDeclinedSendMessage(
+                    ""
+                  );
+
+                  setMessage(
+                    ""
+                  );
+                }}
                 style={inputStyle}
               >
                 <option value="">
@@ -1507,14 +1560,19 @@ export default function AccountantDashboard({
                     preparedSend
                   )
                 }
-                onChange={(
-                  event
-                ) =>
+                onChange={(event) => {
                   setSendAmount(
-                    event.target
-                      .value
-                  )
-                }
+                    event.target.value
+                  );
+
+                  setDeclinedSendMessage(
+                    ""
+                  );
+
+                  setMessage(
+                    ""
+                  );
+                }}
                 placeholder="e.g. 3000"
                 style={inputStyle}
               />
@@ -1524,7 +1582,7 @@ export default function AccountantDashboard({
           {selectedRecipient && (
             <div style={recipientPreviewStyle}>
               <strong>
-                Approved recipient:
+                Selected authorized recipient:
               </strong>{" "}
               {selectedRecipient.recipient_name}
               {" • "}
@@ -1536,6 +1594,18 @@ export default function AccountantDashboard({
               {maskPhone(
                 selectedRecipient.phone_number
               )}
+            </div>
+          )}
+
+          {declinedSendMessage && (
+            <div style={declinedTransferStyle}>
+              <div style={declinedTransferTitleStyle}>
+                TRANSFER DECLINED
+              </div>
+
+              <div>
+                {declinedSendMessage}
+              </div>
             </div>
           )}
 
@@ -2020,8 +2090,7 @@ export default function AccountantDashboard({
             )}
           </div>
         </section>
-
-        {/* ======================================== */}
+{/* ======================================== */}
         {/* TRANSACTION HISTORY */}
         {/* ======================================== */}
 
@@ -3043,6 +3112,46 @@ const recipientPreviewStyle = {
     "11px",
 };
 
+const declinedTransferStyle = {
+  marginTop:
+    "12px",
+
+  padding:
+    "12px",
+
+  backgroundColor:
+    "#fef2f2",
+
+  border:
+    "2px solid #dc2626",
+
+  color:
+    "#991b1b",
+
+  borderRadius:
+    "6px",
+
+  fontSize:
+    "11px",
+
+  fontWeight:
+    "bold",
+};
+
+const declinedTransferTitleStyle = {
+  marginBottom:
+    "6px",
+
+  fontSize:
+    "12px",
+
+  fontWeight:
+    "900",
+
+  color:
+    "#b91c1c",
+};
+
 const primaryButtonStyle = {
   marginTop:
     "12px",
@@ -3127,7 +3236,6 @@ const transactionStrongStyle = {
   fontSize:
     "13px",
 };
-
 const sendInstructionStyle = {
   margin:
     "12px 0",
