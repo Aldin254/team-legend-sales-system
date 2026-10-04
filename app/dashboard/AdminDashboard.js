@@ -21,9 +21,7 @@ export default function AdminDashboard({
   const [
     activeSection,
     setActiveSection,
-  ] = useState(
-    "DASHBOARD"
-  );
+  ] = useState("DASHBOARD");
 
   const adminName =
     user?.full_name ||
@@ -53,43 +51,36 @@ export default function AdminDashboard({
       label: "Dashboard",
       icon: "▦",
     },
-
     {
       id: "REPORTS",
       label: "View Reports",
       icon: "▤",
     },
-
     {
       id: "CORRECTIONS",
       label: "Shift Corrections",
       icon: "✎",
     },
-
     {
       id: "ACCOUNTS",
       label: "Accounts",
       icon: "₿",
     },
-
     {
       id: "SALARY",
       label: "Employee Salary",
       icon: "💰",
     },
-
     {
       id: "ACCOUNTANT",
       label: "Accountant Control",
       icon: "₭",
     },
-
     {
       id: "MPESA_RATES",
       label: "M-Pesa Rates",
       icon: "M",
     },
-
     {
       id: "SETTINGS",
       label: "Settings",
@@ -150,18 +141,14 @@ export default function AdminDashboard({
           </div>
 
           {menuItems.map(
-            (
-              item
-            ) => {
+            (item) => {
               const active =
                 activeSection ===
                 item.id;
 
               return (
                 <button
-                  key={
-                    item.id
-                  }
+                  key={item.id}
                   type="button"
                   onClick={() =>
                     setActiveSection(
@@ -398,8 +385,6 @@ function DashboardHome({
 
         <DashboardCard
           title="SHIFT CORRECTIONS"
-Continue directly from:
-```javascript
           description="Correct Balance B/F, platform readings, expenses, savings and protected shift figures."
           accent="#7c3aed"
           buttonText="Open Corrections"
@@ -436,7 +421,7 @@ Continue directly from:
 
         <DashboardCard
           title="ACCOUNTANT CONTROL"
-          description="View Legend Accounts daily report, manual accountant expenses, cashier returns, floats and transaction records."
+          description="View Legend Accounts daily report, accountant expenses, cashier returns, float transfers and transaction records."
           accent="#0f766e"
           buttonText="Open Accountant"
           onClick={() =>
@@ -448,7 +433,7 @@ Continue directly from:
 
         <DashboardCard
           title="M-PESA RATES"
-          description="Manage Safaricom transaction-fee bands and test fees before using updated tariffs."
+          description="Manage Safaricom transaction-fee bands and test fees when tariffs change."
           accent="#059669"
           buttonText="Manage M-Pesa Rates"
           onClick={() =>
@@ -541,8 +526,8 @@ Continue directly from:
 
       <div style={noticeStyle}>
         Admin can monitor Legend Accounts activity, manage Safaricom
-        M-Pesa fee bands, review accountant-entered expenses, cashier
-        returns, transaction records and protected shop corrections.
+        M-Pesa fee bands, review accountant expenses, cashier returns,
+        transaction records and protected shop corrections.
       </div>
     </>
   );
@@ -1351,4 +1336,3 @@ const settingsNoticeStyle = {
   fontSize:
     "9px",
 };
-```
