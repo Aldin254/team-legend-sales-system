@@ -9,7 +9,6 @@ import AdminShiftCorrectionsPanel from "./AdminShiftCorrectionsPanel";
 import AdminReportsPanel from "./AdminReportsPanel";
 import AdminUserAccountsPanel from "./AdminUserAccountsPanel";
 import AdminShopManagementPanel from "./AdminShopManagementPanel";
-import AdminManagementStatusPanel from "./AdminManagementStatusPanel";
 import AdminSalaryManagementPanel from "./AdminSalaryManagementPanel";
 import AdminAccountantPanel from "./AdminAccountantPanel";
 import AdminMpesaRatesPanel from "./AdminMpesaRatesPanel";
@@ -50,102 +49,51 @@ export default function AdminDashboard({
 
   const menuItems = [
     {
-      id:
-        "DASHBOARD",
-
-      label:
-        "Dashboard",
-
-      icon:
-        "▦",
+      id: "DASHBOARD",
+      label: "Dashboard",
+      icon: "▦",
     },
 
     {
-      id:
-        "REPORTS",
-
-      label:
-        "View Reports",
-
-      icon:
-        "▤",
+      id: "REPORTS",
+      label: "View Reports",
+      icon: "▤",
     },
 
     {
-      id:
-        "CORRECTIONS",
-
-      label:
-        "Shift Corrections",
-
-      icon:
-        "✎",
+      id: "CORRECTIONS",
+      label: "Shift Corrections",
+      icon: "✎",
     },
 
     {
-      id:
-        "ACCOUNTS",
-
-      label:
-        "Accounts",
-
-      icon:
-        "₿",
+      id: "ACCOUNTS",
+      label: "Accounts",
+      icon: "₿",
     },
 
     {
-      id:
-        "MANAGEMENT",
-
-      label:
-        "Management Status",
-
-      icon:
-        "📋",
+      id: "SALARY",
+      label: "Employee Salary",
+      icon: "💰",
     },
 
     {
-      id:
-        "SALARY",
-
-      label:
-        "Employee Salary",
-
-      icon:
-        "💰",
+      id: "ACCOUNTANT",
+      label: "Accountant Control",
+      icon: "₭",
     },
 
     {
-      id:
-        "ACCOUNTANT",
-
-      label:
-        "Accountant Control",
-
-      icon:
-        "₭",
+      id: "MPESA_RATES",
+      label: "M-Pesa Rates",
+      icon: "M",
     },
 
     {
-      id:
-        "MPESA_RATES",
-
-      label:
-        "M-Pesa Rates",
-
-      icon:
-        "M",
-    },
-
-    {
-      id:
-        "SETTINGS",
-
-      label:
-        "Settings",
-
-      icon:
-        "⚙",
+      id: "SETTINGS",
+      label: "Settings",
+      icon: "⚙",
     },
   ];
 
@@ -335,24 +283,6 @@ export default function AdminDashboard({
           )}
 
           {/* ===================================== */}
-          {/* MANAGEMENT STATUS */}
-          {/* ===================================== */}
-
-          {activeSection ===
-            "MANAGEMENT" && (
-            <>
-              <PageHeading
-                title="Management Status"
-                subtitle="Manage banking, rent, DSTV, WIFI and other payment obligations for each shop."
-              />
-
-              <AdminManagementStatusPanel
-                user={user}
-              />
-            </>
-          )}
-
-          {/* ===================================== */}
           {/* EMPLOYEE SALARY */}
           {/* ===================================== */}
 
@@ -468,6 +398,16 @@ function DashboardHome({
 
         <DashboardCard
           title="SHIFT CORRECTIONS"
+Continue directly from:
+
+```jsx
+<DashboardCard
+  title="SHIFT CORRECTIONS"
+```
+
+Paste this underneath:
+
+```javascript
           description="Correct Balance B/F, platform readings, expenses, savings and protected shift figures."
           accent="#7c3aed"
           buttonText="Open Corrections"
@@ -486,18 +426,6 @@ function DashboardHome({
           onClick={() =>
             setActiveSection(
               "ACCOUNTS"
-            )
-          }
-        />
-
-        <DashboardCard
-          title="MANAGEMENT STATUS"
-          description="Manage shop banking, rent, DSTV, WIFI and other payment obligations."
-          accent="#d97706"
-          buttonText="Open Management"
-          onClick={() =>
-            setActiveSection(
-              "MANAGEMENT"
             )
           }
         />
@@ -1431,3 +1359,6 @@ const settingsNoticeStyle = {
   fontSize:
     "9px",
 };
+```
+
+That completes the file from the point where your copy stopped. **Management Status is not included anywhere in this continuation.**
