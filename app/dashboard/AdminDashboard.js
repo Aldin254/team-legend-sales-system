@@ -1352,5 +1352,3 @@ const settingsNoticeStyle = {
     "9px",
 };
 ```
-
-That completes the file from the point where your copy stopped. **Management Status is not included anywhere in this continuation.**
