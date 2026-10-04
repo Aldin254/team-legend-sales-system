@@ -1296,7 +1296,7 @@ export default function DashboardPage() {
                 cashierId,
 
               cashier_name:
-                cashierName,
+                "NOT ASSIGNED",
 
               shift_name:
                 nextShiftName,
