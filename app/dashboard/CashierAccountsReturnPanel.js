@@ -8,6 +8,8 @@ import {
   useState,
 } from "react";
 
+const AUTO_RESET_MS = 30000;
+
 export default function CashierAccountsReturnPanel({
   user,
   currentShift,
@@ -75,8 +77,54 @@ export default function CashierAccountsReturnPanel({
   const [messageType, setMessageType] =
     useState("");
 
+  const [
+    secondsLeft,
+    setSecondsLeft,
+  ] = useState(30);
+
   const completionSignatureRef =
     useRef(null);
+
+  const cancelInFlightRef =
+    useRef(false);
+
+  const preparedTimeoutRef =
+    useRef(null);
+
+  const preparedIntervalRef =
+    useRef(null);
+
+  // ==================================================
+  // CLEAR PREPARED RETURN TIMERS
+  // ==================================================
+
+  const clearPreparedTimers =
+    useCallback(
+      () => {
+        if (
+          preparedTimeoutRef.current
+        ) {
+          clearTimeout(
+            preparedTimeoutRef.current
+          );
+
+          preparedTimeoutRef.current =
+            null;
+        }
+
+        if (
+          preparedIntervalRef.current
+        ) {
+          clearInterval(
+            preparedIntervalRef.current
+          );
+
+          preparedIntervalRef.current =
+            null;
+        }
+      },
+      []
+    );
 
   // ==================================================
   // AUTH HEADERS
@@ -179,6 +227,7 @@ export default function CashierAccountsReturnPanel({
         ) {
           setHistory([]);
           setHistoryLoading(false);
+
           return;
         }
 
@@ -210,8 +259,7 @@ export default function CashierAccountsReturnPanel({
           );
 
           // ------------------------------------------
-          // RESTORE ANY UNFINISHED MANUAL SEND
-          // AFTER PAGE REFRESH
+          // RESTORE UNFINISHED MANUAL SEND
           // ------------------------------------------
 
           const pendingSend =
@@ -233,28 +281,35 @@ export default function CashierAccountsReturnPanel({
               if (
                 previous?.transaction_id
               ) {
-                const stillExists =
-                  rows.some(
+                const existingRow =
+                  rows.find(
                     (item) =>
                       String(
                         item.id
                       ) ===
-                      String(
-                        previous.transaction_id
-                      ) &&
+                        String(
+                          previous.transaction_id
+                        ) &&
                       String(
                         item.status ||
                           ""
                       )
                         .trim()
                         .toUpperCase() ===
-                      "PENDING_MANUAL_SEND"
+                        "PENDING_MANUAL_SEND"
                   );
 
                 if (
-                  stillExists
+                  existingRow
                 ) {
-                  return previous;
+                  return {
+                    ...previous,
+
+                    created_at:
+                      previous.created_at ||
+                      existingRow.created_at ||
+                      null,
+                  };
                 }
               }
 
@@ -294,6 +349,10 @@ export default function CashierAccountsReturnPanel({
 
                   company_destination:
                     pendingSend.company_destination,
+
+                  created_at:
+                    pendingSend.created_at ||
+                    null,
                 };
               }
 
@@ -303,9 +362,6 @@ export default function CashierAccountsReturnPanel({
 
           // ------------------------------------------
           // DETECT NEWLY COMPLETED RETURNS
-          //
-          // If Accountant confirms the return,
-          // parent report can refresh expenses.
           // ------------------------------------------
 
           const completedSignature =
@@ -409,8 +465,8 @@ export default function CashierAccountsReturnPanel({
   // ==================================================
   // RETURN POSITIONS USED
   //
-  // FAILED / CANCELLED / REVERSED do not consume a
-  // valid return position.
+  // FAILED / CANCELLED / REVERSED DO NOT CONSUME
+  // A RETURN POSITION.
   // ==================================================
 
   const activeHistory =
@@ -482,10 +538,288 @@ export default function CashierAccountsReturnPanel({
     );
 
   // ==================================================
-  // FEE PREVIEW
+  // CANCEL UNFINISHED PENDING RETURN
+  // ==================================================
+
+  const cancelPendingReturn =
+    useCallback(
+      async (
+        transactionId,
+        {
+          automatic = false,
+        } = {}
+      ) => {
+        if (
+          !transactionId ||
+          !shiftId ||
+          cancelInFlightRef.current
+        ) {
+          return;
+        }
+
+        cancelInFlightRef.current =
+          true;
+
+        clearPreparedTimers();
+
+        try {
+          await callRpc(
+            "tl_cashier_cancel_pending_return",
+            {
+              p_transaction_id:
+                transactionId,
+
+              p_shift_id:
+                shiftId,
+            }
+          );
+
+          setPreparedReturn(
+            null
+          );
+
+          setAmount("");
+          setFeePreview(0);
+          setReceipt("");
+
+          setSecondsLeft(
+            30
+          );
+
+          setHistoryOpen(
+            false
+          );
+
+          if (
+            automatic
+          ) {
+            setMessage(
+              "Unused float return cleared automatically after 30 seconds of inactivity."
+            );
+
+            setMessageType(
+              "success"
+            );
+          }
+
+          await loadHistory({
+            silent:
+              true,
+          });
+
+          if (
+            typeof onReturnChanged ===
+            "function"
+          ) {
+            onReturnChanged();
+          }
+        } catch (error) {
+          console.error(
+            "CANCEL PENDING RETURN ERROR:",
+            error
+          );
+
+          // The transaction may have changed status
+          // at exactly the same time, for example if
+          // the receipt was submitted.
+          await loadHistory({
+            silent:
+              true,
+          });
+
+          const text =
+            String(
+              error?.message ||
+                ""
+            )
+              .toLowerCase();
+
+          const statusChanged =
+            text.includes(
+              "already changed"
+            ) ||
+            text.includes(
+              "no longer"
+            ) ||
+            text.includes(
+              "cannot be cancelled"
+            );
+
+          if (
+            automatic &&
+            !statusChanged
+          ) {
+            setMessage(
+              error?.message ||
+                "Unable to clear the unused float return."
+            );
+
+            setMessageType(
+              "error"
+            );
+          }
+        } finally {
+          cancelInFlightRef.current =
+            false;
+        }
+      },
+      [
+        shiftId,
+        callRpc,
+        loadHistory,
+        onReturnChanged,
+        clearPreparedTimers,
+      ]
+    );
+
+  // ==================================================
+  // 30-SECOND AMOUNT INPUT RESET
   //
-  // Uses exactly the same database fee table as the
-  // prepare-return function.
+  // If cashier types an amount but never presses
+  // Prepare Float Return, clear it after 30 seconds.
+  // Any amount change restarts the 30-second timer.
+  // ==================================================
+
+  useEffect(() => {
+    if (
+      amount === "" ||
+      hasPendingReceipt ||
+      preparing ||
+      submittingReceipt
+    ) {
+      return;
+    }
+
+    const timer =
+      setTimeout(
+        () => {
+          setAmount("");
+          setFeePreview(0);
+
+          setMessage(
+            "Unused amount cleared automatically after 30 seconds of inactivity."
+          );
+
+          setMessageType(
+            "success"
+          );
+        },
+        AUTO_RESET_MS
+      );
+
+    return () => {
+      clearTimeout(
+        timer
+      );
+    };
+  }, [
+    amount,
+    hasPendingReceipt,
+    preparing,
+    submittingReceipt,
+  ]);
+
+  // ==================================================
+  // 30-SECOND PREPARED RETURN AUTO-CANCEL
+  //
+  // Any receipt typing restarts the 30-second timer.
+  //
+  // Once receipt submission starts, this timer stops.
+  // Backend also guarantees only PENDING_MANUAL_SEND
+  // can ever be cancelled.
+  // ==================================================
+
+  useEffect(() => {
+    clearPreparedTimers();
+
+    if (
+      !hasPendingReceipt ||
+      !preparedReturn?.transaction_id ||
+      submittingReceipt
+    ) {
+      setSecondsLeft(
+        30
+      );
+
+      return;
+    }
+
+    const transactionId =
+      preparedReturn.transaction_id;
+
+    const startedAt =
+      Date.now();
+
+    setSecondsLeft(
+      30
+    );
+
+    preparedIntervalRef.current =
+      setInterval(
+        () => {
+          const elapsed =
+            Date.now() -
+            startedAt;
+
+          const remaining =
+            Math.max(
+              0,
+              Math.ceil(
+                (
+                  AUTO_RESET_MS -
+                  elapsed
+                ) /
+                  1000
+              )
+            );
+
+          setSecondsLeft(
+            remaining
+          );
+        },
+        1000
+      );
+
+    preparedTimeoutRef.current =
+      setTimeout(
+        () => {
+          cancelPendingReturn(
+            transactionId,
+            {
+              automatic:
+                true,
+            }
+          );
+        },
+        AUTO_RESET_MS
+      );
+
+    return () => {
+      clearPreparedTimers();
+    };
+  }, [
+    hasPendingReceipt,
+    preparedReturn?.transaction_id,
+    receipt,
+    submittingReceipt,
+    cancelPendingReturn,
+    clearPreparedTimers,
+  ]);
+
+  // ==================================================
+  // CLEAN UP TIMERS ON UNMOUNT
+  // ==================================================
+
+  useEffect(() => {
+    return () => {
+      clearPreparedTimers();
+    };
+  }, [
+    clearPreparedTimers,
+  ]);
+
+  // ==================================================
+  // FEE PREVIEW
   // ==================================================
 
   useEffect(() => {
@@ -600,7 +934,7 @@ export default function CashierAccountsReturnPanel({
   ]);
 
   // ==================================================
-  // VALUES FOR THE THREE BOXES
+  // VALUES FOR THREE PREVIEW BOXES
   // ==================================================
 
   const previewAmount =
@@ -635,6 +969,7 @@ export default function CashierAccountsReturnPanel({
           previewAmount +
             previewFee
         );
+
   // ==================================================
   // PREPARE RETURN
   // ==================================================
@@ -723,11 +1058,19 @@ export default function CashierAccountsReturnPanel({
           }
         );
 
-      setPreparedReturn(
-        result
-      );
+      setPreparedReturn({
+        ...result,
+
+        created_at:
+          result?.created_at ||
+          new Date().toISOString(),
+      });
 
       setReceipt("");
+
+      setSecondsLeft(
+        30
+      );
 
       setHistoryOpen(
         true
@@ -819,6 +1162,9 @@ export default function CashierAccountsReturnPanel({
       return;
     }
 
+    // Stop auto-cancel immediately before submission.
+    clearPreparedTimers();
+
     try {
       setSubmittingReceipt(
         true
@@ -846,6 +1192,10 @@ export default function CashierAccountsReturnPanel({
       setAmount("");
       setFeePreview(0);
       setReceipt("");
+
+      setSecondsLeft(
+        30
+      );
 
       setHistoryOpen(
         true
@@ -959,7 +1309,7 @@ export default function CashierAccountsReturnPanel({
 
             <div style={noticeTextStyle}>
               Once confirmed, the amount plus M-Pesa fee will automatically
-              appear in this shift's expenses.
+              appear in this shift&apos;s expenses.
             </div>
           </div>
         )}
@@ -1009,6 +1359,14 @@ export default function CashierAccountsReturnPanel({
               : "white",
         }}
       />
+
+      {!hasPendingReceipt &&
+        amount !== "" && (
+          <div style={autoResetNoteStyle}>
+            Unused amount will clear automatically after 30 seconds of
+            inactivity.
+          </div>
+        )}
 
       {/* ========================================== */}
       {/* THREE SMALL BOXES */}
@@ -1114,11 +1472,22 @@ export default function CashierAccountsReturnPanel({
 
       {hasPendingReceipt && (
         <div style={preparedStyle}>
-          <div style={preparedTitleStyle}>
-            RETURN{" "}
-            {preparedReturn.return_slot ||
-              ""}{" "}
-            — SEND THROUGH M-PESA
+          <div style={preparedHeaderStyle}>
+            <div style={preparedTitleStyle}>
+              RETURN{" "}
+              {preparedReturn.return_slot ||
+                ""}{" "}
+              — SEND THROUGH M-PESA
+            </div>
+
+            <div style={countdownStyle}>
+              AUTO-CLOSE: {secondsLeft}s
+            </div>
+          </div>
+
+          <div style={preparedTimeoutNoteStyle}>
+            If no receipt is submitted, this unfinished return will cancel
+            automatically after 30 seconds of inactivity.
           </div>
 
           <DetailRow
@@ -1285,6 +1654,7 @@ export default function CashierAccountsReturnPanel({
     </section>
   );
 }
+
 // ==================================================
 // PREVIEW BOX
 // ==================================================
@@ -1821,6 +2191,29 @@ const inputStyle = {
     "10px",
 };
 
+const autoResetNoteStyle = {
+  marginTop:
+    "-5px",
+
+  marginBottom:
+    "10px",
+
+  padding:
+    "6px 8px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  color:
+    "#64748b",
+
+  borderRadius:
+    "4px",
+
+  fontSize:
+    "8px",
+};
+
 const previewGridStyle = {
   display:
     "grid",
@@ -1962,6 +2355,23 @@ const preparedStyle = {
     "6px",
 };
 
+const preparedHeaderStyle = {
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+
+  marginBottom:
+    "7px",
+};
+
 const preparedTitleStyle = {
   color:
     "#115e59",
@@ -1971,8 +2381,51 @@ const preparedTitleStyle = {
 
   fontSize:
     "11px",
+};
 
+const countdownStyle = {
+  padding:
+    "4px 7px",
+
+  backgroundColor:
+    "#fef3c7",
+
+  color:
+    "#92400e",
+
+  borderRadius:
+    "10px",
+
+  fontSize:
+    "7px",
+
+  fontWeight:
+    "900",
+
+  whiteSpace:
+    "nowrap",
+};
+
+const preparedTimeoutNoteStyle = {
   marginBottom:
+    "8px",
+
+  padding:
+    "7px",
+
+  backgroundColor:
+    "#ecfeff",
+
+  color:
+    "#155e75",
+
+  border:
+    "1px solid #a5f3fc",
+
+  borderRadius:
+    "4px",
+
+  fontSize:
     "8px",
 };
 
