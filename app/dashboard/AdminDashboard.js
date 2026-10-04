@@ -12,14 +12,19 @@ import AdminShopManagementPanel from "./AdminShopManagementPanel";
 import AdminManagementStatusPanel from "./AdminManagementStatusPanel";
 import AdminSalaryManagementPanel from "./AdminSalaryManagementPanel";
 import AdminAccountantPanel from "./AdminAccountantPanel";
+import AdminMpesaRatesPanel from "./AdminMpesaRatesPanel";
 
 export default function AdminDashboard({
   user,
 }) {
   const router = useRouter();
 
-  const [activeSection, setActiveSection] =
-    useState("DASHBOARD");
+  const [
+    activeSection,
+    setActiveSection,
+  ] = useState(
+    "DASHBOARD"
+  );
 
   const adminName =
     user?.full_name ||
@@ -45,44 +50,102 @@ export default function AdminDashboard({
 
   const menuItems = [
     {
-      id: "DASHBOARD",
-      label: "Dashboard",
-      icon: "▦",
+      id:
+        "DASHBOARD",
+
+      label:
+        "Dashboard",
+
+      icon:
+        "▦",
     },
+
     {
-      id: "REPORTS",
-      label: "View Reports",
-      icon: "▤",
+      id:
+        "REPORTS",
+
+      label:
+        "View Reports",
+
+      icon:
+        "▤",
     },
+
     {
-      id: "CORRECTIONS",
-      label: "Shift Corrections",
-      icon: "✎",
+      id:
+        "CORRECTIONS",
+
+      label:
+        "Shift Corrections",
+
+      icon:
+        "✎",
     },
+
     {
-      id: "ACCOUNTS",
-      label: "Accounts",
-      icon: "₿",
+      id:
+        "ACCOUNTS",
+
+      label:
+        "Accounts",
+
+      icon:
+        "₿",
     },
+
     {
-      id: "MANAGEMENT",
-      label: "Management Status",
-      icon: "📋",
+      id:
+        "MANAGEMENT",
+
+      label:
+        "Management Status",
+
+      icon:
+        "📋",
     },
+
     {
-      id: "SALARY",
-      label: "Employee Salary",
-      icon: "💰",
+      id:
+        "SALARY",
+
+      label:
+        "Employee Salary",
+
+      icon:
+        "💰",
     },
+
     {
-      id: "ACCOUNTANT",
-      label: "Accountant Control",
-      icon: "₭",
+      id:
+        "ACCOUNTANT",
+
+      label:
+        "Accountant Control",
+
+      icon:
+        "₭",
     },
+
     {
-      id: "SETTINGS",
-      label: "Settings",
-      icon: "⚙",
+      id:
+        "MPESA_RATES",
+
+      label:
+        "M-Pesa Rates",
+
+      icon:
+        "M",
+    },
+
+    {
+      id:
+        "SETTINGS",
+
+      label:
+        "Settings",
+
+      icon:
+        "⚙",
     },
   ];
 
@@ -139,14 +202,18 @@ export default function AdminDashboard({
           </div>
 
           {menuItems.map(
-            (item) => {
+            (
+              item
+            ) => {
               const active =
                 activeSection ===
                 item.id;
 
               return (
                 <button
-                  key={item.id}
+                  key={
+                    item.id
+                  }
                   type="button"
                   onClick={() =>
                     setActiveSection(
@@ -236,7 +303,7 @@ export default function AdminDashboard({
             <>
               <PageHeading
                 title="Shift Corrections"
-                subtitle="Admin control of shop shifts, corrections, overrides and audit history."
+                subtitle="Admin control of shop shifts, platform readings, expenses, savings, overrides and audit history."
               />
 
               <AdminShiftOverridePanel
@@ -322,6 +389,24 @@ export default function AdminDashboard({
           )}
 
           {/* ===================================== */}
+          {/* M-PESA RATES */}
+          {/* ===================================== */}
+
+          {activeSection ===
+            "MPESA_RATES" && (
+            <>
+              <PageHeading
+                title="M-Pesa Rates"
+                subtitle="Admin control of Safaricom transaction-fee bands used by the Team Legend system."
+              />
+
+              <AdminMpesaRatesPanel
+                user={user}
+              />
+            </>
+          )}
+
+          {/* ===================================== */}
           {/* SETTINGS */}
           {/* ===================================== */}
 
@@ -383,7 +468,7 @@ function DashboardHome({
 
         <DashboardCard
           title="SHIFT CORRECTIONS"
-          description="Correct Balance B/F, floats, platform readings, expenses, savings and closing figures."
+          description="Correct Balance B/F, platform readings, expenses, savings and protected shift figures."
           accent="#7c3aed"
           buttonText="Open Corrections"
           onClick={() =>
@@ -437,6 +522,18 @@ function DashboardHome({
           onClick={() =>
             setActiveSection(
               "ACCOUNTANT"
+            )
+          }
+        />
+
+        <DashboardCard
+          title="M-PESA RATES"
+          description="Manage Safaricom transaction-fee bands and test fees before using updated tariffs."
+          accent="#059669"
+          buttonText="Manage M-Pesa Rates"
+          onClick={() =>
+            setActiveSection(
+              "MPESA_RATES"
             )
           }
         />
@@ -509,14 +606,23 @@ function DashboardHome({
             label="Cashier Return Tracking"
             status="ACTIVE"
           />
+
+          <StatusItem
+            label="M-Pesa Rate Control"
+            status="ACTIVE"
+          />
+
+          <StatusItem
+            label="M-Pesa Fee Testing"
+            status="ACTIVE"
+          />
         </div>
       </div>
 
       <div style={noticeStyle}>
-        Admin can monitor Legend Accounts activity, including
-        accountant-entered expenses, cashier returns, float transfers
-        and daily balances. Accountant transactions remain controlled
-        by the Accountant workflow and existing database protections.
+        Admin can monitor Legend Accounts activity, manage Safaricom
+        M-Pesa fee bands, review accountant-entered expenses, cashier
+        returns, transaction records and protected shop corrections.
       </div>
     </>
   );
@@ -665,8 +771,8 @@ function SettingsPanel({
 
         <div style={settingsNoticeStyle}>
           Additional settings will be connected here as the
-          system expands. Existing sales, Accountant and
-          correction functions are unaffected.
+          system expands. Existing sales, Accountant, M-Pesa
+          rate and correction functions are unaffected.
         </div>
       </div>
 
@@ -702,10 +808,6 @@ function SettingRow({
   );
 }
 
-// ==================================================
-// END OF PART 1
-// PASTE PART 2 DIRECTLY BELOW THIS LINE
-// ==================================================
 // ==================================================
 // STYLES
 // ==================================================
