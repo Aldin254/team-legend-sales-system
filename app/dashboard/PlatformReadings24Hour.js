@@ -1809,7 +1809,8 @@ function isShift1NinePmStageOpen(
   time
 ) {
   return (
-    time.hour >= 21
+    time.hour >= 21 ||
+    time.hour < 9
   );
 }
 
