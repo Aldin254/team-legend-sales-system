@@ -10,7 +10,6 @@ import {
 import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
-import CashierManagementPanel from "./CashierManagementPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
@@ -2271,12 +2270,6 @@ export default function CashierReport({
             icon="▤"
             label="View Reports"
           />
-
-          <SidebarItem
-            icon="▥"
-            label="Management"
-          />
-
           <SidebarItem
             icon="▦"
             label="Accounts"
@@ -3066,16 +3059,6 @@ export default function CashierReport({
             }
           >
             <CashierSavingsPanel
-              user={
-                user
-              }
-              currentShift={
-                shift ||
-                currentShift
-              }
-            />
-
-            <CashierManagementPanel
               user={
                 user
               }
