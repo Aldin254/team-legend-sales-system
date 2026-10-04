@@ -42,7 +42,12 @@ export default function CashierSalaryPanel({
   const [messageType, setMessageType] =
     useState("");
 
+  // Salary details auto-lock after payment.
   const lockTimersRef =
+    useRef({});
+
+  // PIN box auto-closes after 20 seconds of inactivity.
+  const pinTimersRef =
     useRef({});
 
   const supabaseUrl =
@@ -150,7 +155,7 @@ export default function CashierSalaryPanel({
   }, [loadEmployees]);
 
   // ==================================================
-  // CLEAR 10-SECOND TIMERS ON UNMOUNT
+  // CLEAR TIMERS ON UNMOUNT
   // ==================================================
 
   useEffect(() => {
@@ -163,8 +168,80 @@ export default function CashierSalaryPanel({
       ) {
         clearTimeout(timer);
       }
+
+      for (
+        const timer of
+        Object.values(
+          pinTimersRef.current
+        )
+      ) {
+        clearTimeout(timer);
+      }
     };
   }, []);
+
+  // ==================================================
+  // PIN AUTO-CLOSE HELPERS
+  // ==================================================
+
+  function clearPinTimer(
+    employeeId
+  ) {
+    if (
+      pinTimersRef.current[
+        employeeId
+      ]
+    ) {
+      clearTimeout(
+        pinTimersRef.current[
+          employeeId
+        ]
+      );
+
+      delete pinTimersRef
+        .current[
+        employeeId
+      ];
+    }
+  }
+
+  function startPinCloseTimer(
+    employeeId
+  ) {
+    clearPinTimer(
+      employeeId
+    );
+
+    pinTimersRef.current[
+      employeeId
+    ] =
+      setTimeout(
+        () => {
+          setPinOpenId(
+            (current) =>
+              current ===
+              employeeId
+                ? null
+                : current
+          );
+
+          setPinInputs(
+            (previous) => ({
+              ...previous,
+
+              [employeeId]:
+                "",
+            })
+          );
+
+          delete pinTimersRef
+            .current[
+            employeeId
+          ];
+        },
+        20000
+      );
+  }
 
   // ==================================================
   // OPEN PIN BOX
@@ -195,6 +272,18 @@ export default function CashierSalaryPanel({
       return;
     }
 
+    // Close any previously opened PIN timers.
+    for (
+      const employeeId of
+      Object.keys(
+        pinTimersRef.current
+      )
+    ) {
+      clearPinTimer(
+        employeeId
+      );
+    }
+
     setPinOpenId(
       row.employee_id
     );
@@ -210,6 +299,12 @@ export default function CashierSalaryPanel({
 
     setMessage("");
     setMessageType("");
+
+    // Close automatically after
+    // 20 seconds if no activity.
+    startPinCloseTimer(
+      row.employee_id
+    );
   }
 
   // ==================================================
@@ -246,10 +341,22 @@ export default function CashierSalaryPanel({
         "error"
       );
 
+      // Employee is still active,
+      // restart the 20-second timer.
+      startPinCloseTimer(
+        row.employee_id
+      );
+
       return;
     }
 
     try {
+      // Stop inactivity timer while
+      // verification is being processed.
+      clearPinTimer(
+        row.employee_id
+      );
+
       setVerifyingId(
         row.employee_id
       );
@@ -303,6 +410,12 @@ export default function CashierSalaryPanel({
 
         await loadEmployees();
 
+        // Allow another attempt, but close
+        // after 20 seconds of inactivity.
+        startPinCloseTimer(
+          row.employee_id
+        );
+
         return;
       }
 
@@ -310,6 +423,10 @@ export default function CashierSalaryPanel({
         result?.code ===
         "NO_PENDING_SALARY"
       ) {
+        clearPinTimer(
+          row.employee_id
+        );
+
         setMessage(
           result?.message ||
             "No salary is currently due."
@@ -350,8 +467,16 @@ export default function CashierSalaryPanel({
           "error"
         );
 
+        startPinCloseTimer(
+          row.employee_id
+        );
+
         return;
       }
+
+      clearPinTimer(
+        row.employee_id
+      );
 
       setUnlocked(
         (previous) => ({
@@ -395,6 +520,12 @@ export default function CashierSalaryPanel({
 
       setMessageType(
         "error"
+      );
+
+      // Keep PIN box available for
+      // 20 seconds after an error.
+      startPinCloseTimer(
+        row.employee_id
       );
     } finally {
       setVerifyingId(
@@ -889,6 +1020,12 @@ export default function CashierSalaryPanel({
                           );
 
                           setMessage("");
+
+                          // Any typing counts as activity.
+                          // Restart the 20-second timer.
+                          startPinCloseTimer(
+                            employeeId
+                          );
                         }}
                         style={
                           pinInputStyle
@@ -919,6 +1056,10 @@ export default function CashierSalaryPanel({
                       <button
                         type="button"
                         onClick={() => {
+                          clearPinTimer(
+                            employeeId
+                          );
+
                           setPinOpenId(
                             null
                           );
@@ -933,6 +1074,9 @@ export default function CashierSalaryPanel({
                                 "",
                             })
                           );
+
+                          setMessage("");
+                          setMessageType("");
                         }}
                         style={
                           cancelButtonStyle
@@ -949,6 +1093,8 @@ export default function CashierSalaryPanel({
                     >
                       Maximum 3 incorrect attempts. After the third
                       incorrect PIN, Admin must unlock the employee.
+                      The PIN box closes automatically after 20 seconds
+                      of inactivity.
                     </div>
                   </div>
                 )}
