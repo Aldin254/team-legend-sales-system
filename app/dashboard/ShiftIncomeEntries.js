@@ -1,21 +1,38 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 export default function ShiftIncomeEntries({
   user,
   currentShift,
 }) {
-  const [entries, setEntries] = useState([]);
-  const [entryType, setEntryType] = useState("COMPANY_FLOAT");
-  const [description, setDescription] = useState("Float from company");
-  const [amount, setAmount] = useState("");
+  const [entries, setEntries] =
+    useState([]);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [amount, setAmount] =
+    useState("");
 
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
+  const [description, setDescription] =
+    useState(
+      "Float from M-Shwari"
+    );
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [messageType, setMessageType] =
+    useState("");
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -24,219 +41,486 @@ export default function ShiftIncomeEntries({
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
-    user?.access_token || null;
+    user?.access_token ||
+    null;
 
   const shiftId =
-    currentShift?.id || null;
+    currentShift?.id ||
+    null;
 
-  // --------------------------------------------------
-  // LOAD FLOAT ENTRIES
-  // --------------------------------------------------
+  // ==================================================
+  // AUTH HEADERS
+  // ==================================================
 
-  useEffect(() => {
-    if (
-      !shiftId ||
-      !accessToken ||
-      !supabaseUrl ||
-      !supabaseAnonKey
-    ) {
-      setLoading(false);
-      return;
-    }
+  const authHeaders =
+    useCallback(
+      () => ({
+        apikey:
+          supabaseAnonKey,
 
-    let cancelled = false;
+        Authorization:
+          `Bearer ${accessToken}`,
 
-    async function loadEntries() {
-      try {
-        setLoading(true);
-        setMessage("");
-        setMessageType("");
+        "Content-Type":
+          "application/json",
+      }),
+      [
+        supabaseAnonKey,
+        accessToken,
+      ]
+    );
 
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/shift_income_entries` +
-            `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-            `&select=id,shift_id,entry_type,description,amount,created_at` +
-            `&order=created_at.asc`,
-          {
-            method: "GET",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            cache: "no-store",
-          }
-        );
+  // ==================================================
+  // SYNC SHIFT TOTAL ADDED FLOAT
+  //
+  // COMPANY FLOAT
+  // + M-SHWARI FLOAT
+  // ==================================================
 
-        let result = null;
-
-        try {
-          result = await response.json();
-        } catch {
-          result = null;
-        }
-
-        if (!response.ok) {
-          throw new Error(
-            result?.message ||
-              result?.details ||
-              "Unable to load float entries."
-          );
-        }
-
-        if (cancelled) {
+  const syncShiftTotalAdded =
+    useCallback(
+      async (
+        totalAdded
+      ) => {
+        if (
+          !shiftId ||
+          !accessToken ||
+          !supabaseUrl ||
+          !supabaseAnonKey
+        ) {
           return;
         }
 
-        const loadedEntries =
-          Array.isArray(result)
-            ? result
-            : [];
+        const response =
+          await fetch(
+            `${supabaseUrl}/rest/v1/shifts` +
+              `?id=eq.${encodeURIComponent(
+                shiftId
+              )}`,
+            {
+              method:
+                "PATCH",
 
-        setEntries(loadedEntries);
+              headers: {
+                ...authHeaders(),
 
-        // Recalculate and repair shift total
-        const totalAdded =
-          calculateTotalAdded(
+                Prefer:
+                  "return=minimal",
+              },
+
+              body:
+                JSON.stringify({
+                  total_added_float:
+                    roundMoney(
+                      totalAdded
+                    ),
+                }),
+            }
+          );
+
+        if (!response.ok) {
+          const result =
+            await safeJson(
+              response
+            );
+
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              result?.hint ||
+              "Unable to update total added float."
+          );
+        }
+      },
+      [
+        shiftId,
+        accessToken,
+        supabaseUrl,
+        supabaseAnonKey,
+        authHeaders,
+      ]
+    );
+
+  // ==================================================
+  // LOAD FLOAT ENTRIES
+  // ==================================================
+
+  const loadEntries =
+    useCallback(
+      async (
+        options = {}
+      ) => {
+        const silent =
+          options?.silent ===
+          true;
+
+        if (
+          !shiftId ||
+          !accessToken ||
+          !supabaseUrl ||
+          !supabaseAnonKey
+        ) {
+          setEntries([]);
+          setLoading(false);
+          return;
+        }
+
+        try {
+          if (!silent) {
+            setLoading(true);
+          }
+
+          const response =
+            await fetch(
+              `${supabaseUrl}/rest/v1/shift_income_entries` +
+                `?shift_id=eq.${encodeURIComponent(
+                  shiftId
+                )}` +
+                `&select=id,shift_id,entry_type,description,amount,created_at` +
+                `&order=created_at.asc`,
+              {
+                method:
+                  "GET",
+
+                headers:
+                  authHeaders(),
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          const result =
+            await safeJson(
+              response
+            );
+
+          if (!response.ok) {
+            throw new Error(
+              result?.message ||
+                result?.details ||
+                "Unable to load float entries."
+            );
+          }
+
+          const loadedEntries =
+            Array.isArray(
+              result
+            )
+              ? result
+              : [];
+
+          setEntries(
             loadedEntries
           );
 
-        await syncShiftTotalAdded(
-          totalAdded
-        );
-      } catch (error) {
-        console.error(
-          "LOAD FLOAT ENTRIES ERROR:",
-          error
-        );
+          const totalAdded =
+            calculateTotalAdded(
+              loadedEntries
+            );
 
-        if (!cancelled) {
-          setMessage(
-            error?.message ||
-              "Unable to load float entries."
+          await syncShiftTotalAdded(
+            totalAdded
+          );
+        } catch (error) {
+          console.error(
+            "LOAD FLOAT ENTRIES ERROR:",
+            error
           );
 
-          setMessageType("error");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
+          if (!silent) {
+            setMessage(
+              error?.message ||
+                "Unable to load float entries."
+            );
 
+            setMessageType(
+              "error"
+            );
+          }
+        } finally {
+          if (!silent) {
+            setLoading(
+              false
+            );
+          }
+        }
+      },
+      [
+        shiftId,
+        accessToken,
+        supabaseUrl,
+        supabaseAnonKey,
+        authHeaders,
+        syncShiftTotalAdded,
+      ]
+    );
+
+  // ==================================================
+  // INITIAL LOAD + AUTO REFRESH
+  //
+  // Accountant → Cashier transfers can arrive at any
+  // time. Cashier sees them automatically.
+  // ==================================================
+
+  useEffect(() => {
     loadEntries();
 
+    const timer =
+      setInterval(
+        () => {
+          loadEntries({
+            silent:
+              true,
+          });
+        },
+        5000
+      );
+
     return () => {
-      cancelled = true;
+      clearInterval(
+        timer
+      );
     };
   }, [
-    shiftId,
-    accessToken,
-    supabaseUrl,
-    supabaseAnonKey,
+    loadEntries,
   ]);
 
-  // --------------------------------------------------
-  // UPDATE DESCRIPTION WHEN TYPE CHANGES
-  // --------------------------------------------------
-
-  function handleEntryTypeChange(value) {
-    setEntryType(value);
-
-    if (value === "COMPANY_FLOAT") {
-      setDescription(
-        "Float from company"
-      );
-    }
-
-    if (value === "MSHWARI_FLOAT") {
-      setDescription(
-        "Float from M-Shwari"
-      );
-    }
-
-    setMessage("");
-    setMessageType("");
-  }
-
-  // --------------------------------------------------
-  // SYNC shifts.total_added_float
+  // ==================================================
+  // COMPANY FLOAT ENTRIES
   //
-  // ONLY:
-  // COMPANY FLOAT
-  // + M-SHWARI FLOAT
-  // --------------------------------------------------
+  // READ ONLY.
+  // These may only come from Legend Accounts.
+  // ==================================================
 
-  async function syncShiftTotalAdded(
-    totalAdded
-  ) {
+  const companyFloatEntries =
+    useMemo(
+      () =>
+        entries
+          .filter(
+            (entry) =>
+              entry.entry_type ===
+              "COMPANY_FLOAT"
+          )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              new Date(
+                a.created_at
+              ).getTime() -
+              new Date(
+                b.created_at
+              ).getTime()
+          ),
+      [
+        entries,
+      ]
+    );
+
+  // ==================================================
+  // COMPANY FLOAT SLOT MAP
+  //
+  // Accountant-generated entries use descriptions:
+  //
+  // Float 1 from company
+  // Float 2 from company
+  // Float 3 from company
+  //
+  // Older entries without a numbered description
+  // fall back to their sequential position.
+  // ==================================================
+
+  const companyFloatSlots =
+    useMemo(
+      () => {
+        const slots = [
+          null,
+          null,
+          null,
+        ];
+
+        const unassigned =
+          [];
+
+        for (
+          const entry of companyFloatEntries
+        ) {
+          const slot =
+            getCompanyFloatSlot(
+              entry?.description
+            );
+
+          if (
+            slot >= 1 &&
+            slot <= 3 &&
+            !slots[
+              slot - 1
+            ]
+          ) {
+            slots[
+              slot - 1
+            ] =
+              entry;
+          } else {
+            unassigned.push(
+              entry
+            );
+          }
+        }
+
+        for (
+          const entry of unassigned
+        ) {
+          const emptyIndex =
+            slots.findIndex(
+              (item) =>
+                !item
+            );
+
+          if (
+            emptyIndex ===
+            -1
+          ) {
+            break;
+          }
+
+          slots[
+            emptyIndex
+          ] =
+            entry;
+        }
+
+        return slots;
+      },
+      [
+        companyFloatEntries,
+      ]
+    );
+
+  // ==================================================
+  // M-SHWARI ENTRIES
+  // ==================================================
+
+  const mshwariEntries =
+    useMemo(
+      () =>
+        entries
+          .filter(
+            (entry) =>
+              entry.entry_type ===
+              "MSHWARI_FLOAT"
+          )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              new Date(
+                a.created_at
+              ).getTime() -
+              new Date(
+                b.created_at
+              ).getTime()
+          ),
+      [
+        entries,
+      ]
+    );
+
+  // ==================================================
+  // TOTALS
+  // ==================================================
+
+  const totals =
+    useMemo(
+      () => {
+        let company =
+          0;
+
+        let mshwari =
+          0;
+
+        for (
+          const entry of entries
+        ) {
+          const value =
+            Number(
+              entry?.amount ??
+                0
+            );
+
+          if (
+            !Number.isFinite(
+              value
+            )
+          ) {
+            continue;
+          }
+
+          if (
+            entry.entry_type ===
+            "COMPANY_FLOAT"
+          ) {
+            company +=
+              value;
+          }
+
+          if (
+            entry.entry_type ===
+            "MSHWARI_FLOAT"
+          ) {
+            mshwari +=
+              value;
+          }
+        }
+
+        return {
+          company:
+            roundMoney(
+              company
+            ),
+
+          mshwari:
+            roundMoney(
+              mshwari
+            ),
+
+          total:
+            roundMoney(
+              company +
+                mshwari
+            ),
+        };
+      },
+      [
+        entries,
+      ]
+    );
+
+  // ==================================================
+  // ADD M-SHWARI FLOAT
+  //
+  // COMPANY FLOAT CANNOT BE CREATED HERE.
+  // ==================================================
+
+  async function addMshwariFloat() {
     if (
-      !shiftId ||
-      !accessToken ||
-      !supabaseUrl ||
-      !supabaseAnonKey
+      saving
     ) {
       return;
     }
 
-    const response = await fetch(
-      `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(
-        shiftId
-      )}`,
-      {
-        method: "PATCH",
-
-        headers: {
-          apikey:
-            supabaseAnonKey,
-
-          Authorization:
-            `Bearer ${accessToken}`,
-
-          "Content-Type":
-            "application/json",
-
-          Prefer:
-            "return=minimal",
-        },
-
-        body: JSON.stringify({
-          total_added_float:
-            roundMoney(totalAdded),
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      let result = null;
-
-      try {
-        result =
-          await response.json();
-      } catch {
-        result = null;
-      }
-
-      throw new Error(
-        result?.message ||
-          result?.details ||
-          result?.hint ||
-          "Unable to update total added float."
-      );
-    }
-  }
-
-  // --------------------------------------------------
-  // ADD FLOAT
-  // --------------------------------------------------
-
-  async function addEntry() {
     if (!shiftId) {
       setMessage(
         "No open shift was found."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
@@ -244,93 +528,90 @@ export default function ShiftIncomeEntries({
       setMessage(
         "Authentication is missing. Please log in again."
       );
-      setMessageType("error");
-      return;
-    }
 
-    if (
-      entryType !== "COMPANY_FLOAT" &&
-      entryType !== "MSHWARI_FLOAT"
-    ) {
-      setMessage(
-        "Select a valid float type."
+      setMessageType(
+        "error"
       );
-      setMessageType("error");
+
       return;
     }
 
     const numericAmount =
-      Number(amount);
+      Number(
+        amount
+      );
 
     if (
       amount === "" ||
-      Number.isNaN(numericAmount) ||
+      !Number.isFinite(
+        numericAmount
+      ) ||
       numericAmount <= 0
     ) {
       setMessage(
-        "Enter a valid amount greater than zero."
+        "Enter a valid M-Shwari amount greater than zero."
       );
-      setMessageType("error");
+
+      setMessageType(
+        "error"
+      );
+
       return;
     }
 
     try {
-      setSaving(true);
+      setSaving(
+        true
+      );
+
       setMessage("");
       setMessageType("");
 
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/shift_income_entries`,
-        {
-          method: "POST",
+      const response =
+        await fetch(
+          `${supabaseUrl}/rest/v1/shift_income_entries`,
+          {
+            method:
+              "POST",
 
-          headers: {
-            apikey:
-              supabaseAnonKey,
+            headers: {
+              ...authHeaders(),
 
-            Authorization:
-              `Bearer ${accessToken}`,
+              Prefer:
+                "return=representation",
+            },
 
-            "Content-Type":
-              "application/json",
+            body:
+              JSON.stringify({
+                shift_id:
+                  shiftId,
 
-            Prefer:
-              "return=representation",
-          },
+                entry_type:
+                  "MSHWARI_FLOAT",
 
-          body: JSON.stringify({
-            shift_id:
-              shiftId,
+                description:
+                  String(
+                    description ||
+                      ""
+                  ).trim() ||
+                  "Float from M-Shwari",
 
-            entry_type:
-              entryType,
+                amount:
+                  roundMoney(
+                    numericAmount
+                  ),
+              }),
+          }
+        );
 
-            description:
-              description.trim() ||
-              (entryType === "COMPANY_FLOAT"
-                ? "Float from company"
-                : "Float from M-Shwari"),
-
-            amount:
-              roundMoney(
-                numericAmount
-              ),
-          }),
-        }
-      );
-
-      let result = null;
-
-      try {
-        result =
-          await response.json();
-      } catch {
-        result = null;
-      }
+      const result =
+        await safeJson(
+          response
+        );
 
       if (!response.ok) {
         console.error(
-          "FLOAT INSERT ERROR:",
+          "MSHWARI FLOAT INSERT ERROR:",
           result
         );
 
@@ -338,19 +619,22 @@ export default function ShiftIncomeEntries({
           result?.message ||
             result?.details ||
             result?.hint ||
-            "Unable to save float entry."
+            "Unable to save M-Shwari float."
         );
       }
 
       const insertedRow =
-        Array.isArray(result) &&
-        result.length > 0
+        Array.isArray(
+          result
+        ) &&
+        result.length >
+          0
           ? result[0]
           : null;
 
       if (!insertedRow) {
         throw new Error(
-          "Float was saved but no record was returned."
+          "M-Shwari float was saved but no record was returned."
         );
       }
 
@@ -363,19 +647,20 @@ export default function ShiftIncomeEntries({
         updatedEntries
       );
 
-      const newTotal =
+      await syncShiftTotalAdded(
         calculateTotalAdded(
           updatedEntries
-        );
-
-      await syncShiftTotalAdded(
-        newTotal
+        )
       );
 
       setAmount("");
 
+      setDescription(
+        "Float from M-Shwari"
+      );
+
       setMessage(
-        "Float saved successfully."
+        "M-Shwari float saved successfully."
       );
 
       setMessageType(
@@ -383,391 +668,406 @@ export default function ShiftIncomeEntries({
       );
     } catch (error) {
       console.error(
-        "SAVE FLOAT ERROR:",
+        "SAVE MSHWARI FLOAT ERROR:",
         error
       );
 
       setMessage(
         error?.message ||
-          "Unable to save float."
+          "Unable to save M-Shwari float."
       );
 
-      setMessageType("error");
+      setMessageType(
+        "error"
+      );
     } finally {
-      setSaving(false);
+      setSaving(
+        false
+      );
     }
   }
 
-  // --------------------------------------------------
-  // TOTALS
-  // --------------------------------------------------
-
-  const totals =
-    useMemo(() => {
-      let company = 0;
-      let mshwari = 0;
-
-      for (const entry of entries) {
-        const value =
-          Number(
-            entry.amount || 0
-          );
-
-        if (
-          entry.entry_type ===
-          "COMPANY_FLOAT"
-        ) {
-          company += value;
-        }
-
-        if (
-          entry.entry_type ===
-          "MSHWARI_FLOAT"
-        ) {
-          mshwari += value;
-        }
-      }
-
-      return {
-        company:
-          roundMoney(company),
-
-        mshwari:
-          roundMoney(mshwari),
-
-        total:
-          roundMoney(
-            company +
-              mshwari
-          ),
-      };
-    }, [entries]);
-
-  // --------------------------------------------------
-  // ONLY DISPLAY VALID FLOAT HISTORY
-  // --------------------------------------------------
-
-  const visibleEntries =
-    entries.filter(
-      (entry) =>
-        entry.entry_type ===
-          "COMPANY_FLOAT" ||
-        entry.entry_type ===
-          "MSHWARI_FLOAT"
-    );
-
-  // --------------------------------------------------
+  // ==================================================
   // DISPLAY
-  // --------------------------------------------------
+  // ==================================================
 
   if (!currentShift) {
     return null;
   }
 
   return (
-    <div
-      style={{
-        marginTop: "24px",
-        backgroundColor: "white",
-        padding: "25px",
-        borderRadius: "12px",
-        boxShadow:
-          "0 2px 10px rgba(0,0,0,0.08)",
-        maxWidth: "700px",
-      }}
-    >
-      <h2
-        style={{
-          marginTop: 0,
-          marginBottom: "6px",
-        }}
-      >
-        Float / Income Entries
-      </h2>
+    <section style={panelStyle}>
+      <div style={titleStyle}>
+        FLOAT / INCOME ENTRIES
+      </div>
 
-      <p
-        style={{
-          marginTop: 0,
-          color: "#64748b",
-          marginBottom: "20px",
-        }}
-      >
-        Record money added during the current shift.
-      </p>
+      <div style={subtitleStyle}>
+        Company Float is controlled by Legend Accounts.
+      </div>
 
+      {/* ========================================== */}
       {/* SUMMARY */}
+      {/* ========================================== */}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(3, minmax(0, 1fr))",
-          gap: "10px",
-          marginBottom: "24px",
-        }}
-      >
+      <div style={summaryGridStyle}>
         <SummaryCard
           title="Company Float"
-          value={totals.company}
+          value={
+            totals.company
+          }
         />
 
         <SummaryCard
           title="M-Shwari Float"
-          value={totals.mshwari}
+          value={
+            totals.mshwari
+          }
         />
 
         <SummaryCard
           title="Total Added"
-          value={totals.total}
+          value={
+            totals.total
+          }
         />
       </div>
 
-      {/* ADD ENTRY */}
+      {/* ========================================== */}
+      {/* COMPANY FLOAT - READ ONLY */}
+      {/* ========================================== */}
 
-      <h3>
-        Add Entry
-      </h3>
+      <div style={sectionStyle}>
+        <div style={sectionTitleStyle}>
+          COMPANY FLOAT
+        </div>
 
-      <label
-        style={labelStyle}
-      >
-        Entry Type
-      </label>
+        <div style={companyNoticeStyle}>
+          <strong>
+            READ ONLY
+          </strong>
+          {" — "}
+          Company Float can only be added by Legend Accounts.
+          Cashiers cannot enter, change or overwrite these values.
+        </div>
 
-      <select
-        value={entryType}
-        disabled={saving}
-        onChange={(e) =>
-          handleEntryTypeChange(
-            e.target.value
-          )
-        }
-        style={inputStyle}
-      >
-        <option value="COMPANY_FLOAT">
-          Company Float
-        </option>
+        <div style={companyFloatGridStyle}>
+          {[1, 2, 3].map(
+            (slot) => {
+              const entry =
+                companyFloatSlots[
+                  slot - 1
+                ];
 
-        <option value="MSHWARI_FLOAT">
-          M-Shwari Float
-        </option>
-      </select>
+              return (
+                <CompanyFloatCard
+                  key={
+                    slot
+                  }
+                  slot={
+                    slot
+                  }
+                  entry={
+                    entry
+                  }
+                />
+              );
+            }
+          )}
+        </div>
+      </div>
+{/* ========================================== */}
+      {/* M-SHWARI FLOAT */}
+      {/* ========================================== */}
 
-      <label
-        style={labelStyle}
-      >
-        Description
-      </label>
+      <div style={sectionStyle}>
+        <div style={sectionTitleStyle}>
+          M-SHWARI FLOAT
+        </div>
 
-      <input
-        type="text"
-        value={description}
-        disabled={saving}
-        onChange={(e) =>
-          setDescription(
-            e.target.value
-          )
-        }
-        style={inputStyle}
-      />
+        <div style={mshwariNoticeStyle}>
+          M-Shwari Float remains a cashier entry.
+        </div>
 
-      <label
-        style={labelStyle}
-      >
-        Amount (KES)
-      </label>
+        <label style={labelStyle}>
+          Description
+        </label>
 
-      <input
-        type="number"
-        min="0"
-        step="0.01"
-        value={amount}
-        disabled={saving}
-        onChange={(e) => {
-          setAmount(
-            e.target.value
-          );
+        <input
+          type="text"
+          value={
+            description
+          }
+          disabled={
+            saving
+          }
+          onChange={(
+            event
+          ) => {
+            setDescription(
+              event.target
+                .value
+            );
 
-          setMessage("");
-          setMessageType("");
-        }}
-        placeholder="Enter amount"
-        style={inputStyle}
-      />
+            setMessage("");
+            setMessageType("");
+          }}
+          style={inputStyle}
+        />
 
-      {message && (
-        <div
+        <label style={labelStyle}>
+          Amount (KES)
+        </label>
+
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={
+            amount
+          }
+          disabled={
+            saving
+          }
+          onChange={(
+            event
+          ) => {
+            setAmount(
+              event.target
+                .value
+            );
+
+            setMessage("");
+            setMessageType("");
+          }}
+          placeholder="Enter M-Shwari amount"
+          style={inputStyle}
+        />
+
+        {message && (
+          <div
+            style={
+              messageType ===
+              "success"
+                ? successStyle
+                : errorStyle
+            }
+          >
+            {message}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={
+            addMshwariFloat
+          }
+          disabled={
+            saving ||
+            loading
+          }
           style={{
-            padding: "12px",
-            marginBottom: "16px",
-            borderRadius: "8px",
+            ...saveButtonStyle,
 
             backgroundColor:
-              messageType ===
-              "success"
-                ? "#ecfdf5"
-                : "#fef2f2",
+              saving ||
+              loading
+                ? "#94a3b8"
+                : "#168d32",
 
-            color:
-              messageType ===
-              "success"
-                ? "#166534"
-                : "#991b1b",
+            cursor:
+              saving ||
+              loading
+                ? "not-allowed"
+                : "pointer",
           }}
         >
-          {message}
+          {saving
+            ? "Saving..."
+            : "Add M-Shwari Float"}
+        </button>
+      </div>
+
+      {/* ========================================== */}
+      {/* M-SHWARI HISTORY */}
+      {/* ========================================== */}
+
+      <div style={sectionStyle}>
+        <div style={sectionTitleStyle}>
+          M-SHWARI HISTORY
         </div>
-      )}
-
-      <button
-        type="button"
-        onClick={addEntry}
-        disabled={
-          saving ||
-          loading
-        }
-        style={{
-          width: "100%",
-          padding: "14px",
-          border: "none",
-          borderRadius: "8px",
-
-          backgroundColor:
-            saving
-              ? "#94a3b8"
-              : "#168d32",
-
-          color: "white",
-          fontSize: "16px",
-          fontWeight: "bold",
-
-          cursor:
-            saving
-              ? "not-allowed"
-              : "pointer",
-        }}
-      >
-        {saving
-          ? "Saving..."
-          : "Add Float"}
-      </button>
-
-      {/* HISTORY */}
-
-      <div
-        style={{
-          marginTop: "28px",
-        }}
-      >
-        <h3>
-          Float History
-        </h3>
 
         {loading ? (
-          <p>
+          <div style={emptyStyle}>
             Loading...
-          </p>
-        ) : visibleEntries.length === 0 ? (
-          <p
-            style={{
-              color: "#64748b",
-            }}
-          >
-            No float has been added during this shift.
-          </p>
+          </div>
+        ) : mshwariEntries.length ===
+          0 ? (
+          <div style={emptyStyle}>
+            No M-Shwari float has been added during this shift.
+          </div>
         ) : (
-          visibleEntries.map(
-            (entry) => (
+          mshwariEntries.map(
+            (
+              entry
+            ) => (
               <div
-                key={entry.id}
-                style={{
-                  borderTop:
-                    "1px solid #e2e8f0",
-                  padding:
-                    "12px 0",
-                }}
+                key={
+                  entry.id
+                }
+                style={historyRowStyle}
               >
-                <div
-                  style={{
-                    display:
-                      "flex",
-                    justifyContent:
-                      "space-between",
-                    gap: "15px",
-                  }}
-                >
-                  <div>
-                    <strong>
-                      {displayEntryType(
-                        entry.entry_type
-                      )}
-                    </strong>
+                <div>
+                  <strong>
+                    M-Shwari Float
+                  </strong>
 
-                    <div
-                      style={{
-                        color:
-                          "#64748b",
-                        fontSize:
-                          "13px",
-                        marginTop:
-                          "4px",
-                      }}
-                    >
-                      {entry.description}
-                    </div>
-
-                    <div
-                      style={{
-                        color:
-                          "#64748b",
-                        fontSize:
-                          "12px",
-                        marginTop:
-                          "4px",
-                      }}
-                    >
-                      {formatDate(
-                        entry.created_at
-                      )}
-                    </div>
+                  <div style={historyDescriptionStyle}>
+                    {entry.description ||
+                      "Float from M-Shwari"}
                   </div>
 
-                  <strong>
-                    KES{" "}
-                    {Number(
-                      entry.amount || 0
-                    ).toLocaleString(
-                      "en-KE",
-                      {
-                        minimumFractionDigits:
-                          2,
-                        maximumFractionDigits:
-                          2,
-                      }
+                  <div style={historyDateStyle}>
+                    {formatDate(
+                      entry.created_at
                     )}
-                  </strong>
+                  </div>
                 </div>
+
+                <strong style={historyAmountStyle}>
+                  KES{" "}
+                  {money(
+                    entry.amount
+                  )}
+                </strong>
               </div>
             )
           )
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ==================================================
+// COMPANY FLOAT CARD
+// ==================================================
+
+function CompanyFloatCard({
+  slot,
+  entry,
+}) {
+  const hasValue =
+    Boolean(
+      entry
+    );
+
+  return (
+    <div
+      style={{
+        ...companyFloatCardStyle,
+
+        backgroundColor:
+          hasValue
+            ? "#ecfdf5"
+            : "#f8fafc",
+
+        borderColor:
+          hasValue
+            ? "#86efac"
+            : "#cbd5e1",
+      }}
+    >
+      <div style={companyFloatLabelStyle}>
+        Company Float{" "}
+        {slot}
+      </div>
+
+      <div
+        style={{
+          ...companyFloatValueStyle,
+
+          color:
+            hasValue
+              ? "#166534"
+              : "#64748b",
+        }}
+      >
+        KES{" "}
+        {money(
+          entry?.amount ??
+            0
+        )}
+      </div>
+
+      <div
+        style={
+          hasValue
+            ? receivedBadgeStyle
+            : lockedBadgeStyle
+        }
+      >
+        {hasValue
+          ? "RECEIVED ✓"
+          : "LOCKED"}
+      </div>
+
+      {hasValue && (
+        <>
+          <div style={companyFloatDescriptionStyle}>
+            {entry?.description ||
+              `Float ${slot} from company`}
+          </div>
+
+          <div style={companyFloatDateStyle}>
+            {formatDate(
+              entry?.created_at
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ==================================================
+// SUMMARY CARD
+// ==================================================
+
+function SummaryCard({
+  title,
+  value,
+}) {
+  return (
+    <div style={summaryCardStyle}>
+      <div style={summaryLabelStyle}>
+        {title}
+      </div>
+
+      <div style={summaryValueStyle}>
+        KES{" "}
+        {money(
+          value
         )}
       </div>
     </div>
   );
 }
 
-// --------------------------------------------------
+// ==================================================
 // TOTAL ADDED FLOAT
 //
-// ONLY COMPANY + M-SHWARI
-// --------------------------------------------------
+// COMPANY + M-SHWARI ONLY
+// ==================================================
 
 function calculateTotalAdded(
   entries
 ) {
-  let total = 0;
+  let total =
+    0;
 
-  for (const entry of entries) {
+  for (
+    const entry of entries
+  ) {
     if (
       entry.entry_type !==
         "COMPANY_FLOAT" &&
@@ -777,10 +1077,20 @@ function calculateTotalAdded(
       continue;
     }
 
-    total +=
+    const amount =
       Number(
-        entry.amount || 0
+        entry?.amount ??
+          0
       );
+
+    if (
+      Number.isFinite(
+        amount
+      )
+    ) {
+      total +=
+        amount;
+    }
   }
 
   return roundMoney(
@@ -788,137 +1098,581 @@ function calculateTotalAdded(
   );
 }
 
-// --------------------------------------------------
-// ENTRY TYPE LABEL
-// --------------------------------------------------
+// ==================================================
+// COMPANY FLOAT SLOT
+// ==================================================
 
-function displayEntryType(
-  type
+function getCompanyFloatSlot(
+  description
 ) {
-  if (
-    type ===
-    "COMPANY_FLOAT"
-  ) {
-    return "Company Float";
+  const text =
+    String(
+      description ||
+        ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const match =
+    text.match(
+      /float\s*([123])\s*from\s*company/
+    );
+
+  if (!match) {
+    return null;
   }
 
-  if (
-    type ===
-    "MSHWARI_FLOAT"
-  ) {
-    return "M-Shwari Float";
-  }
+  const slot =
+    Number(
+      match[1]
+    );
 
-  return type;
+  return (
+    Number.isInteger(
+      slot
+    ) &&
+    slot >= 1 &&
+    slot <= 3
+  )
+    ? slot
+    : null;
 }
 
-// --------------------------------------------------
-// DATE
-// --------------------------------------------------
+// ==================================================
+// SAFE JSON
+// ==================================================
 
-function formatDate(value) {
+async function safeJson(
+  response
+) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+// ==================================================
+// MONEY
+// ==================================================
+
+function money(
+  value
+) {
+  return Number(
+    value ??
+      0
+  ).toLocaleString(
+    "en-KE",
+    {
+      minimumFractionDigits:
+        2,
+
+      maximumFractionDigits:
+        2,
+    }
+  );
+}
+
+function roundMoney(
+  value
+) {
+  return (
+    Math.round(
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
+        100
+    ) /
+    100
+  );
+}
+
+// ==================================================
+// DATE
+// ==================================================
+
+function formatDate(
+  value
+) {
   if (!value) {
     return "";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-KE",
-    {
-      timeZone:
-        "Africa/Nairobi",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }
-  ).format(
-    new Date(value)
-  );
+  try {
+    return new Intl.DateTimeFormat(
+      "en-KE",
+      {
+        timeZone:
+          "Africa/Nairobi",
+
+        day:
+          "2-digit",
+
+        month:
+          "short",
+
+        year:
+          "numeric",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
+      }
+    ).format(
+      new Date(
+        value
+      )
+    );
+  } catch {
+    return "";
+  }
 }
 
-// --------------------------------------------------
-// SUMMARY CARD
-// --------------------------------------------------
-
-function SummaryCard({
-  title,
-  value,
-}) {
-  return (
-    <div
-      style={{
-        padding: "14px",
-        backgroundColor:
-          "#f8fafc",
-        border:
-          "1px solid #e2e8f0",
-        borderRadius: "9px",
-      }}
-    >
-      <div
-        style={{
-          color: "#64748b",
-          fontSize: "12px",
-        }}
-      >
-        {title}
-      </div>
-
-      <div
-        style={{
-          fontWeight: "bold",
-          marginTop: "5px",
-        }}
-      >
-        KES{" "}
-        {Number(
-          value || 0
-        ).toLocaleString(
-          "en-KE",
-          {
-            minimumFractionDigits:
-              2,
-            maximumFractionDigits:
-              2,
-          }
-        )}
-      </div>
-    </div>
-  );
-}
-
-// --------------------------------------------------
+// ==================================================
 // STYLES
-// --------------------------------------------------
+// ==================================================
+
+const panelStyle = {
+  marginTop:
+    "24px",
+
+  backgroundColor:
+    "white",
+
+  padding:
+    "20px",
+
+  borderRadius:
+    "10px",
+
+  boxShadow:
+    "0 2px 10px rgba(0,0,0,0.08)",
+
+  maxWidth:
+    "750px",
+};
+
+const titleStyle = {
+  fontSize:
+    "18px",
+
+  fontWeight:
+    "900",
+
+  color:
+    "#0f172a",
+};
+
+const subtitleStyle = {
+  marginTop:
+    "5px",
+
+  marginBottom:
+    "18px",
+
+  color:
+    "#64748b",
+
+  fontSize:
+    "11px",
+};
+
+const summaryGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "repeat(3,minmax(0,1fr))",
+
+  gap:
+    "10px",
+
+  marginBottom:
+    "18px",
+};
+
+const summaryCardStyle = {
+  padding:
+    "12px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  border:
+    "1px solid #e2e8f0",
+
+  borderRadius:
+    "7px",
+};
+
+const summaryLabelStyle = {
+  color:
+    "#64748b",
+
+  fontSize:
+    "10px",
+};
+
+const summaryValueStyle = {
+  marginTop:
+    "5px",
+
+  fontWeight:
+    "bold",
+
+  fontSize:
+    "14px",
+};
+
+const sectionStyle = {
+  marginTop:
+    "18px",
+
+  paddingTop:
+    "16px",
+
+  borderTop:
+    "1px solid #e2e8f0",
+};
+
+const sectionTitleStyle = {
+  fontWeight:
+    "900",
+
+  fontSize:
+    "13px",
+
+  marginBottom:
+    "10px",
+};
+
+const companyNoticeStyle = {
+  padding:
+    "10px",
+
+  marginBottom:
+    "12px",
+
+  border:
+    "1px solid #bae6fd",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#f0f9ff",
+
+  color:
+    "#075985",
+
+  fontSize:
+    "10px",
+
+  lineHeight:
+    "1.5",
+};
+
+const mshwariNoticeStyle = {
+  padding:
+    "8px",
+
+  marginBottom:
+    "12px",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  color:
+    "#64748b",
+
+  fontSize:
+    "10px",
+};
+
+const companyFloatGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(180px,1fr))",
+
+  gap:
+    "10px",
+};
+
+const companyFloatCardStyle = {
+  border:
+    "1px solid",
+
+  borderRadius:
+    "7px",
+
+  padding:
+    "12px",
+};
+
+const companyFloatLabelStyle = {
+  color:
+    "#475569",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "bold",
+};
+
+const companyFloatValueStyle = {
+  marginTop:
+    "6px",
+
+  fontSize:
+    "17px",
+
+  fontWeight:
+    "900",
+};
+
+const receivedBadgeStyle = {
+  display:
+    "inline-block",
+
+  marginTop:
+    "8px",
+
+  padding:
+    "4px 7px",
+
+  borderRadius:
+    "12px",
+
+  backgroundColor:
+    "#16a34a",
+
+  color:
+    "white",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "bold",
+};
+
+const lockedBadgeStyle = {
+  display:
+    "inline-block",
+
+  marginTop:
+    "8px",
+
+  padding:
+    "4px 7px",
+
+  borderRadius:
+    "12px",
+
+  backgroundColor:
+    "#e2e8f0",
+
+  color:
+    "#475569",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "bold",
+};
+
+const companyFloatDescriptionStyle = {
+  marginTop:
+    "8px",
+
+  color:
+    "#475569",
+
+  fontSize:
+    "9px",
+};
+
+const companyFloatDateStyle = {
+  marginTop:
+    "3px",
+
+  color:
+    "#94a3b8",
+
+  fontSize:
+    "8px",
+};
 
 const labelStyle = {
-  display: "block",
-  fontWeight: "bold",
-  marginBottom: "7px",
+  display:
+    "block",
+
+  fontWeight:
+    "bold",
+
+  fontSize:
+    "11px",
+
+  marginBottom:
+    "6px",
 };
 
 const inputStyle = {
-  width: "100%",
-  padding: "12px",
+  width:
+    "100%",
+
+  boxSizing:
+    "border-box",
+
+  padding:
+    "10px",
+
   border:
     "1px solid #cbd5e1",
-  borderRadius: "8px",
-  boxSizing: "border-box",
-  marginBottom: "16px",
-  fontSize: "15px",
+
+  borderRadius:
+    "6px",
+
+  marginBottom:
+    "12px",
+
+  fontSize:
+    "13px",
 };
 
-// --------------------------------------------------
-// MONEY
-// --------------------------------------------------
+const saveButtonStyle = {
+  width:
+    "100%",
 
-function roundMoney(value) {
-  return (
-    Math.round(
-      (Number(value) +
-        Number.EPSILON) *
-        100
-    ) / 100
-  );
-}
+  padding:
+    "11px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "6px",
+
+  color:
+    "white",
+
+  fontWeight:
+    "bold",
+};
+
+const successStyle = {
+  padding:
+    "10px",
+
+  marginBottom:
+    "12px",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#ecfdf5",
+
+  border:
+    "1px solid #86efac",
+
+  color:
+    "#166534",
+
+  fontSize:
+    "10px",
+};
+
+const errorStyle = {
+  padding:
+    "10px",
+
+  marginBottom:
+    "12px",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#fef2f2",
+
+  border:
+    "1px solid #fecaca",
+
+  color:
+    "#991b1b",
+
+  fontSize:
+    "10px",
+};
+
+const historyRowStyle = {
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  gap:
+    "15px",
+
+  padding:
+    "10px 0",
+
+  borderTop:
+    "1px solid #e2e8f0",
+};
+
+const historyDescriptionStyle = {
+  marginTop:
+    "3px",
+
+  color:
+    "#64748b",
+
+  fontSize:
+    "10px",
+};
+
+const historyDateStyle = {
+  marginTop:
+    "3px",
+
+  color:
+    "#94a3b8",
+
+  fontSize:
+    "9px",
+};
+
+const historyAmountStyle = {
+  whiteSpace:
+    "nowrap",
+};
+
+const emptyStyle = {
+  padding:
+    "12px",
+
+  color:
+    "#64748b",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "10px",
+};
