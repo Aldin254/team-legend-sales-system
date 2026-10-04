@@ -261,48 +261,14 @@ export default function PlatformReadings24Hour({
           readingMap
         );
 
-        const initialValues = {};
-
-        for (
-          const platform of activePlatforms
-        ) {
-          const platformRows =
-            readingMap[
-              platform.id
-            ] || {};
-
-          initialValues[
-            platform.id
-          ] = {
-            OPENING:
-              platformRows
-                .OPENING
-                ?.reading_value ??
-              "",
-
-            HANDOVER_9PM:
-              platformRows
-                .HANDOVER_9PM
-                ?.reading_value ??
-              "",
-
-            MIDNIGHT_CLOSE:
-              platformRows
-                .MIDNIGHT_CLOSE
-                ?.reading_value ??
-              "",
-
-            CLOSING_9AM:
-              platformRows
-                .CLOSING_9AM
-                ?.reading_value ??
-              "",
-          };
-        }
-
-        setValues(
-          initialValues
-        );
+        function isShift1NinePmStageOpen(
+  time
+) {
+  return (
+    time.hour >= 21 ||
+    time.hour < 9
+  );
+}
 
         // Clear an old loading error once a
         // background refresh succeeds.
