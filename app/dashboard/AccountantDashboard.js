@@ -89,8 +89,15 @@ export default function AccountantDashboard({
   const [savingExpense, setSavingExpense] =
     useState(false);
 
-  const [confirmingTransactionId, setConfirmingTransactionId] =
-    useState(null);
+  const [
+    confirmingTransactionId,
+    setConfirmingTransactionId,
+  ] = useState(null);
+
+  const [
+    cancellingTransactionId,
+    setCancellingTransactionId,
+  ] = useState(null);
 
   const [closingDay, setClosingDay] =
     useState(false);
@@ -685,6 +692,8 @@ export default function AccountantDashboard({
                 "CASHIER_TO_ACCOUNTANT" &&
               (
                 tx.status ===
+                  "CREATED" ||
+                tx.status ===
                   "PENDING_MANUAL_SEND" ||
                 tx.status ===
                   "AWAITING_ACCOUNTANT_CONFIRMATION" ||
@@ -722,8 +731,16 @@ export default function AccountantDashboard({
           (tx) =>
             tx.flow ===
               "ACCOUNTANT_TO_CASHIER" &&
-            tx.status ===
-              "PENDING_MANUAL_SEND"
+            (
+              tx.status ===
+                "CREATED" ||
+              tx.status ===
+                "PENDING_MANUAL_SEND" ||
+              tx.status ===
+                "PENDING_MPESA" ||
+              tx.status ===
+                "CHECKING"
+            )
         ),
       [
         transactions,
@@ -740,16 +757,16 @@ export default function AccountantDashboard({
     );
 
   const carriedForwardTransactions =
-  useMemo(
-    () => {
-      const unresolvedStatuses =
-        new Set([
-          "CREATED",
-          "PENDING_MANUAL_SEND",
-          "AWAITING_ACCOUNTANT_CONFIRMATION",
-          "PENDING_MPESA",
-          "CHECKING",
-        ]);
+    useMemo(
+      () => {
+        const unresolvedStatuses =
+          new Set([
+            "CREATED",
+            "PENDING_MANUAL_SEND",
+            "AWAITING_ACCOUNTANT_CONFIRMATION",
+            "PENDING_MPESA",
+            "CHECKING",
+          ]);
 
         return transactions
           .filter(
@@ -775,7 +792,9 @@ export default function AccountantDashboard({
                   tx.created_at
                 );
 
-              if (!transactionDate) {
+              if (
+                !transactionDate
+              ) {
                 return false;
               }
 
@@ -1155,7 +1174,9 @@ export default function AccountantDashboard({
         }\n\nAfter confirmation, the cashier expense will be posted automatically.`
       );
 
-    if (!confirmed) {
+    if (
+      !confirmed
+    ) {
       return;
     }
 
@@ -1203,6 +1224,83 @@ export default function AccountantDashboard({
   }
 
   // ==================================================
+  // CANCEL UNFINISHED TRANSACTION
+  // ==================================================
+
+  async function cancelPendingTransaction(
+    transaction
+  ) {
+    if (
+      !transaction?.id ||
+      cancellingTransactionId
+    ) {
+      return;
+    }
+
+    const cashier =
+      transaction.recipient_name_snapshot ||
+      transaction.cashier_name ||
+      "-";
+
+    const confirmed =
+      window.confirm(
+        `Cancel transaction ${transaction.transaction_no}?\n\n` +
+          `Cashier: ${cashier}\n` +
+          `Amount: KES ${money(
+            transaction.amount
+          )}\n\n` +
+          `Only cancel this transaction if the money was NOT sent.`
+      );
+
+    if (
+      !confirmed
+    ) {
+      return;
+    }
+
+    try {
+      setCancellingTransactionId(
+        transaction.id
+      );
+
+      setMessage("");
+      setSuccessMessage("");
+
+      const result =
+        await callRpc(
+          "tl_accountant_cancel_pending_transaction",
+          {
+            p_transaction_id:
+              transaction.id,
+          }
+        );
+
+      setSuccessMessage(
+        `Transaction ${
+          result?.transaction_no ||
+          transaction.transaction_no
+        } cancelled successfully.`
+      );
+
+      await refreshData();
+    } catch (error) {
+      console.error(
+        "CANCEL TRANSACTION ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to cancel transaction."
+      );
+    } finally {
+      setCancellingTransactionId(
+        null
+      );
+    }
+  }
+
+  // ==================================================
   // ADD ACCOUNTANT EXPENSE
   // ==================================================
 
@@ -1234,7 +1332,9 @@ export default function AccountantDashboard({
         expenseAmount
       );
 
-    if (!description) {
+    if (
+      !description
+    ) {
       setMessage(
         "Enter the expense description."
       );
@@ -1336,7 +1436,9 @@ export default function AccountantDashboard({
         )}\n\nAfter closing, today's Accountant entries will be locked.`
       );
 
-    if (!confirmed) {
+    if (
+      !confirmed
+    ) {
       return;
     }
 
@@ -1385,7 +1487,9 @@ export default function AccountantDashboard({
   // LOADING
   // ==================================================
 
-  if (loading) {
+  if (
+    loading
+  ) {
     return (
       <div style={loadingStyle}>
         Loading Legend Accounts...
@@ -1440,7 +1544,9 @@ export default function AccountantDashboard({
 
           <button
             type="button"
-            onClick={logout}
+            onClick={
+              logout
+            }
             style={logoutButtonStyle}
           >
             Logout
@@ -1471,12 +1577,6 @@ export default function AccountantDashboard({
 
             <div style={warningTextStyle}>
               {reportOpenError}
-            </div>
-
-            <div style={warningTextStyle}>
-              Previous unresolved transactions remain visible below.
-              The backend rollover function must allow the new day
-              to open while they are being resolved.
             </div>
           </div>
         )}
@@ -1511,7 +1611,7 @@ export default function AccountantDashboard({
 
             <div style={carriedForwardNoticeStyle}>
               The Accountant dashboard remains accessible.
-              Resolve these previous transactions before sending
+              Resolve the previous transactions before sending
               new float, entering new expenses, or closing today.
             </div>
 
@@ -1586,7 +1686,7 @@ export default function AccountantDashboard({
                         <TableCell>
                           {transaction.flow ===
                           "ACCOUNTANT_TO_CASHIER"
-                            ? "SENT TO CASHIER"
+                            ? "TO CASHIER"
                             : "FROM CASHIER"}
                         </TableCell>
 
@@ -1653,16 +1753,49 @@ export default function AccountantDashboard({
                                 ? "Confirming..."
                                 : "Confirm Received"}
                             </button>
-                          ) : transaction.flow ===
-                              "ACCOUNTANT_TO_CASHIER" &&
-                            transaction.status ===
-                              "PENDING_MANUAL_SEND" ? (
-                            <span style={pendingActionStyle}>
-                              Pending send — requires resolution
-                            </span>
+                          ) : [
+                              "CREATED",
+                              "PENDING_MANUAL_SEND",
+                              "PENDING_MPESA",
+                              "CHECKING",
+                            ].includes(
+                              transaction.status
+                            ) ? (
+                            <div style={resolutionButtonsStyle}>
+                              <span style={pendingActionStyle}>
+                                If money was not sent:
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  cancelPendingTransaction(
+                                    transaction
+                                  )
+                                }
+                                disabled={
+                                  cancellingTransactionId ===
+                                  transaction.id
+                                }
+                                style={{
+                                  ...cancelTransactionButtonStyle,
+
+                                  opacity:
+                                    cancellingTransactionId ===
+                                    transaction.id
+                                      ? 0.6
+                                      : 1,
+                                }}
+                              >
+                                {cancellingTransactionId ===
+                                transaction.id
+                                  ? "Cancelling..."
+                                  : "Cancel Transaction"}
+                              </button>
+                            </div>
                           ) : (
                             <span style={pendingActionStyle}>
-                              Check / resolve transaction
+                              Waiting for resolution
                             </span>
                           )}
                         </TableCell>
@@ -2203,12 +2336,14 @@ export default function AccountantDashboard({
                         <TableCell right>
                           KES{" "}
                           {money(
-                            transaction.estimated_fee
+                            transaction.actual_fee ??
+                              transaction.estimated_fee
                           )}
                         </TableCell>
 
                         <TableCell>
-                          {transaction.manual_receipt_no ||
+                          {transaction.mpesa_receipt_number ||
+                            transaction.manual_receipt_no ||
                             "-"}
                         </TableCell>
 
@@ -2243,7 +2378,7 @@ export default function AccountantDashboard({
                             </button>
                           ) : (
                             <span style={mutedSmallStyle}>
-                              Waiting for resolution
+                              Waiting for cashier / resolution
                             </span>
                           )}
                         </TableCell>
@@ -2609,14 +2744,15 @@ export default function AccountantDashboard({
                 : closingDay
                 ? "Closing..."
                 : hasCarriedForward
-                ? "RESOLVE CARRIED FORWARD FIRST"
-                : "Close Accountant Day"}
-            </button>
-          </div>
-        </section>
-      </div>
-    </main>
-  );
+                ?
+                "RESOLVE CARRIED FORWARD FIRST"
+: "Close Accountant Day"}
+</button>
+</div>
+</section>
+</div>
+</main>
+);
 }
 
 // ==================================================
@@ -2756,6 +2892,8 @@ function StatusText({
     color =
       "#166534";
   } else if (
+    normalized ===
+      "CREATED" ||
     normalized ===
       "AWAITING_ACCOUNTANT_CONFIRMATION" ||
     normalized ===
@@ -2914,7 +3052,9 @@ function formatPhoneForDisplay(
 function formatDateTime(
   value
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return "-";
   }
 
@@ -2956,7 +3096,9 @@ function formatDateTime(
 function nairobiDateKey(
   value
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return "";
   }
 
@@ -3024,6 +3166,9 @@ function friendlyStatus(
   switch (
     value
   ) {
+    case "CREATED":
+      return "CREATED";
+
     case "PENDING_MANUAL_SEND":
       return "PENDING SEND";
 
@@ -4282,4 +4427,44 @@ const pendingActionStyle = {
 
   fontWeight:
     "bold",
+};
+
+const resolutionButtonsStyle = {
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  gap:
+    "8px",
+
+  flexWrap:
+    "wrap",
+};
+
+const cancelTransactionButtonStyle = {
+  border:
+    "none",
+
+  borderRadius:
+    "4px",
+
+  padding:
+    "7px 9px",
+
+  backgroundColor:
+    "#dc2626",
+
+  color:
+    "white",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
 };
