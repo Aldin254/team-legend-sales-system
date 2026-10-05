@@ -7,7 +7,11 @@ import {
   useState,
 } from "react";
 
-const BLANK_IM_ACCOUNT = {
+// ============================================================
+// DEFAULTS
+// ============================================================
+
+const EMPTY_IM_ACCOUNT = {
   id: null,
   account_name: "Team Legend I&M",
   paybill_number: "",
@@ -16,7 +20,7 @@ const BLANK_IM_ACCOUNT = {
   is_active: true,
 };
 
-const BLANK_RECIPIENT = {
+const EMPTY_RECIPIENT = {
   shop_id: "",
   slot_number: "",
   recipient_name: "",
@@ -28,6 +32,10 @@ const BLANK_RECIPIENT = {
   is_active: true,
 };
 
+// ============================================================
+// MAIN
+// ============================================================
+
 export default function AdminMpesaRatesPanel({
   user,
 }) {
@@ -38,8 +46,11 @@ export default function AdminMpesaRatesPanel({
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
-    user?.access_token ||
-    null;
+    user?.access_token || null;
+
+  // ==========================================================
+  // HEADERS
+  // ==========================================================
 
   const authHeaders =
     useMemo(
@@ -59,82 +70,33 @@ export default function AdminMpesaRatesPanel({
       ]
     );
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [message, setMessage] =
-    useState("");
-
-  const [messageType, setMessageType] =
-    useState("");
-
-  // ==================================================
-  // EXISTING SAFARICOM RATE SYSTEM
-  // ==================================================
-
-  const [rates, setRates] =
-    useState([]);
-
-  const [savingId, setSavingId] =
-    useState("");
-
-  const [deletingId, setDeletingId] =
-    useState("");
-
-  const [adding, setAdding] =
-    useState(false);
-
-  const [testing, setTesting] =
-    useState(false);
-
-  const [newFlow, setNewFlow] =
-    useState("");
-
-  const [newMinimum, setNewMinimum] =
-    useState("");
-
-  const [newMaximum, setNewMaximum] =
-    useState("");
-
-  const [newFee, setNewFee] =
-    useState("");
+  // ==========================================================
+  // GENERAL STATE
+  // ==========================================================
 
   const [
-    effectiveFrom,
-    setEffectiveFrom,
-  ] = useState(
-    getNairobiDate()
-  );
+    loading,
+    setLoading,
+  ] = useState(true);
 
   const [
-    effectiveTo,
-    setEffectiveTo,
-  ] = useState("");
-
-  const [newNote, setNewNote] =
-    useState("");
+    refreshing,
+    setRefreshing,
+  ] = useState(false);
 
   const [
-    testFeeType,
-    setTestFeeType,
+    message,
+    setMessage,
   ] = useState("");
 
   const [
-    testAmount,
-    setTestAmount,
+    messageType,
+    setMessageType,
   ] = useState("");
 
-  const [
-    testResult,
-    setTestResult,
-  ] = useState(null);
-
-  // ==================================================
-  // PAYMENT SYSTEM CONTROL
-  // ==================================================
+  // ==========================================================
+  // PAYMENT SYSTEM
+  // ==========================================================
 
   const [
     paymentSettings,
@@ -152,15 +114,15 @@ export default function AdminMpesaRatesPanel({
     setSavingPaymentSystem,
   ] = useState(false);
 
-  // ==================================================
-  // I&M COMPANY ACCOUNT
-  // ==================================================
+  // ==========================================================
+  // I&M ACCOUNT
+  // ==========================================================
 
   const [
     imAccount,
     setImAccount,
   ] = useState(
-    BLANK_IM_ACCOUNT
+    EMPTY_IM_ACCOUNT
   );
 
   const [
@@ -168,29 +130,14 @@ export default function AdminMpesaRatesPanel({
     setSavingImAccount,
   ] = useState(false);
 
-  // ==================================================
-  // NEW PAYMENT TARIFFS
-  // ==================================================
+  // ==========================================================
+  // NEW BANK PAYMENT TARIFFS
+  // ==========================================================
 
   const [
     paymentTariffs,
     setPaymentTariffs,
   ] = useState([]);
-
-  const [
-    savingPaymentTariffId,
-    setSavingPaymentTariffId,
-  ] = useState("");
-
-  const [
-    deletingPaymentTariffId,
-    setDeletingPaymentTariffId,
-  ] = useState("");
-
-  const [
-    addingPaymentTariff,
-    setAddingPaymentTariff,
-  ] = useState(false);
 
   const [
     newPaymentMethod,
@@ -215,6 +162,21 @@ export default function AdminMpesaRatesPanel({
   ] = useState("");
 
   const [
+    addingPaymentTariff,
+    setAddingPaymentTariff,
+  ] = useState(false);
+
+  const [
+    savingPaymentTariffId,
+    setSavingPaymentTariffId,
+  ] = useState("");
+
+  const [
+    deletingPaymentTariffId,
+    setDeletingPaymentTariffId,
+  ] = useState("");
+
+  const [
     paymentTestMethod,
     setPaymentTestMethod,
   ] = useState(
@@ -236,12 +198,14 @@ export default function AdminMpesaRatesPanel({
     setTestingPaymentFee,
   ] = useState(false);
 
-  // ==================================================
+  // ==========================================================
   // CASHIER PAYMENT ACCOUNTS
-  // ==================================================
+  // ==========================================================
 
-  const [shops, setShops] =
-    useState([]);
+  const [
+    shops,
+    setShops,
+  ] = useState([]);
 
   const [
     recipients,
@@ -252,7 +216,7 @@ export default function AdminMpesaRatesPanel({
     newRecipient,
     setNewRecipient,
   ] = useState(
-    BLANK_RECIPIENT
+    EMPTY_RECIPIENT
   );
 
   const [
@@ -265,9 +229,106 @@ export default function AdminMpesaRatesPanel({
     setSavingRecipientId,
   ] = useState("");
 
-  // ==================================================
+  // ==========================================================
+  // EXISTING M-PESA RATE SYSTEM
+  // ==========================================================
+
+  const [
+    rates,
+    setRates,
+  ] = useState([]);
+
+  const [
+    savingId,
+    setSavingId,
+  ] = useState("");
+
+  const [
+    deletingId,
+    setDeletingId,
+  ] = useState("");
+
+  const [
+    adding,
+    setAdding,
+  ] = useState(false);
+
+  const [
+    testing,
+    setTesting,
+  ] = useState(false);
+
+  const [
+    newFlow,
+    setNewFlow,
+  ] = useState("");
+
+  const [
+    newMinimum,
+    setNewMinimum,
+  ] = useState("");
+
+  const [
+    newMaximum,
+    setNewMaximum,
+  ] = useState("");
+
+  const [
+    newFee,
+    setNewFee,
+  ] = useState("");
+
+  const [
+    effectiveFrom,
+    setEffectiveFrom,
+  ] = useState(
+    getNairobiDate()
+  );
+
+  const [
+    effectiveTo,
+    setEffectiveTo,
+  ] = useState("");
+
+  const [
+    newNote,
+    setNewNote,
+  ] = useState("");
+
+  const [
+    testFeeType,
+    setTestFeeType,
+  ] = useState("");
+
+  const [
+    testAmount,
+    setTestAmount,
+  ] = useState("");
+
+  const [
+    testResult,
+    setTestResult,
+  ] = useState(null);
+
+  // ==========================================================
+  // ERROR
+  // ==========================================================
+
+  function showError(
+    text
+  ) {
+    setMessage(
+      text
+    );
+
+    setMessageType(
+      "error"
+    );
+  }
+
+  // ==========================================================
   // RPC
-  // ==================================================
+  // ==========================================================
 
   const callRpc =
     useCallback(
@@ -331,9 +392,9 @@ export default function AdminMpesaRatesPanel({
       ]
     );
 
-  // ==================================================
+  // ==========================================================
   // REST GET
-  // ==================================================
+  // ==========================================================
 
   const restGet =
     useCallback(
@@ -380,9 +441,9 @@ export default function AdminMpesaRatesPanel({
       ]
     );
 
-  // ==================================================
+  // ==========================================================
   // LOAD EVERYTHING
-  // ==================================================
+  // ==========================================================
 
   const loadAll =
     useCallback(
@@ -417,7 +478,7 @@ export default function AdminMpesaRatesPanel({
           setMessage("");
 
           const [
-            mpesaRateResult,
+            mpesaRatesResult,
             settingsResult,
             imAccountsResult,
             tariffResult,
@@ -432,12 +493,12 @@ export default function AdminMpesaRatesPanel({
 
               restGet(
                 "payment_system_settings?id=eq.1&select=*",
-                "Unable to load payment system settings."
+                "Unable to load payment settings."
               ),
 
               restGet(
                 "im_payment_accounts?select=*&order=is_active.desc,updated_at.desc",
-                "Unable to load I&M account details."
+                "Unable to load I&M account."
               ),
 
               restGet(
@@ -451,14 +512,32 @@ export default function AdminMpesaRatesPanel({
               ),
 
               restGet(
-                "mpesa_cashier_recipients?select=id,shop_id,slot_number,recipient_name,phone_number,linked_profile_id,is_active,im_reference,allow_mpesa_to_mpesa,allow_im_to_mpesa,created_at,updated_at&order=shop_id.asc,slot_number.asc",
+                "mpesa_cashier_recipients" +
+                  "?select=" +
+                  "id," +
+                  "shop_id," +
+                  "slot_number," +
+                  "recipient_name," +
+                  "phone_number," +
+                  "linked_profile_id," +
+                  "is_active," +
+                  "im_reference," +
+                  "allow_mpesa_to_mpesa," +
+                  "allow_im_to_mpesa," +
+                  "created_at," +
+                  "updated_at" +
+                  "&order=shop_id.asc,slot_number.asc",
                 "Unable to load cashier payment accounts."
               ),
             ]);
 
+          // ====================================================
+          // EXISTING M-PESA RATES
+          // ====================================================
+
           const loadedRates =
             normaliseRates(
-              mpesaRateResult
+              mpesaRatesResult
             );
 
           setRates(
@@ -466,7 +545,9 @@ export default function AdminMpesaRatesPanel({
           );
 
           setTestFeeType(
-            (current) =>
+            (
+              current
+            ) =>
               current ||
               getRateType(
                 loadedRates[0]
@@ -474,7 +555,11 @@ export default function AdminMpesaRatesPanel({
               ""
           );
 
-          const setting =
+          // ====================================================
+          // SETTINGS
+          // ====================================================
+
+          const settingsRow =
             Array.isArray(
               settingsResult
             )
@@ -482,18 +567,22 @@ export default function AdminMpesaRatesPanel({
               : null;
 
           if (
-            setting
+            settingsRow
           ) {
             setPaymentSettings({
               collection_method:
-                setting.collection_method ||
+                settingsRow.collection_method ||
                 "MPESA_TO_MPESA",
 
               float_send_method:
-                setting.float_send_method ||
+                settingsRow.float_send_method ||
                 "MPESA_TO_MPESA",
             });
           }
+
+          // ====================================================
+          // I&M
+          // ====================================================
 
           const imRows =
             Array.isArray(
@@ -502,42 +591,52 @@ export default function AdminMpesaRatesPanel({
               ? imAccountsResult
               : [];
 
-          const activeIm =
+          const selectedIm =
             imRows.find(
-              (row) =>
+              (
+                row
+              ) =>
                 row?.is_active
             ) ||
             imRows[0] ||
             null;
 
-          setImAccount(
-            activeIm
-              ? {
-                  id:
-                    activeIm.id,
+          if (
+            selectedIm
+          ) {
+            setImAccount({
+              id:
+                selectedIm.id,
 
-                  account_name:
-                    activeIm.account_name ||
-                    "Team Legend I&M",
+              account_name:
+                selectedIm.account_name ||
+                "Team Legend I&M",
 
-                  paybill_number:
-                    activeIm.paybill_number ||
-                    "",
+              paybill_number:
+                selectedIm.paybill_number ||
+                "",
 
-                  account_number:
-                    activeIm.account_number ||
-                    "",
+              account_number:
+                selectedIm.account_number ||
+                "",
 
-                  default_reference:
-                    activeIm.default_reference ||
-                    "",
+              default_reference:
+                selectedIm.default_reference ||
+                "",
 
-                  is_active:
-                    activeIm.is_active !==
-                    false,
-                }
-              : BLANK_IM_ACCOUNT
-          );
+              is_active:
+                selectedIm.is_active !==
+                false,
+            });
+          } else {
+            setImAccount(
+              EMPTY_IM_ACCOUNT
+            );
+          }
+
+          // ====================================================
+          // TARIFFS
+          // ====================================================
 
           setPaymentTariffs(
             Array.isArray(
@@ -547,6 +646,10 @@ export default function AdminMpesaRatesPanel({
               : []
           );
 
+          // ====================================================
+          // SHOPS
+          // ====================================================
+
           setShops(
             Array.isArray(
               shopsResult
@@ -555,16 +658,37 @@ export default function AdminMpesaRatesPanel({
               : []
           );
 
+          // ====================================================
+          // CASHIER ACCOUNTS
+          //
+          // IMPORTANT:
+          // force phone_number to a string so it displays
+          // correctly in the Admin input.
+          // ====================================================
+
+          const loadedRecipients =
+            Array.isArray(
+              recipientsResult
+            )
+              ? recipientsResult
+              : [];
+
           setRecipients(
-            (
-              Array.isArray(
-                recipientsResult
-              )
-                ? recipientsResult
-                : []
-            ).map(
-              (row) => ({
+            loadedRecipients.map(
+              (
+                row
+              ) => ({
                 ...row,
+
+                phone_number:
+                  row?.phone_number ===
+                    null ||
+                  row?.phone_number ===
+                    undefined
+                    ? ""
+                    : String(
+                        row.phone_number
+                      ),
 
                 im_reference:
                   row?.im_reference ||
@@ -617,9 +741,9 @@ export default function AdminMpesaRatesPanel({
       ]
     );
 
-  // ==================================================
-  // AUTO LOAD
-  // ==================================================
+  // ==========================================================
+  // INITIAL LOAD
+  // ==========================================================
 
   useEffect(() => {
     loadAll();
@@ -627,21 +751,21 @@ export default function AdminMpesaRatesPanel({
     loadAll,
   ]);
 
-  // ==================================================
-  // PAYMENT SYSTEM CONTROL
-  // ==================================================
+  // ==========================================================
+  // PAYMENT SYSTEM SAVE
+  // ==========================================================
 
   async function savePaymentSystem() {
     const confirmed =
       window.confirm(
-        "CHANGE ACTIVE PAYMENT SYSTEM\n\n" +
-          `Money received: ${methodLabel(
+        "CHANGE PAYMENT SYSTEM\n\n" +
+          `Cashier returns: ${methodLabel(
             paymentSettings.collection_method
           )}\n` +
-          `Float sent: ${methodLabel(
+          `Float sending: ${methodLabel(
             paymentSettings.float_send_method
           )}\n\n` +
-          "Apply these methods to new transactions? Existing history will not be changed."
+          "Apply this to new transactions?"
       );
 
     if (
@@ -680,20 +804,16 @@ export default function AdminMpesaRatesPanel({
       });
 
       setMessage(
-        "Payment system updated successfully."
+        "Payment system saved successfully."
       );
 
       setMessageType(
         "success"
       );
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
-          "Unable to update payment system."
-      );
-
-      setMessageType(
-        "error"
+          "Unable to save payment system."
       );
     } finally {
       setSavingPaymentSystem(
@@ -702,71 +822,44 @@ export default function AdminMpesaRatesPanel({
     }
   }
 
-  // ==================================================
-  // I&M ACCOUNT
-  // ==================================================
+  // ==========================================================
+  // SAVE I&M ACCOUNT
+  // ==========================================================
 
   async function saveImAccount() {
-    if (
-      !String(
+    const accountName =
+      String(
         imAccount.account_name ||
           ""
-      ).trim()
-    ) {
-      setMessage(
-        "Enter the I&M account name."
-      );
+      ).trim();
 
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    if (
-      !String(
+    const paybill =
+      String(
         imAccount.paybill_number ||
           ""
-      ).trim() &&
-      !String(
+      ).trim();
+
+    const accountNumber =
+      String(
         imAccount.account_number ||
           ""
-      ).trim()
-    ) {
-      setMessage(
-        "Enter an I&M Paybill or account number."
-      );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        "SAVE I&M COMPANY ACCOUNT\n\n" +
-          `Account Name: ${imAccount.account_name}\n` +
-          `Paybill: ${
-            imAccount.paybill_number ||
-            "-"
-          }\n` +
-          `Account Number: ${
-            imAccount.account_number ||
-            "-"
-          }\n` +
-          `Default Reference: ${
-            imAccount.default_reference ||
-            "-"
-          }`
-      );
+      ).trim();
 
     if (
-      !confirmed
+      !accountName
     ) {
-      return;
+      return showError(
+        "Enter the I&M account name."
+      );
+    }
+
+    if (
+      !paybill &&
+      !accountNumber
+    ) {
+      return showError(
+        "Enter the I&M Paybill or account number."
+      );
     }
 
     try {
@@ -785,23 +878,14 @@ export default function AdminMpesaRatesPanel({
               null,
 
             p_account_name:
-              String(
-                imAccount.account_name ||
-                  ""
-              ).trim(),
+              accountName,
 
             p_paybill_number:
-              String(
-                imAccount.paybill_number ||
-                  ""
-              ).trim() ||
+              paybill ||
               null,
 
             p_account_number:
-              String(
-                imAccount.account_number ||
-                  ""
-              ).trim() ||
+              accountNumber ||
               null,
 
             p_default_reference:
@@ -818,7 +902,9 @@ export default function AdminMpesaRatesPanel({
         );
 
       setImAccount(
-        (current) => ({
+        (
+          current
+        ) => ({
           ...current,
 
           id:
@@ -828,7 +914,7 @@ export default function AdminMpesaRatesPanel({
       );
 
       setMessage(
-        "I&M company account saved successfully."
+        "I&M account saved successfully."
       );
 
       setMessageType(
@@ -840,13 +926,9 @@ export default function AdminMpesaRatesPanel({
           true,
       });
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
-          "Unable to save I&M account details."
-      );
-
-      setMessageType(
-        "error"
+          "Unable to save I&M account."
       );
     } finally {
       setSavingImAccount(
@@ -855,9 +937,9 @@ export default function AdminMpesaRatesPanel({
     }
   }
 
-  // ==================================================
-  // PAYMENT TARIFFS
-  // ==================================================
+  // ==========================================================
+  // PAYMENT TARIFF LOCAL EDIT
+  // ==========================================================
 
   function updatePaymentTariffField(
     id,
@@ -865,9 +947,13 @@ export default function AdminMpesaRatesPanel({
     value
   ) {
     setPaymentTariffs(
-      (previous) =>
+      (
+        previous
+      ) =>
         previous.map(
-          (row) =>
+          (
+            row
+          ) =>
             String(
               row.id
             ) ===
@@ -883,33 +969,29 @@ export default function AdminMpesaRatesPanel({
               : row
         )
     );
-
-    setMessage("");
   }
 
+  // ==========================================================
+  // SAVE PAYMENT TARIFF
+  // ==========================================================
+
   async function savePaymentTariff(
-    rate
+    row
   ) {
     const minAmount =
       Number(
-        rate?.min_amount
+        row.min_amount
       );
 
     const maxAmount =
       Number(
-        rate?.max_amount
+        row.max_amount
       );
 
     const fee =
       Number(
-        rate?.fee
+        row.fee
       );
-
-    if (
-      !rate?.id
-    ) {
-      return;
-    }
 
     if (
       !Number.isFinite(
@@ -931,7 +1013,7 @@ export default function AdminMpesaRatesPanel({
         minAmount
     ) {
       return showError(
-        "Maximum amount must be equal to or above minimum amount."
+        "Maximum must be equal to or higher than minimum."
       );
     }
 
@@ -947,37 +1029,10 @@ export default function AdminMpesaRatesPanel({
       );
     }
 
-    const confirmed =
-      window.confirm(
-        `SAVE ${methodLabel(
-          rate.payment_method
-        )} TARIFF\n\n` +
-          `KES ${money(
-            minAmount
-          )} - KES ${money(
-            maxAmount
-          )}\n` +
-          `Fee: KES ${money(
-            fee
-          )}\n` +
-          `Active: ${
-            rate.is_active !==
-            false
-              ? "YES"
-              : "NO"
-          }`
-      );
-
-    if (
-      !confirmed
-    ) {
-      return;
-    }
-
     try {
       setSavingPaymentTariffId(
         String(
-          rate.id
+          row.id
         )
       );
 
@@ -987,10 +1042,10 @@ export default function AdminMpesaRatesPanel({
         "tl_admin_save_payment_tariff_band",
         {
           p_id:
-            rate.id,
+            row.id,
 
           p_payment_method:
-            rate.payment_method,
+            row.payment_method,
 
           p_min_amount:
             roundMoney(
@@ -1008,13 +1063,13 @@ export default function AdminMpesaRatesPanel({
             ),
 
           p_is_active:
-            rate.is_active !==
+            row.is_active !==
             false,
         }
       );
 
       setMessage(
-        "Payment tariff updated successfully."
+        "Payment tariff saved."
       );
 
       setMessageType(
@@ -1026,13 +1081,9 @@ export default function AdminMpesaRatesPanel({
           true,
       });
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
-          "Unable to save payment tariff."
-      );
-
-      setMessageType(
-        "error"
+          "Unable to save tariff."
       );
     } finally {
       setSavingPaymentTariffId(
@@ -1040,6 +1091,10 @@ export default function AdminMpesaRatesPanel({
       );
     }
   }
+
+  // ==========================================================
+  // ADD PAYMENT TARIFF
+  // ==========================================================
 
   async function addPaymentTariffBand() {
     const minAmount =
@@ -1058,18 +1113,20 @@ export default function AdminMpesaRatesPanel({
       );
 
     if (
+      newPaymentMin ===
+        "" ||
       !Number.isFinite(
         minAmount
-      ) ||
-      minAmount <
-        0
+      )
     ) {
       return showError(
-        "Enter a valid payment tariff minimum amount."
+        "Enter the minimum amount."
       );
     }
 
     if (
+      newPaymentMax ===
+        "" ||
       !Number.isFinite(
         maxAmount
       ) ||
@@ -1077,11 +1134,13 @@ export default function AdminMpesaRatesPanel({
         minAmount
     ) {
       return showError(
-        "Enter a valid payment tariff maximum amount."
+        "Enter a valid maximum amount."
       );
     }
 
     if (
+      newPaymentFee ===
+        "" ||
       !Number.isFinite(
         fee
       ) ||
@@ -1089,29 +1148,8 @@ export default function AdminMpesaRatesPanel({
         0
     ) {
       return showError(
-        "Enter a valid payment tariff fee."
+        "Enter a valid fee."
       );
-    }
-
-    const confirmed =
-      window.confirm(
-        `ADD ${methodLabel(
-          newPaymentMethod
-        )} TARIFF\n\n` +
-          `KES ${money(
-            minAmount
-          )} - KES ${money(
-            maxAmount
-          )}\n` +
-          `Fee: KES ${money(
-            fee
-          )}`
-      );
-
-    if (
-      !confirmed
-    ) {
-      return;
     }
 
     try {
@@ -1155,7 +1193,7 @@ export default function AdminMpesaRatesPanel({
       setNewPaymentFee("");
 
       setMessage(
-        "New payment tariff band added successfully."
+        "Payment tariff band added."
       );
 
       setMessageType(
@@ -1167,13 +1205,9 @@ export default function AdminMpesaRatesPanel({
           true,
       });
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
-          "Unable to add payment tariff band."
-      );
-
-      setMessageType(
-        "error"
+          "Unable to add tariff band."
       );
     } finally {
       setAddingPaymentTariff(
@@ -1182,30 +1216,23 @@ export default function AdminMpesaRatesPanel({
     }
   }
 
+  // ==========================================================
+  // DELETE PAYMENT TARIFF
+  // ==========================================================
+
   async function deletePaymentTariff(
-    rate
+    row
   ) {
     if (
-      !rate?.id
-    ) {
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        `DELETE ${methodLabel(
-          rate.payment_method
-        )} TARIFF\n\n` +
-          `KES ${money(
-            rate.min_amount
-          )} - KES ${money(
-            rate.max_amount
-          )}\n\n` +
-          "Delete this band?"
-      );
-
-    if (
-      !confirmed
+      !window.confirm(
+        `Delete ${methodLabel(
+          row.payment_method
+        )} band KES ${money(
+          row.min_amount
+        )} - ${money(
+          row.max_amount
+        )}?`
+      )
     ) {
       return;
     }
@@ -1213,16 +1240,14 @@ export default function AdminMpesaRatesPanel({
     try {
       setDeletingPaymentTariffId(
         String(
-          rate.id
+          row.id
         )
       );
-
-      setMessage("");
 
       const response =
         await fetch(
           `${supabaseUrl}/rest/v1/payment_tariff_bands?id=eq.${encodeURIComponent(
-            rate.id
+            row.id
           )}`,
           {
             method:
@@ -1251,13 +1276,12 @@ export default function AdminMpesaRatesPanel({
         throw new Error(
           result?.message ||
             result?.details ||
-            result?.hint ||
             "Unable to delete tariff."
         );
       }
 
       setMessage(
-        "Payment tariff deleted successfully."
+        "Payment tariff deleted."
       );
 
       setMessageType(
@@ -1269,13 +1293,9 @@ export default function AdminMpesaRatesPanel({
           true,
       });
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
-          "Unable to delete payment tariff."
-      );
-
-      setMessageType(
-        "error"
+          "Unable to delete tariff."
       );
     } finally {
       setDeletingPaymentTariffId(
@@ -1284,6 +1304,10 @@ export default function AdminMpesaRatesPanel({
     }
   }
 
+  // ==========================================================
+  // TEST PAYMENT FEE
+  // ==========================================================
+
   async function testPaymentFee() {
     const amount =
       Number(
@@ -1291,14 +1315,14 @@ export default function AdminMpesaRatesPanel({
       );
 
     if (
+      paymentTestAmount ===
+        "" ||
       !Number.isFinite(
         amount
-      ) ||
-      amount <
-        0
+      )
     ) {
       return showError(
-        "Enter a valid payment amount to test."
+        "Enter an amount to test."
       );
     }
 
@@ -1310,8 +1334,6 @@ export default function AdminMpesaRatesPanel({
       setPaymentTestResult(
         null
       );
-
-      setMessage("");
 
       const result =
         await callRpc(
@@ -1332,22 +1354,10 @@ export default function AdminMpesaRatesPanel({
           result
         )
       );
-
-      setMessage(
-        "Payment tariff test completed."
-      );
-
-      setMessageType(
-        "success"
-      );
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
-          "Unable to test payment tariff."
-      );
-
-      setMessageType(
-        "error"
+          "Unable to test fee."
       );
     } finally {
       setTestingPaymentFee(
@@ -1356,9 +1366,9 @@ export default function AdminMpesaRatesPanel({
     }
   }
 
-  // ==================================================
+  // ==========================================================
   // SHOP MAP
-  // ==================================================
+  // ==========================================================
 
   const shopMap =
     useMemo(
@@ -1384,9 +1394,9 @@ export default function AdminMpesaRatesPanel({
       ]
     );
 
-  // ==================================================
-  // SORTED RECIPIENTS
-  // ==================================================
+  // ==========================================================
+  // SORT CASHIER ACCOUNTS
+  // ==========================================================
 
   const sortedRecipients =
     useMemo(
@@ -1449,9 +1459,9 @@ export default function AdminMpesaRatesPanel({
       ]
     );
 
-  // ==================================================
-  // CASHIER ACCOUNTS
-  // ==================================================
+  // ==========================================================
+  // UPDATE CASHIER LOCAL
+  // ==========================================================
 
   function updateRecipientField(
     id,
@@ -1459,61 +1469,53 @@ export default function AdminMpesaRatesPanel({
     value
   ) {
     setRecipients(
-      (previous) =>
+      (
+        previous
+      ) =>
         previous.map(
-          (row) =>
+          (
+            recipient
+          ) =>
             String(
-              row.id
+              recipient.id
             ) ===
             String(
               id
             )
               ? {
-                  ...row,
+                  ...recipient,
 
                   [field]:
                     value,
                 }
-              : row
+              : recipient
         )
     );
-
-    setMessage("");
   }
+
+  // ==========================================================
+  // SAVE CASHIER ACCOUNT
+  // ==========================================================
 
   async function saveRecipient(
     recipient
   ) {
-    if (
-      !recipient?.id
-    ) {
-      return;
-    }
-
     await saveRecipientRecord(
       recipient,
-      {
-        isNew:
-          false,
-      }
+      false
     );
   }
 
   async function addRecipient() {
     await saveRecipientRecord(
       newRecipient,
-      {
-        isNew:
-          true,
-      }
+      true
     );
   }
 
   async function saveRecipientRecord(
     recipient,
-    {
-      isNew,
-    }
+    isNew
   ) {
     const slot =
       Number(
@@ -1536,7 +1538,7 @@ export default function AdminMpesaRatesPanel({
       !recipient.shop_id
     ) {
       return showError(
-        "Select a shop for the cashier."
+        "Select a shop."
       );
     }
 
@@ -1550,7 +1552,7 @@ export default function AdminMpesaRatesPanel({
         50
     ) {
       return showError(
-        "Cashier slot must be between 1 and 50."
+        "Slot must be between 1 and 50."
       );
     }
 
@@ -1558,7 +1560,7 @@ export default function AdminMpesaRatesPanel({
       !name
     ) {
       return showError(
-        "Enter the cashier name."
+        "Enter cashier name."
       );
     }
 
@@ -1566,56 +1568,8 @@ export default function AdminMpesaRatesPanel({
       !phone
     ) {
       return showError(
-        "Enter the cashier M-Pesa number."
+        "Enter M-Pesa number."
       );
-    }
-
-    const confirmed =
-      window.confirm(
-        `${
-          isNew
-            ? "ADD"
-            : "SAVE"
-        } CASHIER PAYMENT ACCOUNT\n\n` +
-          `Shop: ${
-            shopMap.get(
-              String(
-                recipient.shop_id
-              )
-            )?.shop_name ||
-            "Shop"
-          }\n` +
-          `Slot: ${slot}\n` +
-          `Cashier: ${name}\n` +
-          `Phone: ${phone}\n` +
-          `I&M Reference: ${
-            recipient.im_reference ||
-            "-"
-          }\n` +
-          `M-Pesa → M-Pesa: ${
-            recipient.allow_mpesa_to_mpesa !==
-            false
-              ? "YES"
-              : "NO"
-          }\n` +
-          `I&M → M-Pesa: ${
-            recipient.allow_im_to_mpesa !==
-            false
-              ? "YES"
-              : "NO"
-          }\n` +
-          `Active: ${
-            recipient.is_active !==
-            false
-              ? "YES"
-              : "NO"
-          }`
-      );
-
-    if (
-      !confirmed
-    ) {
-      return;
     }
 
     try {
@@ -1684,14 +1638,14 @@ export default function AdminMpesaRatesPanel({
         isNew
       ) {
         setNewRecipient(
-          BLANK_RECIPIENT
+          EMPTY_RECIPIENT
         );
       }
 
       setMessage(
         isNew
-          ? "Cashier payment account added successfully."
-          : "Cashier payment account updated successfully."
+          ? "Cashier account added successfully."
+          : "Cashier account updated successfully."
       );
 
       setMessageType(
@@ -1703,13 +1657,9 @@ export default function AdminMpesaRatesPanel({
           true,
       });
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
-          "Unable to save cashier payment account."
-      );
-
-      setMessageType(
-        "error"
+          "Unable to save cashier account."
       );
     } finally {
       setAddingRecipient(
@@ -1722,9 +1672,9 @@ export default function AdminMpesaRatesPanel({
     }
   }
 
-  // ==================================================
-  // EXISTING SAFARICOM RATES
-  // ==================================================
+  // ==========================================================
+  // EXISTING M-PESA RATE LOCAL UPDATE
+  // ==========================================================
 
   function updateRateField(
     id,
@@ -1732,9 +1682,13 @@ export default function AdminMpesaRatesPanel({
     value
   ) {
     setRates(
-      (previous) =>
+      (
+        previous
+      ) =>
         previous.map(
-          (rate) =>
+          (
+            rate
+          ) =>
             String(
               rate.id
             ) ===
@@ -1750,27 +1704,20 @@ export default function AdminMpesaRatesPanel({
               : rate
         )
     );
-
-    setMessage("");
   }
+
+  // ==========================================================
+  // SAVE EXISTING M-PESA RATE
+  // ==========================================================
 
   async function saveRate(
     rate
   ) {
-    if (
-      !rate?.id
-    ) {
-      return showError(
-        "This rate does not have a valid ID."
-      );
-    }
-
     const feeType =
       String(
         getRateType(
           rate
-        ) ||
-          ""
+        )
       )
         .trim()
         .toUpperCase();
@@ -1804,72 +1751,12 @@ export default function AdminMpesaRatesPanel({
       );
     }
 
-    if (
-      !Number.isFinite(
-        minAmount
-      ) ||
-      minAmount <
-        0
-    ) {
-      return showError(
-        "Enter a valid minimum amount."
-      );
-    }
-
-    if (
-      !Number.isFinite(
-        maxAmount
-      ) ||
-      maxAmount <
-        minAmount
-    ) {
-      return showError(
-        "Maximum amount must be equal to or higher than minimum amount."
-      );
-    }
-
-    if (
-      !Number.isFinite(
-        fee
-      ) ||
-      fee <
-        0
-    ) {
-      return showError(
-        "Enter a valid M-Pesa fee."
-      );
-    }
-
-    const confirmed =
-      window.confirm(
-        "UPDATE M-PESA RATE\n\n" +
-          `Fee Type: ${feeType}\n` +
-          `From: KES ${money(
-            minAmount
-          )}\n` +
-          `To: KES ${money(
-            maxAmount
-          )}\n` +
-          `Fee: KES ${money(
-            fee
-          )}\n\n` +
-          "Save this rate?"
-      );
-
-    if (
-      !confirmed
-    ) {
-      return;
-    }
-
     try {
       setSavingId(
         String(
           rate.id
         )
       );
-
-      setMessage("");
 
       await callRpc(
         "tl_admin_save_mpesa_fee_rate",
@@ -1903,7 +1790,7 @@ export default function AdminMpesaRatesPanel({
       );
 
       setMessage(
-        "M-Pesa rate updated successfully."
+        "M-Pesa rate saved."
       );
 
       setMessageType(
@@ -1915,51 +1802,28 @@ export default function AdminMpesaRatesPanel({
           true,
       });
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
-          "Unable to update M-Pesa rate."
-      );
-
-      setMessageType(
-        "error"
+          "Unable to save M-Pesa rate."
       );
     } finally {
-      setSavingId("");
+      setSavingId(
+        ""
+      );
     }
   }
+
+  // ==========================================================
+  // DELETE EXISTING M-PESA RATE
+  // ==========================================================
 
   async function deleteRate(
     rate
   ) {
     if (
-      !rate?.id
-    ) {
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        "DELETE M-PESA RATE\n\n" +
-          `${
-            getRateType(
-              rate
-            ) ||
-            "M-Pesa Rate"
-          }\n` +
-          `KES ${money(
-            getMinimum(
-              rate
-            )
-          )} - KES ${money(
-            getMaximum(
-              rate
-            )
-          )}\n\n` +
-          "Delete this rate?"
-      );
-
-    if (
-      !confirmed
+      !window.confirm(
+        "Delete this M-Pesa rate?"
+      )
     ) {
       return;
     }
@@ -1971,8 +1835,6 @@ export default function AdminMpesaRatesPanel({
         )
       );
 
-      setMessage("");
-
       await callRpc(
         "tl_admin_delete_mpesa_fee_rate",
         {
@@ -1982,7 +1844,7 @@ export default function AdminMpesaRatesPanel({
       );
 
       setMessage(
-        "M-Pesa rate deleted successfully."
+        "M-Pesa rate deleted."
       );
 
       setMessageType(
@@ -1994,18 +1856,20 @@ export default function AdminMpesaRatesPanel({
           true,
       });
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
           "Unable to delete M-Pesa rate."
       );
-
-      setMessageType(
-        "error"
-      );
     } finally {
-      setDeletingId("");
+      setDeletingId(
+        ""
+      );
     }
   }
+
+  // ==========================================================
+  // ADD OLD M-PESA RATE
+  // ==========================================================
 
   async function addBand() {
     const flow =
@@ -2035,7 +1899,7 @@ export default function AdminMpesaRatesPanel({
       !flow
     ) {
       return showError(
-        "Enter the M-Pesa fee type / flow."
+        "Enter M-Pesa fee type."
       );
     }
 
@@ -2044,12 +1908,10 @@ export default function AdminMpesaRatesPanel({
         "" ||
       !Number.isFinite(
         minimum
-      ) ||
-      minimum <
-        0
+      )
     ) {
       return showError(
-        "Enter a valid minimum amount."
+        "Enter minimum amount."
       );
     }
 
@@ -2063,7 +1925,7 @@ export default function AdminMpesaRatesPanel({
         minimum
     ) {
       return showError(
-        "Enter a valid maximum amount."
+        "Enter valid maximum amount."
       );
     }
 
@@ -2072,66 +1934,17 @@ export default function AdminMpesaRatesPanel({
         "" ||
       !Number.isFinite(
         fee
-      ) ||
-      fee <
-        0
+      )
     ) {
       return showError(
-        "Enter a valid M-Pesa fee."
+        "Enter M-Pesa fee."
       );
-    }
-
-    if (
-      !effectiveFrom
-    ) {
-      return showError(
-        "Select the date the new rate becomes effective."
-      );
-    }
-
-    if (
-      effectiveTo &&
-      effectiveTo <
-        effectiveFrom
-    ) {
-      return showError(
-        "Effective To cannot be earlier than Effective From."
-      );
-    }
-
-    const confirmed =
-      window.confirm(
-        "ADD M-PESA FEE BAND\n\n" +
-          `Type / Flow: ${flow}\n` +
-          `From: KES ${money(
-            minimum
-          )}\n` +
-          `To: KES ${money(
-            maximum
-          )}\n` +
-          `Fee: KES ${money(
-            fee
-          )}\n` +
-          `Effective From: ${effectiveFrom}\n` +
-          `Effective To: ${
-            effectiveTo ||
-            "No end date"
-          }\n\n` +
-          "Add this M-Pesa rate?"
-      );
-
-    if (
-      !confirmed
-    ) {
-      return;
     }
 
     try {
       setAdding(
         true
       );
-
-      setMessage("");
 
       await callRpc(
         "tl_admin_add_mpesa_fee_band",
@@ -2177,7 +1990,7 @@ export default function AdminMpesaRatesPanel({
       setNewNote("");
 
       setMessage(
-        "New M-Pesa fee band added successfully."
+        "M-Pesa band added."
       );
 
       setMessageType(
@@ -2189,13 +2002,9 @@ export default function AdminMpesaRatesPanel({
           true,
       });
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
-          "Unable to add M-Pesa fee band."
-      );
-
-      setMessageType(
-        "error"
+          "Unable to add M-Pesa band."
       );
     } finally {
       setAdding(
@@ -2204,39 +2013,25 @@ export default function AdminMpesaRatesPanel({
     }
   }
 
-  async function testFee() {
-    const feeType =
-      String(
-        testFeeType ||
-          ""
-      )
-        .trim()
-        .toUpperCase();
+  // ==========================================================
+  // TEST OLD M-PESA RATE
+  // ==========================================================
 
+  async function testFee() {
     const amount =
       Number(
         testAmount
       );
 
     if (
-      !feeType
-    ) {
-      return showError(
-        "Enter a fee type to test."
-      );
-    }
-
-    if (
       testAmount ===
         "" ||
       !Number.isFinite(
         amount
-      ) ||
-      amount <
-        0
+      )
     ) {
       return showError(
-        "Enter a valid amount to test."
+        "Enter test amount."
       );
     }
 
@@ -2249,14 +2044,17 @@ export default function AdminMpesaRatesPanel({
         null
       );
 
-      setMessage("");
-
       const result =
         await callRpc(
           "tl_mpesa_fee_for_amount",
           {
             p_fee_type:
-              feeType,
+              String(
+                testFeeType ||
+                  ""
+              )
+                .trim()
+                .toUpperCase(),
 
             p_amount:
               roundMoney(
@@ -2270,22 +2068,10 @@ export default function AdminMpesaRatesPanel({
           result
         )
       );
-
-      setMessage(
-        "M-Pesa fee test completed."
-      );
-
-      setMessageType(
-        "success"
-      );
     } catch (error) {
-      setMessage(
+      showError(
         error?.message ||
           "Unable to test M-Pesa fee."
-      );
-
-      setMessageType(
-        "error"
       );
     } finally {
       setTesting(
@@ -2294,68 +2080,56 @@ export default function AdminMpesaRatesPanel({
     }
   }
 
-  // ==================================================
-  // FEE TYPES
-  // ==================================================
+  // ==========================================================
+  // OLD FEE TYPES
+  // ==========================================================
 
   const feeTypes =
     useMemo(
-      () => {
-        return [
-          ...new Set(
-            rates
-              .map(
-                (rate) =>
-                  getRateType(
-                    rate
-                  )
-              )
-              .filter(
-                Boolean
-              )
-          ),
-        ];
-      },
+      () => [
+        ...new Set(
+          rates
+            .map(
+              (
+                rate
+              ) =>
+                getRateType(
+                  rate
+                )
+            )
+            .filter(
+              Boolean
+            )
+        ),
+      ],
       [
         rates,
       ]
     );
 
-  function showError(
-    text
-  ) {
-    setMessage(
-      text
-    );
-
-    setMessageType(
-      "error"
-    );
-  }
-
-  // ==================================================
+  // ==========================================================
   // LOADING
-  // ==================================================
+  // ==========================================================
 
   if (
     loading
   ) {
     return (
-      <div style={loadingPageStyle}>
+      <div style={loadingStyle}>
         Loading payment administration...
       </div>
     );
   }
 
-  // ==================================================
-  // DISPLAY
-  // ==================================================
+  // ==========================================================
+  // UI
+  // ==========================================================
 
   return (
     <div style={wrapperStyle}>
-      {/* ========================================= */}
+      {/* =================================================== */}
       {/* HERO */}
-      {/* ========================================= */}
+      {/* =================================================== */}
 
       <section style={heroStyle}>
         <div>
@@ -2364,7 +2138,7 @@ export default function AdminMpesaRatesPanel({
           </div>
 
           <div style={heroSubtitleStyle}>
-            Control M-Pesa, I&M, tariff tables and approved cashier payment accounts
+            Control M-Pesa, I&M, tariffs and approved cashier payment accounts
           </div>
         </div>
 
@@ -2387,9 +2161,9 @@ export default function AdminMpesaRatesPanel({
         </button>
       </section>
 
-      {/* ========================================= */}
+      {/* =================================================== */}
       {/* MESSAGE */}
-      {/* ========================================= */}
+      {/* =================================================== */}
 
       {message && (
         <div
@@ -2419,9 +2193,9 @@ export default function AdminMpesaRatesPanel({
         </div>
       )}
 
-      {/* ========================================= */}
-      {/* PAYMENT SYSTEM CONTROL */}
-      {/* ========================================= */}
+      {/* =================================================== */}
+      {/* PAYMENT SYSTEM */}
+      {/* =================================================== */}
 
       <section style={panelStyle}>
         <div style={darkTitleStyle}>
@@ -2493,19 +2267,22 @@ export default function AdminMpesaRatesPanel({
             />
           </div>
 
-          <div style={controlSummaryStyle}>
+          <div style={summaryNoticeStyle}>
+            Cashier returns:{" "}
             <strong>
-              Current selection:
-            </strong>{" "}
-            Cashier returns use{" "}
-            {methodLabel(
-              paymentSettings.collection_method
-            )}
-            ; float sending uses{" "}
-            {methodLabel(
-              paymentSettings.float_send_method
-            )}
-            .
+              {methodLabel(
+                paymentSettings.collection_method
+              )}
+            </strong>
+
+            {" • "}
+
+            Float sending:{" "}
+            <strong>
+              {methodLabel(
+                paymentSettings.float_send_method
+              )}
+            </strong>
           </div>
 
           <button
@@ -2516,7 +2293,7 @@ export default function AdminMpesaRatesPanel({
             disabled={
               savingPaymentSystem
             }
-            style={saveWideButtonStyle}
+            style={darkButtonStyle}
           >
             {savingPaymentSystem
               ? "SAVING..."
@@ -2525,9 +2302,9 @@ export default function AdminMpesaRatesPanel({
         </div>
       </section>
 
-      {/* ========================================= */}
+      {/* =================================================== */}
       {/* I&M ACCOUNT */}
-      {/* ========================================= */}
+      {/* =================================================== */}
 
       <section style={panelStyle}>
         <div style={bankTitleStyle}>
@@ -2578,7 +2355,6 @@ export default function AdminMpesaRatesPanel({
                     })
                   )
                 }
-                placeholder="Enter I&M Paybill"
                 style={inputStyle}
               />
             </Field>
@@ -2602,7 +2378,6 @@ export default function AdminMpesaRatesPanel({
                     })
                   )
                 }
-                placeholder="Enter I&M account"
                 style={inputStyle}
               />
             </Field>
@@ -2626,13 +2401,12 @@ export default function AdminMpesaRatesPanel({
                     })
                   )
                 }
-                placeholder="Optional"
                 style={inputStyle}
               />
             </Field>
           </div>
 
-          <label style={checkLineStyle}>
+          <label style={checkboxLineStyle}>
             <input
               type="checkbox"
               checked={
@@ -2655,7 +2429,7 @@ export default function AdminMpesaRatesPanel({
               }
             />
 
-            Active company I&M payment account
+            Active I&M company account
           </label>
 
           <button
@@ -2666,7 +2440,7 @@ export default function AdminMpesaRatesPanel({
             disabled={
               savingImAccount
             }
-            style={bankSaveButtonStyle}
+            style={bankButtonStyle}
           >
             {savingImAccount
               ? "SAVING..."
@@ -2675,9 +2449,9 @@ export default function AdminMpesaRatesPanel({
         </div>
       </section>
 
-      {/* ========================================= */}
-      {/* BANK TARIFFS */}
-      {/* ========================================= */}
+      {/* =================================================== */}
+      {/* NEW BANK TARIFFS */}
+      {/* =================================================== */}
 
       <section style={panelStyle}>
         <div style={orangeTitleStyle}>
@@ -2685,11 +2459,10 @@ export default function AdminMpesaRatesPanel({
         </div>
 
         <div style={bodyStyle}>
-          <div style={importantNoticeStyle}>
-            I&M → M-Pesa can remain at KES 0.00 now.
-            If I&M introduces charges later, edit the tariff
-            bands here. M-Pesa → I&M should be updated with
-            the tariff bands you want the system to use.
+          <div style={noticeStyle}>
+            I&M → M-Pesa can remain KES 0.00 while your current
+            account has no charge. If charges are introduced later,
+            Admin can edit the tariff here.
           </div>
 
           <div style={paymentAddGridStyle}>
@@ -2720,8 +2493,6 @@ export default function AdminMpesaRatesPanel({
             <Field label="MINIMUM">
               <input
                 type="number"
-                min="0"
-                step="0.01"
                 value={
                   newPaymentMin
                 }
@@ -2739,8 +2510,6 @@ export default function AdminMpesaRatesPanel({
             <Field label="MAXIMUM">
               <input
                 type="number"
-                min="0"
-                step="0.01"
                 value={
                   newPaymentMax
                 }
@@ -2758,8 +2527,6 @@ export default function AdminMpesaRatesPanel({
             <Field label="FEE">
               <input
                 type="number"
-                min="0"
-                step="0.01"
                 value={
                   newPaymentFee
                 }
@@ -2836,8 +2603,8 @@ export default function AdminMpesaRatesPanel({
             }
           />
 
-          <div style={testerBoxStyle}>
-            <div style={testerGridStyle}>
+          <div style={testerPanelStyle}>
+            <div style={threeGridStyle}>
               <Field label="TEST METHOD">
                 <select
                   value={
@@ -2869,8 +2636,6 @@ export default function AdminMpesaRatesPanel({
               <Field label="AMOUNT">
                 <input
                   type="number"
-                  min="0"
-                  step="0.01"
                   value={
                     paymentTestAmount
                   }
@@ -2890,7 +2655,7 @@ export default function AdminMpesaRatesPanel({
               </Field>
 
               <Field label="CALCULATED FEE">
-                <div style={testResultStyle}>
+                <div style={feeResultStyle}>
                   KES{" "}
                   {money(
                     paymentTestResult ??
@@ -2908,7 +2673,7 @@ export default function AdminMpesaRatesPanel({
               disabled={
                 testingPaymentFee
               }
-              style={testButtonStyle}
+              style={blueButtonStyle}
             >
               {testingPaymentFee
                 ? "CHECKING..."
@@ -2918,9 +2683,9 @@ export default function AdminMpesaRatesPanel({
         </div>
       </section>
 
-      {/* ========================================= */}
+      {/* =================================================== */}
       {/* CASHIER ACCOUNTS */}
-      {/* ========================================= */}
+      {/* =================================================== */}
 
       <section style={panelStyle}>
         <div style={cashierTitleStyle}>
@@ -2928,11 +2693,10 @@ export default function AdminMpesaRatesPanel({
         </div>
 
         <div style={bodyStyle}>
-          <div style={importantNoticeStyle}>
-            These are the accounts that feed the Accountant
-            recipient list. Add every approved shop/cashier here.
-            Do not delete old recipients that have transaction
-            history; switch Active off instead.
+          <div style={noticeStyle}>
+            These accounts feed the Accountant recipient list.
+            Add approved shop/cashier numbers here. Deactivate old
+            accounts instead of deleting accounts with transaction history.
           </div>
 
           <div style={newCashierGridStyle}>
@@ -2963,12 +2727,16 @@ export default function AdminMpesaRatesPanel({
 
                 {shops
                   .filter(
-                    (shop) =>
-                      shop?.is_active !==
+                    (
+                      shop
+                    ) =>
+                      shop.is_active !==
                       false
                   )
                   .map(
-                    (shop) => (
+                    (
+                      shop
+                    ) => (
                       <option
                         key={
                           shop.id
@@ -3037,6 +2805,7 @@ export default function AdminMpesaRatesPanel({
 
             <Field label="M-PESA NUMBER">
               <input
+                type="text"
                 value={
                   newRecipient.phone_number
                 }
@@ -3084,14 +2853,14 @@ export default function AdminMpesaRatesPanel({
             </Field>
           </div>
 
-          <div style={cashierToggleLineStyle}>
+          <div style={toggleRowStyle}>
             <Toggle
               label="M-Pesa → M-Pesa"
               checked={
                 newRecipient.allow_mpesa_to_mpesa
               }
               onChange={(
-                value
+                checked
               ) =>
                 setNewRecipient(
                   (
@@ -3100,7 +2869,7 @@ export default function AdminMpesaRatesPanel({
                     ...current,
 
                     allow_mpesa_to_mpesa:
-                      value,
+                      checked,
                   })
                 )
               }
@@ -3112,7 +2881,7 @@ export default function AdminMpesaRatesPanel({
                 newRecipient.allow_im_to_mpesa
               }
               onChange={(
-                value
+                checked
               ) =>
                 setNewRecipient(
                   (
@@ -3121,7 +2890,7 @@ export default function AdminMpesaRatesPanel({
                     ...current,
 
                     allow_im_to_mpesa:
-                      value,
+                      checked,
                   })
                 )
               }
@@ -3133,7 +2902,7 @@ export default function AdminMpesaRatesPanel({
                 newRecipient.is_active
               }
               onChange={(
-                value
+                checked
               ) =>
                 setNewRecipient(
                   (
@@ -3142,7 +2911,7 @@ export default function AdminMpesaRatesPanel({
                     ...current,
 
                     is_active:
-                      value,
+                      checked,
                   })
                 )
               }
@@ -3157,14 +2926,14 @@ export default function AdminMpesaRatesPanel({
             disabled={
               addingRecipient
             }
-            style={cashierAddButtonStyle}
+            style={cashierButtonStyle}
           >
             {addingRecipient
-              ? "ADDING CASHIER..."
+              ? "ADDING..."
               : "+ ADD CASHIER PAYMENT ACCOUNT"}
           </button>
 
-          <div style={cashierTableWrapStyle}>
+          <div style={cashierWrapStyle}>
             <div style={cashierHeaderStyle}>
               <div>
                 SHOP
@@ -3286,344 +3055,347 @@ export default function AdminMpesaRatesPanel({
                     style={smallInputStyle}
                   />
 
-                 <input
-                  value={
-                    recipient.im_reference ||
-                    ""
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "im_reference",
-                      event.target.value
-                    )
-                  }
-                  style={smallInputStyle}
-                />
+                  {/* PHONE NUMBER FIX */}
+                  <input
+                    type="text"
+                    value={String(
+                      recipient.phone_number ??
+                        ""
+                    )}
+                    onChange={(
+                      event
+                    ) =>
+                      updateRecipientField(
+                        recipient.id,
+                        "phone_number",
+                        event.target.value
+                      )
+                    }
+                    placeholder="2547XXXXXXXX"
+                    style={smallInputStyle}
+                  />
 
-                <CenterCheck
-                  checked={
-                    recipient.allow_mpesa_to_mpesa !==
-                    false
-                  }
-                  onChange={(
-                    value
-                  ) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "allow_mpesa_to_mpesa",
-                      value
-                    )
-                  }
-                />
+                  <input
+                    value={
+                      recipient.im_reference ||
+                      ""
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateRecipientField(
+                        recipient.id,
+                        "im_reference",
+                        event.target.value
+                      )
+                    }
+                    placeholder="I&M reference"
+                    style={smallInputStyle}
+                  />
 
-                <CenterCheck
-                  checked={
-                    recipient.allow_im_to_mpesa !==
-                    false
-                  }
-                  onChange={(
-                    value
-                  ) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "allow_im_to_mpesa",
-                      value
-                    )
-                  }
-                />
+                  <CenterCheck
+                    checked={
+                      recipient.allow_mpesa_to_mpesa !==
+                      false
+                    }
+                    onChange={(
+                      checked
+                    ) =>
+                      updateRecipientField(
+                        recipient.id,
+                        "allow_mpesa_to_mpesa",
+                        checked
+                      )
+                    }
+                  />
 
-                <CenterCheck
-                  checked={
-                    recipient.is_active !==
-                    false
-                  }
-                  onChange={(
-                    value
-                  ) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "is_active",
-                      value
-                    )
-                  }
-                />
+                  <CenterCheck
+                    checked={
+                      recipient.allow_im_to_mpesa !==
+                      false
+                    }
+                    onChange={(
+                      checked
+                    ) =>
+                      updateRecipientField(
+                        recipient.id,
+                        "allow_im_to_mpesa",
+                        checked
+                      )
+                    }
+                  />
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    saveRecipient(
-                      recipient
-                    )
-                  }
-                  disabled={
-                    savingRecipientId ===
+                  <CenterCheck
+                    checked={
+                      recipient.is_active !==
+                      false
+                    }
+                    onChange={(
+                      checked
+                    ) =>
+                      updateRecipientField(
+                        recipient.id,
+                        "is_active",
+                        checked
+                      )
+                    }
+                  />
+
+                  <button
+                    type="button"
+onClick={() =>
+                      saveRecipient(
+                        recipient
+                      )
+                    }
+                    disabled={
+                      savingRecipientId ===
+                      String(
+                        recipient.id
+                      )
+                    }
+                    style={saveButtonStyle}
+                  >
+                    {savingRecipientId ===
                     String(
                       recipient.id
                     )
-                  }
-                  style={saveButtonStyle}
-                >
-                  {savingRecipientId ===
-                  String(
-                    recipient.id
-                  )
-                    ? "SAVING..."
-                    : "SAVE"}
-                </button>
-              </div>
-            )
-          )}
-        </div>
-      </div>
-    </section>
-
-    {/* ========================================= */}
-    {/* EXISTING M-PESA RATE MANAGEMENT */}
-    {/* ========================================= */}
-
-    <section style={panelStyle}>
-      <div style={purpleTitleStyle}>
-        ADD NEW M-PESA FEE BAND
-      </div>
-
-      <div style={bodyStyle}>
-        <div style={newRateGridStyle}>
-          <Field label="FEE TYPE / FLOW">
-            <input
-              list="mpesa-fee-types"
-              value={
-                newFlow
-              }
-              onChange={(
-                event
-              ) =>
-                setNewFlow(
-                  event.target.value
-                )
-              }
-              placeholder="Example: CASHIER_RETURN"
-              style={inputStyle}
-            />
-
-            <datalist id="mpesa-fee-types">
-              {feeTypes.map(
-                (
-                  type
-                ) => (
-                  <option
-                    key={
-                      type
-                    }
-                    value={
-                      type
-                    }
-                  />
-                )
-              )}
-            </datalist>
-          </Field>
-
-          <Field label="MINIMUM AMOUNT">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={
-                newMinimum
-              }
-              onChange={(
-                event
-              ) =>
-                setNewMinimum(
-                  event.target.value
-                )
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="MAXIMUM AMOUNT">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={
-                newMaximum
-              }
-              onChange={(
-                event
-              ) =>
-                setNewMaximum(
-                  event.target.value
-                )
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="SAFARICOM FEE">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={
-                newFee
-              }
-              onChange={(
-                event
-              ) =>
-                setNewFee(
-                  event.target.value
-                )
-              }
-              style={inputStyle}
-            />
-          </Field>
-        </div>
-
-        <div style={dateGridStyle}>
-          <Field label="EFFECTIVE FROM">
-            <input
-              type="date"
-              value={
-                effectiveFrom
-              }
-              onChange={(
-                event
-              ) =>
-                setEffectiveFrom(
-                  event.target.value
-                )
-              }
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="EFFECTIVE TO">
-            <input
-              type="date"
-              value={
-                effectiveTo
-              }
-              onChange={(
-                event
-              ) =>
-                setEffectiveTo(
-                  event.target.value
-                )
-              }
-              style={inputStyle}
-            />
-          </Field>
-        </div>
-
-        <div style={noteWrapStyle}>
-          <label style={labelStyle}>
-            ADMIN NOTE
-          </label>
-
-          <textarea
-            value={
-              newNote
-            }
-            onChange={(
-              event
-            ) =>
-              setNewNote(
-                event.target.value
+                      ? "SAVING..."
+                      : "SAVE"}
+                  </button>
+                </div>
               )
-            }
-            rows={2}
-            style={textareaStyle}
-          />
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* =================================================== */}
+      {/* ADD EXISTING M-PESA RATE */}
+      {/* =================================================== */}
+
+      <section style={panelStyle}>
+        <div style={purpleTitleStyle}>
+          ADD NEW M-PESA FEE BAND
         </div>
 
-        <button
-          type="button"
-          onClick={
-            addBand
-          }
-          disabled={
-            adding
-          }
-          style={addButtonStyle}
-        >
-          {adding
-            ? "ADDING RATE..."
-            : "ADD M-PESA RATE"}
-        </button>
-      </div>
-    </section>
+        <div style={bodyStyle}>
+          <div style={fourGridStyle}>
+            <Field label="FEE TYPE / FLOW">
+              <input
+                list="fee-types"
+                value={
+                  newFlow
+                }
+                onChange={(
+                  event
+                ) =>
+                  setNewFlow(
+                    event.target.value
+                  )
+                }
+                style={inputStyle}
+              />
 
-    {/* ========================================= */}
-    {/* CURRENT M-PESA RATES */}
-    {/* ========================================= */}
+              <datalist id="fee-types">
+                {feeTypes.map(
+                  (
+                    type
+                  ) => (
+                    <option
+                      key={
+                        type
+                      }
+                      value={
+                        type
+                      }
+                    />
+                  )
+                )}
+              </datalist>
+            </Field>
 
-    <section style={panelStyle}>
-      <div style={greenTitleStyle}>
-        CURRENT M-PESA RATE BANDS
-      </div>
+            <Field label="MINIMUM AMOUNT">
+              <input
+                type="number"
+                value={
+                  newMinimum
+                }
+                onChange={(
+                  event
+                ) =>
+                  setNewMinimum(
+                    event.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+            </Field>
 
-      {rates.length ===
-      0 ? (
-        <div style={emptyStyle}>
-          No M-Pesa rate bands were returned.
-        </div>
-      ) : (
-        <>
-          <div style={rateHeaderStyle}>
-            <div>
-              TYPE
-            </div>
+            <Field label="MAXIMUM AMOUNT">
+              <input
+                type="number"
+                value={
+                  newMaximum
+                }
+                onChange={(
+                  event
+                ) =>
+                  setNewMaximum(
+                    event.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+            </Field>
 
-            <div>
-              MIN
-            </div>
-
-            <div>
-              MAX
-            </div>
-
-            <div>
-              FEE
-            </div>
-
-            <div>
-              ACTIVE
-            </div>
-
-            <div>
-              EFFECTIVE
-            </div>
-
-            <div>
-              SAVE
-            </div>
-
-            <div>
-              DELETE
-            </div>
+            <Field label="SAFARICOM FEE">
+              <input
+                type="number"
+                value={
+                  newFee
+                }
+                onChange={(
+                  event
+                ) =>
+                  setNewFee(
+                    event.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+            </Field>
           </div>
 
-          {rates.map(
-            (
-              rate,
-              index
-            ) => {
-              const id =
-                rate?.id ||
-                `rate-${index}`;
+          <div style={twoGridStyle}>
+            <Field label="EFFECTIVE FROM">
+              <input
+                type="date"
+                value={
+                  effectiveFrom
+                }
+                onChange={(
+                  event
+                ) =>
+                  setEffectiveFrom(
+                    event.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+            </Field>
 
-              const actualId =
-                rate?.id;
+            <Field label="EFFECTIVE TO">
+              <input
+                type="date"
+                value={
+                  effectiveTo
+                }
+                onChange={(
+                  event
+                ) =>
+                  setEffectiveTo(
+                    event.target.value
+                  )
+                }
+                style={inputStyle}
+              />
+            </Field>
+          </div>
 
-              return (
+          <Field label="ADMIN NOTE">
+            <textarea
+              value={
+                newNote
+              }
+              onChange={(
+                event
+              ) =>
+                setNewNote(
+                  event.target.value
+                )
+              }
+              rows={2}
+              style={textareaStyle}
+            />
+          </Field>
+
+          <button
+            type="button"
+            onClick={
+              addBand
+            }
+            disabled={
+              adding
+            }
+            style={purpleButtonStyle}
+          >
+            {adding
+              ? "ADDING..."
+              : "ADD M-PESA RATE"}
+          </button>
+        </div>
+      </section>
+
+      {/* =================================================== */}
+      {/* CURRENT EXISTING M-PESA RATES */}
+      {/* =================================================== */}
+
+      <section style={panelStyle}>
+        <div style={greenTitleStyle}>
+          CURRENT M-PESA RATE BANDS
+        </div>
+
+        {rates.length ===
+        0 ? (
+          <div style={emptyStyle}>
+            No M-Pesa rate bands were returned.
+          </div>
+        ) : (
+          <>
+            <div style={rateHeaderStyle}>
+              <div>
+                TYPE
+              </div>
+
+              <div>
+                MIN
+              </div>
+
+              <div>
+                MAX
+              </div>
+
+              <div>
+                FEE
+              </div>
+
+              <div>
+                ACTIVE
+              </div>
+
+              <div>
+                EFFECTIVE
+              </div>
+
+              <div>
+                SAVE
+              </div>
+
+              <div>
+                DELETE
+              </div>
+            </div>
+
+            {rates.map(
+              (
+                rate,
+                index
+              ) => (
                 <div
                   key={
-                    id
+                    rate.id ||
+                    index
                   }
                   style={rateRowStyle}
                 >
@@ -3637,7 +3409,7 @@ export default function AdminMpesaRatesPanel({
                       event
                     ) =>
                       updateRateField(
-                        actualId,
+                        rate.id,
                         "fee_type",
                         event.target.value
                       )
@@ -3647,8 +3419,6 @@ export default function AdminMpesaRatesPanel({
 
                   <input
                     type="number"
-                    min="0"
-                    step="0.01"
                     value={
                       getMinimum(
                         rate
@@ -3658,7 +3428,7 @@ export default function AdminMpesaRatesPanel({
                       event
                     ) =>
                       updateRateField(
-                        actualId,
+                        rate.id,
                         "min_amount",
                         event.target.value
                       )
@@ -3668,8 +3438,6 @@ export default function AdminMpesaRatesPanel({
 
                   <input
                     type="number"
-                    min="0"
-                    step="0.01"
                     value={
                       getMaximum(
                         rate
@@ -3679,7 +3447,7 @@ export default function AdminMpesaRatesPanel({
                       event
                     ) =>
                       updateRateField(
-                        actualId,
+                        rate.id,
                         "max_amount",
                         event.target.value
                       )
@@ -3689,8 +3457,6 @@ export default function AdminMpesaRatesPanel({
 
                   <input
                     type="number"
-                    min="0"
-                    step="0.01"
                     value={
                       getFee(
                         rate
@@ -3700,7 +3466,7 @@ export default function AdminMpesaRatesPanel({
                       event
                     ) =>
                       updateRateField(
-                        actualId,
+                        rate.id,
                         "fee",
                         event.target.value
                       )
@@ -3708,45 +3474,30 @@ export default function AdminMpesaRatesPanel({
                     style={smallInputStyle}
                   />
 
-                  <label style={activeToggleStyle}>
-                    <input
-                      type="checkbox"
-                      checked={
-                        getIsActive(
-                          rate
-                        )
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        updateRateField(
-                          actualId,
-                          "is_active",
-                          event.target.checked
-                        )
-                      }
-                    />
-
-                    <span>
-                      {getIsActive(
+                  <CenterCheck
+                    checked={
+                      getIsActive(
                         rate
                       )
-                        ? "ACTIVE"
-                        : "OFF"}
-                    </span>
-                  </label>
+                    }
+                    onChange={(
+                      checked
+                    ) =>
+                      updateRateField(
+                        rate.id,
+                        "is_active",
+                        checked
+                      )
+                    }
+                  />
 
-                  <div style={effectiveStyle}>
-                    <div>
-                      {rate?.effective_from ||
-                        "-"}
-                    </div>
-
-                    <div>
-                      to{" "}
-                      {rate?.effective_to ||
-                        "OPEN"}
-                    </div>
+                  <div style={smallTextStyle}>
+                    {rate.effective_from ||
+                      "-"}
+                    <br />
+                    to{" "}
+                    {rate.effective_to ||
+                      "OPEN"}
                   </div>
 
                   <button
@@ -3757,20 +3508,16 @@ export default function AdminMpesaRatesPanel({
                       )
                     }
                     disabled={
-                      !actualId ||
                       savingId ===
-                        String(
-                          actualId
-                        ) ||
-                      Boolean(
-                        deletingId
+                      String(
+                        rate.id
                       )
                     }
                     style={saveButtonStyle}
                   >
                     {savingId ===
                     String(
-                      actualId
+                      rate.id
                     )
                       ? "SAVING..."
                       : "SAVE"}
@@ -3784,1923 +3531,1706 @@ export default function AdminMpesaRatesPanel({
                       )
                     }
                     disabled={
-                      !actualId ||
                       deletingId ===
-                        String(
-                          actualId
-                        ) ||
-                      Boolean(
-                        savingId
+                      String(
+                        rate.id
                       )
                     }
                     style={deleteButtonStyle}
                   >
                     {deletingId ===
                     String(
-                      actualId
+                      rate.id
                     )
                       ? "DELETING..."
                       : "DELETE"}
                   </button>
                 </div>
-              );
-            }
-          )}
-        </>
-      )}
-    </section>
+              )
+            )}
+          </>
+        )}
+      </section>
 
-    {/* ========================================= */}
-    {/* M-PESA FEE TEST */}
-    {/* ========================================= */}
+      {/* =================================================== */}
+      {/* OLD M-PESA TESTER */}
+      {/* =================================================== */}
 
-    <section style={panelStyle}>
-      <div style={blueTitleStyle}>
-        M-PESA FEE TEST
-      </div>
-
-      <div style={bodyStyle}>
-        <div style={testGridStyle}>
-          <Field label="FEE TYPE">
-            <input
-              list="mpesa-test-types"
-              value={
-                testFeeType
-              }
-              onChange={(
-                event
-              ) => {
-                setTestFeeType(
-                  event.target.value
-                );
-
-                setTestResult(
-                  null
-                );
-              }}
-              style={inputStyle}
-            />
-
-            <datalist id="mpesa-test-types">
-              {feeTypes.map(
-                (
-                  type
-                ) => (
-                  <option
-                    key={
-                      type
-                    }
-                    value={
-                      type
-                    }
-                  />
-                )
-              )}
-            </datalist>
-          </Field>
-
-          <Field label="TRANSACTION AMOUNT">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={
-                testAmount
-              }
-              onChange={(
-                event
-              ) => {
-                setTestAmount(
-                  event.target.value
-                );
-
-                setTestResult(
-                  null
-                );
-              }}
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="CALCULATED FEE">
-            <div style={testResultStyle}>
-              KES{" "}
-              {money(
-                testResult ??
-                  0
-              )}
-            </div>
-          </Field>
+      <section style={panelStyle}>
+        <div style={blueTitleStyle}>
+          M-PESA FEE TEST
         </div>
 
-        <button
-          type="button"
-          onClick={
-            testFee
-          }
-          disabled={
-            testing
-          }
-          style={testButtonStyle}
-        >
-          {testing
-            ? "CHECKING..."
-            : "TEST TRANSACTION FEE"}
-        </button>
-      </div>
-    </section>
+        <div style={bodyStyle}>
+          <div style={threeGridStyle}>
+            <Field label="FEE TYPE">
+              <input
+                list="test-fee-types"
+                value={
+                  testFeeType
+                }
+                onChange={(
+                  event
+                ) => {
+                  setTestFeeType(
+                    event.target.value
+                  );
 
-    <div style={footerNoticeStyle}>
-      Payment-method changes affect new transactions only.
-      Historical transactions keep the payment method and fee
-      already recorded at the time they were completed.
+                  setTestResult(
+                    null
+                  );
+                }}
+                style={inputStyle}
+              />
+
+              <datalist id="test-fee-types">
+                {feeTypes.map(
+                  (
+                    type
+                  ) => (
+                    <option
+                      key={
+                        type
+                      }
+                      value={
+                        type
+                      }
+                    />
+                  )
+                )}
+              </datalist>
+            </Field>
+
+            <Field label="TRANSACTION AMOUNT">
+              <input
+                type="number"
+                value={
+                  testAmount
+                }
+                onChange={(
+                  event
+                ) => {
+                  setTestAmount(
+                    event.target.value
+                  );
+
+                  setTestResult(
+                    null
+                  );
+                }}
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="CALCULATED FEE">
+              <div style={feeResultStyle}>
+                KES{" "}
+                {money(
+                  testResult ??
+                    0
+                )}
+              </div>
+            </Field>
+          </div>
+
+          <button
+            type="button"
+            onClick={
+              testFee
+            }
+            disabled={
+              testing
+            }
+            style={blueButtonStyle}
+          >
+            {testing
+              ? "CHECKING..."
+              : "TEST TRANSACTION FEE"}
+          </button>
+        </div>
+      </section>
     </div>
-  </div>
-);
+  );
 }
 
-// ==================================================
+// ============================================================
 // PAYMENT METHOD BOX
-// ==================================================
+// ============================================================
 
 function PaymentMethodBox({
-title,
-value,
-options,
-onChange,
+  title,
+  value,
+  options,
+  onChange,
 }) {
-return (
-  <div style={methodBoxStyle}>
-    <div style={methodTitleStyle}>
-      {title}
-    </div>
+  return (
+    <div style={methodBoxStyle}>
+      <div style={methodTitleStyle}>
+        {title}
+      </div>
 
-    {options.map(
-      ([
-        method,
-        label,
-      ]) => (
-        <label
-          key={
-            method
-          }
-          style={radioLineStyle}
-        >
-          <input
-            type="radio"
-            name={
-              title
-            }
-            checked={
-              value ===
+      {options.map(
+        ([
+          method,
+          label,
+        ]) => (
+          <label
+            key={
               method
             }
-            onChange={() =>
-              onChange(
-                method
-              )
-            }
-          />
-
-          <span>
-            {label}
-          </span>
-        </label>
-      )
-    )}
-  </div>
-);
-}
-
-// ==================================================
-// PAYMENT TARIFF TABLE
-// ==================================================
-
-function PaymentTariffTable({
-title,
-method,
-rows,
-savingId,
-deletingId,
-onChange,
-onSave,
-onDelete,
-}) {
-const filtered =
-  rows.filter(
-    (
-      row
-    ) =>
-      row?.payment_method ===
-      method
-  );
-
-return (
-  <div style={subTableStyle}>
-    <div style={subTableTitleStyle}>
-      {title}
-    </div>
-
-    <div style={tariffHeaderStyle}>
-      <div>
-        MIN
-      </div>
-
-      <div>
-        MAX
-      </div>
-
-      <div>
-        FEE
-      </div>
-
-      <div>
-        ACTIVE
-      </div>
-
-      <div>
-        SAVE
-      </div>
-
-      <div>
-        DELETE
-      </div>
-    </div>
-
-    {filtered.length ===
-    0 ? (
-      <div style={emptyStyle}>
-        No tariff bands.
-      </div>
-    ) : (
-      filtered.map(
-        (
-          row
-        ) => (
-          <div
-            key={
-              row.id
-            }
-            style={tariffRowStyle}
+            style={radioStyle}
           >
             <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={
-                row.min_amount ??
-                ""
+              type="radio"
+              name={
+                title
               }
-              onChange={(
-                event
-              ) =>
+              checked={
+                value ===
+                method
+              }
+              onChange={() =>
                 onChange(
-                  row.id,
-                  "min_amount",
-                  event.target.value
+                  method
                 )
               }
-              style={smallInputStyle}
             />
 
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={
-                row.max_amount ??
-                ""
-              }
-              onChange={(
-                event
-              ) =>
-                onChange(
-                  row.id,
-                  "max_amount",
-                  event.target.value
-                )
-              }
-              style={smallInputStyle}
-            />
+            {label}
+          </label>
+        )
+      )}
+    </div>
+  );
+}
 
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={
-                row.fee ??
-                ""
-              }
-              onChange={(
-                event
-              ) =>
-                onChange(
-                  row.id,
-                  "fee",
-                  event.target.value
-                )
-              }
-              style={smallInputStyle}
-            />
+// ============================================================
+// PAYMENT TARIFF TABLE
+// ============================================================
 
-            <label style={activeToggleStyle}>
+function PaymentTariffTable({
+  title,
+  method,
+  rows,
+  savingId,
+  deletingId,
+  onChange,
+  onSave,
+  onDelete,
+}) {
+  const filtered =
+    rows.filter(
+      (
+        row
+      ) =>
+        row.payment_method ===
+        method
+    );
+
+  return (
+    <div style={subPanelStyle}>
+      <div style={subTitleStyle}>
+        {title}
+      </div>
+
+      <div style={tariffHeaderStyle}>
+        <div>MIN</div>
+        <div>MAX</div>
+        <div>FEE</div>
+        <div>ACTIVE</div>
+        <div>SAVE</div>
+        <div>DELETE</div>
+      </div>
+
+      {filtered.length ===
+      0 ? (
+        <div style={emptyStyle}>
+          No tariff bands.
+        </div>
+      ) : (
+        filtered.map(
+          (
+            row
+          ) => (
+            <div
+              key={
+                row.id
+              }
+              style={tariffRowStyle}
+            >
               <input
-                type="checkbox"
-                checked={
-                  row.is_active !==
-                  false
+                type="number"
+                value={
+                  row.min_amount
                 }
                 onChange={(
                   event
                 ) =>
                   onChange(
                     row.id,
+                    "min_amount",
+                    event.target.value
+                  )
+                }
+                style={smallInputStyle}
+              />
+
+              <input
+                type="number"
+                value={
+                  row.max_amount
+                }
+                onChange={(
+                  event
+                ) =>
+                  onChange(
+                    row.id,
+                    "max_amount",
+                    event.target.value
+                  )
+                }
+                style={smallInputStyle}
+              />
+
+              <input
+                type="number"
+                value={
+                  row.fee
+                }
+                onChange={(
+                  event
+                ) =>
+                  onChange(
+                    row.id,
+                    "fee",
+                    event.target.value
+                  )
+                }
+                style={smallInputStyle}
+              />
+
+              <CenterCheck
+                checked={
+                  row.is_active !==
+                  false
+                }
+                onChange={(
+                  checked
+                ) =>
+                  onChange(
+                    row.id,
                     "is_active",
-                    event.target.checked
+                    checked
                   )
                 }
               />
 
-              <span>
-                {row.is_active !==
-                false
-                  ? "ACTIVE"
-                  : "OFF"}
-              </span>
-            </label>
-
-            <button
-              type="button"
-              onClick={() =>
-                onSave(
-                  row
-                )
-              }
-              disabled={
-                savingId ===
+              <button
+                type="button"
+                onClick={() =>
+                  onSave(
+                    row
+                  )
+                }
+                disabled={
+                  savingId ===
+                  String(
+                    row.id
+                  )
+                }
+                style={saveButtonStyle}
+              >
+                {savingId ===
                 String(
                   row.id
                 )
-              }
-              style={saveButtonStyle}
-            >
-              {savingId ===
-              String(
-                row.id
-              )
-                ? "SAVING..."
-                : "SAVE"}
-            </button>
+                  ? "SAVING..."
+                  : "SAVE"}
+              </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                onDelete(
-                  row
-                )
-              }
-              disabled={
-                deletingId ===
+              <button
+                type="button"
+                onClick={() =>
+                  onDelete(
+                    row
+                  )
+                }
+                disabled={
+                  deletingId ===
+                  String(
+                    row.id
+                  )
+                }
+                style={deleteButtonStyle}
+              >
+                {deletingId ===
                 String(
                   row.id
                 )
-              }
-              style={deleteButtonStyle}
-            >
-              {deletingId ===
-              String(
-                row.id
-              )
-                ? "DELETING..."
-                : "DELETE"}
-            </button>
-          </div>
+                  ? "DELETING..."
+                  : "DELETE"}
+              </button>
+            </div>
+          )
         )
-      )
-    )}
-  </div>
-);
+      )}
+    </div>
+  );
 }
 
-// ==================================================
+// ============================================================
 // FIELD
-// ==================================================
+// ============================================================
 
 function Field({
-label,
-children,
+  label,
+  children,
 }) {
-return (
-  <div>
-    <label style={labelStyle}>
-      {label}
-    </label>
+  return (
+    <div>
+      <label style={labelStyle}>
+        {label}
+      </label>
 
-    {children}
-  </div>
-);
+      {children}
+    </div>
+  );
 }
 
-// ==================================================
+// ============================================================
 // TOGGLE
-// ==================================================
+// ============================================================
 
 function Toggle({
-label,
-checked,
-onChange,
+  label,
+  checked,
+  onChange,
 }) {
-return (
-  <label style={checkLineStyle}>
-    <input
-      type="checkbox"
-      checked={
-        Boolean(
-          checked
-        )
-      }
-      onChange={(
-        event
-      ) =>
-        onChange(
-          event.target.checked
-        )
-      }
-    />
+  return (
+    <label style={checkboxLineStyle}>
+      <input
+        type="checkbox"
+        checked={
+          Boolean(
+            checked
+          )
+        }
+        onChange={(
+          event
+        ) =>
+          onChange(
+            event.target.checked
+          )
+        }
+      />
 
-    {label}
-  </label>
-);
+      {label}
+    </label>
+  );
 }
 
-// ==================================================
+// ============================================================
 // CENTER CHECK
-// ==================================================
+// ============================================================
 
 function CenterCheck({
-checked,
-onChange,
+  checked,
+  onChange,
 }) {
-return (
-  <div style={centerStyle}>
-    <input
-      type="checkbox"
-      checked={
-        Boolean(
-          checked
-        )
-      }
-      onChange={(
-        event
-      ) =>
-        onChange(
-          event.target.checked
-        )
-      }
-    />
-  </div>
-);
+  return (
+    <div style={centerStyle}>
+      <input
+        type="checkbox"
+        checked={
+          Boolean(
+            checked
+          )
+        }
+        onChange={(
+          event
+        ) =>
+          onChange(
+            event.target.checked
+          )
+        }
+      />
+    </div>
+  );
 }
 
-// ==================================================
-// NORMALISE M-PESA RATES
-// ==================================================
+// ============================================================
+// RATE NORMALIZER
+// ============================================================
 
 function normaliseRates(
-value
+  value
 ) {
-let rows = [];
+  let rows = [];
 
-if (
-  Array.isArray(
-    value
-  )
-) {
-  rows =
-    value;
-} else if (
-  Array.isArray(
-    value?.rates
-  )
-) {
-  rows =
-    value.rates;
-} else if (
-  Array.isArray(
-    value?.data
-  )
-) {
-  rows =
-    value.data;
-} else if (
-  value &&
-  typeof value ===
-    "object"
-) {
-  rows =
-    Object.values(
+  if (
+    Array.isArray(
       value
-    ).filter(
-      (
-        item
-      ) =>
-        item &&
-        typeof item ===
-          "object" &&
-        !Array.isArray(
-          item
-        )
-    );
+    )
+  ) {
+    rows =
+      value;
+  } else if (
+    Array.isArray(
+      value?.rates
+    )
+  ) {
+    rows =
+      value.rates;
+  } else if (
+    Array.isArray(
+      value?.data
+    )
+  ) {
+    rows =
+      value.data;
+  }
+
+  return rows.map(
+    (
+      rate
+    ) => ({
+      ...rate,
+
+      fee_type:
+        rate?.fee_type ??
+        rate?.flow ??
+        "",
+
+      min_amount:
+        rate?.min_amount ??
+        rate?.minimum_amount ??
+        0,
+
+      max_amount:
+        rate?.max_amount ??
+        rate?.maximum_amount ??
+        0,
+
+      fee:
+        rate?.fee ??
+        rate?.fee_amount ??
+        0,
+
+      is_active:
+        rate?.is_active !==
+        false,
+    })
+  );
 }
 
-return rows.map(
-  (
-    rate
-  ) => ({
-    ...rate,
-
-    fee_type:
-      rate?.fee_type ??
-      rate?.flow ??
-      "",
-
-    min_amount:
-      rate?.min_amount ??
-      rate?.minimum_amount ??
-      0,
-
-    max_amount:
-      rate?.max_amount ??
-      rate?.maximum_amount ??
-      0,
-
-    fee:
-      rate?.fee ??
-      rate?.fee_amount ??
-      0,
-
-    is_active:
-      rate?.is_active !==
-      false,
-  })
-);
-}
-
-// ==================================================
-// RATE HELPERS
-// ==================================================
+// ============================================================
+// RATE FIELD HELPERS
+// ============================================================
 
 function getRateType(
-rate
+  rate
 ) {
-return String(
-  rate?.fee_type ??
-    rate?.flow ??
-    ""
-);
+  return String(
+    rate?.fee_type ??
+      rate?.flow ??
+      ""
+  );
 }
 
 function getMinimum(
-rate
+  rate
 ) {
-return (
-  rate?.min_amount ??
-  rate?.minimum_amount ??
-  0
-);
+  return (
+    rate?.min_amount ??
+    rate?.minimum_amount ??
+    0
+  );
 }
 
 function getMaximum(
-rate
+  rate
 ) {
-return (
-  rate?.max_amount ??
-  rate?.maximum_amount ??
-  0
-);
+  return (
+    rate?.max_amount ??
+    rate?.maximum_amount ??
+    0
+  );
 }
 
 function getFee(
-rate
+  rate
 ) {
-return (
-  rate?.fee ??
-  rate?.fee_amount ??
-  0
-);
+  return (
+    rate?.fee ??
+    rate?.fee_amount ??
+    0
+  );
 }
 
 function getIsActive(
-rate
+  rate
 ) {
-return (
-  rate?.is_active !==
-  false
-);
+  return (
+    rate?.is_active !==
+    false
+  );
 }
 
-// ==================================================
-// HELPERS
-// ==================================================
+// ============================================================
+// GENERIC HELPERS
+// ============================================================
 
 async function safeJson(
-response
+  response
 ) {
-try {
-  return await response.json();
-} catch {
-  return null;
-}
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 function extractNumericResult(
-value
+  value
 ) {
-if (
-  typeof value ===
-  "number"
-) {
-  return value;
-}
-
-if (
-  typeof value ===
-    "string" &&
-  value !==
-    ""
-) {
-  const numeric =
-    Number(
-      value
-    );
+  if (
+    typeof value ===
+    "number"
+  ) {
+    return value;
+  }
 
   if (
-    Number.isFinite(
-      numeric
-    )
-  ) {
-    return numeric;
-  }
-}
-
-if (
-  Array.isArray(
-    value
-  ) &&
-  value.length >
-    0
-) {
-  return extractNumericResult(
-    value[0]
-  );
-}
-
-if (
-  value &&
-  typeof value ===
-    "object"
-) {
-  const candidates = [
-    value.fee,
-    value.fee_amount,
-    value.transaction_fee,
-    value.result,
-    value.amount,
-  ];
-
-  for (
-    const candidate of
-    candidates
+    typeof value ===
+      "string" &&
+    value !==
+      ""
   ) {
     const numeric =
       Number(
-        candidate
+        value
       );
 
-    if (
-      Number.isFinite(
-        numeric
-      )
+    return Number.isFinite(
+      numeric
+    )
+      ? numeric
+      : 0;
+  }
+
+  if (
+    Array.isArray(
+      value
+    ) &&
+    value.length >
+      0
+  ) {
+    return extractNumericResult(
+      value[0]
+    );
+  }
+
+  if (
+    value &&
+    typeof value ===
+      "object"
+  ) {
+    const candidates = [
+      value.fee,
+      value.fee_amount,
+      value.transaction_fee,
+      value.result,
+      value.amount,
+    ];
+
+    for (
+      const candidate of
+      candidates
     ) {
-      return numeric;
+      const numeric =
+        Number(
+          candidate
+        );
+
+      if (
+        Number.isFinite(
+          numeric
+        )
+      ) {
+        return numeric;
+      }
     }
   }
-}
 
-return 0;
+  return 0;
 }
 
 function money(
-value
+  value
 ) {
-const numeric =
-  Number(
-    value ??
-      0
+  const numeric =
+    Number(
+      value ??
+        0
+    );
+
+  return (
+    Number.isFinite(
+      numeric
+    )
+      ? numeric
+      : 0
+  ).toLocaleString(
+    "en-KE",
+    {
+      minimumFractionDigits:
+        2,
+
+      maximumFractionDigits:
+        2,
+    }
   );
-
-return (
-  Number.isFinite(
-    numeric
-  )
-    ? numeric
-    : 0
-).toLocaleString(
-  "en-KE",
-  {
-    minimumFractionDigits:
-      2,
-
-    maximumFractionDigits:
-      2,
-  }
-);
 }
 
 function roundMoney(
-value
+  value
 ) {
-return (
-  Math.round(
-    (
-      Number(
-        value
-      ) +
-      Number.EPSILON
-    ) *
-      100
-  ) /
-  100
-);
+  return (
+    Math.round(
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
+        100
+    ) /
+    100
+  );
 }
 
 function getNairobiDate() {
-const parts =
-  new Intl.DateTimeFormat(
-    "en-CA",
-    {
-      timeZone:
-        "Africa/Nairobi",
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Africa/Nairobi",
 
-      year:
-        "numeric",
+        year:
+          "numeric",
 
-      month:
-        "2-digit",
+        month:
+          "2-digit",
 
-      day:
-        "2-digit",
-    }
-  ).formatToParts(
-    new Date()
-  );
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      new Date()
+    );
 
-const year =
-  parts.find(
-    (
-      part
-    ) =>
-      part.type ===
-      "year"
-  )?.value;
+  const year =
+    parts.find(
+      (
+        part
+      ) =>
+        part.type ===
+        "year"
+    )?.value;
 
-const month =
-  parts.find(
-    (
-      part
-    ) =>
-      part.type ===
-      "month"
-  )?.value;
+  const month =
+    parts.find(
+      (
+        part
+      ) =>
+        part.type ===
+        "month"
+    )?.value;
 
-const day =
-  parts.find(
-    (
-      part
-    ) =>
-      part.type ===
-      "day"
-  )?.value;
+  const day =
+    parts.find(
+      (
+        part
+      ) =>
+        part.type ===
+        "day"
+    )?.value;
 
-return `${year}-${month}-${day}`;
+  return `${year}-${month}-${day}`;
 }
 
 function methodLabel(
-value
-) {
-switch (
   value
 ) {
-  case "MPESA_TO_MPESA":
-    return "M-PESA → M-PESA";
+  switch (
+    value
+  ) {
+    case "MPESA_TO_MPESA":
+      return "M-PESA → M-PESA";
 
-  case "MPESA_TO_IM":
-    return "M-PESA → I&M";
+    case "MPESA_TO_IM":
+      return "M-PESA → I&M";
 
-  case "IM_TO_MPESA":
-    return "I&M → M-PESA";
+    case "IM_TO_MPESA":
+      return "I&M → M-PESA";
 
-  default:
-    return value || "-";
+    default:
+      return value || "-";
+  }
 }
-}
 
-// ==================================================
+// ============================================================
 // STYLES
-// ==================================================
+// ============================================================
 
 const wrapperStyle = {
-display:
-  "grid",
+  display:
+    "grid",
 
-gap:
-  "14px",
+  gap:
+    "14px",
 };
 
-const loadingPageStyle = {
-padding:
-  "30px",
+const loadingStyle = {
+  padding:
+    "30px",
 
-textAlign:
-  "center",
+  textAlign:
+    "center",
 
-color:
-  "#475569",
-
-fontWeight:
-  "bold",
+  fontWeight:
+    "bold",
 };
 
 const heroStyle = {
-padding:
-  "16px",
+  padding:
+    "16px",
 
-borderRadius:
-  "7px",
+  borderRadius:
+    "7px",
 
-background:
-  "linear-gradient(90deg,#047857,#0f766e)",
+  background:
+    "linear-gradient(90deg,#047857,#0f766e)",
 
-color:
-  "white",
+  color:
+    "white",
 
-display:
-  "flex",
+  display:
+    "flex",
 
-justifyContent:
-  "space-between",
+  justifyContent:
+    "space-between",
 
-alignItems:
-  "center",
+  alignItems:
+    "center",
 
-gap:
-  "15px",
+  gap:
+    "12px",
 
-flexWrap:
-  "wrap",
+  flexWrap:
+    "wrap",
 };
 
 const heroTitleStyle = {
-fontSize:
-  "17px",
+  fontSize:
+    "17px",
 
-fontWeight:
-  "900",
+  fontWeight:
+    "900",
 };
 
 const heroSubtitleStyle = {
-marginTop:
-  "4px",
+  fontSize:
+    "10px",
 
-color:
-  "#d1fae5",
-
-fontSize:
-  "10px",
+  marginTop:
+    "4px",
 };
 
 const refreshButtonStyle = {
-border:
-  "1px solid rgba(255,255,255,0.5)",
+  padding:
+    "9px 13px",
 
-borderRadius:
-  "5px",
+  backgroundColor:
+    "transparent",
 
-backgroundColor:
-  "rgba(255,255,255,0.12)",
+  border:
+    "1px solid white",
 
-color:
-  "white",
+  color:
+    "white",
 
-padding:
-  "9px 13px",
+  borderRadius:
+    "5px",
 
-fontWeight:
-  "bold",
+  cursor:
+    "pointer",
 
-cursor:
-  "pointer",
+  fontWeight:
+    "bold",
 };
 
 const panelStyle = {
-backgroundColor:
-  "white",
+  backgroundColor:
+    "white",
 
-border:
-  "1px solid #cbd5e1",
+  border:
+    "1px solid #cbd5e1",
 
-borderRadius:
-  "7px",
+  borderRadius:
+    "7px",
 
-overflow:
-  "hidden",
+  overflow:
+    "hidden",
 };
 
 const bodyStyle = {
-padding:
-  "13px",
+  padding:
+    "13px",
 };
 
 const darkTitleStyle = {
-padding:
-  "11px 13px",
+  padding:
+    "11px",
 
-backgroundColor:
-  "#0f172a",
+  backgroundColor:
+    "#0f172a",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontSize:
-  "12px",
-
-fontWeight:
-  "900",
+  fontWeight:
+    "900",
 };
 
 const bankTitleStyle = {
-padding:
-  "11px 13px",
+  padding:
+    "11px",
 
-backgroundColor:
-  "#1d4ed8",
+  backgroundColor:
+    "#0284c7",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontSize:
-  "12px",
-
-fontWeight:
-  "900",
+  fontWeight:
+    "900",
 };
 
 const orangeTitleStyle = {
-padding:
-  "11px 13px",
+  padding:
+    "11px",
 
-backgroundColor:
-  "#c2410c",
+  backgroundColor:
+    "#dc2626",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontSize:
-  "12px",
-
-fontWeight:
-  "900",
+  fontWeight:
+    "900",
 };
 
 const cashierTitleStyle = {
-padding:
-  "11px 13px",
+  padding:
+    "11px",
 
-backgroundColor:
-  "#0f766e",
+  backgroundColor:
+    "#0f766e",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontSize:
-  "12px",
-
-fontWeight:
-  "900",
+  fontWeight:
+    "900",
 };
 
 const purpleTitleStyle = {
-padding:
-  "11px 13px",
+  padding:
+    "11px",
 
-backgroundColor:
-  "#7c3aed",
+  backgroundColor:
+    "#7c3aed",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontSize:
-  "12px",
-
-fontWeight:
-  "900",
+  fontWeight:
+    "900",
 };
 
 const greenTitleStyle = {
-padding:
-  "11px 13px",
+  padding:
+    "11px",
 
-backgroundColor:
-  "#047857",
+  backgroundColor:
+    "#047857",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontSize:
-  "12px",
-
-fontWeight:
-  "900",
+  fontWeight:
+    "900",
 };
 
 const blueTitleStyle = {
-padding:
-  "11px 13px",
+  padding:
+    "11px",
 
-backgroundColor:
-  "#0369a1",
+  backgroundColor:
+    "#0284c7",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontSize:
-  "12px",
-
-fontWeight:
-  "900",
+  fontWeight:
+    "900",
 };
 
 const messageStyle = {
-padding:
-  "10px",
+  padding:
+    "10px",
 
-borderRadius:
-  "5px",
+  borderRadius:
+    "5px",
 
-fontSize:
-  "10px",
-
-fontWeight:
-  "bold",
+  fontWeight:
+    "bold",
 };
 
 const systemGridStyle = {
-display:
-  "grid",
+  display:
+    "grid",
 
-gridTemplateColumns:
-  "repeat(auto-fit,minmax(260px,1fr))",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(260px,1fr))",
 
-gap:
-  "12px",
+  gap:
+    "10px",
 };
 
 const methodBoxStyle = {
-border:
-  "1px solid #cbd5e1",
+  padding:
+    "12px",
 
-borderRadius:
-  "6px",
+  border:
+    "1px solid #cbd5e1",
 
-padding:
-  "12px",
+  borderRadius:
+    "5px",
 
-backgroundColor:
-  "#f8fafc",
+  backgroundColor:
+    "#f8fafc",
 };
 
 const methodTitleStyle = {
-fontSize:
-  "10px",
+  fontWeight:
+    "900",
 
-fontWeight:
-  "900",
+  fontSize:
+    "10px",
 
-marginBottom:
-  "9px",
-
-color:
-  "#334155",
+  marginBottom:
+    "8px",
 };
 
-const radioLineStyle = {
-display:
-  "flex",
+const radioStyle = {
+  display:
+    "flex",
 
-alignItems:
-  "center",
+  alignItems:
+    "center",
 
-gap:
-  "8px",
+  gap:
+    "7px",
 
-margin:
-  "7px 0",
+  margin:
+    "7px 0",
 
-fontSize:
-  "11px",
+  fontWeight:
+    "bold",
 
-fontWeight:
-  "bold",
+  fontSize:
+    "10px",
 };
 
-const controlSummaryStyle = {
-marginTop:
-  "10px",
+const summaryNoticeStyle = {
+  marginTop:
+    "10px",
 
-padding:
-  "10px",
+  padding:
+    "9px",
 
-backgroundColor:
-  "#f1f5f9",
+  backgroundColor:
+    "#f1f5f9",
 
-borderRadius:
-  "5px",
+  borderRadius:
+    "5px",
 
-fontSize:
-  "10px",
-
-color:
-  "#334155",
+  fontSize:
+    "10px",
 };
 
-const saveWideButtonStyle = {
-width:
-  "100%",
+const darkButtonStyle = {
+  width:
+    "100%",
 
-marginTop:
-  "10px",
+  marginTop:
+    "10px",
 
-padding:
-  "10px",
+  padding:
+    "10px",
 
-border:
-  "none",
+  border:
+    "none",
 
-borderRadius:
-  "5px",
+  borderRadius:
+    "4px",
 
-backgroundColor:
-  "#0f172a",
+  backgroundColor:
+    "#0f172a",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontWeight:
-  "bold",
+  fontWeight:
+    "bold",
 
-cursor:
-  "pointer",
+  cursor:
+    "pointer",
 };
 
-const fourGridStyle = {
-display:
-  "grid",
+const bankButtonStyle = {
+  width:
+    "100%",
 
-gridTemplateColumns:
-  "repeat(auto-fit,minmax(190px,1fr))",
+  marginTop:
+    "10px",
 
-gap:
-  "10px",
-};
+  padding:
+    "10px",
 
-const labelStyle = {
-display:
-  "block",
+  border:
+    "none",
 
-marginBottom:
-  "5px",
+  borderRadius:
+    "4px",
 
-color:
-  "#334155",
+  backgroundColor:
+    "#0284c7",
 
-fontSize:
-  "9px",
+  color:
+    "white",
 
-fontWeight:
-  "bold",
-};
+  fontWeight:
+    "bold",
 
-const inputStyle = {
-width:
-  "100%",
-
-boxSizing:
-  "border-box",
-
-padding:
-  "9px",
-
-border:
-  "1px solid #94a3b8",
-
-borderRadius:
-  "4px",
-
-backgroundColor:
-  "white",
-};
-
-const smallInputStyle = {
-width:
-  "100%",
-
-boxSizing:
-  "border-box",
-
-padding:
-  "7px",
-
-border:
-  "1px solid #cbd5e1",
-
-borderRadius:
-  "4px",
-
-fontSize:
-  "9px",
-};
-
-const checkLineStyle = {
-display:
-  "flex",
-
-alignItems:
-  "center",
-
-gap:
-  "7px",
-
-marginTop:
-  "10px",
-
-fontSize:
-  "10px",
-
-fontWeight:
-  "bold",
-
-color:
-  "#334155",
-};
-
-const bankSaveButtonStyle = {
-width:
-  "100%",
-
-marginTop:
-  "10px",
-
-padding:
-  "10px",
-
-border:
-  "none",
-
-borderRadius:
-  "5px",
-
-backgroundColor:
-  "#1d4ed8",
-
-color:
-  "white",
-
-fontWeight:
-  "bold",
-
-cursor:
-  "pointer",
-};
-
-const importantNoticeStyle = {
-padding:
-  "10px",
-
-backgroundColor:
-  "#fffbeb",
-
-border:
-  "1px solid #fde68a",
-
-color:
-  "#92400e",
-
-borderRadius:
-  "5px",
-
-fontSize:
-  "9px",
-
-lineHeight:
-  "1.5",
-
-marginBottom:
-  "10px",
-};
-
-const paymentAddGridStyle = {
-display:
-  "grid",
-
-gridTemplateColumns:
-  "1.3fr 1fr 1fr 1fr auto",
-
-gap:
-  "8px",
-
-alignItems:
-  "end",
+  cursor:
+    "pointer",
 };
 
 const orangeButtonStyle = {
-padding:
-  "10px 14px",
+  padding:
+    "10px",
 
-border:
-  "none",
+  border:
+    "none",
 
-borderRadius:
-  "5px",
+  borderRadius:
+    "4px",
 
-backgroundColor:
-  "#c2410c",
+  backgroundColor:
+    "#dc2626",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontWeight:
-  "bold",
+  fontWeight:
+    "bold",
 
-cursor:
-  "pointer",
+  cursor:
+    "pointer",
 };
 
-const subTableStyle = {
-marginTop:
-  "14px",
+const cashierButtonStyle = {
+  width:
+    "100%",
 
-border:
-  "1px solid #e2e8f0",
+  marginTop:
+    "10px",
 
-borderRadius:
-  "6px",
+  padding:
+    "10px",
 
-overflow:
-  "hidden",
+  border:
+    "none",
+
+  borderRadius:
+    "4px",
+
+  backgroundColor:
+    "#0f766e",
+
+  color:
+    "white",
+
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
 };
 
-const subTableTitleStyle = {
-padding:
-  "9px",
+const purpleButtonStyle = {
+  width:
+    "100%",
 
-fontWeight:
-  "900",
+  marginTop:
+    "10px",
 
-fontSize:
-  "10px",
+  padding:
+    "10px",
 
-backgroundColor:
-  "#f8fafc",
+  border:
+    "none",
 
-color:
-  "#334155",
+  borderRadius:
+    "4px",
+
+  backgroundColor:
+    "#7c3aed",
+
+  color:
+    "white",
+
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
 };
 
-const tariffHeaderStyle = {
-display:
-  "grid",
+const blueButtonStyle = {
+  width:
+    "100%",
 
-gridTemplateColumns:
-  "1fr 1fr 0.8fr 0.8fr 0.7fr 0.7fr",
+  marginTop:
+    "10px",
 
-gap:
-  "6px",
+  padding:
+    "10px",
 
-padding:
-  "8px",
+  border:
+    "none",
 
-backgroundColor:
-  "#f1f5f9",
+  borderRadius:
+    "4px",
 
-fontSize:
-  "8px",
+  backgroundColor:
+    "#0284c7",
 
-fontWeight:
-  "bold",
+  color:
+    "white",
 
-textAlign:
-  "center",
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
 };
 
-const tariffRowStyle = {
-display:
-  "grid",
+const fourGridStyle = {
+  display:
+    "grid",
 
-gridTemplateColumns:
-  "1fr 1fr 0.8fr 0.8fr 0.7fr 0.7fr",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(180px,1fr))",
 
-gap:
-  "6px",
-
-padding:
-  "8px",
-
-alignItems:
-  "center",
-
-borderTop:
-  "1px solid #e2e8f0",
+  gap:
+    "10px",
 };
 
-const testerBoxStyle = {
-marginTop:
-  "14px",
+const threeGridStyle = {
+  display:
+    "grid",
 
-padding:
-  "10px",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(200px,1fr))",
 
-backgroundColor:
-  "#f8fafc",
-
-borderRadius:
-  "6px",
-
-border:
-  "1px solid #e2e8f0",
+  gap:
+    "10px",
 };
 
-const testerGridStyle = {
-display:
-  "grid",
+const twoGridStyle = {
+  display:
+    "grid",
 
-gridTemplateColumns:
-  "1.2fr 1fr 1fr",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(220px,1fr))",
 
-gap:
-  "10px",
+  gap:
+    "10px",
 
-alignItems:
-  "end",
+  marginTop:
+    "10px",
+};
+
+const paymentAddGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "1.2fr 1fr 1fr 1fr auto",
+
+  gap:
+    "8px",
+
+  alignItems:
+    "end",
 };
 
 const newCashierGridStyle = {
-display:
-  "grid",
+  display:
+    "grid",
 
-gridTemplateColumns:
-  "1.4fr 0.6fr 1.2fr 1fr 1fr",
+  gridTemplateColumns:
+    "1.3fr 0.5fr 1fr 1fr 1fr",
 
-gap:
-  "8px",
+  gap:
+    "8px",
 };
 
-const cashierToggleLineStyle = {
-display:
-  "flex",
+const labelStyle = {
+  display:
+    "block",
 
-gap:
-  "16px",
+  marginBottom:
+    "5px",
 
-flexWrap:
-  "wrap",
+  fontSize:
+    "9px",
 
-alignItems:
-  "center",
-
-marginTop:
-  "4px",
+  fontWeight:
+    "bold",
 };
 
-const cashierAddButtonStyle = {
-width:
-  "100%",
+const inputStyle = {
+  width:
+    "100%",
 
-marginTop:
-  "10px",
+  boxSizing:
+    "border-box",
 
-padding:
-  "10px",
+  padding:
+    "9px",
 
-border:
-  "none",
+  border:
+    "1px solid #94a3b8",
 
-borderRadius:
-  "5px",
+  borderRadius:
+    "4px",
 
-backgroundColor:
-  "#0f766e",
-
-color:
-  "white",
-
-fontWeight:
-  "bold",
-
-cursor:
-  "pointer",
+  backgroundColor:
+    "white",
 };
 
-const cashierTableWrapStyle = {
-marginTop:
-  "14px",
+const smallInputStyle = {
+  width:
+    "100%",
 
-overflowX:
-  "auto",
-};
+  boxSizing:
+    "border-box",
 
-const cashierHeaderStyle = {
-display:
-  "grid",
+  padding:
+    "7px",
 
-gridTemplateColumns:
-  "1.3fr 0.5fr 1.1fr 1fr 1fr 0.5fr 0.5fr 0.5fr 0.7fr",
+  border:
+    "1px solid #cbd5e1",
 
-gap:
-  "5px",
+  borderRadius:
+    "4px",
 
-minWidth:
-  "1000px",
+  fontSize:
+    "9px",
 
-padding:
-  "8px",
-
-backgroundColor:
-  "#f1f5f9",
-
-fontSize:
-  "8px",
-
-fontWeight:
-  "bold",
-
-textAlign:
-  "center",
-};
-
-const cashierRowStyle = {
-display:
-  "grid",
-
-gridTemplateColumns:
-  "1.3fr 0.5fr 1.1fr 1fr 1fr 0.5fr 0.5fr 0.5fr 0.7fr",
-
-gap:
-  "5px",
-
-minWidth:
-  "1000px",
-
-padding:
-  "8px",
-
-borderTop:
-  "1px solid #e2e8f0",
-
-alignItems:
-  "center",
-};
-
-const centerStyle = {
-display:
-  "flex",
-
-justifyContent:
-  "center",
-
-alignItems:
-  "center",
-};
-
-const newRateGridStyle = {
-display:
-  "grid",
-
-gridTemplateColumns:
-  "1.3fr 1fr 1fr 1fr",
-
-gap:
-  "10px",
-};
-
-const dateGridStyle = {
-display:
-  "grid",
-
-gridTemplateColumns:
-  "1fr 1fr",
-
-gap:
-  "10px",
-
-marginTop:
-  "10px",
-};
-
-const noteWrapStyle = {
-marginTop:
-  "10px",
+  backgroundColor:
+    "white",
 };
 
 const textareaStyle = {
-width:
-  "100%",
+  width:
+    "100%",
 
-boxSizing:
-  "border-box",
+  boxSizing:
+    "border-box",
 
-padding:
-  "9px",
+  padding:
+    "9px",
 
-border:
-  "1px solid #94a3b8",
+  border:
+    "1px solid #94a3b8",
 
-borderRadius:
-  "4px",
+  borderRadius:
+    "4px",
 
-resize:
-  "vertical",
+  resize:
+    "vertical",
 };
 
-const addButtonStyle = {
-width:
-  "100%",
+const checkboxLineStyle = {
+  display:
+    "flex",
 
-marginTop:
-  "10px",
+  alignItems:
+    "center",
 
-padding:
-  "10px",
+  gap:
+    "6px",
 
-border:
-  "none",
+  marginTop:
+    "9px",
 
-borderRadius:
-  "5px",
+  fontSize:
+    "10px",
 
-backgroundColor:
-  "#7c3aed",
+  fontWeight:
+    "bold",
+};
 
-color:
-  "white",
+const toggleRowStyle = {
+  display:
+    "flex",
 
-fontWeight:
-  "bold",
+  gap:
+    "16px",
 
-cursor:
-  "pointer",
+  flexWrap:
+    "wrap",
+};
+
+const noticeStyle = {
+  padding:
+    "9px",
+
+  backgroundColor:
+    "#fffbeb",
+
+  border:
+    "1px solid #fde68a",
+
+  color:
+    "#92400e",
+
+  borderRadius:
+    "5px",
+
+  fontSize:
+    "9px",
+
+  marginBottom:
+    "10px",
+};
+
+const testerPanelStyle = {
+  marginTop:
+    "12px",
+
+  padding:
+    "10px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  border:
+    "1px solid #e2e8f0",
+
+  borderRadius:
+    "5px",
+};
+
+const feeResultStyle = {
+  padding:
+    "9px",
+
+  backgroundColor:
+    "#ecfdf5",
+
+  border:
+    "1px solid #86efac",
+
+  borderRadius:
+    "4px",
+
+  fontWeight:
+    "900",
+
+  color:
+    "#166534",
+};
+
+const subPanelStyle = {
+  marginTop:
+    "12px",
+
+  border:
+    "1px solid #e2e8f0",
+
+  borderRadius:
+    "5px",
+
+  overflow:
+    "hidden",
+};
+
+const subTitleStyle = {
+  padding:
+    "8px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  fontWeight:
+    "900",
+};
+
+const tariffHeaderStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "1fr 1fr 1fr 0.6fr 0.8fr 0.8fr",
+
+  gap:
+    "6px",
+
+  padding:
+    "7px",
+
+  backgroundColor:
+    "#f1f5f9",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "bold",
+
+  textAlign:
+    "center",
+};
+
+const tariffRowStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "1fr 1fr 1fr 0.6fr 0.8fr 0.8fr",
+
+  gap:
+    "6px",
+
+  padding:
+    "7px",
+
+  borderTop:
+    "1px solid #e2e8f0",
+
+  alignItems:
+    "center",
+};
+
+const cashierWrapStyle = {
+  marginTop:
+    "12px",
+
+  overflowX:
+    "auto",
+};
+
+const cashierHeaderStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "1.2fr 0.45fr 1fr 1fr 1fr 0.45fr 0.45fr 0.45fr 0.7fr",
+
+  gap:
+    "5px",
+
+  minWidth:
+    "1000px",
+
+  padding:
+    "7px",
+
+  backgroundColor:
+    "#f1f5f9",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "bold",
+
+  textAlign:
+    "center",
+};
+
+const cashierRowStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "1.2fr 0.45fr 1fr 1fr 1fr 0.45fr 0.45fr 0.45fr 0.7fr",
+
+  gap:
+    "5px",
+
+  minWidth:
+    "1000px",
+
+  padding:
+    "7px",
+
+  borderTop:
+    "1px solid #e2e8f0",
+
+  alignItems:
+    "center",
 };
 
 const rateHeaderStyle = {
-display:
-  "grid",
+  display:
+    "grid",
 
-gridTemplateColumns:
-  "1.3fr 0.8fr 0.8fr 0.7fr 0.7fr 1fr 0.7fr 0.7fr",
+  gridTemplateColumns:
+    "1.2fr 0.8fr 0.8fr 0.7fr 0.5fr 1fr 0.7fr 0.7fr",
 
-gap:
-  "6px",
+  gap:
+    "6px",
 
-padding:
-  "8px",
+  padding:
+    "7px",
 
-backgroundColor:
-  "#f1f5f9",
+  backgroundColor:
+    "#f1f5f9",
 
-color:
-  "#334155",
+  fontSize:
+    "8px",
 
-fontSize:
-  "8px",
+  fontWeight:
+    "bold",
 
-fontWeight:
-  "bold",
-
-textAlign:
-  "center",
+  textAlign:
+    "center",
 };
 
 const rateRowStyle = {
-display:
-  "grid",
+  display:
+    "grid",
 
-gridTemplateColumns:
-  "1.3fr 0.8fr 0.8fr 0.7fr 0.7fr 1fr 0.7fr 0.7fr",
+  gridTemplateColumns:
+    "1.2fr 0.8fr 0.8fr 0.7fr 0.5fr 1fr 0.7fr 0.7fr",
 
-gap:
-  "6px",
+  gap:
+    "6px",
 
-padding:
-  "8px",
+  padding:
+    "7px",
 
-alignItems:
-  "center",
+  alignItems:
+    "center",
 
-borderTop:
-  "1px solid #e2e8f0",
-};
-
-const activeToggleStyle = {
-display:
-  "flex",
-
-alignItems:
-  "center",
-
-justifyContent:
-  "center",
-
-gap:
-  "4px",
-
-fontSize:
-  "8px",
-
-fontWeight:
-  "bold",
-
-color:
-  "#166534",
-};
-
-const effectiveStyle = {
-textAlign:
-  "center",
-
-fontSize:
-  "8px",
-
-color:
-  "#64748b",
-
-lineHeight:
-  "1.4",
+  borderTop:
+    "1px solid #e2e8f0",
 };
 
 const saveButtonStyle = {
-border:
-  "none",
+  padding:
+    "7px",
 
-borderRadius:
-  "4px",
+  border:
+    "none",
 
-padding:
-  "8px",
+  borderRadius:
+    "4px",
 
-backgroundColor:
-  "#0284c7",
+  backgroundColor:
+    "#0284c7",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontSize:
-  "8px",
+  fontSize:
+    "8px",
 
-fontWeight:
-  "bold",
+  fontWeight:
+    "bold",
 
-cursor:
-  "pointer",
+  cursor:
+    "pointer",
 };
 
 const deleteButtonStyle = {
-border:
-  "none",
+  padding:
+    "7px",
 
-borderRadius:
-  "4px",
+  border:
+    "none",
 
-padding:
-  "8px",
+  borderRadius:
+    "4px",
 
-backgroundColor:
-  "#dc2626",
+  backgroundColor:
+    "#dc2626",
 
-color:
-  "white",
+  color:
+    "white",
 
-fontSize:
-  "8px",
+  fontSize:
+    "8px",
 
-fontWeight:
-  "bold",
+  fontWeight:
+    "bold",
 
-cursor:
-  "pointer",
+  cursor:
+    "pointer",
 };
 
-const testGridStyle = {
-display:
-  "grid",
+const centerStyle = {
+  display:
+    "flex",
 
-gridTemplateColumns:
-  "1.2fr 1fr 1fr",
+  justifyContent:
+    "center",
 
-gap:
-  "10px",
-
-alignItems:
-  "end",
+  alignItems:
+    "center",
 };
 
-const testResultStyle = {
-minHeight:
-  "36px",
+const smallTextStyle = {
+  fontSize:
+    "8px",
 
-padding:
-  "9px",
+  textAlign:
+    "center",
 
-boxSizing:
-  "border-box",
-
-border:
-  "1px solid #86efac",
-
-borderRadius:
-  "4px",
-
-backgroundColor:
-  "#ecfdf5",
-
-color:
-  "#166534",
-
-fontWeight:
-  "900",
-};
-
-const testButtonStyle = {
-width:
-  "100%",
-
-marginTop:
-  "10px",
-
-border:
-  "none",
-
-borderRadius:
-  "5px",
-
-padding:
-  "10px",
-
-backgroundColor:
-  "#0369a1",
-
-color:
-  "white",
-
-fontWeight:
-  "bold",
-
-cursor:
-  "pointer",
+  color:
+    "#64748b",
 };
 
 const emptyStyle = {
-padding:
-  "18px",
+  padding:
+    "18px",
 
-textAlign:
-  "center",
+  textAlign:
+    "center",
 
-color:
-  "#64748b",
+  color:
+    "#64748b",
 
-fontSize:
-  "10px",
+  fontSize:
+    "10px",
 };
-
-const footerNoticeStyle = {
-padding:
-  "10px",
-
-backgroundColor:
-  "#ecfeff",
-
-border:
-  "1px solid #a5f3fc",
-
-borderRadius:
-  "5px",
-
-color:
-  "#155e75",
-
-textAlign:
-  "center",
-
-fontSize:
-  "9px",
-};
- 
+            
