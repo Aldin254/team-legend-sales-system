@@ -740,15 +740,16 @@ export default function AccountantDashboard({
     );
 
   const carriedForwardTransactions =
-    useMemo(
-      () => {
-        const unresolvedStatuses =
-          new Set([
-            "PENDING_MANUAL_SEND",
-            "AWAITING_ACCOUNTANT_CONFIRMATION",
-            "PENDING_MPESA",
-            "CHECKING",
-          ]);
+  useMemo(
+    () => {
+      const unresolvedStatuses =
+        new Set([
+          "CREATED",
+          "PENDING_MANUAL_SEND",
+          "AWAITING_ACCOUNTANT_CONFIRMATION",
+          "PENDING_MPESA",
+          "CHECKING",
+        ]);
 
         return transactions
           .filter(
