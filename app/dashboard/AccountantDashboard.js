@@ -306,7 +306,7 @@ export default function AccountantDashboard({
             `${supabaseUrl}/rest/v1/accountant_transactions` +
               `?select=*` +
               `&order=created_at.desc` +
-              `&limit=100`,
+              `&limit=300`,
             {
               method:
                 "GET",
@@ -403,7 +403,7 @@ export default function AccountantDashboard({
     );
 
   // ==================================================
-  // LOAD CURRENT REPORT
+  // OPEN TODAY
   // ==================================================
 
   const openToday =
@@ -420,7 +420,7 @@ export default function AccountantDashboard({
     );
 
   // ==================================================
-  // REFRESH ALL DATA
+  // REFRESH ALL
   // ==================================================
 
   const refreshData =
@@ -538,9 +538,6 @@ export default function AccountantDashboard({
 
   // ==================================================
   // LIVE REFRESH
-  //
-  // Cashier refund requests should appear without the
-  // Accountant manually refreshing the page.
   // ==================================================
 
   useEffect(() => {
@@ -734,6 +731,83 @@ export default function AccountantDashboard({
     );
 
   // ==================================================
+  // CARRIED FORWARD
+  // ==================================================
+
+  const todayNairobi =
+    nairobiDateKey(
+      new Date()
+    );
+
+  const carriedForwardTransactions =
+    useMemo(
+      () => {
+        const unresolvedStatuses =
+          new Set([
+            "PENDING_MANUAL_SEND",
+            "AWAITING_ACCOUNTANT_CONFIRMATION",
+            "PENDING_MPESA",
+            "CHECKING",
+          ]);
+
+        return transactions
+          .filter(
+            (tx) => {
+              const status =
+                String(
+                  tx.status ||
+                    ""
+                )
+                  .trim()
+                  .toUpperCase();
+
+              if (
+                !unresolvedStatuses.has(
+                  status
+                )
+              ) {
+                return false;
+              }
+
+              const transactionDate =
+                nairobiDateKey(
+                  tx.created_at
+                );
+
+              if (!transactionDate) {
+                return false;
+              }
+
+              return (
+                transactionDate <
+                todayNairobi
+              );
+            }
+          )
+          .sort(
+            (
+              a,
+              b
+            ) =>
+              new Date(
+                a.created_at
+              ).getTime() -
+              new Date(
+                b.created_at
+              ).getTime()
+          );
+      },
+      [
+        transactions,
+        todayNairobi,
+      ]
+    );
+
+  const hasCarriedForward =
+    carriedForwardTransactions.length >
+    0;
+
+  // ==================================================
   // NEXT EXPENSE SLOT
   // ==================================================
 
@@ -784,6 +858,11 @@ export default function AccountantDashboard({
       .toUpperCase() ===
     "CLOSED";
 
+  const newActivityLocked =
+    hasCarriedForward ||
+    reportClosed ||
+    !report;
+
   // ==================================================
   // PREPARE FLOAT SEND
   // ==================================================
@@ -792,6 +871,24 @@ export default function AccountantDashboard({
     if (
       preparingSend
     ) {
+      return;
+    }
+
+    if (
+      hasCarriedForward
+    ) {
+      setMessage(
+        "Resolve all carried-forward transactions before sending new float today."
+      );
+
+      return;
+    }
+
+    if (!report) {
+      setMessage(
+        "Today's Accountant report is not open yet."
+      );
+
       return;
     }
 
@@ -1103,6 +1200,7 @@ export default function AccountantDashboard({
       );
     }
   }
+
   // ==================================================
   // ADD ACCOUNTANT EXPENSE
   // ==================================================
@@ -1111,6 +1209,16 @@ export default function AccountantDashboard({
     if (
       savingExpense
     ) {
+      return;
+    }
+
+    if (
+      hasCarriedForward
+    ) {
+      setMessage(
+        "Resolve all carried-forward transactions before entering today's expenses."
+      );
+
       return;
     }
 
@@ -1210,6 +1318,16 @@ export default function AccountantDashboard({
       return;
     }
 
+    if (
+      hasCarriedForward
+    ) {
+      setMessage(
+        "Resolve all carried-forward transactions before closing today's Accountant report."
+      );
+
+      return;
+    }
+
     const confirmed =
       window.confirm(
         `Close Accountant report for ${report.report_date}?\n\nClosing Balance: KES ${money(
@@ -1280,9 +1398,7 @@ export default function AccountantDashboard({
 
   return (
     <main style={pageStyle}>
-      {/* ========================================== */}
       {/* HEADER */}
-      {/* ========================================== */}
 
       <header style={headerStyle}>
         <div>
@@ -1332,9 +1448,7 @@ export default function AccountantDashboard({
       </header>
 
       <div style={contentStyle}>
-        {/* ======================================== */}
         {/* MESSAGES */}
-        {/* ======================================== */}
 
         {message && (
           <div style={errorStyle}>
@@ -1351,7 +1465,7 @@ export default function AccountantDashboard({
         {reportOpenError && (
           <div style={warningStyle}>
             <strong>
-              Accountant day cannot roll forward yet.
+              Today's Accountant report could not be opened.
             </strong>
 
             <div style={warningTextStyle}>
@@ -1359,14 +1473,208 @@ export default function AccountantDashboard({
             </div>
 
             <div style={warningTextStyle}>
-              Resolve the pending transaction below, then refresh.
+              Previous unresolved transactions remain visible below.
+              The backend rollover function must allow the new day
+              to open while they are being resolved.
             </div>
           </div>
         )}
 
-        {/* ======================================== */}
-        {/* DAILY HEADER */}
-        {/* ======================================== */}
+        {/* CARRIED FORWARD */}
+
+        {hasCarriedForward && (
+          <section style={carriedForwardPanelStyle}>
+            <div style={carriedForwardHeaderStyle}>
+              <div>
+                <div style={carriedForwardTitleStyle}>
+                  ⚠ CARRIED FORWARD — ACTION REQUIRED
+                </div>
+
+                <div style={carriedForwardSubtitleStyle}>
+                  {
+                    carriedForwardTransactions.length
+                  }{" "}
+                  unresolved transaction
+                  {carriedForwardTransactions.length ===
+                  1
+                    ? ""
+                    : "s"}{" "}
+                  from a previous day.
+                </div>
+              </div>
+
+              <div style={carriedForwardBadgeStyle}>
+                RESOLVE FIRST
+              </div>
+            </div>
+
+            <div style={carriedForwardNoticeStyle}>
+              The Accountant dashboard remains accessible.
+              Resolve these previous transactions before sending
+              new float, entering new expenses, or closing today.
+            </div>
+
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <TableHead>
+                      Original Date
+                    </TableHead>
+
+                    <TableHead>
+                      Transaction
+                    </TableHead>
+
+                    <TableHead>
+                      Type
+                    </TableHead>
+
+                    <TableHead>
+                      Shop
+                    </TableHead>
+
+                    <TableHead>
+                      Cashier
+                    </TableHead>
+
+                    <TableHead right>
+                      Amount
+                    </TableHead>
+
+                    <TableHead right>
+                      Fee
+                    </TableHead>
+
+                    <TableHead>
+                      Receipt
+                    </TableHead>
+
+                    <TableHead>
+                      Status
+                    </TableHead>
+
+                    <TableHead>
+                      Action
+                    </TableHead>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {carriedForwardTransactions.map(
+                    (
+                      transaction
+                    ) => (
+                      <tr
+                        key={
+                          transaction.id
+                        }
+                      >
+                        <TableCell>
+                          {formatDateTime(
+                            transaction.created_at
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          {
+                            transaction.transaction_no
+                          }
+                        </TableCell>
+
+                        <TableCell>
+                          {transaction.flow ===
+                          "ACCOUNTANT_TO_CASHIER"
+                            ? "SENT TO CASHIER"
+                            : "FROM CASHIER"}
+                        </TableCell>
+
+                        <TableCell>
+                          {shopMap.get(
+                            transaction.shop_id
+                          )?.shop_name ||
+                            "Shop"}
+                        </TableCell>
+
+                        <TableCell>
+                          {transaction.recipient_name_snapshot ||
+                            transaction.cashier_name ||
+                            "-"}
+                        </TableCell>
+
+                        <TableCell right>
+                          KES{" "}
+                          {money(
+                            transaction.amount
+                          )}
+                        </TableCell>
+
+                        <TableCell right>
+                          KES{" "}
+                          {money(
+                            transaction.actual_fee ??
+                              transaction.estimated_fee
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          {transaction.mpesa_receipt_number ||
+                            transaction.manual_receipt_no ||
+                            "-"}
+                        </TableCell>
+
+                        <TableCell>
+                          <StatusText
+                            status={
+                              transaction.status
+                            }
+                          />
+                        </TableCell>
+
+                        <TableCell>
+                          {transaction.status ===
+                          "AWAITING_ACCOUNTANT_CONFIRMATION" ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                confirmCashierReturn(
+                                  transaction
+                                )
+                              }
+                              disabled={
+                                confirmingTransactionId ===
+                                transaction.id
+                              }
+                              style={smallConfirmButtonStyle}
+                            >
+                              {confirmingTransactionId ===
+                              transaction.id
+                                ? "Confirming..."
+                                : "Confirm Received"}
+                            </button>
+                          ) : transaction.flow ===
+                              "ACCOUNTANT_TO_CASHIER" &&
+                            transaction.status ===
+                              "PENDING_MANUAL_SEND" ? (
+                            <span style={pendingActionStyle}>
+                              Pending send — requires resolution
+                            </span>
+                          ) : (
+                            <span style={pendingActionStyle}>
+                              Check / resolve transaction
+                            </span>
+                          )}
+                        </TableCell>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* DAILY REPORT */}
 
         <section style={panelStyle}>
           <div style={panelHeaderStyle}>
@@ -1387,7 +1695,9 @@ export default function AccountantDashboard({
                 backgroundColor:
                   reportClosed
                     ? "#475569"
-                    : "#15803d",
+                    : report
+                    ? "#15803d"
+                    : "#d97706",
               }}
             >
               {report?.status ||
@@ -1457,9 +1767,7 @@ export default function AccountantDashboard({
           </div>
         </section>
 
-        {/* ======================================== */}
         {/* SEND FLOAT */}
-        {/* ======================================== */}
 
         <section style={panelStyle}>
           <div style={panelHeaderStyle}>
@@ -1474,6 +1782,18 @@ export default function AccountantDashboard({
             </div>
           </div>
 
+          {hasCarriedForward && (
+            <div style={activityLockedStyle}>
+              🔒 New float transfers are temporarily locked.
+              Resolve the carried-forward transaction
+              {carriedForwardTransactions.length ===
+              1
+                ? ""
+                : "s"}{" "}
+              above first.
+            </div>
+          )}
+
           <div style={formGridStyle}>
             <div>
               <label style={labelStyle}>
@@ -1485,7 +1805,7 @@ export default function AccountantDashboard({
                   selectedRecipientId
                 }
                 disabled={
-                  reportClosed ||
+                  newActivityLocked ||
                   Boolean(
                     preparedSend
                   )
@@ -1555,7 +1875,7 @@ export default function AccountantDashboard({
                   sendAmount
                 }
                 disabled={
-                  reportClosed ||
+                  newActivityLocked ||
                   Boolean(
                     preparedSend
                   )
@@ -1617,16 +1937,14 @@ export default function AccountantDashboard({
               }
               disabled={
                 preparingSend ||
-                reportClosed ||
-                !report
+                newActivityLocked
               }
               style={{
                 ...primaryButtonStyle,
 
                 opacity:
                   preparingSend ||
-                  reportClosed ||
-                  !report
+                  newActivityLocked
                     ? 0.6
                     : 1,
               }}
@@ -1764,15 +2082,13 @@ export default function AccountantDashboard({
                     pendingAccountantSends.length
                   }
                 </strong>{" "}
-                unfinished Accountant float transfer(s). They
-                remain locked until completed or resolved.
+                unfinished Accountant float transfer(s).
+                They remain recorded until completed or resolved.
               </div>
             )}
         </section>
 
-        {/* ======================================== */}
         {/* CASHIER RETURNS */}
-        {/* ======================================== */}
 
         <section style={panelStyle}>
           <div style={panelHeaderStyle}>
@@ -1926,7 +2242,7 @@ export default function AccountantDashboard({
                             </button>
                           ) : (
                             <span style={mutedSmallStyle}>
-                              Waiting for cashier
+                              Waiting for resolution
                             </span>
                           )}
                         </TableCell>
@@ -1939,9 +2255,7 @@ export default function AccountantDashboard({
           )}
         </section>
 
-        {/* ======================================== */}
         {/* ACCOUNTANT EXPENSES */}
-        {/* ======================================== */}
 
         <section style={panelStyle}>
           <div style={panelHeaderStyle}>
@@ -1959,6 +2273,13 @@ export default function AccountantDashboard({
               {expenses.length}/20
             </div>
           </div>
+
+          {hasCarriedForward && (
+            <div style={activityLockedStyle}>
+              🔒 Today's new expenses are temporarily locked
+              until all carried-forward transactions are resolved.
+            </div>
+          )}
 
           <div style={expensesGridStyle}>
             {Array.from({
@@ -1987,7 +2308,7 @@ export default function AccountantDashboard({
                   !saved &&
                   nextExpenseSlot ===
                     slot &&
-                  !reportClosed;
+                  !newActivityLocked;
 
                 return (
                   <div
@@ -2090,9 +2411,8 @@ export default function AccountantDashboard({
             )}
           </div>
         </section>
-{/* ======================================== */}
+
         {/* TRANSACTION HISTORY */}
-        {/* ======================================== */}
 
         <section style={panelStyle}>
           <div style={panelHeaderStyle}>
@@ -2102,7 +2422,7 @@ export default function AccountantDashboard({
               </div>
 
               <div style={panelSubtitleStyle}>
-                Latest 100 float transactions
+                Latest float transactions
               </div>
             </div>
           </div>
@@ -2234,9 +2554,7 @@ export default function AccountantDashboard({
           )}
         </section>
 
-        {/* ======================================== */}
         {/* DAY CLOSING */}
-        {/* ======================================== */}
 
         <section style={closingPanelStyle}>
           <div>
@@ -2245,14 +2563,15 @@ export default function AccountantDashboard({
             </div>
 
             <div style={closingTextStyle}>
-              All unresolved float transactions must be completed
-              before the day can close.
+              Carried-forward and today's unresolved float
+              transactions must be completed before the day can close.
             </div>
           </div>
 
           <div style={closingRightStyle}>
             <div style={closingBalanceStyle}>
               Closing Balance
+
               <strong>
                 KES{" "}
                 {money(
@@ -2269,7 +2588,8 @@ export default function AccountantDashboard({
               disabled={
                 closingDay ||
                 reportClosed ||
-                !report
+                !report ||
+                hasCarriedForward
               }
               style={{
                 ...closeDayButtonStyle,
@@ -2277,7 +2597,8 @@ export default function AccountantDashboard({
                 opacity:
                   closingDay ||
                   reportClosed ||
-                  !report
+                  !report ||
+                  hasCarriedForward
                     ? 0.6
                     : 1,
               }}
@@ -2286,6 +2607,8 @@ export default function AccountantDashboard({
                 ? "DAY CLOSED ✓"
                 : closingDay
                 ? "Closing..."
+                : hasCarriedForward
+                ? "RESOLVE CARRIED FORWARD FIRST"
                 : "Close Accountant Day"}
             </button>
           </div>
@@ -2626,6 +2949,71 @@ function formatDateTime(
     );
   } catch {
     return value;
+  }
+}
+
+function nairobiDateKey(
+  value
+) {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const parts =
+      new Intl.DateTimeFormat(
+        "en-US",
+        {
+          timeZone:
+            "Africa/Nairobi",
+
+          year:
+            "numeric",
+
+          month:
+            "2-digit",
+
+          day:
+            "2-digit",
+        }
+      ).formatToParts(
+        new Date(
+          value
+        )
+      );
+
+    const year =
+      parts.find(
+        (part) =>
+          part.type ===
+          "year"
+      )?.value;
+
+    const month =
+      parts.find(
+        (part) =>
+          part.type ===
+          "month"
+      )?.value;
+
+    const day =
+      parts.find(
+        (part) =>
+          part.type ===
+          "day"
+      )?.value;
+
+    if (
+      !year ||
+      !month ||
+      !day
+    ) {
+      return "";
+    }
+
+    return `${year}-${month}-${day}`;
+  } catch {
+    return "";
   }
 }
 
@@ -3236,6 +3624,7 @@ const transactionStrongStyle = {
   fontSize:
     "13px",
 };
+
 const sendInstructionStyle = {
   margin:
     "12px 0",
@@ -3750,4 +4139,146 @@ const warningStyle = {
 const warningTextStyle = {
   marginTop:
     "5px",
+};
+
+const carriedForwardPanelStyle = {
+  backgroundColor:
+    "#fff7ed",
+
+  border:
+    "2px solid #f97316",
+
+  borderRadius:
+    "8px",
+
+  padding:
+    "16px",
+
+  marginBottom:
+    "16px",
+
+  boxShadow:
+    "0 2px 8px rgba(154,52,18,0.08)",
+};
+
+const carriedForwardHeaderStyle = {
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  alignItems:
+    "center",
+
+  gap:
+    "12px",
+
+  marginBottom:
+    "10px",
+
+  flexWrap:
+    "wrap",
+};
+
+const carriedForwardTitleStyle = {
+  color:
+    "#9a3412",
+
+  fontSize:
+    "14px",
+
+  fontWeight:
+    "900",
+};
+
+const carriedForwardSubtitleStyle = {
+  marginTop:
+    "4px",
+
+  color:
+    "#c2410c",
+
+  fontSize:
+    "10px",
+};
+
+const carriedForwardBadgeStyle = {
+  backgroundColor:
+    "#ea580c",
+
+  color:
+    "white",
+
+  borderRadius:
+    "20px",
+
+  padding:
+    "6px 10px",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "900",
+};
+
+const carriedForwardNoticeStyle = {
+  padding:
+    "9px",
+
+  marginBottom:
+    "12px",
+
+  backgroundColor:
+    "#ffedd5",
+
+  color:
+    "#9a3412",
+
+  borderRadius:
+    "5px",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "bold",
+};
+
+const activityLockedStyle = {
+  marginBottom:
+    "12px",
+
+  padding:
+    "10px",
+
+  backgroundColor:
+    "#fff7ed",
+
+  border:
+    "1px solid #fdba74",
+
+  borderRadius:
+    "5px",
+
+  color:
+    "#9a3412",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "bold",
+};
+
+const pendingActionStyle = {
+  color:
+    "#92400e",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
 };
