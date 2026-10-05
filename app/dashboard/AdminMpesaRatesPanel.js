@@ -3286,25 +3286,7 @@ export default function AdminMpesaRatesPanel({
                     style={smallInputStyle}
                   />
 
-                  <input
-                    value={
-                      recipient.phone_number ||
-                      ""
-""
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "phone_number",
-                      event.target.value
-                    )
-                  }
-                  style={smallInputStyle}
-                />
-
-                <input
+                 <input
                   value={
                     recipient.im_reference ||
                     ""
