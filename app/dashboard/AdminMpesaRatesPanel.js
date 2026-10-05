@@ -3965,62 +3965,155 @@ function CenterCheck({
 function normaliseRates(
   value
 ) {
-  let rows = [];
+  let source =
+    value;
 
+  // Some RPC responses can arrive as JSON text.
   if (
-    Array.isArray(
-      value
-    )
+    typeof source ===
+    "string"
   ) {
-    rows =
-      value;
-  } else if (
-    Array.isArray(
-      value?.rates
-    )
-  ) {
-    rows =
-      value.rates;
-  } else if (
-    Array.isArray(
-      value?.data
-    )
-  ) {
-    rows =
-      value.data;
+    try {
+      source =
+        JSON.parse(
+          source
+        );
+    } catch {
+      return [];
+    }
   }
 
-  return rows.map(
+  let rows = [];
+
+  // Direct array
+  if (
+    Array.isArray(
+      source
+    )
+  ) {
+    rows =
+      source;
+  }
+
+  // { rates: [...] }
+  else if (
+    Array.isArray(
+      source?.rates
+    )
+  ) {
+    rows =
+      source.rates;
+  }
+
+  // { data: [...] }
+  else if (
+    Array.isArray(
+      source?.data
+    )
+  ) {
+    rows =
+      source.data;
+  }
+
+  // Single rate object
+  else if (
+    source &&
+    typeof source ===
+      "object" &&
     (
-      rate
-    ) => ({
-      ...rate,
+      source.id ||
+      source.fee_type ||
+      source.flow ||
+      source.min_amount !==
+        undefined ||
+      source.minimum_amount !==
+        undefined
+    )
+  ) {
+    rows = [
+      source,
+    ];
+  }
 
-      fee_type:
-        rate?.fee_type ??
-        rate?.flow ??
-        "",
+  // Object containing rate objects / arrays
+  else if (
+    source &&
+    typeof source ===
+      "object"
+  ) {
+    rows =
+      Object.values(
+        source
+      ).flatMap(
+        (
+          item
+        ) => {
+          if (
+            Array.isArray(
+              item
+            )
+          ) {
+            return item;
+          }
 
-      min_amount:
-        rate?.min_amount ??
-        rate?.minimum_amount ??
-        0,
+          if (
+            item &&
+            typeof item ===
+              "object"
+          ) {
+            return [
+              item,
+            ];
+          }
 
-      max_amount:
-        rate?.max_amount ??
-        rate?.maximum_amount ??
-        0,
+          return [];
+        }
+      );
+  }
 
-      fee:
-        rate?.fee ??
-        rate?.fee_amount ??
-        0,
+  return rows
+    .filter(
+      (
+        rate
+      ) =>
+        rate &&
+        typeof rate ===
+          "object" &&
+        !Array.isArray(
+          rate
+        )
+    )
+    .map(
+      (
+        rate
+      ) => ({
+        ...rate,
 
-      is_active:
-        rate?.is_active !==
-        false,
-    })
-  );
+        fee_type:
+          rate?.fee_type ??
+          rate?.flow ??
+          "",
+
+        min_amount:
+          rate?.min_amount ??
+          rate?.minimum_amount ??
+          0,
+
+        max_amount:
+          rate?.max_amount ??
+          rate?.maximum_amount ??
+          0,
+
+        fee:
+          rate?.fee ??
+          rate?.fee_amount ??
+          0,
+
+        is_active:
+          rate?.is_active !==
+          false,
+      })
+    );
 }
 
 // ============================================================
