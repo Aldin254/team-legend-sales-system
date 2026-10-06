@@ -10,6 +10,7 @@ import {
 import { useRouter } from "next/navigation";
 
 const INACTIVITY_MS = 30000;
+const PREPARED_TIMEOUT_MS = 30000;
 
 export default function AccountantDashboard({
   user,
@@ -116,8 +117,13 @@ export default function AccountantDashboard({
     setCompletingSend,
   ] = useState(false);
 
+  const [
+    preparedSecondsLeft,
+    setPreparedSecondsLeft,
+  ] = useState(30);
+
   // ==================================================
-  // EXPENSES
+  // EXPENSES / TRANSACTION ACTIONS
   // ==================================================
 
   const [
@@ -150,8 +156,53 @@ export default function AccountantDashboard({
     setClosingDay,
   ] = useState(false);
 
+  // ==================================================
+  // TIMER REFS
+  // ==================================================
+
   const inactivityTimerRef =
     useRef(null);
+
+  const preparedTimeoutRef =
+    useRef(null);
+
+  const preparedIntervalRef =
+    useRef(null);
+
+  const autoCancelInFlightRef =
+    useRef(false);
+
+  // ==================================================
+  // CLEAR PREPARED TIMERS
+  // ==================================================
+
+  const clearPreparedTimers =
+    useCallback(
+      () => {
+        if (
+          preparedTimeoutRef.current
+        ) {
+          clearTimeout(
+            preparedTimeoutRef.current
+          );
+
+          preparedTimeoutRef.current =
+            null;
+        }
+
+        if (
+          preparedIntervalRef.current
+        ) {
+          clearInterval(
+            preparedIntervalRef.current
+          );
+
+          preparedIntervalRef.current =
+            null;
+        }
+      },
+      []
+    );
 
   // ==================================================
   // AUTH HEADERS
@@ -252,7 +303,7 @@ export default function AccountantDashboard({
     );
 
   // ==================================================
-  // LOAD PAYMENT SYSTEM SETTINGS
+  // LOAD CURRENT FLOAT SEND METHOD
   // ==================================================
 
   const loadFloatSendMethod =
@@ -298,7 +349,9 @@ export default function AccountantDashboard({
         }
 
         const row =
-          Array.isArray(result)
+          Array.isArray(
+            result
+          )
             ? result[0]
             : null;
 
@@ -591,13 +644,6 @@ export default function AccountantDashboard({
             loadedTransactions
           );
 
-          // ------------------------------------------
-          // PAYMENT ROUTE
-          //
-          // Do not fail the whole dashboard if the
-          // settings read temporarily fails.
-          // ------------------------------------------
-
           try {
             const loadedMethod =
               await loadFloatSendMethod();
@@ -691,9 +737,6 @@ export default function AccountantDashboard({
 
   // ==================================================
   // LIVE REFRESH
-  //
-  // This continues polling normally so Admin route
-  // changes can reach the Accountant without logout.
   // ==================================================
 
   useEffect(() => {
@@ -718,11 +761,10 @@ export default function AccountantDashboard({
   ]);
 
   // ==================================================
-  // 30-SECOND INACTIVITY REFRESH / RESET
+  // 30-SECOND GENERAL INACTIVITY
   //
-  // - Refreshes data after 30 seconds without activity.
-  // - Clears an unused cashier / amount selection.
-  // - Does NOT silently delete a prepared transaction.
+  // Clears only an unused selection.
+  // A prepared transaction has its own safe auto-cancel.
   // ==================================================
 
   useEffect(() => {
@@ -745,7 +787,9 @@ export default function AccountantDashboard({
 
     const runInactivityRefresh =
       async () => {
-        if (disposed) {
+        if (
+          disposed
+        ) {
           return;
         }
 
@@ -771,10 +815,6 @@ export default function AccountantDashboard({
           );
 
           setMessage(
-            ""
-          );
-
-          setSuccessMessage(
             ""
           );
         }
@@ -852,6 +892,230 @@ export default function AccountantDashboard({
     preparedSend,
     preparingSend,
     completingSend,
+  ]);
+
+  // ==================================================
+  // 30-SECOND PREPARED TRANSFER AUTO-CANCEL
+  //
+  // Prevents unfinished transactions accumulating.
+  // Typing/changing the reference restarts the timer.
+  // ==================================================
+
+  useEffect(() => {
+    clearPreparedTimers();
+
+    if (
+      !preparedSend?.transaction_id ||
+      completingSend ||
+      cancellingTransactionId ===
+        preparedSend?.transaction_id
+    ) {
+      setPreparedSecondsLeft(
+        30
+      );
+
+      return;
+    }
+
+    const transactionId =
+      preparedSend.transaction_id;
+
+    const startedAt =
+      Date.now();
+
+    setPreparedSecondsLeft(
+      30
+    );
+
+    preparedIntervalRef.current =
+      setInterval(
+        () => {
+          const elapsed =
+            Date.now() -
+            startedAt;
+
+          const remaining =
+            Math.max(
+              0,
+              Math.ceil(
+                (
+                  PREPARED_TIMEOUT_MS -
+                  elapsed
+                ) /
+                  1000
+              )
+            );
+
+          setPreparedSecondsLeft(
+            remaining
+          );
+        },
+        1000
+      );
+
+    preparedTimeoutRef.current =
+      setTimeout(
+        async () => {
+          if (
+            autoCancelInFlightRef.current
+          ) {
+            return;
+          }
+
+          autoCancelInFlightRef.current =
+            true;
+
+          clearPreparedTimers();
+
+          try {
+            await callRpc(
+              "tl_accountant_cancel_pending_transaction",
+              {
+                p_transaction_id:
+                  transactionId,
+              }
+            );
+
+            setPreparedSend(
+              (
+                previous
+              ) =>
+                String(
+                  previous?.transaction_id ||
+                    ""
+                ) ===
+                String(
+                  transactionId
+                )
+                  ? null
+                  : previous
+            );
+
+            setSelectedRecipientId(
+              ""
+            );
+
+            setSendAmount(
+              ""
+            );
+
+            setSendReceipt(
+              ""
+            );
+
+            setDeclinedSendMessage(
+              ""
+            );
+
+            setMessage(
+              ""
+            );
+
+            setSuccessMessage(
+              "Unused prepared float transfer cancelled automatically after 30 seconds of inactivity."
+            );
+
+            await refreshData({
+              silent:
+                true,
+            });
+          } catch (error) {
+            console.error(
+              "AUTO CANCEL PREPARED FLOAT ERROR:",
+              error
+            );
+
+            const text =
+              String(
+                error?.message ||
+                  ""
+              )
+                .trim()
+                .toLowerCase();
+
+            const statusChanged =
+              text.includes(
+                "already changed"
+              ) ||
+              text.includes(
+                "no longer"
+              ) ||
+              text.includes(
+                "cannot be cancelled"
+              );
+
+            await refreshData({
+              silent:
+                true,
+            });
+
+            if (
+              statusChanged
+            ) {
+              setPreparedSend(
+                null
+              );
+
+              setSelectedRecipientId(
+                ""
+              );
+
+              setSendAmount(
+                ""
+              );
+
+              setSendReceipt(
+                ""
+              );
+            } else {
+              setMessage(
+                error?.message ||
+                  "Unable to automatically cancel the unfinished transfer."
+              );
+            }
+          } finally {
+            autoCancelInFlightRef.current =
+              false;
+
+            setPreparedSecondsLeft(
+              30
+            );
+          }
+        },
+        PREPARED_TIMEOUT_MS
+      );
+
+    return () => {
+      clearPreparedTimers();
+    };
+  }, [
+    preparedSend?.transaction_id,
+    sendReceipt,
+    completingSend,
+    cancellingTransactionId,
+    callRpc,
+    refreshData,
+    clearPreparedTimers,
+  ]);
+
+  // ==================================================
+  // CLEAN TIMER REFS ON UNMOUNT
+  // ==================================================
+
+  useEffect(() => {
+    return () => {
+      clearPreparedTimers();
+
+      if (
+        inactivityTimerRef.current
+      ) {
+        clearTimeout(
+          inactivityTimerRef.current
+        );
+      }
+    };
+  }, [
+    clearPreparedTimers,
   ]);
 
   // ==================================================
@@ -965,7 +1229,7 @@ export default function AccountantDashboard({
     );
 
   // ==================================================
-  // CURRENT PAYMENT ROUTE
+  // PAYMENT ROUTES
   // ==================================================
 
   const currentSendRoute =
@@ -1042,21 +1306,34 @@ export default function AccountantDashboard({
   const pendingAccountantSends =
     useMemo(
       () =>
-        transactions.filter(
-          (tx) =>
-            tx.flow ===
-              "ACCOUNTANT_TO_CASHIER" &&
+        transactions
+          .filter(
+            (tx) =>
+              tx.flow ===
+                "ACCOUNTANT_TO_CASHIER" &&
+              (
+                tx.status ===
+                  "CREATED" ||
+                tx.status ===
+                  "PENDING_MANUAL_SEND" ||
+                tx.status ===
+                  "PENDING_MPESA" ||
+                tx.status ===
+                  "CHECKING"
+              )
+          )
+          .sort(
             (
-              tx.status ===
-                "CREATED" ||
-              tx.status ===
-                "PENDING_MANUAL_SEND" ||
-              tx.status ===
-                "PENDING_MPESA" ||
-              tx.status ===
-                "CHECKING"
-            )
-        ),
+              a,
+              b
+            ) =>
+              new Date(
+                b.created_at
+              ).getTime() -
+              new Date(
+                a.created_at
+              ).getTime()
+          ),
       [
         transactions,
       ]
@@ -1204,7 +1481,8 @@ export default function AccountantDashboard({
 
   async function prepareFloatSend() {
     if (
-      preparingSend
+      preparingSend ||
+      preparedSend
     ) {
       return;
     }
@@ -1267,11 +1545,6 @@ export default function AccountantDashboard({
       setMessage("");
       setSuccessMessage("");
       setDeclinedSendMessage("");
-
-      // ------------------------------------------
-      // GET THE LATEST ADMIN ROUTE IMMEDIATELY
-      // BEFORE PREPARING THE TRANSACTION
-      // ------------------------------------------
 
       let routeAtPrepare =
         floatSendMethod;
@@ -1350,6 +1623,10 @@ export default function AccountantDashboard({
 
         float_send_method:
           preparedRouteCode,
+
+        created_at:
+          result?.created_at ||
+          new Date().toISOString(),
       };
 
       setPreparedSend(
@@ -1358,6 +1635,10 @@ export default function AccountantDashboard({
 
       setSendReceipt(
         ""
+      );
+
+      setPreparedSecondsLeft(
+        30
       );
 
       setDeclinedSendMessage(
@@ -1372,8 +1653,8 @@ export default function AccountantDashboard({
 
       setSuccessMessage(
         route.isIm
-          ? `Transfer prepared for Company Float ${returnedSlot}. Send the money from I&M to the cashier's M-Pesa number, then enter the transaction reference below.`
-          : `Transfer prepared for Company Float ${returnedSlot}. Send the money through M-Pesa, then enter the M-Pesa receipt number below.`
+          ? `Transfer prepared for Company Float ${returnedSlot}. Send from I&M to the cashier's M-Pesa number, then enter the transaction reference.`
+          : `Transfer prepared for Company Float ${returnedSlot}. Send through M-Pesa, then enter the M-Pesa receipt.`
       );
 
       await refreshData({
@@ -1466,7 +1747,12 @@ export default function AccountantDashboard({
       window.confirm(
         `Confirm that KES ${money(
           preparedSend.amount
-        )} was sent successfully to ${preparedSend.recipient_name}.\n\nRoute: ${route.routeTitle}\n${receiptLabel}: ${receipt}`
+        )} was sent successfully to ${
+          preparedSend.recipient_name ||
+          "the cashier"
+        }.\n\nRoute: ${
+          route.routeTitle
+        }\n${receiptLabel}: ${receipt}`
       );
 
     if (
@@ -1474,6 +1760,8 @@ export default function AccountantDashboard({
     ) {
       return;
     }
+
+    clearPreparedTimers();
 
     try {
       setCompletingSend(
@@ -1496,10 +1784,6 @@ export default function AccountantDashboard({
           }
         );
 
-      // ------------------------------------------
-      // CLEAR THE PREVIOUS SEND IMMEDIATELY
-      // ------------------------------------------
-
       setPreparedSend(
         null
       );
@@ -1516,6 +1800,10 @@ export default function AccountantDashboard({
         ""
       );
 
+      setPreparedSecondsLeft(
+        30
+      );
+
       setDeclinedSendMessage(
         ""
       );
@@ -1523,7 +1811,10 @@ export default function AccountantDashboard({
       setSuccessMessage(
         `Float completed. KES ${money(
           result?.cashier_float_received
-        )} has been posted to the cashier's Company Float ${result?.company_float_slot || ""}.`
+        )} has been posted to the cashier's Company Float ${
+          result?.company_float_slot ||
+          ""
+        }.`
       );
 
       await refreshData({
@@ -1559,6 +1850,9 @@ export default function AccountantDashboard({
       return;
     }
 
+    const transactionId =
+      preparedSend.transaction_id;
+
     const confirmed =
       window.confirm(
         `Cancel transaction ${
@@ -1572,7 +1866,7 @@ export default function AccountantDashboard({
           `Amount: KES ${money(
             preparedSend.amount
           )}\n\n` +
-          `Only cancel this transaction if the money was NOT sent.`
+          `Only cancel if the money was NOT sent.`
       );
 
     if (
@@ -1581,9 +1875,11 @@ export default function AccountantDashboard({
       return;
     }
 
+    clearPreparedTimers();
+
     try {
       setCancellingTransactionId(
-        preparedSend.transaction_id
+        transactionId
       );
 
       setMessage("");
@@ -1595,7 +1891,7 @@ export default function AccountantDashboard({
           "tl_accountant_cancel_pending_transaction",
           {
             p_transaction_id:
-              preparedSend.transaction_id,
+              transactionId,
           }
         );
 
@@ -1613,6 +1909,10 @@ export default function AccountantDashboard({
 
       setSendReceipt(
         ""
+      );
+
+      setPreparedSecondsLeft(
+        30
       );
 
       setSuccessMessage(
@@ -1669,7 +1969,10 @@ export default function AccountantDashboard({
       window.confirm(
         `Confirm that Legend Accounts received KES ${money(
           transaction.amount
-        )} from ${transaction.cashier_name || "cashier"}.\n\nM-Pesa receipt: ${
+        )} from ${
+          transaction.cashier_name ||
+          "cashier"
+        }.\n\nReceipt: ${
           transaction.manual_receipt_no ||
           "-"
         }\n\nAfter confirmation, the cashier expense will be posted automatically.`
@@ -1725,7 +2028,7 @@ export default function AccountantDashboard({
   }
 
   // ==================================================
-  // CANCEL UNFINISHED TRANSACTION
+  // CANCEL ANY UNFINISHED TRANSACTION
   // ==================================================
 
   async function cancelPendingTransaction(
@@ -1745,7 +2048,9 @@ export default function AccountantDashboard({
 
     const confirmed =
       window.confirm(
-        `Cancel transaction ${transaction.transaction_no}?\n\n` +
+        `Cancel transaction ${
+          transaction.transaction_no
+        }?\n\n` +
           `Cashier: ${cashier}\n` +
           `Amount: KES ${money(
             transaction.amount
@@ -1783,7 +2088,10 @@ export default function AccountantDashboard({
         } cancelled successfully.`
       );
 
-      await refreshData();
+      await refreshData({
+        silent:
+          true,
+      });
     } catch (error) {
       console.error(
         "CANCEL TRANSACTION ERROR:",
@@ -1887,7 +2195,10 @@ export default function AccountantDashboard({
       );
 
       setSuccessMessage(
-        `Expense ${result?.slot_number || ""} saved and locked.`
+        `Expense ${
+          result?.slot_number ||
+          ""
+        } saved and locked.`
       );
 
       await refreshData();
@@ -1932,7 +2243,9 @@ export default function AccountantDashboard({
 
     const confirmed =
       window.confirm(
-        `Close Accountant report for ${report.report_date}?\n\nClosing Balance: KES ${money(
+        `Close Accountant report for ${
+          report.report_date
+        }?\n\nClosing Balance: KES ${money(
           report.closing_balance
         )}\n\nAfter closing, today's Accountant entries will be locked.`
       );
@@ -2004,8 +2317,6 @@ export default function AccountantDashboard({
 
   return (
     <main style={pageStyle}>
-      {/* HEADER */}
-
       <header style={headerStyle}>
         <div>
           <div style={brandStyle}>
@@ -2056,8 +2367,6 @@ export default function AccountantDashboard({
       </header>
 
       <div style={contentStyle}>
-        {/* MESSAGES */}
-
         {message && (
           <div style={errorStyle}>
             {message}
@@ -2111,9 +2420,8 @@ export default function AccountantDashboard({
             </div>
 
             <div style={carriedForwardNoticeStyle}>
-              The Accountant dashboard remains accessible.
-              Resolve the previous transactions before sending
-              new float, entering new expenses, or closing today.
+              Resolve previous transactions before sending new
+              float, entering new expenses, or closing today.
             </div>
 
             <div style={tableWrapStyle}>
@@ -2254,50 +2562,25 @@ export default function AccountantDashboard({
                                 ? "Confirming..."
                                 : "Confirm Received"}
                             </button>
-                          ) : [
-                              "CREATED",
-                              "PENDING_MANUAL_SEND",
-                              "PENDING_MPESA",
-                              "CHECKING",
-                            ].includes(
-                              transaction.status
-                            ) ? (
-                            <div style={resolutionButtonsStyle}>
-                              <span style={pendingActionStyle}>
-                                If money was not sent:
-                              </span>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  cancelPendingTransaction(
-                                    transaction
-                                  )
-                                }
-                                disabled={
-                                  cancellingTransactionId ===
-                                  transaction.id
-                                }
-                                style={{
-                                  ...cancelTransactionButtonStyle,
-
-                                  opacity:
-                                    cancellingTransactionId ===
-                                    transaction.id
-                                      ? 0.6
-                                      : 1,
-                                }}
-                              >
-                                {cancellingTransactionId ===
-                                transaction.id
-                                  ? "Cancelling..."
-                                  : "Cancel Transaction"}
-                              </button>
-                            </div>
                           ) : (
-                            <span style={pendingActionStyle}>
-                              Waiting for resolution
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                cancelPendingTransaction(
+                                  transaction
+                                )
+                              }
+                              disabled={
+                                cancellingTransactionId ===
+                                transaction.id
+                              }
+                              style={cancelTransactionButtonStyle}
+                            >
+                              {cancellingTransactionId ===
+                              transaction.id
+                                ? "Cancelling..."
+                                : "Cancel Transaction"}
+                            </button>
                           )}
                         </TableCell>
                       </tr>
@@ -2424,12 +2707,7 @@ export default function AccountantDashboard({
           {hasCarriedForward && (
             <div style={activityLockedStyle}>
               🔒 New float transfers are temporarily locked.
-              Resolve the carried-forward transaction
-              {carriedForwardTransactions.length ===
-              1
-                ? ""
-                : "s"}{" "}
-              above first.
+              Resolve the carried-forward transaction(s) first.
             </div>
           )}
 
@@ -2558,9 +2836,8 @@ export default function AccountantDashboard({
 
           {!preparedSend && (
             <div style={idleNoteStyle}>
-              Unused cashier and amount selection will clear after
-              30 seconds of inactivity. The dashboard will also
-              refresh automatically.
+              Unused cashier and amount selection clears after
+              30 seconds of inactivity.
             </div>
           )}
 
@@ -2611,22 +2888,25 @@ export default function AccountantDashboard({
                   SEND
                 </div>
 
-                <div style={preparedRouteBadgeStyle}>
-                  {preparedSendRoute.routeTitle}
+                <div style={preparedCountdownStyle}>
+                  AUTO-CANCEL:{" "}
+                  {preparedSecondsLeft}s
                 </div>
               </div>
 
               <TransactionDetail
                 label="Transaction"
                 value={
-                  preparedSend.transaction_no
+                  preparedSend.transaction_no ||
+                  "-"
                 }
               />
 
               <TransactionDetail
                 label="Recipient"
                 value={
-                  preparedSend.recipient_name
+                  preparedSend.recipient_name ||
+                  "-"
                 }
               />
 
@@ -2681,15 +2961,13 @@ export default function AccountantDashboard({
                         preparedSend.amount
                       )}
                     </strong>{" "}
-                    from <strong>I&M</strong> to the approved
-                    cashier M-Pesa number{" "}
+                    from <strong>I&M</strong> to cashier M-Pesa{" "}
                     <strong>
                       {formatPhoneForDisplay(
                         preparedSend.phone_number
                       )}
                     </strong>
-                    . After the transfer succeeds, enter the I&M
-                    transaction/reference number below.
+                    . Enter the I&M transaction/reference below.
                   </>
                 ) : (
                   <>
@@ -2700,13 +2978,13 @@ export default function AccountantDashboard({
                         preparedSend.amount
                       )}
                     </strong>{" "}
-                    to the approved M-Pesa number{" "}
+                    to M-Pesa{" "}
                     <strong>
                       {formatPhoneForDisplay(
                         preparedSend.phone_number
                       )}
                     </strong>
-                    . Then enter the successful M-Pesa receipt.
+                    . Enter the successful M-Pesa receipt below.
                   </>
                 )}
               </div>
@@ -2727,8 +3005,7 @@ export default function AccountantDashboard({
                   event
                 ) =>
                   setSendReceipt(
-                    event.target
-                      .value
+                    event.target.value
                       .toUpperCase()
                   )
                 }
@@ -2764,24 +3041,15 @@ export default function AccountantDashboard({
 
               <button
                 type="button"
-                onClick={
-                  cancelPreparedFloatSend
+                onClick={() =>
+                  cancelPreparedFloatSend()
                 }
                 disabled={
                   completingSend ||
                   cancellingTransactionId ===
-                    preparedSend.transaction_id
-                }
-                style={{
-                  ...cancelPreparedButtonStyle,
-
-                  opacity:
-                    completingSend ||
-                    cancellingTransactionId ===
                       preparedSend.transaction_id
-                      ? 0.6
-                      : 1,
-                }}
+                }
+                style={cancelPreparedButtonStyle}
               >
                 {cancellingTransactionId ===
                 preparedSend.transaction_id
@@ -2790,10 +3058,10 @@ export default function AccountantDashboard({
               </button>
 
               <div style={preparedSafetyNoteStyle}>
-                A prepared transaction is not automatically cancelled
-                after 30 seconds because money may already be in the
-                process of being sent. Use <strong>Cancel Prepared Transfer</strong>{" "}
-                only when the money was not sent.
+                If no receipt/reference is entered for 30 seconds,
+                this unfinished prepared transfer is automatically
+                cancelled so it does not remain as an unfinished
+                transaction.
               </div>
             </div>
           )}
@@ -2802,14 +3070,68 @@ export default function AccountantDashboard({
             0 &&
             !preparedSend && (
               <div style={pendingNoticeStyle}>
-                There are{" "}
                 <strong>
                   {
                     pendingAccountantSends.length
-                  }
-                </strong>{" "}
-                unfinished Accountant float transfer(s).
-                They remain recorded until completed or resolved.
+                  }{" "}
+                  unfinished Accountant float transfer(s)
+                </strong>
+
+                <div style={pendingNoticeTextStyle}>
+                  If these were tests and no money was sent, cancel
+                  them below.
+                </div>
+
+                <div style={pendingSendListStyle}>
+                  {pendingAccountantSends.map(
+                    (
+                      transaction
+                    ) => (
+                      <div
+                        key={
+                          transaction.id
+                        }
+                        style={pendingSendRowStyle}
+                      >
+                        <div>
+                          <strong>
+                            {transaction.transaction_no ||
+                              "Transaction"}
+                          </strong>
+
+                          <div style={pendingSendMetaStyle}>
+                            {transaction.recipient_name_snapshot ||
+                              transaction.cashier_name ||
+                              "Cashier"}{" "}
+                            • KES{" "}
+                            {money(
+                              transaction.amount
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            cancelPendingTransaction(
+                              transaction
+                            )
+                          }
+                          disabled={
+                            cancellingTransactionId ===
+                            transaction.id
+                          }
+                          style={cancelSmallButtonStyle}
+                        >
+                          {cancellingTransactionId ===
+                          transaction.id
+                            ? "Cancelling..."
+                            : "Cancel"}
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             )}
         </section>
@@ -2894,7 +3216,7 @@ export default function AccountantDashboard({
                           transaction.id
                         }
                       >
-                       <TableCell>
+                        <TableCell>
                           {formatDateTime(
                             transaction.created_at
                           )}
@@ -3011,7 +3333,8 @@ export default function AccountantDashboard({
 
           <div style={expensesGridStyle}>
             {Array.from({
-              length: 20,
+              length:
+                20,
             }).map(
               (
                 _,
@@ -3039,7 +3362,9 @@ export default function AccountantDashboard({
 
                 return (
                   <div
-                    key={slot}
+                    key={
+                      slot
+                    }
                     style={{
                       ...expenseRowStyle,
 
@@ -3340,7 +3665,6 @@ export default function AccountantDashboard({
     </main>
   );
 }
-
 // ==================================================
 // SUMMARY CARD
 // ==================================================
@@ -3532,7 +3856,7 @@ function StatusText({
 }
 
 // ==================================================
-// PAYMENT ROUTE HELPER
+// PAYMENT ROUTE HELPERS
 // ==================================================
 
 function normalizeFloatSendMethod(
@@ -3723,7 +4047,7 @@ function formatPhoneForDisplay(
     );
   }
 
-  return phone;
+  return phone || "-";
 }
 
 function formatDateTime(
@@ -4480,24 +4804,27 @@ const preparedTitleStyle = {
     "12px",
 };
 
-const preparedRouteBadgeStyle = {
-  backgroundColor:
-    "#115e59",
-
-  color:
-    "white",
+const preparedCountdownStyle = {
+  padding:
+    "5px 8px",
 
   borderRadius:
     "12px",
 
-  padding:
-    "5px 8px",
+  backgroundColor:
+    "#fef3c7",
+
+  color:
+    "#92400e",
 
   fontSize:
     "8px",
 
   fontWeight:
     "900",
+
+  whiteSpace:
+    "nowrap",
 };
 
 const transactionDetailStyle = {
@@ -4637,7 +4964,7 @@ const pendingNoticeStyle = {
     "12px",
 
   padding:
-    "9px",
+    "10px",
 
   backgroundColor:
     "#fff7ed",
@@ -4653,6 +4980,85 @@ const pendingNoticeStyle = {
 
   fontSize:
     "10px",
+};
+
+const pendingNoticeTextStyle = {
+  marginTop:
+    "4px",
+};
+
+const pendingSendListStyle = {
+  display:
+    "grid",
+
+  gap:
+    "6px",
+
+  marginTop:
+    "9px",
+};
+
+const pendingSendRowStyle = {
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+
+  padding:
+    "8px",
+
+  backgroundColor:
+    "white",
+
+  border:
+    "1px solid #fed7aa",
+
+  borderRadius:
+    "5px",
+};
+
+const pendingSendMetaStyle = {
+  marginTop:
+    "3px",
+
+  fontSize:
+    "9px",
+
+  color:
+    "#9a3412",
+};
+
+const cancelSmallButtonStyle = {
+  border:
+    "none",
+
+  borderRadius:
+    "4px",
+
+  padding:
+    "7px 10px",
+
+  backgroundColor:
+    "#dc2626",
+
+  color:
+    "white",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
 };
 
 const tableWrapStyle = {
@@ -5225,31 +5631,6 @@ const activityLockedStyle = {
 
   fontWeight:
     "bold",
-};
-
-const pendingActionStyle = {
-  color:
-    "#92400e",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-};
-
-const resolutionButtonsStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "8px",
-
-  flexWrap:
-    "wrap",
 };
 
 const cancelTransactionButtonStyle = {
