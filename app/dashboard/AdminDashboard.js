@@ -80,6 +80,11 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
       icon: "▣",
     },
     {
+  id: "DUTY_ROTA",
+  label: "Duty / Rota",
+  icon: "📅",
+    },
+    {
       id: "SALARY",
       label: "Employee Salary",
       icon: "💰",
@@ -298,15 +303,26 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   user={user}
 />
 
-<AdminDutyControlPanel
-  supabaseUrl={supabaseUrl}
-  supabaseAnonKey={supabaseAnonKey}
-  accessToken={accessToken}
-/>
-
 </>
           )}
+           {/* ====================================================== */}
+{/* DUTY / ROTA */}
+{/* ====================================================== */}
 
+{activeSection === "DUTY_ROTA" && (
+  <>
+    <PageHeading
+      title="Duty / Rota"
+      subtitle="Manage the 2-week duty rota, off days, relief assignments, temporary shop moves and employee swaps."
+    />
+
+    <AdminDutyControlPanel
+      supabaseUrl={supabaseUrl}
+      supabaseAnonKey={supabaseAnonKey}
+      accessToken={accessToken}
+    />
+  </>
+)}
           {/* ===================================== */}
           {/* EMPLOYEE SALARY */}
           {/* ===================================== */}
