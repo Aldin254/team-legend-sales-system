@@ -13,10 +13,17 @@ import AdminSalaryManagementPanel from "./AdminSalaryManagementPanel";
 import AdminAccountantPanel from "./AdminAccountantPanel";
 import AdminMpesaRatesPanel from "./AdminMpesaRatesPanel";
 import AdminSavingsPanel from "./AdminSavingsPanel";
-
+import AdminDutyControlPanel from "./AdminDutyControlPanel";
 export default function AdminDashboard({
   user,
 }) {
+  const supabaseUrl = 
+process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = 
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const accessToken = user?.access_token 
+    || null;
+  
   const router = useRouter();
 
   const [
@@ -288,9 +295,16 @@ export default function AdminDashboard({
               />
 
               <AdminSavingsPanel
-                user={user}
-              />
-            </>
+  user={user}
+/>
+
+<AdminDutyControlPanel
+  supabaseUrl={supabaseUrl}
+  supabaseAnonKey={supabaseAnonKey}
+  accessToken={accessToken}
+/>
+
+</>
           )}
 
           {/* ===================================== */}
