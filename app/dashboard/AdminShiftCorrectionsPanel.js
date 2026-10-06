@@ -9,7 +9,6 @@ import {
 
 import AdminPlatformCorrections from "./AdminPlatformCorrections";
 import AdminExpenseCorrections from "./AdminExpenseCorrections";
-import AdminSavingsCorrections from "./AdminSavingsCorrections";
 import AdminAuditLogPanel from "./AdminAuditLogPanel";
 import AdminCarryForwardSync from "./AdminCarryForwardSync";
 import Admin24HourShiftHandover from "./Admin24HourShiftHandover";
@@ -157,6 +156,7 @@ export default function AdminShiftCorrectionsPanel({
           setLoadingShops(
             false
           );
+
           return;
         }
 
@@ -271,9 +271,11 @@ export default function AdminShiftCorrectionsPanel({
           !accessToken
         ) {
           setShifts([]);
+
           setSelectedShiftId(
             ""
           );
+
           return;
         }
 
@@ -390,18 +392,24 @@ export default function AdminShiftCorrectionsPanel({
 
   useEffect(() => {
     loadShops();
-  }, [loadShops]);
+  }, [
+    loadShops,
+  ]);
 
   useEffect(() => {
     loadShifts();
-  }, [loadShifts]);
+  }, [
+    loadShifts,
+  ]);
 
   // ==================================================
   // LOAD SELECTED SHIFT INTO FORM
   // ==================================================
 
   useEffect(() => {
-    if (!selectedShift) {
+    if (
+      !selectedShift
+    ) {
       setOpeningBalance(
         ""
       );
@@ -459,14 +467,18 @@ export default function AdminShiftCorrectionsPanel({
     setMessage(
       ""
     );
-  }, [selectedShift]);
+  }, [
+    selectedShift,
+  ]);
 
   // ==================================================
   // RESET FORM
   // ==================================================
 
   function resetForm() {
-    if (!selectedShift) {
+    if (
+      !selectedShift
+    ) {
       return;
     }
 
@@ -511,7 +523,9 @@ export default function AdminShiftCorrectionsPanel({
   // ==================================================
 
   async function saveCorrection() {
-    if (!selectedShift) {
+    if (
+      !selectedShift
+    ) {
       setMessage(
         "Select a shift first."
       );
@@ -523,7 +537,9 @@ export default function AdminShiftCorrectionsPanel({
       return;
     }
 
-    if (!adminProfileId) {
+    if (
+      !adminProfileId
+    ) {
       setMessage(
         "Admin profile ID is missing. Please log in again."
       );
@@ -537,7 +553,8 @@ export default function AdminShiftCorrectionsPanel({
 
     const cleanReason =
       String(
-        reason || ""
+        reason ||
+          ""
       ).trim();
 
     if (
@@ -586,7 +603,9 @@ export default function AdminShiftCorrectionsPanel({
     let newClosingBalance =
       null;
 
-    if (manualTotals) {
+    if (
+      manualTotals
+    ) {
       newNetIncome =
         Number(
           netIncome
@@ -652,7 +671,9 @@ export default function AdminShiftCorrectionsPanel({
           "Save these Admin corrections?"
       );
 
-    if (!confirmed) {
+    if (
+      !confirmed
+    ) {
       return;
     }
 
@@ -748,7 +769,9 @@ export default function AdminShiftCorrectionsPanel({
       // If Manual Admin Totals is ON,
       // preserve Admin-entered final values.
 
-      if (manualTotals) {
+      if (
+        manualTotals
+      ) {
         updateData.net_income =
           roundMoney(
             newNetIncome
@@ -997,7 +1020,9 @@ export default function AdminShiftCorrectionsPanel({
               }
             >
               {shops.map(
-                (shop) => (
+                (
+                  shop
+                ) => (
                   <option
                     key={
                       shop.id
@@ -1055,12 +1080,16 @@ export default function AdminShiftCorrectionsPanel({
             >
               {shifts.length ===
               0 ? (
-                <option value="">
+                <option
+                  value=""
+                >
                   No shifts found
                 </option>
               ) : (
                 shifts.map(
-                  (shift) => (
+                  (
+                    shift
+                  ) => (
                     <option
                       key={
                         shift.id
@@ -1185,7 +1214,9 @@ export default function AdminShiftCorrectionsPanel({
             {/* PLATFORM CORRECTIONS */}
 
             <AdminPlatformCorrections
-              user={user}
+              user={
+                user
+              }
               selectedShift={
                 selectedShift
               }
@@ -1200,7 +1231,9 @@ export default function AdminShiftCorrectionsPanel({
             {/* EXPENSE CORRECTIONS */}
 
             <AdminExpenseCorrections
-              user={user}
+              user={
+                user
+              }
               selectedShift={
                 selectedShift
               }
@@ -1212,22 +1245,18 @@ export default function AdminShiftCorrectionsPanel({
               }
             />
 
-            {/* SAVINGS CORRECTIONS */}
-
-            <AdminSavingsCorrections
-              user={user}
-              selectedShift={
-                selectedShift
-              }
-              selectedShop={
-                selectedShop
-              }
-            />
+            {/* ===================================== */}
+            {/* SAVINGS CORRECTIONS REMOVED */}
+            {/* Savings are controlled by the */}
+            {/* Savings / Banking ledger system. */}
+            {/* ===================================== */}
 
             {/* CARRY FORWARD */}
 
             <AdminCarryForwardSync
-              user={user}
+              user={
+                user
+              }
               selectedShift={
                 selectedShift
               }
@@ -1238,20 +1267,23 @@ export default function AdminShiftCorrectionsPanel({
                 loadShifts
               }
             />
-                {/* ADMIN 24-HOUR SHIFT HANDOVER */}
 
-<Admin24HourShiftHandover
-  user={user}
-  selectedShift={
-    selectedShift
-  }
-  selectedShop={
-    selectedShop
-  }
-  onChanged={
-    loadShifts
-  }
-/>
+            {/* ADMIN 24-HOUR SHIFT HANDOVER */}
+
+            <Admin24HourShiftHandover
+              user={
+                user
+              }
+              selectedShift={
+                selectedShift
+              }
+              selectedShop={
+                selectedShop
+              }
+              onChanged={
+                loadShifts
+              }
+            />
 
             {/* CORRECTION FIELDS */}
 
@@ -1396,7 +1428,9 @@ export default function AdminShiftCorrectionsPanel({
                     checked
                   );
 
-                  if (!checked) {
+                  if (
+                    !checked
+                  ) {
                     setNetIncome(
                       String(
                         selectedShift.net_income ??
@@ -1458,7 +1492,9 @@ export default function AdminShiftCorrectionsPanel({
                   )
                 }
                 placeholder="Example: Cashier entered the wrong opening balance."
-                rows={3}
+                rows={
+                  3
+                }
                 style={
                   textareaStyle
                 }
@@ -1556,7 +1592,9 @@ export default function AdminShiftCorrectionsPanel({
             </div>
 
             <AdminAuditLogPanel
-              user={user}
+              user={
+                user
+              }
               selectedShift={
                 selectedShift
               }
@@ -1582,7 +1620,8 @@ function InfoBox({
 }) {
   const statusValue =
     String(
-      value || ""
+      value ||
+        ""
     ).toUpperCase();
 
   return (
@@ -1635,9 +1674,12 @@ async function safeJson(
   }
 }
 
-function money(value) {
+function money(
+  value
+) {
   return Number(
-    value || 0
+    value ||
+      0
   ).toLocaleString(
     "en-KE",
     {
@@ -1650,13 +1692,20 @@ function money(value) {
   );
 }
 
-function roundMoney(value) {
+function roundMoney(
+  value
+) {
   return (
     Math.round(
-      (Number(value) +
-        Number.EPSILON) *
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
         100
-    ) / 100
+    ) /
+    100
   );
 }
 
