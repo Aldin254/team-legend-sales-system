@@ -73,6 +73,33 @@ export default function AccountantDashboard({
     useState([]);
 
   // ==================================================
+  // SAVINGS / BANKING PAYMENTS
+  // ==================================================
+
+  const [
+    savingsPaymentSnapshot,
+    setSavingsPaymentSnapshot,
+  ] = useState({
+    pending_requests: [],
+    recent_requests: [],
+  });
+
+  const [
+    savingsPaymentForms,
+    setSavingsPaymentForms,
+  ] = useState({});
+
+  const [
+    confirmingSavingsPaymentId,
+    setConfirmingSavingsPaymentId,
+  ] = useState(null);
+
+  const [
+    rejectingSavingsPaymentId,
+    setRejectingSavingsPaymentId,
+  ] = useState(null);
+
+  // ==================================================
   // PAYMENT ROUTE
   // ==================================================
 
@@ -583,6 +610,40 @@ export default function AccountantDashboard({
     );
 
   // ==================================================
+  // LOAD SAVINGS / BANKING PAYMENT REQUESTS
+  // ==================================================
+
+  const loadSavingsPayments =
+    useCallback(
+      async () => {
+        const result =
+          await callRpc(
+            "tl_accountant_savings_payment_snapshot",
+            {}
+          );
+
+        return {
+          pending_requests:
+            Array.isArray(
+              result?.pending_requests
+            )
+              ? result.pending_requests
+              : [],
+
+          recent_requests:
+            Array.isArray(
+              result?.recent_requests
+            )
+              ? result.recent_requests
+              : [],
+        };
+      },
+      [
+        callRpc,
+      ]
+    );
+
+  // ==================================================
   // OPEN TODAY
   // ==================================================
 
@@ -625,11 +686,13 @@ export default function AccountantDashboard({
             loadedShops,
             loadedRecipients,
             loadedTransactions,
+            loadedSavingsPayments,
           ] =
             await Promise.all([
               loadShops(),
               loadRecipients(),
               loadTransactions(),
+              loadSavingsPayments(),
             ]);
 
           setShops(
@@ -642,6 +705,39 @@ export default function AccountantDashboard({
 
           setTransactions(
             loadedTransactions
+          );
+
+          setSavingsPaymentSnapshot(
+            loadedSavingsPayments
+          );
+
+          // Keep anything the Accountant is currently typing, while
+          // creating blank form state for newly arrived requests.
+          setSavingsPaymentForms(
+            (previous) => {
+              const next = {
+                ...previous,
+              };
+
+              for (
+                const request of
+                loadedSavingsPayments.pending_requests
+              ) {
+                if (
+                  !next[request.id]
+                ) {
+                  next[request.id] = {
+                    provider: "",
+                    reference: "",
+                    externalId: "",
+                    fee: "0",
+                    rejectionReason: "",
+                  };
+                }
+              }
+
+              return next;
+            }
           );
 
           try {
@@ -719,6 +815,7 @@ export default function AccountantDashboard({
         loadShops,
         loadRecipients,
         loadTransactions,
+        loadSavingsPayments,
         loadFloatSendMethod,
         openToday,
         loadExpenses,
@@ -1256,6 +1353,81 @@ export default function AccountantDashboard({
         floatSendMethod,
       ]
     );
+
+  // ==================================================
+  // SAVINGS / BANKING PAYMENT REQUESTS
+  // ==================================================
+
+  const pendingSavingsPayments =
+    useMemo(
+      () =>
+        Array.isArray(
+          savingsPaymentSnapshot?.pending_requests
+        )
+          ? savingsPaymentSnapshot.pending_requests
+          : [],
+      [
+        savingsPaymentSnapshot,
+      ]
+    );
+
+  const recentSavingsPayments =
+    useMemo(
+      () =>
+        Array.isArray(
+          savingsPaymentSnapshot?.recent_requests
+        )
+          ? savingsPaymentSnapshot.recent_requests
+          : [],
+      [
+        savingsPaymentSnapshot,
+      ]
+    );
+
+  function updateSavingsPaymentForm(
+    requestId,
+    field,
+    value
+  ) {
+    setSavingsPaymentForms(
+      (previous) => ({
+        ...previous,
+
+        [requestId]: {
+          provider:
+            previous[requestId]?.provider ||
+            "",
+
+          reference:
+            previous[requestId]?.reference ||
+            "",
+
+          externalId:
+            previous[requestId]?.externalId ||
+            "",
+
+          fee:
+            previous[requestId]?.fee ??
+            "0",
+
+          rejectionReason:
+            previous[requestId]?.rejectionReason ||
+            "",
+
+          [field]:
+            value,
+        },
+      })
+    );
+
+    setMessage(
+      ""
+    );
+
+    setSuccessMessage(
+      ""
+    );
+  }
 
   // ==================================================
   // PENDING CASHIER RETURNS
@@ -2104,6 +2276,317 @@ export default function AccountantDashboard({
       );
     } finally {
       setCancellingTransactionId(
+        null
+      );
+    }
+  }
+
+  // ==================================================
+  // CONFIRM SAVINGS / BANKING PAYMENT
+  // ==================================================
+
+  async function confirmSavingsPayment(
+    request
+  ) {
+    if (
+      !request?.id ||
+      confirmingSavingsPaymentId ||
+      rejectingSavingsPaymentId
+    ) {
+      return;
+    }
+
+    const form =
+      savingsPaymentForms[
+        request.id
+      ] ||
+      {};
+
+    const provider =
+      String(
+        form.provider ||
+          (
+            floatSendMethod ===
+            "IM_TO_MPESA"
+              ? "I&M"
+              : "M-PESA"
+          )
+      )
+        .trim()
+        .toUpperCase();
+
+    const reference =
+      String(
+        form.reference ||
+          ""
+      )
+        .trim()
+        .toUpperCase();
+
+    const externalId =
+      String(
+        form.externalId ||
+          ""
+      )
+        .trim();
+
+    const fee =
+      Number(
+        form.fee ||
+          0
+      );
+
+    if (
+      provider !==
+        "M-PESA" &&
+      provider !==
+        "I&M"
+    ) {
+      setMessage(
+        "Select M-Pesa or I&M as the payment source."
+      );
+
+      return;
+    }
+
+    if (
+      !reference &&
+      !externalId
+    ) {
+      setMessage(
+        `Enter the payment reference for ${request.category}.`
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        fee
+      ) ||
+      fee < 0
+    ) {
+      setMessage(
+        "Enter a valid transaction fee. Use 0 if there was no fee."
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Confirm ${request.category} payment?\n\n` +
+          `Shop: ${request.shop_name || "Shop"}\n` +
+          `Employee: ${request.employee_name || "Cashier"}\n` +
+          `Amount: KES ${money(request.amount)}\n` +
+          `Source: ${provider}\n` +
+          `Reference: ${reference || externalId}\n\n` +
+          `This will deduct the principal from the saved balance. ` +
+          `It will NOT create another cashier expense.`
+      );
+
+    if (
+      !confirmed
+    ) {
+      return;
+    }
+
+    try {
+      setConfirmingSavingsPaymentId(
+        request.id
+      );
+
+      setMessage(
+        ""
+      );
+
+      setSuccessMessage(
+        ""
+      );
+
+      const result =
+        await callRpc(
+          "tl_accountant_confirm_savings_payment",
+          {
+            p_request_id:
+              request.id,
+
+            p_payment_method:
+              provider ===
+              "I&M"
+                ? "IM_TO_PAYBILL"
+                : "MPESA_TO_PAYBILL",
+
+            p_payment_provider:
+              provider,
+
+            p_payment_reference:
+              reference,
+
+            p_external_transaction_id:
+              externalId ||
+              null,
+
+            p_transaction_fee:
+              roundMoney(
+                fee
+              ),
+          }
+        );
+
+      setSavingsPaymentForms(
+        (previous) => {
+          const next = {
+            ...previous,
+          };
+
+          delete next[
+            request.id
+          ];
+
+          return next;
+        }
+      );
+
+      setSuccessMessage(
+        `${request.category} payment confirmed. KES ${money(
+          result?.amount_paid ??
+            request.amount
+        )} deducted from Savings. Remaining balance: KES ${money(
+          result?.balance_after
+        )}.`
+      );
+
+      await refreshData({
+        silent:
+          true,
+      });
+    } catch (error) {
+      console.error(
+        "CONFIRM SAVINGS PAYMENT ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to confirm the Savings payment."
+      );
+    } finally {
+      setConfirmingSavingsPaymentId(
+        null
+      );
+    }
+  }
+
+  // ==================================================
+  // REJECT SAVINGS / BANKING PAYMENT
+  // ==================================================
+
+  async function rejectSavingsPayment(
+    request
+  ) {
+    if (
+      !request?.id ||
+      confirmingSavingsPaymentId ||
+      rejectingSavingsPaymentId
+    ) {
+      return;
+    }
+
+    const form =
+      savingsPaymentForms[
+        request.id
+      ] ||
+      {};
+
+    const reason =
+      String(
+        form.rejectionReason ||
+          ""
+      ).trim();
+
+    if (
+      !reason
+    ) {
+      setMessage(
+        `Enter a reason before rejecting the ${request.category} payment.`
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Reject ${request.category} payment request?\n\n` +
+          `Amount: KES ${money(request.amount)}\n` +
+          `Reason: ${reason}\n\n` +
+          `No Savings, Expense or Float balance will change.`
+      );
+
+    if (
+      !confirmed
+    ) {
+      return;
+    }
+
+    try {
+      setRejectingSavingsPaymentId(
+        request.id
+      );
+
+      setMessage(
+        ""
+      );
+
+      setSuccessMessage(
+        ""
+      );
+
+      await callRpc(
+        "tl_accountant_reject_savings_payment",
+        {
+          p_request_id:
+            request.id,
+
+          p_reason:
+            reason,
+        }
+      );
+
+      setSavingsPaymentForms(
+        (previous) => {
+          const next = {
+            ...previous,
+          };
+
+          delete next[
+            request.id
+          ];
+
+          return next;
+        }
+      );
+
+      setSuccessMessage(
+        `${request.category} payment request rejected. No money was moved.`
+      );
+
+      await refreshData({
+        silent:
+          true,
+      });
+    } catch (error) {
+      console.error(
+        "REJECT SAVINGS PAYMENT ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to reject the Savings payment."
+      );
+    } finally {
+      setRejectingSavingsPaymentId(
         null
       );
     }
@@ -3305,6 +3788,465 @@ export default function AccountantDashboard({
           )}
         </section>
 
+        {/* SAVINGS / BANKING PAYMENTS */}
+
+        <section style={savingsPaymentPanelStyle}>
+          <div style={panelHeaderStyle}>
+            <div>
+              <div style={panelTitleStyle}>
+                SAVINGS / BANKING PAYMENTS
+              </div>
+
+              <div style={panelSubtitleStyle}>
+                Cashier request → Accountant verifies payment → Savings deducts
+              </div>
+            </div>
+
+            <div style={savingsPendingBadgeStyle}>
+              {pendingSavingsPayments.length} PENDING
+            </div>
+          </div>
+
+          <div style={savingsPaymentRuleStyle}>
+            The principal was already posted to the cashier's Expenses when it was saved.
+            Confirming a payment here only deducts that amount from the saved balance.
+          </div>
+
+          {pendingSavingsPayments.length ===
+          0 ? (
+            <div style={emptyStyle}>
+              No Savings / Banking payments waiting for confirmation.
+            </div>
+          ) : (
+            <div style={savingsRequestListStyle}>
+              {pendingSavingsPayments.map(
+                (request) => {
+                  const form =
+                    savingsPaymentForms[
+                      request.id
+                    ] ||
+                    {};
+
+                  const provider =
+                    form.provider ||
+                    (
+                      floatSendMethod ===
+                      "IM_TO_MPESA"
+                        ? "I&M"
+                        : "M-PESA"
+                    );
+
+                  const confirming =
+                    confirmingSavingsPaymentId ===
+                    request.id;
+
+                  const rejecting =
+                    rejectingSavingsPaymentId ===
+                    request.id;
+
+                  const busy =
+                    confirming ||
+                    rejecting;
+
+                  return (
+                    <div
+                      key={
+                        request.id
+                      }
+                      style={savingsRequestCardStyle}
+                    >
+                      <div style={savingsRequestHeaderStyle}>
+                        <div>
+                          <div style={savingsCategoryStyle}>
+                            {request.category}
+                          </div>
+
+                          <div style={savingsMetaStyle}>
+                            {request.shop_name || "Shop"}
+                            {" • "}
+                            {request.employee_name || "Cashier"}
+                            {" • "}
+                            {formatDateTime(
+                              request.requested_at
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={savingsAmountStyle}>
+                          KES {money(
+                            request.amount
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={savingsBalanceGridStyle}>
+                        <div style={savingsMiniCardStyle}>
+                          <span>Saved Balance</span>
+                          <strong>
+                            KES {money(
+                              request.saved_balance
+                            )}
+                          </strong>
+                        </div>
+
+                        <div style={savingsMiniCardStyle}>
+                          <span>Total Reserved</span>
+                          <strong>
+                            KES {money(
+                              request.total_reserved
+                            )}
+                          </strong>
+                        </div>
+
+                        <div style={savingsMiniCardStyle}>
+                          <span>Status</span>
+                          <SavingsStatusText
+                            status={
+                              request.status
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div style={savingsDestinationStyle}>
+                        <div style={savingsDestinationTitleStyle}>
+                          PAYMENT DESTINATION
+                        </div>
+
+                        <div style={savingsDestinationGridStyle}>
+                          <TransactionDetail
+                            label="Name"
+                            value={
+                              request.destination_name ||
+                              "-"
+                            }
+                          />
+
+                          <TransactionDetail
+                            label="Account"
+                            value={
+                              request.destination_account ||
+                              "-"
+                            }
+                          />
+
+                          <TransactionDetail
+                            label="PayBill / Till"
+                            value={
+                              request.destination_paybill_till ||
+                              "-"
+                            }
+                          />
+
+                          <TransactionDetail
+                            label="Bank / Provider"
+                            value={
+                              request.destination_bank ||
+                              "-"
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div style={savingsPaymentFormStyle}>
+                        <div>
+                          <label style={labelStyle}>
+                            Payment Source
+                          </label>
+
+                          <select
+                            value={
+                              provider
+                            }
+                            disabled={
+                              busy
+                            }
+                            onChange={(event) =>
+                              updateSavingsPaymentForm(
+                                request.id,
+                                "provider",
+                                event.target.value
+                              )
+                            }
+                            style={inputStyle}
+                          >
+                            <option value="M-PESA">
+                              M-PESA
+                            </option>
+
+                            <option value="I&M">
+                              I&M
+                            </option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>
+                            Payment Reference *
+                          </label>
+
+                          <input
+                            type="text"
+                            value={
+                              form.reference ||
+                              ""
+                            }
+                            disabled={
+                              busy
+                            }
+                            onChange={(event) =>
+                              updateSavingsPaymentForm(
+                                request.id,
+                                "reference",
+                                event.target.value
+                              )
+                            }
+                            placeholder={
+                              provider ===
+                              "I&M"
+                                ? "I&M transaction reference"
+                                : "M-Pesa receipt / reference"
+                            }
+                            style={inputStyle}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>
+                            External / API ID
+                          </label>
+
+                          <input
+                            type="text"
+                            value={
+                              form.externalId ||
+                              ""
+                            }
+                            disabled={
+                              busy
+                            }
+                            onChange={(event) =>
+                              updateSavingsPaymentForm(
+                                request.id,
+                                "externalId",
+                                event.target.value
+                              )
+                            }
+                            placeholder="Optional now / API later"
+                            style={inputStyle}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={labelStyle}>
+                            Fee (KES)
+                          </label>
+
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={
+                              form.fee ??
+                              "0"
+                            }
+                            disabled={
+                              busy
+                            }
+                            onChange={(event) =>
+                              updateSavingsPaymentForm(
+                                request.id,
+                                "fee",
+                                event.target.value
+                              )
+                            }
+                            style={inputStyle}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={savingsPaymentActionsStyle}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            confirmSavingsPayment(
+                              request
+                            )
+                          }
+                          disabled={
+                            busy
+                          }
+                          style={savingsConfirmButtonStyle}
+                        >
+                          {confirming
+                            ? "Confirming..."
+                            : `Confirm ${request.category} Paid`}
+                        </button>
+
+                        <input
+                          type="text"
+                          value={
+                            form.rejectionReason ||
+                            ""
+                          }
+                          disabled={
+                            busy
+                          }
+                          onChange={(event) =>
+                            updateSavingsPaymentForm(
+                              request.id,
+                              "rejectionReason",
+                              event.target.value
+                            )
+                          }
+                          placeholder="Reason if rejecting"
+                          style={savingsRejectReasonStyle}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            rejectSavingsPayment(
+                              request
+                            )
+                          }
+                          disabled={
+                            busy
+                          }
+                          style={savingsRejectButtonStyle}
+                        >
+                          {rejecting
+                            ? "Rejecting..."
+                            : "Reject"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          )}
+
+          <div style={savingsRecentWrapStyle}>
+            <div style={savingsRecentTitleStyle}>
+              RECENT SAVINGS / BANKING PAYMENT RESULTS
+            </div>
+
+            {recentSavingsPayments.length ===
+            0 ? (
+              <div style={mutedSmallStyle}>
+                No completed or rejected Savings payments yet.
+              </div>
+            ) : (
+              <div style={tableWrapStyle}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <TableHead>
+                        Date / Time
+                      </TableHead>
+
+                      <TableHead>
+                        Category
+                      </TableHead>
+
+                      <TableHead>
+                        Shop
+                      </TableHead>
+
+                      <TableHead>
+                        Employee
+                      </TableHead>
+
+                      <TableHead right>
+                        Amount
+                      </TableHead>
+
+                      <TableHead>
+                        Route
+                      </TableHead>
+
+                      <TableHead>
+                        Reference
+                      </TableHead>
+
+                      <TableHead>
+                        Status
+                      </TableHead>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {recentSavingsPayments
+                      .slice(
+                        0,
+                        20
+                      )
+                      .map(
+                        (request) => (
+                          <tr
+                            key={
+                              request.id
+                            }
+                          >
+                            <TableCell>
+                              {formatDateTime(
+                                request.confirmed_at ||
+                                  request.rejected_at ||
+                                  request.requested_at
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {request.category}
+                            </TableCell>
+
+                            <TableCell>
+                              {request.shop_name ||
+                                "Shop"}
+                            </TableCell>
+
+                            <TableCell>
+                              {request.employee_name ||
+                                "-"}
+                            </TableCell>
+
+                            <TableCell right>
+                              KES {money(
+                                request.amount
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {request.payment_provider ||
+                                request.payment_method ||
+                                "-"}
+                            </TableCell>
+
+                            <TableCell>
+                              {request.payment_reference ||
+                                request.external_transaction_id ||
+                                request.rejection_reason ||
+                                "-"}
+                            </TableCell>
+
+                            <TableCell>
+                              <SavingsStatusText
+                                status={
+                                  request.status
+                                }
+                              />
+                            </TableCell>
+                          </tr>
+                        )
+                      )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* ACCOUNTANT EXPENSES */}
 
         <section style={panelStyle}>
@@ -3851,6 +4793,74 @@ function StatusText({
       {friendlyStatus(
         normalized
       )}
+    </span>
+  );
+}
+
+// ==================================================
+// SAVINGS PAYMENT STATUS
+// ==================================================
+
+function SavingsStatusText({
+  status,
+}) {
+  const normalized =
+    String(
+      status ||
+        ""
+    )
+      .trim()
+      .toUpperCase();
+
+  let backgroundColor =
+    "#fef3c7";
+
+  let color =
+    "#92400e";
+
+  if (
+    normalized ===
+    "CONFIRMED"
+  ) {
+    backgroundColor =
+      "#dcfce7";
+
+    color =
+      "#166534";
+  } else if (
+    normalized ===
+      "REJECTED" ||
+    normalized ===
+      "FAILED" ||
+    normalized ===
+      "CANCELLED"
+  ) {
+    backgroundColor =
+      "#fee2e2";
+
+    color =
+      "#991b1b";
+  } else if (
+    normalized ===
+    "PROCESSING"
+  ) {
+    backgroundColor =
+      "#dbeafe";
+
+    color =
+      "#1d4ed8";
+  }
+
+  return (
+    <span
+      style={{
+        ...statusTextStyle,
+        backgroundColor,
+        color,
+      }}
+    >
+      {normalized ||
+        "PENDING"}
     </span>
   );
 }
@@ -5183,6 +6193,353 @@ const emptyStyle = {
 
   fontSize:
     "11px",
+};
+
+const savingsPaymentPanelStyle = {
+  ...panelStyle,
+
+  border:
+    "2px solid #0f766e",
+};
+
+const savingsPendingBadgeStyle = {
+  backgroundColor:
+    "#b45309",
+
+  color:
+    "white",
+
+  padding:
+    "6px 10px",
+
+  borderRadius:
+    "20px",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "900",
+};
+
+const savingsPaymentRuleStyle = {
+  marginBottom:
+    "12px",
+
+  padding:
+    "10px",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#ecfdf5",
+
+  border:
+    "1px solid #a7f3d0",
+
+  color:
+    "#166534",
+
+  fontSize:
+    "10px",
+
+  lineHeight:
+    "1.45",
+};
+
+const savingsRequestListStyle = {
+  display:
+    "grid",
+
+  gap:
+    "12px",
+};
+
+const savingsRequestCardStyle = {
+  border:
+    "1px solid #99f6e4",
+
+  borderRadius:
+    "7px",
+
+  padding:
+    "12px",
+
+  backgroundColor:
+    "#f0fdfa",
+};
+
+const savingsRequestHeaderStyle = {
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  alignItems:
+    "flex-start",
+
+  gap:
+    "12px",
+
+  flexWrap:
+    "wrap",
+
+  marginBottom:
+    "10px",
+};
+
+const savingsCategoryStyle = {
+  fontSize:
+    "13px",
+
+  fontWeight:
+    "900",
+
+  color:
+    "#115e59",
+};
+
+const savingsMetaStyle = {
+  marginTop:
+    "3px",
+
+  color:
+    "#64748b",
+
+  fontSize:
+    "9px",
+};
+
+const savingsAmountStyle = {
+  padding:
+    "7px 10px",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#0f766e",
+
+  color:
+    "white",
+
+  fontSize:
+    "13px",
+
+  fontWeight:
+    "900",
+};
+
+const savingsBalanceGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(150px,1fr))",
+
+  gap:
+    "8px",
+
+  marginBottom:
+    "10px",
+};
+
+const savingsMiniCardStyle = {
+  display:
+    "flex",
+
+  flexDirection:
+    "column",
+
+  gap:
+    "5px",
+
+  padding:
+    "8px",
+
+  border:
+    "1px solid #ccfbf1",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "white",
+
+  fontSize:
+    "9px",
+
+  color:
+    "#64748b",
+};
+
+const savingsDestinationStyle = {
+  padding:
+    "10px",
+
+  marginBottom:
+    "10px",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "white",
+
+  border:
+    "1px solid #cbd5e1",
+};
+
+const savingsDestinationTitleStyle = {
+  marginBottom:
+    "6px",
+
+  color:
+    "#475569",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "900",
+};
+
+const savingsDestinationGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(190px,1fr))",
+
+  columnGap:
+    "18px",
+};
+
+const savingsPaymentFormStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(180px,1fr))",
+
+  gap:
+    "8px",
+
+  marginBottom:
+    "10px",
+};
+
+const savingsPaymentActionsStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "minmax(180px,0.8fr) minmax(220px,1fr) 120px",
+
+  gap:
+    "8px",
+
+  alignItems:
+    "center",
+};
+
+const savingsConfirmButtonStyle = {
+  border:
+    "none",
+
+  borderRadius:
+    "5px",
+
+  padding:
+    "10px",
+
+  backgroundColor:
+    "#15803d",
+
+  color:
+    "white",
+
+  fontWeight:
+    "900",
+
+  fontSize:
+    "10px",
+
+  cursor:
+    "pointer",
+};
+
+const savingsRejectReasonStyle = {
+  width:
+    "100%",
+
+  boxSizing:
+    "border-box",
+
+  padding:
+    "9px",
+
+  border:
+    "1px solid #fca5a5",
+
+  borderRadius:
+    "5px",
+
+  fontSize:
+    "10px",
+};
+
+const savingsRejectButtonStyle = {
+  border:
+    "none",
+
+  borderRadius:
+    "5px",
+
+  padding:
+    "10px",
+
+  backgroundColor:
+    "#dc2626",
+
+  color:
+    "white",
+
+  fontWeight:
+    "900",
+
+  fontSize:
+    "10px",
+
+  cursor:
+    "pointer",
+};
+
+const savingsRecentWrapStyle = {
+  marginTop:
+    "16px",
+
+  paddingTop:
+    "12px",
+
+  borderTop:
+    "1px solid #cbd5e1",
+};
+
+const savingsRecentTitleStyle = {
+  marginBottom:
+    "8px",
+
+  color:
+    "#334155",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "900",
 };
 
 const expensesGridStyle = {
