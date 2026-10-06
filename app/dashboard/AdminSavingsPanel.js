@@ -3762,4 +3762,4 @@ const tableCellStyle = {
     "9px 8px",
 
   borderBottom:
-    "1px solid #e2e8f0
+  "1px solid #e2e8f0",
