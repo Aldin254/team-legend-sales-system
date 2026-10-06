@@ -859,9 +859,7 @@ export default function CashierAccountsReturnPanel({
   // ==================================================
   // FEE PREVIEW
   //
-  // IMPORTANT:
-  // Uses the payment-system switch in Supabase.
-  // MPESA_TO_MPESA -> M-Pesa tariff
+  // MPESA_TO_MPESA -> original M-Pesa tariff
   // MPESA_TO_IM    -> M-Pesa -> I&M tariff
   // ==================================================
 
@@ -1140,7 +1138,7 @@ export default function CashierAccountsReturnPanel({
         route.isIm
       ) {
         setMessage(
-          "Return prepared. Send the exact amount from M-Pesa to the I&M account shown below, then enter the M-Pesa receipt number."
+          "Return prepared. Confirm the I&M account name, send the exact amount, then enter the M-Pesa receipt number."
         );
       } else {
         setMessage(
@@ -1228,11 +1226,22 @@ export default function CashierAccountsReturnPanel({
             preparedReturn.paybill_number ||
             preparedReturn.company_destination ||
             "-"
+          }, Account ${
+            preparedReturn.bank_account_number ||
+            preparedReturn.account_reference ||
+            "-"
+          }, Account Name ${
+            preparedReturn.company_account_name ||
+            "-"
           }`
         : `Legend Accounts M-Pesa ${
             formatPhone(
               preparedReturn.company_destination
             )
+          }${
+            preparedReturn.company_account_name
+              ? `, Account Name ${preparedReturn.company_account_name}`
+              : ""
           }`;
 
     const confirmed =
@@ -1601,6 +1610,15 @@ export default function CashierAccountsReturnPanel({
                 strong
               />
 
+              <DetailRow
+                label="BANK ACCOUNT NAME"
+                value={
+                  preparedReturn.company_account_name ||
+                  "-"
+                }
+                strong
+              />
+
               {preparedReturn.account_reference &&
                 preparedReturn.bank_account_number &&
                 String(
@@ -1618,15 +1636,26 @@ export default function CashierAccountsReturnPanel({
                 )}
             </>
           ) : (
-            <DetailRow
-              label="M-PESA NUMBER"
-              value={
-                formatPhone(
-                  preparedReturn.company_destination
-                )
-              }
-              strong
-            />
+            <>
+              <DetailRow
+                label="M-PESA NUMBER"
+                value={
+                  formatPhone(
+                    preparedReturn.company_destination
+                  )
+                }
+                strong
+              />
+
+              {preparedReturn.company_account_name && (
+                <DetailRow
+                  label="ACCOUNT NAME"
+                  value={
+                    preparedReturn.company_account_name
+                  }
+                />
+              )}
+            </>
           )}
 
           <DetailRow
@@ -1669,9 +1698,8 @@ export default function CashierAccountsReturnPanel({
                     preparedReturn.company_destination ||
                     "-"}
                 </strong>
-
-                {" "}and Account Number{" "}
-
+                {" "}
+                and Account Number{" "}
                 <strong>
                   {preparedReturn.bank_account_number ||
                     preparedReturn.account_reference ||
@@ -1697,7 +1725,19 @@ export default function CashierAccountsReturnPanel({
                     </>
                   )}
 
-                {" "}
+                <div style={nameCheckStyle}>
+                  <strong>
+                    IMPORTANT:
+                  </strong>{" "}
+                  Before completing the payment, confirm that the account name
+                  shown by M-Pesa matches{" "}
+                  <strong>
+                    {preparedReturn.company_account_name ||
+                      "the bank account name shown above"}
+                  </strong>
+                  .
+                </div>
+
                 After M-Pesa confirms the transfer, enter the receipt below.
               </>
             ) : (
@@ -1716,7 +1756,21 @@ export default function CashierAccountsReturnPanel({
                     preparedReturn.company_destination
                   )}
                 </strong>
-                . After M-Pesa confirms the transfer, enter the receipt below.
+                .
+
+                {preparedReturn.company_account_name && (
+                  <>
+                    {" "}
+                    Confirm the recipient name matches{" "}
+                    <strong>
+                      {preparedReturn.company_account_name}
+                    </strong>
+                    .
+                  </>
+                )}
+
+                {" "}
+                After M-Pesa confirms the transfer, enter the receipt below.
               </>
             )}
           </div>
@@ -2757,6 +2811,29 @@ const sendInstructionStyle = {
 
   lineHeight:
     "1.5",
+};
+
+const nameCheckStyle = {
+  margin:
+    "9px 0",
+
+  padding:
+    "8px",
+
+  backgroundColor:
+    "#fff7ed",
+
+  border:
+    "1px solid #fb923c",
+
+  borderRadius:
+    "5px",
+
+  color:
+    "#9a3412",
+
+  fontWeight:
+    "700",
 };
 
 const receiptButtonStyle = {
