@@ -25,8 +25,10 @@ export default function AdminSavingsPanel({
   const [loading, setLoading] =
     useState(true);
 
-  const [refreshing, setRefreshing] =
-    useState(false);
+  const [
+    refreshing,
+    setRefreshing,
+  ] = useState(false);
 
   const [error, setError] =
     useState("");
@@ -79,6 +81,21 @@ export default function AdminSavingsPanel({
     bankingTargets,
     setBankingTargets,
   ] = useState([]);
+
+  const [
+    availableEmployees,
+    setAvailableEmployees,
+  ] = useState([]);
+
+  const [
+    selectedBankingEmployeeId,
+    setSelectedBankingEmployeeId,
+  ] = useState("");
+
+  const [
+    addingBankingEmployee,
+    setAddingBankingEmployee,
+  ] = useState(false);
 
   const [
     bankingWeeks,
@@ -401,8 +418,49 @@ export default function AdminSavingsPanel({
                   .targets
               : [];
 
+          const loadedAvailableEmployees =
+            Array.isArray(
+              bankingResult
+                ?.available_employees
+            )
+              ? bankingResult
+                  .available_employees
+              : [];
+
           setBankingTargets(
             loadedTargets
+          );
+
+          setAvailableEmployees(
+            loadedAvailableEmployees
+          );
+
+          setSelectedBankingEmployeeId(
+            (
+              previous
+            ) => {
+              const stillAvailable =
+                loadedAvailableEmployees.some(
+                  (
+                    employee
+                  ) =>
+                    String(
+                      employee.employee_id
+                    ) ===
+                    String(
+                      previous
+                    )
+                );
+
+              if (
+                previous &&
+                stillAvailable
+              ) {
+                return previous;
+              }
+
+              return "";
+            }
           );
 
           setBankingWeeks(
@@ -802,6 +860,94 @@ export default function AdminSavingsPanel({
 
     setError("");
     setSuccess("");
+  }
+  // ==================================================
+  // ADD EMPLOYEE TO BANKING
+  // ==================================================
+
+  async function addBankingEmployee() {
+    if (
+      addingBankingEmployee ||
+      !selectedBankingEmployeeId
+    ) {
+      return;
+    }
+
+    const employee =
+      availableEmployees.find(
+        (
+          item
+        ) =>
+          String(
+            item.employee_id
+          ) ===
+          String(
+            selectedBankingEmployeeId
+          )
+      );
+
+    if (!employee) {
+      setError(
+        "Select an employee first."
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "ADD EMPLOYEE TO BANKING\n\n" +
+          `Employee: ${employee.employee_name}\n` +
+          `Role: ${employee.role || "-"}\n\n` +
+          "Banking will follow this employee even when they work at different shops."
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setAddingBankingEmployee(
+        true
+      );
+
+      setError("");
+      setSuccess("");
+
+      await callRpc(
+        "tl_admin_add_banking_employee",
+        {
+          p_employee_id:
+            employee.employee_id,
+        }
+      );
+
+      setSuccess(
+        `${employee.employee_name} was added to Employee Banking.`
+      );
+
+      setSelectedBankingEmployeeId(
+        ""
+      );
+
+      await loadData(
+        true
+      );
+    } catch (err) {
+      console.error(
+        "ADD BANKING EMPLOYEE ERROR:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Unable to add employee to Banking."
+      );
+    } finally {
+      setAddingBankingEmployee(
+        false
+      );
+    }
   }
 
   // ==================================================
@@ -1331,7 +1477,99 @@ export default function AdminSavingsPanel({
             bankingRuleStyle
           }
         >
-          Banking belongs to the employee, not the shop. Relief and mobile cashiers therefore keep the same Banking balance and weekly target when working at different shops.
+          Banking belongs to the employee, not the shop. Relief and mobile cashiers keep the same Banking balance and weekly target when working at different shops.
+        </div>
+
+        {/* ADD EMPLOYEE */}
+
+        <div
+          style={
+            addEmployeePanelStyle
+          }
+        >
+          <div>
+            <label
+              style={
+                labelStyle
+              }
+            >
+              ADD EMPLOYEE TO BANKING
+            </label>
+
+            <select
+              value={
+                selectedBankingEmployeeId
+              }
+              onChange={(
+                event
+              ) =>
+                setSelectedBankingEmployeeId(
+                  event.target.value
+                )
+              }
+              disabled={
+                addingBankingEmployee ||
+                availableEmployees.length ===
+                  0
+              }
+              style={
+                inputStyle
+              }
+            >
+              <option
+                value=""
+              >
+                {availableEmployees.length ===
+                0
+                  ? "No employees available to add"
+                  : "Select employee"}
+              </option>
+
+              {availableEmployees.map(
+                (
+                  employee
+                ) => (
+                  <option
+                    key={
+                      employee.employee_id
+                    }
+                    value={
+                      employee.employee_id
+                    }
+                  >
+                    {employee.employee_name}
+                    {employee.role
+                      ? ` (${employee.role})`
+                      : ""}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={
+              addBankingEmployee
+            }
+            disabled={
+              addingBankingEmployee ||
+              !selectedBankingEmployeeId
+            }
+            style={{
+              ...addEmployeeButtonStyle,
+
+              opacity:
+                addingBankingEmployee ||
+                !selectedBankingEmployeeId
+                  ? 0.6
+                  : 1,
+            }}
+          >
+            {addingBankingEmployee
+              ? "Adding..."
+              : "Add Employee"}
+          </button>
         </div>
 
         {bankingTargets.length ===
@@ -1341,7 +1579,7 @@ export default function AdminSavingsPanel({
               emptyStyle
             }
           >
-            No cashier profiles found.
+            No employees have been added to Banking yet.
           </div>
         ) : (
           <div
@@ -1407,6 +1645,10 @@ export default function AdminSavingsPanel({
                           employee
                             .weekly_target
                         )}
+
+                        {employee.role &&
+                          ` • ${employee.role}`}
+
                         {!employee.is_active &&
                           " • INACTIVE"}
                       </div>
@@ -1522,7 +1764,7 @@ export default function AdminSavingsPanel({
             bankingPrivacyStyle
           }
         >
-          Weekly Banking targets are Admin controls. The cashier Savings screen continues to show only the employee's saved/available Banking money, not the target.
+          Weekly Banking targets are Admin controls. The cashier Savings screen shows only the employee's saved and available Banking money, not the target.
         </div>
       </div>
 
@@ -1964,8 +2206,7 @@ export default function AdminSavingsPanel({
           </div>
         )}
       </div>
-
-      {/* =========================================== */}
+{/* =========================================== */}
       {/* SAVINGS FILTERS */}
       {/* =========================================== */}
 
@@ -3426,6 +3667,55 @@ const bankingRuleStyle = {
     "center",
 };
 
+const addEmployeePanelStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "1fr 160px",
+
+  gap:
+    "10px",
+
+  alignItems:
+    "end",
+
+  padding:
+    "12px",
+
+  backgroundColor:
+    "#f0fdfa",
+
+  borderBottom:
+    "1px solid #99f6e4",
+};
+
+const addEmployeeButtonStyle = {
+  border:
+    "none",
+
+  borderRadius:
+    "4px",
+
+  padding:
+    "9px",
+
+  backgroundColor:
+    "#0f766e",
+
+  color:
+    "white",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
+};
+
 const bankingPrivacyStyle = {
   padding:
     "9px",
@@ -3469,6 +3759,9 @@ const bankingCloseNoticeStyle = {
 const targetListStyle = {
   display:
     "grid",
+
+  overflowX:
+    "auto",
 };
 
 const targetRowStyle = {
@@ -3762,7 +4055,8 @@ const tableCellStyle = {
     "9px 8px",
 
   borderBottom:
-  "1px solid #e2e8f0",
+    "1px solid #e2e8f0",
+
   color:
     "#334155",
 
