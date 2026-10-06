@@ -31,6 +31,13 @@ export default function AdminSavingsPanel({
   const [error, setError] =
     useState("");
 
+  const [success, setSuccess] =
+    useState("");
+
+  // ==================================================
+  // SAVINGS
+  // ==================================================
+
   const [summary, setSummary] =
     useState({
       pending_count: 0,
@@ -49,8 +56,68 @@ export default function AdminSavingsPanel({
   const [ledger, setLedger] =
     useState([]);
 
-  const [shopFilter, setShopFilter] =
-    useState("ALL");
+  // ==================================================
+  // BANKING
+  // ==================================================
+
+  const [
+    bankingSummary,
+    setBankingSummary,
+  ] = useState({
+    current_week_target: 0,
+    current_week_paid: 0,
+    current_week_remaining: 0,
+    missed_weeks: 0,
+  });
+
+  const [
+    currentWeekStart,
+    setCurrentWeekStart,
+  ] = useState("");
+
+  const [
+    bankingTargets,
+    setBankingTargets,
+  ] = useState([]);
+
+  const [
+    bankingWeeks,
+    setBankingWeeks,
+  ] = useState([]);
+
+  const [
+    targetHistory,
+    setTargetHistory,
+  ] = useState([]);
+
+  const [
+    targetForms,
+    setTargetForms,
+  ] = useState({});
+
+  const [
+    closeReasons,
+    setCloseReasons,
+  ] = useState({});
+
+  const [
+    savingTargetId,
+    setSavingTargetId,
+  ] = useState(null);
+
+  const [
+    closingWeekKey,
+    setClosingWeekKey,
+  ] = useState(null);
+
+  // ==================================================
+  // FILTERS
+  // ==================================================
+
+  const [
+    shopFilter,
+    setShopFilter,
+  ] = useState("ALL");
 
   const [
     categoryFilter,
@@ -60,6 +127,11 @@ export default function AdminSavingsPanel({
   const [
     statusFilter,
     setStatusFilter,
+  ] = useState("ALL");
+
+  const [
+    bankingStatusFilter,
+    setBankingStatusFilter,
   ] = useState("ALL");
 
   // ==================================================
@@ -88,7 +160,71 @@ export default function AdminSavingsPanel({
   // RPC
   // ==================================================
 
-  const loadSavings =
+  const callRpc =
+    useCallback(
+      async (
+        functionName,
+        body = {}
+      ) => {
+        if (
+          !supabaseUrl ||
+          !supabaseAnonKey ||
+          !accessToken
+        ) {
+          throw new Error(
+            "Admin session is incomplete."
+          );
+        }
+
+        const response =
+          await fetch(
+            `${supabaseUrl}/rest/v1/rpc/${functionName}`,
+            {
+              method:
+                "POST",
+
+              headers:
+                authHeaders(),
+
+              body:
+                JSON.stringify(
+                  body
+                ),
+
+              cache:
+                "no-store",
+            }
+          );
+
+        const result =
+          await safeJson(
+            response
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              result?.hint ||
+              `Unable to run ${functionName}.`
+          );
+        }
+
+        return result;
+      },
+      [
+        supabaseUrl,
+        supabaseAnonKey,
+        accessToken,
+        authHeaders,
+      ]
+    );
+
+  // ==================================================
+  // LOAD ALL
+  // ==================================================
+
+  const loadData =
     useCallback(
       async (
         silent = false
@@ -98,7 +234,10 @@ export default function AdminSavingsPanel({
           !supabaseAnonKey ||
           !accessToken
         ) {
-          setLoading(false);
+          setLoading(
+            false
+          );
+
           return;
         }
 
@@ -111,45 +250,36 @@ export default function AdminSavingsPanel({
 
           setError("");
 
-          const response =
-            await fetch(
-              `${supabaseUrl}/rest/v1/rpc/tl_admin_savings_activity_snapshot`,
-              {
-                method:
-                  "POST",
+          const [
+            savingsResult,
+            bankingResult,
+          ] =
+            await Promise.all([
+              callRpc(
+                "tl_admin_savings_activity_snapshot",
+                {
+                  p_limit:
+                    200,
+                }
+              ),
 
-                headers:
-                  authHeaders(),
+              callRpc(
+                "tl_admin_banking_weekly_snapshot",
+                {
+                  p_weeks_back:
+                    12,
+                }
+              ),
+            ]);
 
-                body:
-                  JSON.stringify({
-                    p_limit:
-                      200,
-                  }),
-
-                cache:
-                  "no-store",
-              }
-            );
-
-          const result =
-            await safeJson(
-              response
-            );
-
-          if (!response.ok) {
-            throw new Error(
-              result?.message ||
-                result?.details ||
-                result?.hint ||
-                "Unable to load Savings activity."
-            );
-          }
+          // ========================================
+          // SAVINGS
+          // ========================================
 
           setSummary({
             pending_count:
               Number(
-                result
+                savingsResult
                   ?.summary
                   ?.pending_count ||
                   0
@@ -157,7 +287,7 @@ export default function AdminSavingsPanel({
 
             pending_amount:
               Number(
-                result
+                savingsResult
                   ?.summary
                   ?.pending_amount ||
                   0
@@ -165,7 +295,7 @@ export default function AdminSavingsPanel({
 
             confirmed_count:
               Number(
-                result
+                savingsResult
                   ?.summary
                   ?.confirmed_count ||
                   0
@@ -173,7 +303,7 @@ export default function AdminSavingsPanel({
 
             confirmed_amount:
               Number(
-                result
+                savingsResult
                   ?.summary
                   ?.confirmed_amount ||
                   0
@@ -181,7 +311,7 @@ export default function AdminSavingsPanel({
 
             rejected_count:
               Number(
-                result
+                savingsResult
                   ?.summary
                   ?.rejected_count ||
                   0
@@ -190,39 +320,172 @@ export default function AdminSavingsPanel({
 
           setBalances(
             Array.isArray(
-              result?.balances
+              savingsResult
+                ?.balances
             )
-              ? result.balances
+              ? savingsResult
+                  .balances
               : []
           );
 
           setPayments(
             Array.isArray(
-              result?.payments
+              savingsResult
+                ?.payments
             )
-              ? result.payments
+              ? savingsResult
+                  .payments
               : []
           );
 
           setLedger(
             Array.isArray(
-              result?.ledger
+              savingsResult
+                ?.ledger
             )
-              ? result.ledger
+              ? savingsResult
+                  .ledger
               : []
+          );
+
+          // ========================================
+          // BANKING
+          // ========================================
+
+          setCurrentWeekStart(
+            bankingResult
+              ?.current_week_start ||
+              ""
+          );
+
+          setBankingSummary({
+            current_week_target:
+              Number(
+                bankingResult
+                  ?.summary
+                  ?.current_week_target ||
+                  0
+              ),
+
+            current_week_paid:
+              Number(
+                bankingResult
+                  ?.summary
+                  ?.current_week_paid ||
+                  0
+              ),
+
+            current_week_remaining:
+              Number(
+                bankingResult
+                  ?.summary
+                  ?.current_week_remaining ||
+                  0
+              ),
+
+            missed_weeks:
+              Number(
+                bankingResult
+                  ?.summary
+                  ?.missed_weeks ||
+                  0
+              ),
+          });
+
+          const loadedTargets =
+            Array.isArray(
+              bankingResult
+                ?.targets
+            )
+              ? bankingResult
+                  .targets
+              : [];
+
+          setBankingTargets(
+            loadedTargets
+          );
+
+          setBankingWeeks(
+            Array.isArray(
+              bankingResult
+                ?.weeks
+            )
+              ? bankingResult
+                  .weeks
+              : []
+          );
+
+          setTargetHistory(
+            Array.isArray(
+              bankingResult
+                ?.target_history
+            )
+              ? bankingResult
+                  .target_history
+              : []
+          );
+
+          // Keep anything Admin is currently typing.
+          setTargetForms(
+            (
+              previous
+            ) => {
+              const next = {
+                ...previous,
+              };
+
+              for (
+                const employee
+                of loadedTargets
+              ) {
+                const existing =
+                  next[
+                    employee
+                      .employee_id
+                  ];
+
+                if (
+                  !existing ||
+                  existing.dirty !==
+                    true
+                ) {
+                  next[
+                    employee
+                      .employee_id
+                  ] = {
+                    amount:
+                      String(
+                        employee
+                          .weekly_target ??
+                          0
+                      ),
+
+                    reason:
+                      "",
+
+                    dirty:
+                      false,
+                  };
+                }
+              }
+
+              return next;
+            }
           );
         } catch (err) {
           console.error(
-            "ADMIN SAVINGS ERROR:",
+            "ADMIN SAVINGS / BANKING ERROR:",
             err
           );
 
           setError(
             err?.message ||
-              "Unable to load Savings control."
+              "Unable to load Savings / Banking control."
           );
         } finally {
-          setLoading(false);
+          setLoading(
+            false
+          );
 
           if (!silent) {
             setRefreshing(
@@ -235,7 +498,7 @@ export default function AdminSavingsPanel({
         supabaseUrl,
         supabaseAnonKey,
         accessToken,
-        authHeaders,
+        callRpc,
       ]
     );
 
@@ -244,12 +507,12 @@ export default function AdminSavingsPanel({
   // ==================================================
 
   useEffect(() => {
-    loadSavings();
+    loadData();
 
     const timer =
       setInterval(
         () => {
-          loadSavings(
+          loadData(
             true
           );
         },
@@ -262,11 +525,11 @@ export default function AdminSavingsPanel({
       );
     };
   }, [
-    loadSavings,
+    loadData,
   ]);
 
   // ==================================================
-  // FILTER OPTIONS
+  // SHOP OPTIONS
   // ==================================================
 
   const shopOptions =
@@ -317,7 +580,7 @@ export default function AdminSavingsPanel({
     );
 
   // ==================================================
-  // FILTERED BALANCES
+  // FILTERED SAVINGS
   // ==================================================
 
   const filteredBalances =
@@ -358,10 +621,6 @@ export default function AdminSavingsPanel({
         categoryFilter,
       ]
     );
-
-  // ==================================================
-  // FILTERED PAYMENTS
-  // ==================================================
 
   const filteredPayments =
     useMemo(
@@ -412,10 +671,6 @@ export default function AdminSavingsPanel({
       ]
     );
 
-  // ==================================================
-  // FILTERED LEDGER
-  // ==================================================
-
   const filteredLedger =
     useMemo(
       () =>
@@ -456,7 +711,41 @@ export default function AdminSavingsPanel({
     );
 
   // ==================================================
-  // TOTAL CURRENT SAVINGS
+  // FILTERED BANKING WEEKS
+  // ==================================================
+
+  const filteredBankingWeeks =
+    useMemo(
+      () =>
+        bankingWeeks.filter(
+          (
+            item
+          ) => {
+            if (
+              bankingStatusFilter ===
+              "ALL"
+            ) {
+              return true;
+            }
+
+            return (
+              String(
+                item.display_status ||
+                  item.status ||
+                  ""
+              ).toUpperCase() ===
+              bankingStatusFilter
+            );
+          }
+        ),
+      [
+        bankingWeeks,
+        bankingStatusFilter,
+      ]
+    );
+
+  // ==================================================
+  // TOTAL SAVINGS
   // ==================================================
 
   const totalCurrentSavings =
@@ -480,7 +769,327 @@ export default function AdminSavingsPanel({
     );
 
   // ==================================================
-  // DISPLAY
+  // UPDATE TARGET FORM
+  // ==================================================
+
+  function updateTargetForm(
+    employeeId,
+    field,
+    value
+  ) {
+    setTargetForms(
+      (
+        previous
+      ) => ({
+        ...previous,
+
+        [employeeId]: {
+          ...(
+            previous[
+              employeeId
+            ] ||
+            {}
+          ),
+
+          [field]:
+            value,
+
+          dirty:
+            true,
+        },
+      })
+    );
+
+    setError("");
+    setSuccess("");
+  }
+
+  // ==================================================
+  // SAVE WEEKLY TARGET
+  // ==================================================
+
+  async function saveBankingTarget(
+    employee
+  ) {
+    if (
+      savingTargetId
+    ) {
+      return;
+    }
+
+    const form =
+      targetForms[
+        employee.employee_id
+      ] ||
+      {};
+
+    const amount =
+      Number(
+        form.amount
+      );
+
+    const oldAmount =
+      Number(
+        employee.weekly_target ||
+          0
+      );
+
+    const reason =
+      String(
+        form.reason ||
+          ""
+      ).trim();
+
+    if (
+      !Number.isFinite(
+        amount
+      ) ||
+      amount < 0
+    ) {
+      setError(
+        "Enter a valid weekly Banking target."
+      );
+
+      return;
+    }
+
+    if (
+      roundMoney(
+        amount
+      ) ===
+      roundMoney(
+        oldAmount
+      )
+    ) {
+      setError(
+        `The Banking target for ${employee.employee_name} has not changed.`
+      );
+
+      return;
+    }
+
+    if (
+      reason.length <
+      3
+    ) {
+      setError(
+        `Enter a reason for changing ${employee.employee_name}'s weekly Banking target.`
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "CHANGE WEEKLY BANKING TARGET\n\n" +
+          `Employee: ${employee.employee_name}\n` +
+          `Current Target: KES ${money(
+            oldAmount
+          )}\n` +
+          `New Target: KES ${money(
+            amount
+          )}\n` +
+          `Reason: ${reason}\n\n` +
+          "This changes the Banking target only. No money will move."
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setSavingTargetId(
+        employee.employee_id
+      );
+
+      setError("");
+      setSuccess("");
+
+      await callRpc(
+        "tl_admin_set_employee_banking_target",
+        {
+          p_employee_id:
+            employee.employee_id,
+
+          p_target_amount:
+            roundMoney(
+              amount
+            ),
+
+          p_reason:
+            reason,
+        }
+      );
+
+      setTargetForms(
+        (
+          previous
+        ) => ({
+          ...previous,
+
+          [employee.employee_id]:
+            {
+              amount:
+                String(
+                  roundMoney(
+                    amount
+                  )
+                ),
+
+              reason:
+                "",
+
+              dirty:
+                false,
+            },
+        })
+      );
+
+      setSuccess(
+        `${employee.employee_name}'s weekly Banking target is now KES ${money(
+          amount
+        )}.`
+      );
+
+      await loadData(
+        true
+      );
+    } catch (err) {
+      console.error(
+        "SAVE BANKING TARGET ERROR:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Unable to save Banking target."
+      );
+    } finally {
+      setSavingTargetId(
+        null
+      );
+    }
+  }
+
+  // ==================================================
+  // CLOSE MISSED WEEK
+  // ==================================================
+
+  async function closeBankingWeek(
+    week
+  ) {
+    const key =
+      bankingWeekKey(
+        week
+      );
+
+    if (
+      closingWeekKey
+    ) {
+      return;
+    }
+
+    const reason =
+      String(
+        closeReasons[
+          key
+        ] ||
+          ""
+      ).trim();
+
+    if (
+      reason.length <
+      3
+    ) {
+      setError(
+        `Enter a reason for closing ${week.employee_name}'s missed Banking week.`
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "CLOSE MISSED BANKING WEEK\n\n" +
+          `Employee: ${week.employee_name}\n` +
+          `Week: ${week.week_start} to ${week.week_end}\n` +
+          `Target: KES ${money(
+            week.target_amount
+          )}\n` +
+          `Actually Banked: KES ${money(
+            week.confirmed_paid_amount
+          )}\n` +
+          `Remaining: KES ${money(
+            week.remaining_amount
+          )}\n` +
+          `Reason: ${reason}\n\n` +
+          "This closes the weekly obligation only. " +
+          "Savings, Expenses, Float and balances will NOT change."
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setClosingWeekKey(
+        key
+      );
+
+      setError("");
+      setSuccess("");
+
+      await callRpc(
+        "tl_admin_close_banking_week",
+        {
+          p_employee_id:
+            week.employee_id,
+
+          p_week_start:
+            week.week_start,
+
+          p_reason:
+            reason,
+        }
+      );
+
+      setCloseReasons(
+        (
+          previous
+        ) => ({
+          ...previous,
+
+          [key]:
+            "",
+        })
+      );
+
+      setSuccess(
+        `${week.employee_name}'s Banking week ${week.week_start} was administratively closed. No money was moved.`
+      );
+
+      await loadData(
+        true
+      );
+    } catch (err) {
+      console.error(
+        "CLOSE BANKING WEEK ERROR:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Unable to close Banking week."
+      );
+    } finally {
+      setClosingWeekKey(
+        null
+      );
+    }
+  }
+
+  // ==================================================
+  // LOADING
   // ==================================================
 
   if (
@@ -497,13 +1106,19 @@ export default function AdminSavingsPanel({
     );
   }
 
+  // ==================================================
+  // DISPLAY
+  // ==================================================
+
   return (
     <section
       style={
         wrapperStyle
       }
     >
+      {/* =========================================== */}
       {/* HEADER */}
+      {/* =========================================== */}
 
       <div
         style={
@@ -524,14 +1139,14 @@ export default function AdminSavingsPanel({
               subtitleStyle
             }
           >
-            Live balances, payments and full audit trail.
+            Live Savings balances, payments, employee Banking targets and permanent audit trail.
           </div>
         </div>
 
         <button
           type="button"
           onClick={() =>
-            loadSavings()
+            loadData()
           }
           disabled={
             refreshing
@@ -546,7 +1161,9 @@ export default function AdminSavingsPanel({
         </button>
       </div>
 
-      {/* ERROR */}
+      {/* =========================================== */}
+      {/* MESSAGES */}
+      {/* =========================================== */}
 
       {error && (
         <div
@@ -558,7 +1175,19 @@ export default function AdminSavingsPanel({
         </div>
       )}
 
-      {/* SUMMARY */}
+      {success && (
+        <div
+          style={
+            successStyle
+          }
+        >
+          {success}
+        </div>
+      )}
+
+      {/* =========================================== */}
+      {/* SAVINGS SUMMARY */}
+      {/* =========================================== */}
 
       <div
         style={
@@ -608,7 +1237,737 @@ export default function AdminSavingsPanel({
         />
       </div>
 
-      {/* FILTERS */}
+      {/* =========================================== */}
+      {/* BANKING WEEK SUMMARY */}
+      {/* =========================================== */}
+
+      <div
+        style={
+          bankingSummaryPanelStyle
+        }
+      >
+        <div
+          style={
+            bankingSummaryHeaderStyle
+          }
+        >
+          <div>
+            EMPLOYEE WEEKLY BANKING
+          </div>
+
+          <small>
+            Current week starts{" "}
+            {formatDate(
+              currentWeekStart
+            )}
+          </small>
+        </div>
+
+        <div
+          style={
+            summaryGridStyle
+          }
+        >
+          <SummaryCard
+            label="CURRENT WEEK TARGET"
+            value={`KES ${money(
+              bankingSummary
+                .current_week_target
+            )}`}
+          />
+
+          <SummaryCard
+            label="CONFIRMED BANKED"
+            value={`KES ${money(
+              bankingSummary
+                .current_week_paid
+            )}`}
+            success
+          />
+
+          <SummaryCard
+            label="REMAINING THIS WEEK"
+            value={`KES ${money(
+              bankingSummary
+                .current_week_remaining
+            )}`}
+            warning
+          />
+
+          <SummaryCard
+            label="MISSED / PARTIAL PAST WEEKS"
+            value={
+              bankingSummary
+                .missed_weeks
+            }
+            danger={
+              bankingSummary
+                .missed_weeks >
+              0
+            }
+          />
+        </div>
+      </div>
+
+      {/* =========================================== */}
+      {/* EMPLOYEE TARGET MANAGEMENT */}
+      {/* =========================================== */}
+
+      <div
+        style={
+          bankingPanelStyle
+        }
+      >
+        <div
+          style={
+            bankingTitleStyle
+          }
+        >
+          EMPLOYEE WEEKLY BANKING TARGETS
+        </div>
+
+        <div
+          style={
+            bankingRuleStyle
+          }
+        >
+          Banking belongs to the employee, not the shop. Relief and mobile cashiers therefore keep the same Banking balance and weekly target when working at different shops.
+        </div>
+
+        {bankingTargets.length ===
+        0 ? (
+          <div
+            style={
+              emptyStyle
+            }
+          >
+            No cashier profiles found.
+          </div>
+        ) : (
+          <div
+            style={
+              targetListStyle
+            }
+          >
+            {bankingTargets.map(
+              (
+                employee
+              ) => {
+                const form =
+                  targetForms[
+                    employee
+                      .employee_id
+                  ] ||
+                  {
+                    amount:
+                      String(
+                        employee
+                          .weekly_target ||
+                          0
+                      ),
+
+                    reason:
+                      "",
+                  };
+
+                const busy =
+                  savingTargetId ===
+                  employee
+                    .employee_id;
+
+                return (
+                  <div
+                    key={
+                      employee
+                        .employee_id
+                    }
+                    style={
+                      targetRowStyle
+                    }
+                  >
+                    <div>
+                      <div
+                        style={
+                          employeeNameStyle
+                        }
+                      >
+                        {
+                          employee
+                            .employee_name
+                        }
+                      </div>
+
+                      <div
+                        style={
+                          employeeMetaStyle
+                        }
+                      >
+                        Current target: KES{" "}
+                        {money(
+                          employee
+                            .weekly_target
+                        )}
+                        {!employee.is_active &&
+                          " • INACTIVE"}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        NEW WEEKLY TARGET
+                      </label>
+
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={
+                          form.amount ??
+                          ""
+                        }
+                        disabled={
+                          busy
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          updateTargetForm(
+                            employee
+                              .employee_id,
+                            "amount",
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        style={
+                          inputStyle
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        style={
+                          labelStyle
+                        }
+                      >
+                        CHANGE REASON
+                      </label>
+
+                      <input
+                        type="text"
+                        value={
+                          form.reason ||
+                          ""
+                        }
+                        disabled={
+                          busy
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          updateTargetForm(
+                            employee
+                              .employee_id,
+                            "reason",
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        placeholder="Example: Weekly target increased"
+                        style={
+                          inputStyle
+                        }
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={
+                        busy
+                      }
+                      onClick={() =>
+                        saveBankingTarget(
+                          employee
+                        )
+                      }
+                      style={{
+                        ...saveTargetButtonStyle,
+
+                        opacity:
+                          busy
+                            ? 0.6
+                            : 1,
+                      }}
+                    >
+                      {busy
+                        ? "Saving..."
+                        : "Save Target"}
+                    </button>
+                  </div>
+                );
+              }
+            )}
+          </div>
+        )}
+
+        <div
+          style={
+            bankingPrivacyStyle
+          }
+        >
+          Weekly Banking targets are Admin controls. The cashier Savings screen continues to show only the employee's saved/available Banking money, not the target.
+        </div>
+      </div>
+
+      {/* =========================================== */}
+      {/* WEEKLY BANKING HISTORY */}
+      {/* =========================================== */}
+
+      <div
+        style={
+          bankingPanelStyle
+        }
+      >
+        <div
+          style={
+            bankingTitleRowStyle
+          }
+        >
+          <div
+            style={
+              bankingTitleStyleNoBg
+            }
+          >
+            WEEKLY BANKING STATUS
+          </div>
+
+          <select
+            value={
+              bankingStatusFilter
+            }
+            onChange={(
+              event
+            ) =>
+              setBankingStatusFilter(
+                event.target.value
+              )
+            }
+            style={
+              smallSelectStyle
+            }
+          >
+            <option value="ALL">
+              All Statuses
+            </option>
+
+            <option value="OPEN">
+              Open
+            </option>
+
+            <option value="PARTIAL">
+              Partial
+            </option>
+
+            <option value="TARGET_MET">
+              Target Met
+            </option>
+
+            <option value="ABOVE_TARGET">
+              Above Target
+            </option>
+
+            <option value="MISSED">
+              Missed
+            </option>
+
+            <option value="ADMIN_CLOSED">
+              Admin Closed
+            </option>
+          </select>
+        </div>
+
+        {filteredBankingWeeks.length ===
+        0 ? (
+          <div
+            style={
+              emptyStyle
+            }
+          >
+            No Banking weeks match this filter.
+          </div>
+        ) : (
+          <div
+            style={
+              tableWrapStyle
+            }
+          >
+            <table
+              style={{
+                ...tableStyle,
+
+                minWidth:
+                  "1200px",
+              }}
+            >
+              <thead>
+                <tr>
+                  <TableHead>
+                    Employee
+                  </TableHead>
+
+                  <TableHead>
+                    Week
+                  </TableHead>
+
+                  <TableHead right>
+                    Target
+                  </TableHead>
+
+                  <TableHead right>
+                    Confirmed
+                  </TableHead>
+
+                  <TableHead right>
+                    Remaining
+                  </TableHead>
+
+                  <TableHead>
+                    Status
+                  </TableHead>
+
+                  <TableHead>
+                    Admin Close Reason
+                  </TableHead>
+
+                  <TableHead>
+                    Action
+                  </TableHead>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredBankingWeeks.map(
+                  (
+                    week
+                  ) => {
+                    const key =
+                      bankingWeekKey(
+                        week
+                      );
+
+                    const status =
+                      String(
+                        week.display_status ||
+                          week.status ||
+                          ""
+                      ).toUpperCase();
+
+                    const mayClose =
+                      Boolean(
+                        week.is_missed
+                      ) &&
+                      status !==
+                        "ADMIN_CLOSED";
+
+                    const busy =
+                      closingWeekKey ===
+                      key;
+
+                    return (
+                      <tr
+                        key={
+                          key
+                        }
+                      >
+                        <TableCell>
+                          <strong>
+                            {
+                              week.employee_name
+                            }
+                          </strong>
+                        </TableCell>
+
+                        <TableCell>
+                          {formatDate(
+                            week.week_start
+                          )}
+                          {" → "}
+                          {formatDate(
+                            week.week_end
+                          )}
+
+                          {week.is_current_week && (
+                            <div
+                              style={
+                                currentWeekTextStyle
+                              }
+                            >
+                              CURRENT WEEK
+                            </div>
+                          )}
+                        </TableCell>
+
+                        <TableCell
+                          right
+                        >
+                          KES{" "}
+                          {money(
+                            week.target_amount
+                          )}
+                        </TableCell>
+
+                        <TableCell
+                          right
+                        >
+                          KES{" "}
+                          {money(
+                            week.confirmed_paid_amount
+                          )}
+                        </TableCell>
+
+                        <TableCell
+                          right
+                        >
+                          KES{" "}
+                          {money(
+                            week.remaining_amount
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          <BankingStatusBadge
+                            status={
+                              status
+                            }
+                          />
+                        </TableCell>
+
+                        <TableCell>
+                          {status ===
+                          "ADMIN_CLOSED" ? (
+                            <div>
+                              {
+                                week.admin_close_reason ||
+                                "-"
+                              }
+
+                              <div
+                                style={
+                                  smallMutedStyle
+                                }
+                              >
+                                {formatDateTime(
+                                  week.closed_at
+                                )}
+                              </div>
+                            </div>
+                          ) : mayClose ? (
+                            <input
+                              type="text"
+                              value={
+                                closeReasons[
+                                  key
+                                ] ||
+                                ""
+                              }
+                              disabled={
+                                busy
+                              }
+                              onChange={(
+                                event
+                              ) =>
+                                setCloseReasons(
+                                  (
+                                    previous
+                                  ) => ({
+                                    ...previous,
+
+                                    [key]:
+                                      event
+                                        .target
+                                        .value,
+                                  })
+                                )
+                              }
+                              placeholder="Reason, e.g. insufficient money"
+                              style={
+                                inputStyle
+                              }
+                            />
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          {mayClose ? (
+                            <button
+                              type="button"
+                              disabled={
+                                busy
+                              }
+                              onClick={() =>
+                                closeBankingWeek(
+                                  week
+                                )
+                              }
+                              style={{
+                                ...closeWeekButtonStyle,
+
+                                opacity:
+                                  busy
+                                    ? 0.6
+                                    : 1,
+                              }}
+                            >
+                              {busy
+                                ? "Closing..."
+                                : "Close Week"}
+                            </button>
+                          ) : (
+                            <span
+                              style={
+                                smallMutedStyle
+                              }
+                            >
+                              No action
+                            </span>
+                          )}
+                        </TableCell>
+                      </tr>
+                    );
+                  }
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div
+          style={
+            bankingCloseNoticeStyle
+          }
+        >
+          Closing a missed Banking week is administrative only. It never changes Savings, Expenses, Added Float or Closing Balance.
+        </div>
+      </div>
+
+      {/* =========================================== */}
+      {/* BANKING TARGET HISTORY */}
+      {/* =========================================== */}
+
+      <div
+        style={
+          panelStyle
+        }
+      >
+        <div
+          style={
+            historyTitleStyle
+          }
+        >
+          BANKING TARGET CHANGE HISTORY
+        </div>
+
+        {targetHistory.length ===
+        0 ? (
+          <div
+            style={
+              emptyStyle
+            }
+          >
+            No Banking target changes recorded yet.
+          </div>
+        ) : (
+          <div
+            style={
+              tableWrapStyle
+            }
+          >
+            <table
+              style={
+                tableStyle
+              }
+            >
+              <thead>
+                <tr>
+                  <TableHead>
+                    Date / Time
+                  </TableHead>
+
+                  <TableHead>
+                    Employee
+                  </TableHead>
+
+                  <TableHead right>
+                    Weekly Target
+                  </TableHead>
+
+                  <TableHead>
+                    Reason
+                  </TableHead>
+                </tr>
+              </thead>
+
+              <tbody>
+                {targetHistory
+                  .slice(
+                    0,
+                    100
+                  )
+                  .map(
+                    (
+                      item
+                    ) => (
+                      <tr
+                        key={
+                          item.id
+                        }
+                      >
+                        <TableCell>
+                          {formatDateTime(
+                            item.effective_at
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          {
+                            item.employee_name
+                          }
+                        </TableCell>
+
+                        <TableCell
+                          right
+                        >
+                          KES{" "}
+                          {money(
+                            item.target_amount
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          {item.reason ||
+                            "-"}
+                        </TableCell>
+                      </tr>
+                    )
+                  )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* =========================================== */}
+      {/* SAVINGS FILTERS */}
+      {/* =========================================== */}
 
       <div
         style={
@@ -770,7 +2129,9 @@ export default function AdminSavingsPanel({
         </div>
       </div>
 
-      {/* CURRENT BALANCES */}
+      {/* =========================================== */}
+      {/* CURRENT SAVINGS BALANCES */}
+      {/* =========================================== */}
 
       <div
         style={
@@ -892,7 +2253,9 @@ export default function AdminSavingsPanel({
         )}
       </div>
 
+      {/* =========================================== */}
       {/* PAYMENT ACTIVITY */}
+      {/* =========================================== */}
 
       <div
         style={
@@ -1079,7 +2442,9 @@ export default function AdminSavingsPanel({
         )}
       </div>
 
-      {/* LEDGER */}
+      {/* =========================================== */}
+      {/* SAVINGS LEDGER */}
+      {/* =========================================== */}
 
       <div
         style={
@@ -1099,8 +2464,7 @@ export default function AdminSavingsPanel({
             ledgerNoticeStyle
           }
         >
-          This is the permanent money-movement record. SAVE increases
-          Savings, PAYMENT and WITHDRAWAL decrease Savings.
+          Permanent money-movement record. SAVE increases Savings. PAYMENT and WITHDRAWAL decrease Savings.
         </div>
 
         {filteredLedger.length ===
@@ -1253,8 +2617,7 @@ export default function AdminSavingsPanel({
           safetyNoticeStyle
         }
       >
-        Savings balances are controlled by the Savings ledger. Admin
-        cannot directly edit balances from this screen.
+        Savings balances are controlled by the ledger. Weekly Banking closure is administrative only and cannot alter financial balances.
       </div>
     </section>
   );
@@ -1463,6 +2826,81 @@ function StatusBadge({
   );
 }
 
+function BankingStatusBadge({
+  status,
+}) {
+  const value =
+    String(
+      status ||
+        ""
+    ).toUpperCase();
+
+  let background =
+    "#e2e8f0";
+
+  let color =
+    "#334155";
+
+  if (
+    value ===
+      "TARGET_MET" ||
+    value ===
+      "ABOVE_TARGET"
+  ) {
+    background =
+      "#dcfce7";
+
+    color =
+      "#166534";
+  } else if (
+    value ===
+      "OPEN" ||
+    value ===
+      "PARTIAL"
+  ) {
+    background =
+      "#fef3c7";
+
+    color =
+      "#92400e";
+  } else if (
+    value ===
+    "MISSED"
+  ) {
+    background =
+      "#fee2e2";
+
+    color =
+      "#991b1b";
+  } else if (
+    value ===
+    "ADMIN_CLOSED"
+  ) {
+    background =
+      "#e0e7ff";
+
+    color =
+      "#3730a3";
+  }
+
+  return (
+    <span
+      style={{
+        ...badgeStyle,
+
+        backgroundColor:
+          background,
+
+        color,
+      }}
+    >
+      {friendlyBankingStatus(
+        value
+      )}
+    </span>
+  );
+}
+
 function LedgerBadge({
   type,
 }) {
@@ -1550,6 +2988,92 @@ function money(
         2,
     }
   );
+}
+
+function roundMoney(
+  value
+) {
+  return (
+    Math.round(
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
+        100
+    ) /
+    100
+  );
+}
+
+function bankingWeekKey(
+  week
+) {
+  return `${week.employee_id}-${week.week_start}`;
+}
+
+function friendlyBankingStatus(
+  status
+) {
+  switch (
+    status
+  ) {
+    case "TARGET_MET":
+      return "TARGET MET";
+
+    case "ABOVE_TARGET":
+      return "ABOVE TARGET";
+
+    case "ADMIN_CLOSED":
+      return "ADMIN CLOSED";
+
+    case "MISSED":
+      return "MISSED";
+
+    case "PARTIAL":
+      return "PARTIAL";
+
+    case "OPEN":
+      return "OPEN";
+
+    default:
+      return status || "-";
+  }
+}
+
+function formatDate(
+  value
+) {
+  if (!value) {
+    return "-";
+  }
+
+  try {
+    const text =
+      String(
+        value
+      ).slice(
+        0,
+        10
+      );
+
+    const parts =
+      text.split(
+        "-"
+      );
+
+    if (
+      parts.length !==
+      3
+    ) {
+      return text;
+    }
+
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  } catch {
+    return "-";
+  }
 }
 
 function formatDateTime(
@@ -1774,6 +3298,318 @@ const summarySubStyle = {
     "bold",
 };
 
+const bankingSummaryPanelStyle = {
+  padding:
+    "12px",
+
+  border:
+    "1px solid #99f6e4",
+
+  borderRadius:
+    "7px",
+
+  backgroundColor:
+    "#f0fdfa",
+};
+
+const bankingSummaryHeaderStyle = {
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+
+  flexWrap:
+    "wrap",
+
+  marginBottom:
+    "10px",
+
+  color:
+    "#115e59",
+
+  fontSize:
+    "11px",
+
+  fontWeight:
+    "900",
+};
+
+const bankingPanelStyle = {
+  backgroundColor:
+    "white",
+
+  border:
+    "1px solid #99f6e4",
+
+  borderRadius:
+    "7px",
+
+  overflow:
+    "hidden",
+};
+
+const bankingTitleStyle = {
+  padding:
+    "10px 12px",
+
+  backgroundColor:
+    "#0f766e",
+
+  color:
+    "white",
+
+  fontSize:
+    "12px",
+
+  fontWeight:
+    "900",
+};
+
+const bankingTitleRowStyle = {
+  padding:
+    "9px 12px",
+
+  backgroundColor:
+    "#0f766e",
+
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+
+  flexWrap:
+    "wrap",
+};
+
+const bankingTitleStyleNoBg = {
+  color:
+    "white",
+
+  fontSize:
+    "12px",
+
+  fontWeight:
+    "900",
+};
+
+const bankingRuleStyle = {
+  padding:
+    "9px",
+
+  backgroundColor:
+    "#ecfdf5",
+
+  color:
+    "#166534",
+
+  borderBottom:
+    "1px solid #bbf7d0",
+
+  fontSize:
+    "9px",
+
+  textAlign:
+    "center",
+};
+
+const bankingPrivacyStyle = {
+  padding:
+    "9px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  color:
+    "#64748b",
+
+  borderTop:
+    "1px solid #e2e8f0",
+
+  fontSize:
+    "9px",
+
+  textAlign:
+    "center",
+};
+
+const bankingCloseNoticeStyle = {
+  padding:
+    "9px",
+
+  borderTop:
+    "1px solid #fde68a",
+
+  backgroundColor:
+    "#fffbeb",
+
+  color:
+    "#92400e",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "9px",
+};
+
+const targetListStyle = {
+  display:
+    "grid",
+};
+
+const targetRowStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "minmax(160px,1fr) minmax(150px,0.8fr) minmax(220px,1.4fr) 110px",
+
+  gap:
+    "8px",
+
+  alignItems:
+    "end",
+
+  padding:
+    "9px",
+
+  borderTop:
+    "1px solid #e2e8f0",
+
+  minWidth:
+    "780px",
+};
+
+const employeeNameStyle = {
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "900",
+
+  color:
+    "#0f172a",
+};
+
+const employeeMetaStyle = {
+  marginTop:
+    "4px",
+
+  fontSize:
+    "8px",
+
+  color:
+    "#64748b",
+};
+
+const saveTargetButtonStyle = {
+  border:
+    "none",
+
+  borderRadius:
+    "4px",
+
+  padding:
+    "9px",
+
+  backgroundColor:
+    "#15803d",
+
+  color:
+    "white",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
+};
+
+const closeWeekButtonStyle = {
+  border:
+    "none",
+
+  borderRadius:
+    "4px",
+
+  padding:
+    "8px 10px",
+
+  backgroundColor:
+    "#dc2626",
+
+  color:
+    "white",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
+};
+
+const currentWeekTextStyle = {
+  marginTop:
+    "3px",
+
+  color:
+    "#0f766e",
+
+  fontSize:
+    "7px",
+
+  fontWeight:
+    "900",
+};
+
+const smallMutedStyle = {
+  color:
+    "#94a3b8",
+
+  fontSize:
+    "8px",
+};
+
+const smallSelectStyle = {
+  minWidth:
+    "170px",
+
+  padding:
+    "6px",
+
+  border:
+    "1px solid #99f6e4",
+
+  borderRadius:
+    "4px",
+
+  backgroundColor:
+    "white",
+
+  fontSize:
+    "9px",
+};
+
 const filterPanelStyle = {
   display:
     "grid",
@@ -1868,6 +3704,23 @@ const panelTitleStyle = {
     "900",
 };
 
+const historyTitleStyle = {
+  padding:
+    "10px 12px",
+
+  backgroundColor:
+    "#7c3aed",
+
+  color:
+    "white",
+
+  fontSize:
+    "12px",
+
+  fontWeight:
+    "900",
+};
+
 const tableWrapStyle = {
   overflowX:
     "auto",
@@ -1909,117 +3762,4 @@ const tableCellStyle = {
     "9px 8px",
 
   borderBottom:
-    "1px solid #e2e8f0",
-
-  color:
-    "#334155",
-
-  fontSize:
-    "9px",
-
-  verticalAlign:
-    "top",
-};
-
-const badgeStyle = {
-  display:
-    "inline-block",
-
-  padding:
-    "4px 7px",
-
-  borderRadius:
-    "10px",
-
-  fontSize:
-    "7px",
-
-  fontWeight:
-    "900",
-
-  whiteSpace:
-    "nowrap",
-};
-
-const ledgerNoticeStyle = {
-  padding:
-    "9px",
-
-  backgroundColor:
-    "#ecfeff",
-
-  color:
-    "#155e75",
-
-  borderBottom:
-    "1px solid #bae6fd",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "9px",
-};
-
-const emptyStyle = {
-  padding:
-    "22px",
-
-  color:
-    "#64748b",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "10px",
-};
-
-const safetyNoticeStyle = {
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#f0fdf4",
-
-  border:
-    "1px solid #86efac",
-
-  borderRadius:
-    "6px",
-
-  color:
-    "#166534",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-};
-
-const errorStyle = {
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#fef2f2",
-
-  border:
-    "1px solid #fecaca",
-
-  borderRadius:
-    "6px",
-
-  color:
-    "#991b1b",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-};
+    "1px solid #e2e8f0
