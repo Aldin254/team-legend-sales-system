@@ -4,9 +4,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+
+const INACTIVITY_MS = 30000;
 
 export default function AccountantDashboard({
   user,
@@ -41,14 +44,18 @@ export default function AccountantDashboard({
   const [successMessage, setSuccessMessage] =
     useState("");
 
-  const [declinedSendMessage, setDeclinedSendMessage] =
-    useState("");
+  const [
+    declinedSendMessage,
+    setDeclinedSendMessage,
+  ] = useState("");
 
   const [report, setReport] =
     useState(null);
 
-  const [reportOpenError, setReportOpenError] =
-    useState("");
+  const [
+    reportOpenError,
+    setReportOpenError,
+  ] = useState("");
 
   const [shops, setShops] =
     useState([]);
@@ -56,38 +63,77 @@ export default function AccountantDashboard({
   const [recipients, setRecipients] =
     useState([]);
 
-  const [transactions, setTransactions] =
-    useState([]);
+  const [
+    transactions,
+    setTransactions,
+  ] = useState([]);
 
   const [expenses, setExpenses] =
     useState([]);
 
-  const [selectedRecipientId, setSelectedRecipientId] =
-    useState("");
+  // ==================================================
+  // PAYMENT ROUTE
+  // ==================================================
 
-  const [sendAmount, setSendAmount] =
-    useState("");
+  const [
+    floatSendMethod,
+    setFloatSendMethod,
+  ] = useState(
+    "MPESA_TO_MPESA"
+  );
 
-  const [preparingSend, setPreparingSend] =
-    useState(false);
+  // ==================================================
+  // SEND FLOAT
+  // ==================================================
 
-  const [preparedSend, setPreparedSend] =
-    useState(null);
+  const [
+    selectedRecipientId,
+    setSelectedRecipientId,
+  ] = useState("");
 
-  const [sendReceipt, setSendReceipt] =
-    useState("");
+  const [
+    sendAmount,
+    setSendAmount,
+  ] = useState("");
 
-  const [completingSend, setCompletingSend] =
-    useState(false);
+  const [
+    preparingSend,
+    setPreparingSend,
+  ] = useState(false);
 
-  const [expenseDescription, setExpenseDescription] =
-    useState("");
+  const [
+    preparedSend,
+    setPreparedSend,
+  ] = useState(null);
 
-  const [expenseAmount, setExpenseAmount] =
-    useState("");
+  const [
+    sendReceipt,
+    setSendReceipt,
+  ] = useState("");
 
-  const [savingExpense, setSavingExpense] =
-    useState(false);
+  const [
+    completingSend,
+    setCompletingSend,
+  ] = useState(false);
+
+  // ==================================================
+  // EXPENSES
+  // ==================================================
+
+  const [
+    expenseDescription,
+    setExpenseDescription,
+  ] = useState("");
+
+  const [
+    expenseAmount,
+    setExpenseAmount,
+  ] = useState("");
+
+  const [
+    savingExpense,
+    setSavingExpense,
+  ] = useState(false);
 
   const [
     confirmingTransactionId,
@@ -99,8 +145,13 @@ export default function AccountantDashboard({
     setCancellingTransactionId,
   ] = useState(null);
 
-  const [closingDay, setClosingDay] =
-    useState(false);
+  const [
+    closingDay,
+    setClosingDay,
+  ] = useState(false);
+
+  const inactivityTimerRef =
+    useRef(null);
 
   // ==================================================
   // AUTH HEADERS
@@ -191,6 +242,75 @@ export default function AccountantDashboard({
         }
 
         return result;
+      },
+      [
+        supabaseUrl,
+        supabaseAnonKey,
+        accessToken,
+        authHeaders,
+      ]
+    );
+
+  // ==================================================
+  // LOAD PAYMENT SYSTEM SETTINGS
+  // ==================================================
+
+  const loadFloatSendMethod =
+    useCallback(
+      async () => {
+        if (
+          !supabaseUrl ||
+          !supabaseAnonKey ||
+          !accessToken
+        ) {
+          return null;
+        }
+
+        const response =
+          await fetch(
+            `${supabaseUrl}/rest/v1/payment_system_settings` +
+              `?id=eq.1` +
+              `&select=float_send_method` +
+              `&limit=1`,
+            {
+              method:
+                "GET",
+
+              headers:
+                authHeaders(),
+
+              cache:
+                "no-store",
+            }
+          );
+
+        const result =
+          await safeJson(
+            response
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              "Unable to load payment route."
+          );
+        }
+
+        const row =
+          Array.isArray(result)
+            ? result[0]
+            : null;
+
+        if (
+          !row?.float_send_method
+        ) {
+          return null;
+        }
+
+        return normalizeFloatSendMethod(
+          row.float_send_method
+        );
       },
       [
         supabaseUrl,
@@ -471,6 +591,31 @@ export default function AccountantDashboard({
             loadedTransactions
           );
 
+          // ------------------------------------------
+          // PAYMENT ROUTE
+          //
+          // Do not fail the whole dashboard if the
+          // settings read temporarily fails.
+          // ------------------------------------------
+
+          try {
+            const loadedMethod =
+              await loadFloatSendMethod();
+
+            if (
+              loadedMethod
+            ) {
+              setFloatSendMethod(
+                loadedMethod
+              );
+            }
+          } catch (routeError) {
+            console.warn(
+              "FLOAT SEND METHOD REFRESH ERROR:",
+              routeError
+            );
+          }
+
           let loadedReport =
             null;
 
@@ -528,6 +673,7 @@ export default function AccountantDashboard({
         loadShops,
         loadRecipients,
         loadTransactions,
+        loadFloatSendMethod,
         openToday,
         loadExpenses,
       ]
@@ -545,6 +691,9 @@ export default function AccountantDashboard({
 
   // ==================================================
   // LIVE REFRESH
+  //
+  // This continues polling normally so Admin route
+  // changes can reach the Accountant without logout.
   // ==================================================
 
   useEffect(() => {
@@ -566,6 +715,143 @@ export default function AccountantDashboard({
     };
   }, [
     refreshData,
+  ]);
+
+  // ==================================================
+  // 30-SECOND INACTIVITY REFRESH / RESET
+  //
+  // - Refreshes data after 30 seconds without activity.
+  // - Clears an unused cashier / amount selection.
+  // - Does NOT silently delete a prepared transaction.
+  // ==================================================
+
+  useEffect(() => {
+    let disposed =
+      false;
+
+    const clearTimer =
+      () => {
+        if (
+          inactivityTimerRef.current
+        ) {
+          clearTimeout(
+            inactivityTimerRef.current
+          );
+
+          inactivityTimerRef.current =
+            null;
+        }
+      };
+
+    const runInactivityRefresh =
+      async () => {
+        if (disposed) {
+          return;
+        }
+
+        if (
+          !preparedSend &&
+          !preparingSend &&
+          !completingSend
+        ) {
+          setSelectedRecipientId(
+            ""
+          );
+
+          setSendAmount(
+            ""
+          );
+
+          setSendReceipt(
+            ""
+          );
+
+          setDeclinedSendMessage(
+            ""
+          );
+
+          setMessage(
+            ""
+          );
+
+          setSuccessMessage(
+            ""
+          );
+        }
+
+        await refreshData({
+          silent:
+            true,
+        });
+      };
+
+    const armTimer =
+      () => {
+        clearTimer();
+
+        inactivityTimerRef.current =
+          setTimeout(
+            async () => {
+              await runInactivityRefresh();
+
+              if (
+                !disposed
+              ) {
+                armTimer();
+              }
+            },
+            INACTIVITY_MS
+          );
+      };
+
+    const activityHandler =
+      () => {
+        armTimer();
+      };
+
+    window.addEventListener(
+      "pointerdown",
+      activityHandler
+    );
+
+    window.addEventListener(
+      "keydown",
+      activityHandler
+    );
+
+    window.addEventListener(
+      "touchstart",
+      activityHandler
+    );
+
+    armTimer();
+
+    return () => {
+      disposed =
+        true;
+
+      clearTimer();
+
+      window.removeEventListener(
+        "pointerdown",
+        activityHandler
+      );
+
+      window.removeEventListener(
+        "keydown",
+        activityHandler
+      );
+
+      window.removeEventListener(
+        "touchstart",
+        activityHandler
+      );
+    };
+  }, [
+    refreshData,
+    preparedSend,
+    preparingSend,
+    completingSend,
   ]);
 
   // ==================================================
@@ -675,6 +961,35 @@ export default function AccountantDashboard({
       [
         recipients,
         selectedRecipientId,
+      ]
+    );
+
+  // ==================================================
+  // CURRENT PAYMENT ROUTE
+  // ==================================================
+
+  const currentSendRoute =
+    useMemo(
+      () =>
+        getAccountantSendRoute(
+          null,
+          floatSendMethod
+        ),
+      [
+        floatSendMethod,
+      ]
+    );
+
+  const preparedSendRoute =
+    useMemo(
+      () =>
+        getAccountantSendRoute(
+          preparedSend,
+          floatSendMethod
+        ),
+      [
+        preparedSend,
+        floatSendMethod,
       ]
     );
 
@@ -917,7 +1232,9 @@ export default function AccountantDashboard({
         sendAmount
       );
 
-    setDeclinedSendMessage("");
+    setDeclinedSendMessage(
+      ""
+    );
 
     if (
       !selectedRecipientId
@@ -951,6 +1268,35 @@ export default function AccountantDashboard({
       setSuccessMessage("");
       setDeclinedSendMessage("");
 
+      // ------------------------------------------
+      // GET THE LATEST ADMIN ROUTE IMMEDIATELY
+      // BEFORE PREPARING THE TRANSACTION
+      // ------------------------------------------
+
+      let routeAtPrepare =
+        floatSendMethod;
+
+      try {
+        const latestMethod =
+          await loadFloatSendMethod();
+
+        if (
+          latestMethod
+        ) {
+          routeAtPrepare =
+            latestMethod;
+
+          setFloatSendMethod(
+            latestMethod
+          );
+        }
+      } catch (routeError) {
+        console.warn(
+          "LATEST FLOAT ROUTE CHECK ERROR:",
+          routeError
+        );
+      }
+
       const result =
         await callRpc(
           "tl_accountant_prepare_manual_send",
@@ -975,7 +1321,8 @@ export default function AccountantDashboard({
 
       if (
         !result ||
-        result?.success === false ||
+        result?.success ===
+          false ||
         !result?.transaction_id ||
         !Number.isInteger(
           returnedSlot
@@ -990,16 +1337,43 @@ export default function AccountantDashboard({
         );
       }
 
+      const preparedRouteCode =
+        normalizeFloatSendMethod(
+          result?.float_send_method ||
+            result?.payment_method ||
+            result?.send_method ||
+            routeAtPrepare
+        );
+
+      const prepared = {
+        ...result,
+
+        float_send_method:
+          preparedRouteCode,
+      };
+
       setPreparedSend(
-        result
+        prepared
       );
 
-      setSendReceipt("");
+      setSendReceipt(
+        ""
+      );
 
-      setDeclinedSendMessage("");
+      setDeclinedSendMessage(
+        ""
+      );
+
+      const route =
+        getAccountantSendRoute(
+          prepared,
+          preparedRouteCode
+        );
 
       setSuccessMessage(
-        `Transfer prepared for Company Float ${returnedSlot}. Send the money through M-Pesa, then enter the receipt number below.`
+        route.isIm
+          ? `Transfer prepared for Company Float ${returnedSlot}. Send the money from I&M to the cashier's M-Pesa number, then enter the transaction reference below.`
+          : `Transfer prepared for Company Float ${returnedSlot}. Send the money through M-Pesa, then enter the M-Pesa receipt number below.`
       );
 
       await refreshData({
@@ -1020,11 +1394,17 @@ export default function AccountantDashboard({
         null
       );
 
-      setSendReceipt("");
+      setSendReceipt(
+        ""
+      );
 
-      setSuccessMessage("");
+      setSuccessMessage(
+        ""
+      );
 
-      setMessage("");
+      setMessage(
+        ""
+      );
 
       setDeclinedSendMessage(
         `DECLINED — ${errorMessage} No float was approved or posted. Do not send the money.`
@@ -1061,19 +1441,32 @@ export default function AccountantDashboard({
         .trim()
         .toUpperCase();
 
+    const route =
+      getAccountantSendRoute(
+        preparedSend,
+        floatSendMethod
+      );
+
     if (!receipt) {
       setMessage(
-        "Enter the M-Pesa receipt number."
+        route.isIm
+          ? "Enter the I&M transaction/reference number."
+          : "Enter the M-Pesa receipt number."
       );
 
       return;
     }
 
+    const receiptLabel =
+      route.isIm
+        ? "Transaction reference"
+        : "M-Pesa receipt";
+
     const confirmSend =
       window.confirm(
         `Confirm that KES ${money(
           preparedSend.amount
-        )} was sent successfully to ${preparedSend.recipient_name}.\n\nM-Pesa receipt: ${receipt}`
+        )} was sent successfully to ${preparedSend.recipient_name}.\n\nRoute: ${route.routeTitle}\n${receiptLabel}: ${receipt}`
       );
 
     if (
@@ -1103,6 +1496,109 @@ export default function AccountantDashboard({
           }
         );
 
+      // ------------------------------------------
+      // CLEAR THE PREVIOUS SEND IMMEDIATELY
+      // ------------------------------------------
+
+      setPreparedSend(
+        null
+      );
+
+      setSelectedRecipientId(
+        ""
+      );
+
+      setSendAmount(
+        ""
+      );
+
+      setSendReceipt(
+        ""
+      );
+
+      setDeclinedSendMessage(
+        ""
+      );
+
+      setSuccessMessage(
+        `Float completed. KES ${money(
+          result?.cashier_float_received
+        )} has been posted to the cashier's Company Float ${result?.company_float_slot || ""}.`
+      );
+
+      await refreshData({
+        silent:
+          true,
+      });
+    } catch (error) {
+      console.error(
+        "COMPLETE FLOAT ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to complete float transfer."
+      );
+    } finally {
+      setCompletingSend(
+        false
+      );
+    }
+  }
+
+  // ==================================================
+  // CANCEL CURRENT PREPARED SEND
+  // ==================================================
+
+  async function cancelPreparedFloatSend() {
+    if (
+      !preparedSend?.transaction_id ||
+      cancellingTransactionId
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Cancel transaction ${
+          preparedSend.transaction_no ||
+          ""
+        }?\n\n` +
+          `Cashier: ${
+            preparedSend.recipient_name ||
+            "-"
+          }\n` +
+          `Amount: KES ${money(
+            preparedSend.amount
+          )}\n\n` +
+          `Only cancel this transaction if the money was NOT sent.`
+      );
+
+    if (
+      !confirmed
+    ) {
+      return;
+    }
+
+    try {
+      setCancellingTransactionId(
+        preparedSend.transaction_id
+      );
+
+      setMessage("");
+      setSuccessMessage("");
+      setDeclinedSendMessage("");
+
+      const result =
+        await callRpc(
+          "tl_accountant_cancel_pending_transaction",
+          {
+            p_transaction_id:
+              preparedSend.transaction_id,
+          }
+        );
+
       setPreparedSend(
         null
       );
@@ -1120,25 +1616,30 @@ export default function AccountantDashboard({
       );
 
       setSuccessMessage(
-        `Float completed. KES ${money(
-          result?.cashier_float_received
-        )} has been posted to the cashier's Company Float ${result?.company_float_slot || ""}.`
+        `Transaction ${
+          result?.transaction_no ||
+          preparedSend.transaction_no ||
+          ""
+        } cancelled. No float was sent.`
       );
 
-      await refreshData();
+      await refreshData({
+        silent:
+          true,
+      });
     } catch (error) {
       console.error(
-        "COMPLETE FLOAT ERROR:",
+        "CANCEL PREPARED FLOAT ERROR:",
         error
       );
 
       setMessage(
         error?.message ||
-          "Unable to complete float transfer."
+          "Unable to cancel the prepared transfer."
       );
     } finally {
-      setCompletingSend(
-        false
+      setCancellingTransactionId(
+        null
       );
     }
   }
@@ -1914,6 +2415,10 @@ export default function AccountantDashboard({
                 Accountant → Cashier
               </div>
             </div>
+
+            <div style={routeBadgeStyle}>
+              {currentSendRoute.routeTitle}
+            </div>
           </div>
 
           {hasCarriedForward && (
@@ -2051,6 +2556,14 @@ export default function AccountantDashboard({
             </div>
           )}
 
+          {!preparedSend && (
+            <div style={idleNoteStyle}>
+              Unused cashier and amount selection will clear after
+              30 seconds of inactivity. The dashboard will also
+              refresh automatically.
+            </div>
+          )}
+
           {declinedSendMessage && (
             <div style={declinedTransferStyle}>
               <div style={declinedTransferTitleStyle}>
@@ -2085,14 +2598,22 @@ export default function AccountantDashboard({
             >
               {preparingSend
                 ? "Preparing..."
-                : "Prepare Float Transfer"}
+                : `Prepare ${currentSendRoute.routeTitle} Transfer`}
             </button>
           )}
 
           {preparedSend && (
             <div style={preparedTransferStyle}>
-              <div style={preparedTitleStyle}>
-                MANUAL M-PESA SEND
+              <div style={preparedTopStyle}>
+                <div style={preparedTitleStyle}>
+                  MANUAL{" "}
+                  {preparedSendRoute.routeTitle}{" "}
+                  SEND
+                </div>
+
+                <div style={preparedRouteBadgeStyle}>
+                  {preparedSendRoute.routeTitle}
+                </div>
               </div>
 
               <TransactionDetail
@@ -2134,7 +2655,9 @@ export default function AccountantDashboard({
               />
 
               <TransactionDetail
-                label="M-Pesa Fee"
+                label={
+                  preparedSendRoute.feeTitle
+                }
                 value={`KES ${money(
                   preparedSend.estimated_fee
                 )}`}
@@ -2149,25 +2672,56 @@ export default function AccountantDashboard({
               />
 
               <div style={sendInstructionStyle}>
-                Send exactly{" "}
-                <strong>
-                  KES{" "}
-                  {money(
-                    preparedSend.amount
-                  )}
-                </strong>{" "}
-                to the approved M-Pesa number above. Then enter
-                the successful M-Pesa receipt.
+                {preparedSendRoute.isIm ? (
+                  <>
+                    Send exactly{" "}
+                    <strong>
+                      KES{" "}
+                      {money(
+                        preparedSend.amount
+                      )}
+                    </strong>{" "}
+                    from <strong>I&M</strong> to the approved
+                    cashier M-Pesa number{" "}
+                    <strong>
+                      {formatPhoneForDisplay(
+                        preparedSend.phone_number
+                      )}
+                    </strong>
+                    . After the transfer succeeds, enter the I&M
+                    transaction/reference number below.
+                  </>
+                ) : (
+                  <>
+                    Send exactly{" "}
+                    <strong>
+                      KES{" "}
+                      {money(
+                        preparedSend.amount
+                      )}
+                    </strong>{" "}
+                    to the approved M-Pesa number{" "}
+                    <strong>
+                      {formatPhoneForDisplay(
+                        preparedSend.phone_number
+                      )}
+                    </strong>
+                    . Then enter the successful M-Pesa receipt.
+                  </>
+                )}
               </div>
 
               <label style={labelStyle}>
-                M-Pesa Receipt
+                {preparedSendRoute.receiptLabel}
               </label>
 
               <input
                 type="text"
                 value={
                   sendReceipt
+                }
+                disabled={
+                  completingSend
                 }
                 onChange={(
                   event
@@ -2178,7 +2732,11 @@ export default function AccountantDashboard({
                       .toUpperCase()
                   )
                 }
-                placeholder="e.g. TABC123XYZ"
+                placeholder={
+                  preparedSendRoute.isIm
+                    ? "Enter I&M transaction/reference"
+                    : "e.g. TABC123XYZ"
+                }
                 style={inputStyle}
               />
 
@@ -2201,8 +2759,42 @@ export default function AccountantDashboard({
               >
                 {completingSend
                   ? "Completing..."
-                  : "Confirm M-Pesa Sent"}
+                  : preparedSendRoute.confirmButton}
               </button>
+
+              <button
+                type="button"
+                onClick={
+                  cancelPreparedFloatSend
+                }
+                disabled={
+                  completingSend ||
+                  cancellingTransactionId ===
+                    preparedSend.transaction_id
+                }
+                style={{
+                  ...cancelPreparedButtonStyle,
+
+                  opacity:
+                    completingSend ||
+                    cancellingTransactionId ===
+                      preparedSend.transaction_id
+                      ? 0.6
+                      : 1,
+                }}
+              >
+                {cancellingTransactionId ===
+                preparedSend.transaction_id
+                  ? "Cancelling..."
+                  : "Cancel Prepared Transfer"}
+              </button>
+
+              <div style={preparedSafetyNoteStyle}>
+                A prepared transaction is not automatically cancelled
+                after 30 seconds because money may already be in the
+                process of being sent. Use <strong>Cancel Prepared Transfer</strong>{" "}
+                only when the money was not sent.
+              </div>
             </div>
           )}
 
@@ -2302,7 +2894,7 @@ export default function AccountantDashboard({
                           transaction.id
                         }
                       >
-                        <TableCell>
+                       <TableCell>
                           {formatDateTime(
                             transaction.created_at
                           )}
@@ -2419,8 +3011,7 @@ export default function AccountantDashboard({
 
           <div style={expensesGridStyle}>
             {Array.from({
-              length:
-                20,
+              length: 20,
             }).map(
               (
                 _,
@@ -2448,9 +3039,7 @@ export default function AccountantDashboard({
 
                 return (
                   <div
-                    key={
-                      slot
-                    }
+                    key={slot}
                     style={{
                       ...expenseRowStyle,
 
@@ -2494,8 +3083,7 @@ export default function AccountantDashboard({
                             event
                           ) =>
                             setExpenseDescription(
-                              event.target
-                                .value
+                              event.target.value
                             )
                           }
                           placeholder="Description"
@@ -2513,8 +3101,7 @@ export default function AccountantDashboard({
                             event
                           ) =>
                             setExpenseAmount(
-                              event.target
-                                .value
+                              event.target.value
                             )
                           }
                           placeholder="Amount"
@@ -2744,15 +3331,14 @@ export default function AccountantDashboard({
                 : closingDay
                 ? "Closing..."
                 : hasCarriedForward
-                ?
-                "RESOLVE CARRIED FORWARD FIRST"
-: "Close Accountant Day"}
-</button>
-</div>
-</section>
-</div>
-</main>
-);
+                ? "RESOLVE CARRIED FORWARD FIRST"
+                : "Close Accountant Day"}
+            </button>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
 }
 
 // ==================================================
@@ -2943,6 +3529,97 @@ function StatusText({
       )}
     </span>
   );
+}
+
+// ==================================================
+// PAYMENT ROUTE HELPER
+// ==================================================
+
+function normalizeFloatSendMethod(
+  value
+) {
+  const clean =
+    String(
+      value ||
+        ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const compact =
+    clean.replace(
+      /[^A-Z0-9]/g,
+      ""
+    );
+
+  if (
+    clean ===
+      "IM_TO_MPESA" ||
+    compact ===
+      "IMTOMPESA"
+  ) {
+    return "IM_TO_MPESA";
+  }
+
+  return "MPESA_TO_MPESA";
+}
+
+function getAccountantSendRoute(
+  transaction,
+  fallbackMethod
+) {
+  const method =
+    normalizeFloatSendMethod(
+      transaction?.float_send_method ||
+        transaction?.payment_method ||
+        transaction?.send_method ||
+        fallbackMethod
+    );
+
+  if (
+    method ===
+    "IM_TO_MPESA"
+  ) {
+    return {
+      code:
+        "IM_TO_MPESA",
+
+      isIm:
+        true,
+
+      routeTitle:
+        "I&M → M-PESA",
+
+      feeTitle:
+        "I&M → M-PESA FEE",
+
+      receiptLabel:
+        "I&M Transaction / Reference",
+
+      confirmButton:
+        "Confirm I&M → M-Pesa Sent",
+    };
+  }
+
+  return {
+    code:
+      "MPESA_TO_MPESA",
+
+    isIm:
+      false,
+
+    routeTitle:
+      "M-PESA → M-PESA",
+
+    feeTitle:
+      "M-PESA FEE",
+
+    receiptLabel:
+      "M-Pesa Receipt",
+
+    confirmButton:
+      "Confirm M-Pesa Sent",
+  };
 }
 
 // ==================================================
@@ -3449,6 +4126,29 @@ const panelSubtitleStyle = {
     "#64748b",
 };
 
+const routeBadgeStyle = {
+  backgroundColor:
+    "#0f766e",
+
+  color:
+    "white",
+
+  padding:
+    "6px 10px",
+
+  borderRadius:
+    "20px",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "900",
+
+  whiteSpace:
+    "nowrap",
+};
+
 const statusBadgeStyle = {
   color:
     "white",
@@ -3646,6 +4346,26 @@ const recipientPreviewStyle = {
     "11px",
 };
 
+const idleNoteStyle = {
+  marginTop:
+    "8px",
+
+  padding:
+    "7px 9px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  color:
+    "#64748b",
+
+  borderRadius:
+    "5px",
+
+  fontSize:
+    "9px",
+};
+
 const declinedTransferStyle = {
   marginTop:
     "12px",
@@ -3729,10 +4449,27 @@ const preparedTransferStyle = {
     "#f0fdfa",
 };
 
-const preparedTitleStyle = {
+const preparedTopStyle = {
+  display:
+    "flex",
+
+  justifyContent:
+    "space-between",
+
+  alignItems:
+    "center",
+
+  gap:
+    "10px",
+
   marginBottom:
     "10px",
 
+  flexWrap:
+    "wrap",
+};
+
+const preparedTitleStyle = {
   color:
     "#115e59",
 
@@ -3741,6 +4478,26 @@ const preparedTitleStyle = {
 
   fontSize:
     "12px",
+};
+
+const preparedRouteBadgeStyle = {
+  backgroundColor:
+    "#115e59",
+
+  color:
+    "white",
+
+  borderRadius:
+    "12px",
+
+  padding:
+    "5px 8px",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "900",
 };
 
 const transactionDetailStyle = {
@@ -3821,6 +4578,58 @@ const completeButtonStyle = {
 
   cursor:
     "pointer",
+};
+
+const cancelPreparedButtonStyle = {
+  marginTop:
+    "8px",
+
+  width:
+    "100%",
+
+  padding:
+    "10px",
+
+  border:
+    "none",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#dc2626",
+
+  color:
+    "white",
+
+  fontWeight:
+    "bold",
+
+  cursor:
+    "pointer",
+};
+
+const preparedSafetyNoteStyle = {
+  marginTop:
+    "8px",
+
+  padding:
+    "8px",
+
+  borderRadius:
+    "5px",
+
+  backgroundColor:
+    "#fff7ed",
+
+  color:
+    "#9a3412",
+
+  fontSize:
+    "9px",
+
+  lineHeight:
+    "1.4",
 };
 
 const pendingNoticeStyle = {
