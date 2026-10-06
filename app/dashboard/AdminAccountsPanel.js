@@ -7,98 +7,107 @@ import {
   useState,
 } from "react";
 
-export default function AdminAccountantPanel({
+const ACCOUNT_TYPES = [
+  "RENT",
+  "WIFI",
+  "DSTV",
+  "BANKING",
+];
+
+export default function AdminAccountsPanel({
   user,
 }) {
-  const [
-    selectedDate,
-    setSelectedDate,
-  ] = useState(
-    () =>
-      getNairobiDateInput()
-  );
-
-  const [
-    snapshot,
-    setSnapshot,
-  ] = useState(null);
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
-
-  const [
-    error,
-    setError,
-  ] = useState("");
-
-  const [
-    showTransactions,
-    setShowTransactions,
-  ] = useState(true);
-
   const supabaseUrl =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_URL;
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
 
   const supabaseAnonKey =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
     user?.access_token ||
     null;
 
+  const [shops, setShops] =
+    useState([]);
+
+  const [
+    selectedShopId,
+    setSelectedShopId,
+  ] = useState("");
+
+  const [accounts, setAccounts] =
+    useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [
+    loadingAccounts,
+    setLoadingAccounts,
+  ] = useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [messageType, setMessageType] =
+    useState("");
+
   // ==================================================
-  // LOAD ACCOUNTANT ADMIN SNAPSHOT
+  // AUTH HEADERS
   // ==================================================
 
-  const loadSnapshot =
+  const authHeaders =
     useCallback(
-      async (
-        quiet = false
-      ) => {
+      () => ({
+        apikey:
+          supabaseAnonKey,
+
+        Authorization:
+          `Bearer ${accessToken}`,
+
+        "Content-Type":
+          "application/json",
+      }),
+      [
+        supabaseAnonKey,
+        accessToken,
+      ]
+    );
+
+  // ==================================================
+  // LOAD SHOPS
+  // ==================================================
+
+  const loadShops =
+    useCallback(
+      async () => {
         if (
-          !selectedDate ||
-          !accessToken ||
           !supabaseUrl ||
-          !supabaseAnonKey
+          !supabaseAnonKey ||
+          !accessToken
         ) {
           setLoading(false);
           return;
         }
 
         try {
-          if (!quiet) {
-            setLoading(true);
-          }
-
-          setError("");
+          setLoading(true);
 
           const response =
             await fetch(
-              `${supabaseUrl}/rest/v1/rpc/tl_admin_accountant_snapshot`,
+              `${supabaseUrl}/rest/v1/shops` +
+                `?is_active=eq.true` +
+                `&select=id,shop_name,shop_type,is_active` +
+                `&order=shop_name.asc`,
               {
                 method:
-                  "POST",
+                  "GET",
 
-                headers: {
-                  apikey:
-                    supabaseAnonKey,
-
-                  Authorization:
-                    `Bearer ${accessToken}`,
-
-                  "Content-Type":
-                    "application/json",
-                },
-
-                body:
-                  JSON.stringify({
-                    p_report_date:
-                      selectedDate,
-                  }),
+                headers:
+                  authHeaders(),
 
                 cache:
                   "no-store",
@@ -110,1039 +119,808 @@ export default function AdminAccountantPanel({
               response
             );
 
-          if (
-            !response.ok
-          ) {
+          if (!response.ok) {
             throw new Error(
               result?.message ||
                 result?.details ||
-                result?.hint ||
-                "Unable to load Accountant information."
+                "Unable to load shops."
             );
           }
 
-          setSnapshot(
-            result || null
+          const rows =
+            Array.isArray(result)
+              ? result
+              : [];
+
+          setShops(
+            rows
+          );
+
+          setSelectedShopId(
+            (
+              previous
+            ) =>
+              previous ||
+              rows[0]?.id ||
+              ""
           );
         } catch (error) {
           console.error(
-            "ADMIN ACCOUNTANT PANEL ERROR:",
+            "ADMIN ACCOUNTS SHOPS ERROR:",
             error
           );
 
-          setError(
+          setMessage(
             error?.message ||
-              "Unable to load Accountant information."
+              "Unable to load shops."
+          );
+
+          setMessageType(
+            "error"
           );
         } finally {
-          if (!quiet) {
-            setLoading(false);
-          }
+          setLoading(false);
         }
       },
       [
-        selectedDate,
-        accessToken,
         supabaseUrl,
         supabaseAnonKey,
+        accessToken,
+        authHeaders,
       ]
     );
 
   // ==================================================
-  // AUTO REFRESH
+  // LOAD SHOP ACCOUNTS
+  // ==================================================
+
+  const loadAccounts =
+    useCallback(
+      async (
+        shopId
+      ) => {
+        if (
+          !shopId ||
+          !supabaseUrl ||
+          !accessToken
+        ) {
+          setAccounts(
+            makeBlankAccounts()
+          );
+
+          return;
+        }
+
+        try {
+          setLoadingAccounts(
+            true
+          );
+
+          setMessage("");
+          setMessageType("");
+
+          const response =
+            await fetch(
+              `${supabaseUrl}/rest/v1/shop_accounts` +
+                `?shop_id=eq.${encodeURIComponent(
+                  shopId
+                )}` +
+                `&select=id,shop_id,account_type,description,account_number,paybill_till,bank,is_active` +
+                `&order=account_type.asc`,
+              {
+                method:
+                  "GET",
+
+                headers:
+                  authHeaders(),
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          const result =
+            await safeJson(
+              response
+            );
+
+          if (!response.ok) {
+            throw new Error(
+              result?.message ||
+                result?.details ||
+                "Unable to load shop accounts."
+            );
+          }
+
+          const existing =
+            Array.isArray(result)
+              ? result
+              : [];
+
+          const merged =
+            ACCOUNT_TYPES.map(
+              (
+                type
+              ) => {
+                const found =
+                  existing.find(
+                    (
+                      item
+                    ) =>
+                      String(
+                        item.account_type ||
+                          ""
+                      )
+                        .trim()
+                        .toUpperCase() ===
+                      type
+                  );
+
+                return {
+                  id:
+                    found?.id ||
+                    null,
+
+                  shop_id:
+                    shopId,
+
+                  account_type:
+                    type,
+
+                  description:
+                    found?.description ||
+                    type,
+
+                  account_number:
+                    found?.account_number ||
+                    "",
+
+                  paybill_till:
+                    found?.paybill_till ||
+                    "",
+
+                  bank:
+                    found?.bank ||
+                    "",
+
+                  is_active:
+                    found?.is_active !==
+                    false,
+                };
+              }
+            );
+
+          setAccounts(
+            merged
+          );
+        } catch (error) {
+          console.error(
+            "ADMIN SHOP ACCOUNTS ERROR:",
+            error
+          );
+
+          setAccounts(
+            makeBlankAccounts(
+              shopId
+            )
+          );
+
+          setMessage(
+            error?.message ||
+              "Unable to load shop accounts."
+          );
+
+          setMessageType(
+            "error"
+          );
+        } finally {
+          setLoadingAccounts(
+            false
+          );
+        }
+      },
+      [
+        supabaseUrl,
+        accessToken,
+        authHeaders,
+      ]
+    );
+
+  // ==================================================
+  // INITIAL LOAD
   // ==================================================
 
   useEffect(() => {
-    loadSnapshot();
-
-    const timer =
-      setInterval(
-        () => {
-          loadSnapshot(
-            true
-          );
-        },
-        5000
-      );
-
-    return () => {
-      clearInterval(
-        timer
-      );
-    };
+    loadShops();
   }, [
-    loadSnapshot,
+    loadShops,
   ]);
 
   // ==================================================
-  // DATA
+  // LOAD WHEN SHOP CHANGES
   // ==================================================
 
-  const report =
-    snapshot?.report ||
-    null;
-
-  const expenses =
-    Array.isArray(
-      snapshot?.expenses
-    )
-      ? snapshot.expenses
-      : [];
-
-  const transactions =
-    Array.isArray(
-      snapshot?.transactions
-    )
-      ? snapshot.transactions
-      : [];
-
-  const accountants =
-    Array.isArray(
-      snapshot?.accountants
-    )
-      ? snapshot.accountants
-      : [];
+  useEffect(() => {
+    if (
+      selectedShopId
+    ) {
+      loadAccounts(
+        selectedShopId
+      );
+    }
+  }, [
+    selectedShopId,
+    loadAccounts,
+  ]);
 
   // ==================================================
-  // 20 ACCOUNTANT EXPENSE POSITIONS
+  // SELECTED SHOP
   // ==================================================
 
-  const expenseSlots =
-    useMemo(() => {
-      const map =
-        new Map();
+  const selectedShop =
+    useMemo(
+      () =>
+        shops.find(
+          (
+            shop
+          ) =>
+            String(
+              shop.id
+            ) ===
+            String(
+              selectedShopId
+            )
+        ) ||
+        null,
+      [
+        shops,
+        selectedShopId,
+      ]
+    );
+
+  // ==================================================
+  // UPDATE FIELD
+  // ==================================================
+
+  function updateAccount(
+    type,
+    field,
+    value
+  ) {
+    setAccounts(
+      (
+        previous
+      ) =>
+        previous.map(
+          (
+            account
+          ) =>
+            account.account_type ===
+            type
+              ? {
+                  ...account,
+
+                  [field]:
+                    value,
+                }
+              : account
+        )
+    );
+
+    setMessage("");
+    setMessageType("");
+  }
+
+  // ==================================================
+  // SAVE ALL
+  // ==================================================
+
+  async function saveAccounts() {
+    if (
+      saving ||
+      !selectedShopId
+    ) {
+      return;
+    }
+
+    try {
+      setSaving(
+        true
+      );
+
+      setMessage("");
+      setMessageType("");
 
       for (
-        const expense
-        of expenses
+        const account
+        of accounts
       ) {
-        const slot =
-          Number(
-            expense?.slot_number
-          );
+        const payload = {
+          shop_id:
+            selectedShopId,
+
+          account_type:
+            account.account_type,
+
+          description:
+            cleanValue(
+              account.description
+            ) ||
+            account.account_type,
+
+          account_number:
+            cleanValue(
+              account.account_number
+            ) ||
+            null,
+
+          paybill_till:
+            cleanValue(
+              account.paybill_till
+            ) ||
+            null,
+
+          bank:
+            cleanValue(
+              account.bank
+            ) ||
+            null,
+
+          is_active:
+            Boolean(
+              account.is_active
+            ),
+        };
+
+        let response;
 
         if (
-          Number.isInteger(
-            slot
-          ) &&
-          slot >= 1 &&
-          slot <= 20
+          account.id
         ) {
-          map.set(
-            slot,
-            expense
+          response =
+            await fetch(
+              `${supabaseUrl}/rest/v1/shop_accounts` +
+                `?id=eq.${encodeURIComponent(
+                  account.id
+                )}`,
+              {
+                method:
+                  "PATCH",
+
+                headers: {
+                  ...authHeaders(),
+
+                  Prefer:
+                    "return=representation",
+                },
+
+                body:
+                  JSON.stringify(
+                    payload
+                  ),
+
+                cache:
+                  "no-store",
+              }
+            );
+        } else {
+          response =
+            await fetch(
+              `${supabaseUrl}/rest/v1/shop_accounts`,
+              {
+                method:
+                  "POST",
+
+                headers: {
+                  ...authHeaders(),
+
+                  Prefer:
+                    "return=representation",
+                },
+
+                body:
+                  JSON.stringify(
+                    payload
+                  ),
+
+                cache:
+                  "no-store",
+              }
+            );
+        }
+
+        const result =
+          await safeJson(
+            response
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              result?.hint ||
+              `Unable to save ${account.account_type}.`
           );
         }
       }
 
-      return Array.from(
-        {
-          length:
-            20,
-        },
-
-        (
-          _,
-          index
-        ) => {
-          const slot =
-            index + 1;
-
-          return {
-            slot,
-            expense:
-              map.get(
-                slot
-              ) ||
-              null,
-          };
-        }
+      setMessage(
+        `${selectedShop?.shop_name || "Shop"} account information saved successfully.`
       );
-    }, [
-      expenses,
-    ]);
 
-  const savedExpenseCount =
-    expenses.length;
+      setMessageType(
+        "success"
+      );
 
-  const calculatedExpenseTotal =
-    roundMoney(
-      expenses.reduce(
-        (
-          sum,
-          expense
-        ) =>
-          sum +
-          Number(
-            expense?.amount ??
-              0
-          ),
-        0
-      )
-    );
+      await loadAccounts(
+        selectedShopId
+      );
+    } catch (error) {
+      console.error(
+        "SAVE SHOP ACCOUNTS ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to save account information."
+      );
+
+      setMessageType(
+        "error"
+      );
+    } finally {
+      setSaving(
+        false
+      );
+    }
+  }
 
   // ==================================================
   // DISPLAY
   // ==================================================
 
+  if (
+    loading
+  ) {
+    return (
+      <div style={loadingStyle}>
+        Loading shop accounts...
+      </div>
+    );
+  }
+
   return (
-    <section
-      style={
-        pageStyle
-      }
-    >
-      <div
-        style={
-          titleBarStyle
-        }
-      >
+    <section style={wrapperStyle}>
+      {/* SHOP CONTROL */}
+
+      <div style={controlPanelStyle}>
         <div>
-          <div
-            style={
-              titleStyle
-            }
-          >
-            ACCOUNTANT CONTROL
+          <div style={controlTitleStyle}>
+            SHOP ACCOUNT INFORMATION
           </div>
 
-          <div
-            style={
-              subtitleStyle
-            }
-          >
-            Admin monitoring • Float • Returns • Expenses • Controls
+          <div style={controlSubtitleStyle}>
+            Manage Rent, WIFI, DSTV and Banking details shown to cashiers.
           </div>
         </div>
 
-        <div
-          style={
-            dateControlStyle
-          }
-        >
-          <label
-            style={
-              dateLabelStyle
-            }
-          >
-            REPORT DATE
+        <div style={shopControlStyle}>
+          <label style={labelStyle}>
+            SELECT SHOP
           </label>
 
-          <input
-            type="date"
+          <select
             value={
-              selectedDate
+              selectedShopId
             }
             onChange={(
               event
             ) => {
-              setSelectedDate(
+              setSelectedShopId(
                 event.target.value
               );
+
+              setMessage("");
+              setMessageType("");
             }}
-            style={
-              dateInputStyle
-            }
-          />
-
-          <button
-            type="button"
-            onClick={() =>
-              loadSnapshot()
-            }
-            style={
-              refreshButtonStyle
-            }
+            style={shopSelectStyle}
           >
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div
-          style={
-            errorStyle
-          }
-        >
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <div
-          style={
-            loadingStyle
-          }
-        >
-          Loading Accountant information...
-        </div>
-      ) : (
-        <>
-          {/* ====================================== */}
-          {/* ACCOUNTANT PROFILE                    */}
-          {/* ====================================== */}
-
-          <PanelTitle
-            title="ACCOUNTANT DETAILS"
-          />
-
-          <section
-            style={
-              panelStyle
-            }
-          >
-            {accountants.length ===
+            {shops.length ===
             0 ? (
-              <div
-                style={
-                  emptyStyle
-                }
-              >
-                No active or inactive Accountant profile was returned.
-              </div>
+              <option value="">
+                No active shops
+              </option>
             ) : (
-              <div
-                style={
-                  accountantGridStyle
-                }
-              >
-                {accountants.map(
-                  (
-                    accountant
-                  ) => (
-                    <div
-                      key={
-                        accountant.id
-                      }
-                      style={
-                        accountantCardStyle
-                      }
-                    >
-                      <div
-                        style={
-                          accountantNameStyle
-                        }
-                      >
-                        {accountant.full_name ||
-                          "Accountant"}
-                      </div>
-
-                      <div>
-                        Username:{" "}
-                        <strong>
-                          {accountant.username ||
-                            "-"}
-                        </strong>
-                      </div>
-
-                      <div>
-                        Role:{" "}
-                        <strong>
-                          {accountant.role ||
-                            "ACCOUNTANT"}
-                        </strong>
-                      </div>
-
-                      <div>
-                        Status:{" "}
-                        <span
-                          style={
-                            accountant.is_active
-                              ? activeTextStyle
-                              : inactiveTextStyle
-                          }
-                        >
-                          {accountant.is_active
-                            ? "ACTIVE"
-                            : "INACTIVE"}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* ====================================== */}
-          {/* DAILY REPORT                          */}
-          {/* ====================================== */}
-
-          <PanelTitle
-            title="DAILY ACCOUNTANT REPORT"
-          />
-
-          <section
-            style={
-              panelStyle
-            }
-          >
-            {!report ? (
-              <div
-                style={
-                  emptyStyle
-                }
-              >
-                No Accountant report exists for{" "}
-                {formatSimpleDate(
-                  selectedDate
-                )}
-                .
-              </div>
-            ) : (
-              <>
-                <div
-                  style={
-                    reportCardsStyle
-                  }
-                >
-                  <ReportCard
-                    title="REPORT DATE"
+              shops.map(
+                (
+                  shop
+                ) => (
+                  <option
+                    key={
+                      shop.id
+                    }
                     value={
-                      formatSimpleDate(
-                        report.report_date
-                      )
-                    }
-                    moneyValue={
-                      false
-                    }
-                  />
-
-                  <ReportCard
-                    title="BALANCE B/F"
-                    value={
-                      report.opening_balance
-                    }
-                  />
-
-                  <ReportCard
-                    title="FLOAT SENT"
-                    value={
-                      report.total_float_sent
-                    }
-                  />
-
-                  <ReportCard
-                    title="FLOAT RECEIVED"
-                    value={
-                      report.total_float_received
-                    }
-                  />
-
-                  <ReportCard
-                    title="TRANSACTION FEES"
-                    value={
-                      report.total_transaction_fees
-                    }
-                  />
-
-                  <ReportCard
-                    title="ACCOUNTANT EXPENSES"
-                    value={
-                      report.total_expenses
-                    }
-                    tone="red"
-                  />
-
-                  <ReportCard
-                    title="CLOSING BALANCE"
-                    value={
-                      report.closing_balance
-                    }
-                    tone="green"
-                  />
-                </div>
-
-                <div
-                  style={
-                    reportFooterStyle
-                  }
-                >
-                  <div>
-                    Status:{" "}
-                    <StatusBadge
-                      value={
-                        report.status
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    Opened:{" "}
-                    <strong>
-                      {formatDateTime(
-                        report.opened_at
-                      )}
-                    </strong>
-                  </div>
-
-                  <div>
-                    Closed:{" "}
-                    <strong>
-                      {formatDateTime(
-                        report.closed_at
-                      )}
-                    </strong>
-                  </div>
-
-                  <div>
-                    Close Method:{" "}
-                    <strong>
-                      {report.close_method ||
-                        "-"}
-                    </strong>
-                  </div>
-                </div>
-              </>
-            )}
-          </section>
-
-          {/* ====================================== */}
-          {/* ACCOUNTANT EXPENSES                   */}
-          {/* ====================================== */}
-
-          <PanelTitle
-            title="ACCOUNTANT EXPENSES"
-            tone="red"
-          />
-
-          <section
-            style={
-              panelStyle
-            }
-          >
-            <div
-              style={
-                expenseSummaryStyle
-              }
-            >
-              <div>
-                Manual positions used:{" "}
-                <strong>
-                  {savedExpenseCount}
-                  /20
-                </strong>
-              </div>
-
-              <div>
-                Manual expense total:{" "}
-                <strong>
-                  KES{" "}
-                  {money(
-                    calculatedExpenseTotal
-                  )}
-                </strong>
-              </div>
-
-              <div>
-                Daily report total:{" "}
-                <strong>
-                  KES{" "}
-                  {money(
-                    report?.total_expenses ??
-                      0
-                  )}
-                </strong>
-              </div>
-            </div>
-
-            <div
-              style={
-                expenseHeaderStyle
-              }
-            >
-              <div>
-                SLOT
-              </div>
-
-              <div>
-                DESCRIPTION
-              </div>
-
-              <div>
-                AMOUNT
-              </div>
-
-              <div>
-                ENTERED
-              </div>
-
-              <div>
-                STATUS
-              </div>
-            </div>
-
-            {expenseSlots.map(
-              ({
-                slot,
-                expense,
-              }) => (
-                <div
-                  key={
-                    slot
-                  }
-                  style={
-                    expenseRowStyle
-                  }
-                >
-                  <div
-                    style={
-                      centerStyle
+                      shop.id
                     }
                   >
-                    {slot}
-                  </div>
-
-                  <div>
-                    {expense?.description ||
-                      "-"}
-                  </div>
-
-                  <div
-                    style={
-                      amountStyle
+                    {
+                      shop.shop_name
                     }
-                  >
-                    {expense
-                      ? `KES ${money(
-                          expense.amount
-                        )}`
-                      : "-"}
-                  </div>
-
-                  <div
-                    style={
-                      centerStyle
-                    }
-                  >
-                    {expense
-                      ? formatDateTime(
-                          expense.created_at
-                        )
-                      : "-"}
-                  </div>
-
-                  <div
-                    style={
-                      centerStyle
-                    }
-                  >
-                    {expense ? (
-                      <span
-                        style={
-                          expense.locked
-                            ? lockedStyle
-                            : openStyle
-                        }
-                      >
-                        {expense.locked
-                          ? "LOCKED"
-                          : "OPEN"}
-                      </span>
-                    ) : (
-                      <span
-                        style={
-                          unusedStyle
-                        }
-                      >
-                        UNUSED
-                      </span>
-                    )}
-                  </div>
-                </div>
+                  </option>
+                )
               )
             )}
+          </select>
+        </div>
+      </div>
 
-            <div
-              style={
-                noteStyle
-              }
-            >
-              These are the Accountant's manual Expense 1–20 entries. This Admin screen is monitoring only.
-            </div>
-          </section>
-{/* ====================================== */}
-          {/* TRANSACTIONS                          */}
-          {/* ====================================== */}
+      {/* SHOP NAME */}
 
-          <div
-            style={
-              transactionTitleWrapStyle
+      {selectedShop && (
+        <div style={selectedShopStyle}>
+          Editing account information for{" "}
+          <strong>
+            {
+              selectedShop.shop_name
             }
-          >
-            <PanelTitle
-              title="ACCOUNTANT TRANSACTIONS"
-            />
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowTransactions(
-                  (
-                    previous
-                  ) =>
-                    !previous
-                );
-              }}
-              style={
-                collapseButtonStyle
-              }
-            >
-              {showTransactions
-                ? "▲ Hide"
-                : "▼ Show"}{" "}
-              ({transactions.length})
-            </button>
-          </div>
-
-          {showTransactions && (
-            <section
-              style={
-                panelStyle
-              }
-            >
-              <div
-                style={
-                  transactionHeaderStyle
-                }
-              >
-                <div>
-                  TIME
-                </div>
-
-                <div>
-                  TRANSACTION
-                </div>
-
-                <div>
-                  DIRECTION
-                </div>
-
-                <div>
-                  CASHIER / RECIPIENT
-                </div>
-
-                <div>
-                  AMOUNT
-                </div>
-
-                <div>
-                  FEE
-                </div>
-
-                <div>
-                  RECEIPT
-                </div>
-
-                <div>
-                  STATUS
-                </div>
-              </div>
-
-              {transactions.length ===
-              0 ? (
-                <div
-                  style={
-                    emptyStyle
-                  }
-                >
-                  No Accountant transactions for this date.
-                </div>
-              ) : (
-                transactions.map(
-                  (
-                    transaction
-                  ) => (
-                    <div
-                      key={
-                        transaction.id
-                      }
-                      style={
-                        transactionRowStyle
-                      }
-                    >
-                      <div
-                        style={
-                          smallCenterStyle
-                        }
-                      >
-                        {formatTime(
-                          transaction.created_at
-                        )}
-                      </div>
-
-                      <div
-                        style={
-                          transactionNoStyle
-                        }
-                      >
-                        {transaction.transaction_no ||
-                          "-"}
-                      </div>
-
-                      <div
-                        style={
-                          centerStyle
-                        }
-                      >
-                        {displayFlow(
-                          transaction.flow
-                        )}
-                      </div>
-
-                      <div>
-                        {displayPerson(
-                          transaction
-                        )}
-                      </div>
-
-                      <div
-                        style={
-                          amountStyle
-                        }
-                      >
-                        KES{" "}
-                        {money(
-                          transaction.amount
-                        )}
-                      </div>
-
-                      <div
-                        style={
-                          amountStyle
-                        }
-                      >
-                        KES{" "}
-                        {money(
-                          transaction.actual_fee ??
-                            transaction.estimated_fee ??
-                            0
-                        )}
-                      </div>
-
-                      <div
-                        style={
-                          receiptStyle
-                        }
-                      >
-                        {transaction.manual_receipt_no ||
-                          transaction.mpesa_receipt_number ||
-                          "-"}
-                      </div>
-
-                      <div
-                        style={
-                          centerStyle
-                        }
-                      >
-                        <StatusBadge
-                          value={
-                            transaction.status
-                          }
-                        />
-                      </div>
-                    </div>
-                  )
-                )
-              )}
-
-              <div
-                style={
-                  noteStyle
-                }
-              >
-                Both Accountant → Cashier and Cashier → Accountant movements are shown here. Receipt numbers and final transaction status remain part of the permanent transaction history.
-              </div>
-            </section>
-          )}
-
-          {/* ====================================== */}
-          {/* ADMIN NOTICE                          */}
-          {/* ====================================== */}
-
-          <div
-            style={
-              adminNoticeStyle
-            }
-          >
-            <strong>
-              ADMIN MONITORING
-            </strong>
-
-            <div>
-              The Accountant continues normal daily operations. Admin does not need to approve routine float returns or enter the Accountant's expenses. This screen gives Admin visibility over the report, manual expenses and transaction history.
-            </div>
-          </div>
-        </>
+          </strong>
+        </div>
       )}
+
+      {/* MESSAGE */}
+
+      {message && (
+        <div
+          style={
+            messageType ===
+            "success"
+              ? successStyle
+              : errorStyle
+          }
+        >
+          {message}
+        </div>
+      )}
+
+      {/* ACCOUNT TABLE */}
+
+      <div style={panelStyle}>
+        <div style={tableTitleStyle}>
+          ACCOUNTS INFORMATION
+        </div>
+
+        <div style={headerRowStyle}>
+          <div>
+            TYPE
+          </div>
+
+          <div>
+            DESCRIPTION
+          </div>
+
+          <div>
+            ACCOUNT NUMBER
+          </div>
+
+          <div>
+            PAYBILL / TILL
+          </div>
+
+          <div>
+            BANK
+          </div>
+
+          <div>
+            ACTIVE
+          </div>
+        </div>
+
+        {loadingAccounts ? (
+          <div style={emptyStyle}>
+            Loading account information...
+          </div>
+        ) : (
+          accounts.map(
+            (
+              account
+            ) => (
+              <div
+                key={
+                  account.account_type
+                }
+                style={accountRowStyle}
+              >
+                <div style={accountTypeStyle}>
+                  {
+                    account.account_type
+                  }
+                </div>
+
+                <input
+                  type="text"
+                  value={
+                    account.description
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateAccount(
+                      account.account_type,
+                      "description",
+                      event.target.value
+                    )
+                  }
+                  placeholder={
+                    account.account_type
+                  }
+                  style={inputStyle}
+                />
+
+                <input
+                  type="text"
+                  value={
+                    account.account_number
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateAccount(
+                      account.account_type,
+                      "account_number",
+                      event.target.value
+                    )
+                  }
+                  placeholder="Account number"
+                  style={inputStyle}
+                />
+
+                <input
+                  type="text"
+                  value={
+                    account.paybill_till
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateAccount(
+                      account.account_type,
+                      "paybill_till",
+                      event.target.value
+                    )
+                  }
+                  placeholder="PayBill / Till"
+                  style={inputStyle}
+                />
+
+                <input
+                  type="text"
+                  value={
+                    account.bank
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    updateAccount(
+                      account.account_type,
+                      "bank",
+                      event.target.value
+                    )
+                  }
+                  placeholder="Bank / Provider"
+                  style={inputStyle}
+                />
+
+                <label style={activeWrapStyle}>
+                  <input
+                    type="checkbox"
+                    checked={
+                      account.is_active
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateAccount(
+                        account.account_type,
+                        "is_active",
+                        event.target.checked
+                      )
+                    }
+                  />
+
+                  <span>
+                    {account.is_active
+                      ? "YES"
+                      : "NO"}
+                  </span>
+                </label>
+              </div>
+            )
+          )
+        )}
+
+        <div style={noteStyle}>
+          Active account information is automatically available on the cashier Accounts Information panel.
+        </div>
+      </div>
+
+      {/* SAVE */}
+
+      <button
+        type="button"
+        onClick={
+          saveAccounts
+        }
+        disabled={
+          saving ||
+          !selectedShopId ||
+          loadingAccounts
+        }
+        style={{
+          ...saveButtonStyle,
+
+          opacity:
+            saving ||
+            !selectedShopId ||
+            loadingAccounts
+              ? 0.6
+              : 1,
+        }}
+      >
+        {saving
+          ? "SAVING..."
+          : "SAVE ACCOUNT INFORMATION"}
+      </button>
     </section>
-  );
-}
-
-// ==================================================
-// COMPONENTS
-// ==================================================
-
-function PanelTitle({
-  title,
-  tone,
-}) {
-  return (
-    <div
-      style={{
-        ...panelTitleStyle,
-
-        backgroundColor:
-          tone ===
-          "red"
-            ? "#b91c1c"
-            : "#0873b9",
-      }}
-    >
-      {title}
-    </div>
-  );
-}
-
-function ReportCard({
-  title,
-  value,
-  moneyValue = true,
-  tone,
-}) {
-  let background =
-    "#f8fafc";
-
-  let border =
-    "#cbd5e1";
-
-  if (
-    tone ===
-    "green"
-  ) {
-    background =
-      "#ecfdf5";
-
-    border =
-      "#86efac";
-  }
-
-  if (
-    tone ===
-    "red"
-  ) {
-    background =
-      "#fff1f2";
-
-    border =
-      "#fda4af";
-  }
-
-  return (
-    <div
-      style={{
-        ...reportCardStyle,
-
-        backgroundColor:
-          background,
-
-        borderColor:
-          border,
-      }}
-    >
-      <div
-        style={
-          reportCardTitleStyle
-        }
-      >
-        {title}
-      </div>
-
-      <div
-        style={
-          reportCardValueStyle
-        }
-      >
-        {moneyValue
-          ? `KES ${money(
-              value
-            )}`
-          : value ||
-            "-"}
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({
-  value,
-}) {
-  const status =
-    String(
-      value ||
-        "UNKNOWN"
-    )
-      .trim()
-      .toUpperCase();
-
-  let background =
-    "#64748b";
-
-  if (
-    status ===
-      "COMPLETED" ||
-    status ===
-      "CLOSED" ||
-    status ===
-      "OPEN"
-  ) {
-    background =
-      "#16a34a";
-  }
-
-  if (
-    status.includes(
-      "PENDING"
-    ) ||
-    status.includes(
-      "AWAITING"
-    ) ||
-    status ===
-      "CHECKING"
-  ) {
-    background =
-      "#f59e0b";
-  }
-
-  if (
-    status ===
-      "FAILED" ||
-    status ===
-      "CANCELLED" ||
-    status ===
-      "REVERSED"
-  ) {
-    background =
-      "#dc2626";
-  }
-
-  return (
-    <span
-      style={{
-        ...statusBadgeStyle,
-
-        backgroundColor:
-          background,
-      }}
-    >
-      {status}
-    </span>
   );
 }
 
 // ==================================================
 // HELPERS
 // ==================================================
+
+function makeBlankAccounts(
+  shopId = ""
+) {
+  return ACCOUNT_TYPES.map(
+    (
+      type
+    ) => ({
+      id:
+        null,
+
+      shop_id:
+        shopId,
+
+      account_type:
+        type,
+
+      description:
+        type,
+
+      account_number:
+        "",
+
+      paybill_till:
+        "",
+
+      bank:
+        "",
+
+      is_active:
+        true,
+    })
+  );
+}
+
+function cleanValue(
+  value
+) {
+  return String(
+    value ??
+      ""
+  ).trim();
+}
 
 async function safeJson(
   response
@@ -1154,292 +932,34 @@ async function safeJson(
   }
 }
 
-function money(
-  value
-) {
-  const numeric =
-    Number(
-      value ??
-        0
-    );
-
-  const safe =
-    Number.isFinite(
-      numeric
-    )
-      ? numeric
-      : 0;
-
-  return safe.toLocaleString(
-    "en-KE",
-    {
-      minimumFractionDigits:
-        2,
-
-      maximumFractionDigits:
-        2,
-    }
-  );
-}
-
-function roundMoney(
-  value
-) {
-  return (
-    Math.round(
-      (
-        Number(
-          value
-        ) +
-        Number.EPSILON
-      ) *
-        100
-    ) / 100
-  );
-}
-
-function displayFlow(
-  value
-) {
-  const flow =
-    String(
-      value ||
-        ""
-    )
-      .trim()
-      .toUpperCase();
-
-  if (
-    flow ===
-    "ACCOUNTANT_TO_CASHIER"
-  ) {
-    return "Accounts → Cashier";
-  }
-
-  if (
-    flow ===
-    "CASHIER_TO_ACCOUNTANT"
-  ) {
-    return "Cashier → Accounts";
-  }
-
-  return (
-    value ||
-    "-"
-  );
-}
-
-function displayPerson(
-  transaction
-) {
-  if (
-    String(
-      transaction?.flow ||
-        ""
-    ).toUpperCase() ===
-    "ACCOUNTANT_TO_CASHIER"
-  ) {
-    return (
-      transaction
-        ?.recipient_name_snapshot ||
-      transaction
-        ?.cashier_name ||
-      "-"
-    );
-  }
-
-  return (
-    transaction
-      ?.cashier_name ||
-    transaction
-      ?.recipient_name_snapshot ||
-    "-"
-  );
-}
-
-function getNairobiDateInput() {
-  const parts =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone:
-          "Africa/Nairobi",
-
-        year:
-          "numeric",
-
-        month:
-          "2-digit",
-
-        day:
-          "2-digit",
-      }
-    ).formatToParts(
-      new Date()
-    );
-
-  const values = {};
-
-  for (
-    const part
-    of parts
-  ) {
-    if (
-      part.type !==
-      "literal"
-    ) {
-      values[
-        part.type
-      ] =
-        part.value;
-    }
-  }
-
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function formatSimpleDate(
-  value
-) {
-  if (!value) {
-    return "-";
-  }
-
-  const date =
-    new Date(
-      `${value}T12:00:00`
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone:
-        "Africa/Nairobi",
-
-      day:
-        "2-digit",
-
-      month:
-        "short",
-
-      year:
-        "numeric",
-    }
-  ).format(
-    date
-  );
-}
-
-function formatDateTime(
-  value
-) {
-  if (!value) {
-    return "-";
-  }
-
-  const date =
-    new Date(
-      value
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone:
-        "Africa/Nairobi",
-
-      day:
-        "2-digit",
-
-      month:
-        "short",
-
-      year:
-        "numeric",
-
-      hour:
-        "2-digit",
-
-      minute:
-        "2-digit",
-    }
-  ).format(
-    date
-  );
-}
-
-function formatTime(
-  value
-) {
-  if (!value) {
-    return "-";
-  }
-
-  const date =
-    new Date(
-      value
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone:
-        "Africa/Nairobi",
-
-      hour:
-        "2-digit",
-
-      minute:
-        "2-digit",
-    }
-  ).format(
-    date
-  );
-}
-
 // ==================================================
 // STYLES
 // ==================================================
 
-const pageStyle = {
+const wrapperStyle = {
   width:
     "100%",
 
-  boxSizing:
-    "border-box",
+  display:
+    "grid",
 
-  fontFamily:
-    "Arial, sans-serif",
-
-  color:
-    "#0f172a",
+  gap:
+    "12px",
 };
 
-const titleBarStyle = {
+const controlPanelStyle = {
+  backgroundColor:
+    "#0f766e",
+
+  color:
+    "white",
+
+  borderRadius:
+    "7px",
+
+  padding:
+    "14px",
+
   display:
     "flex",
 
@@ -1447,119 +967,87 @@ const titleBarStyle = {
     "space-between",
 
   alignItems:
-    "center",
+    "end",
 
   gap:
-    "12px",
+    "20px",
 
   flexWrap:
     "wrap",
-
-  backgroundColor:
-    "#063c63",
-
-  color:
-    "white",
-
-  padding:
-    "14px",
-
-  borderRadius:
-    "7px",
-
-  marginBottom:
-    "10px",
 };
 
-const titleStyle = {
+const controlTitleStyle = {
   fontSize:
-    "20px",
+    "15px",
 
   fontWeight:
     "900",
 };
 
-const subtitleStyle = {
-  fontSize:
-    "10px",
-
+const controlSubtitleStyle = {
   marginTop:
     "4px",
 
-  letterSpacing:
-    "0.5px",
-};
-
-const dateControlStyle = {
-  display:
-    "flex",
-
-  gap:
-    "7px",
-
-  alignItems:
-    "center",
-
-  flexWrap:
-    "wrap",
-};
-
-const dateLabelStyle = {
   fontSize:
-    "10px",
+    "9px",
+
+  color:
+    "#ccfbf1",
+};
+
+const shopControlStyle = {
+  minWidth:
+    "240px",
+};
+
+const labelStyle = {
+  display:
+    "block",
+
+  marginBottom:
+    "5px",
+
+  fontSize:
+    "9px",
 
   fontWeight:
     "bold",
 };
 
-const dateInputStyle = {
-  padding:
-    "8px",
+const shopSelectStyle = {
+  width:
+    "100%",
 
-  borderRadius:
-    "5px",
+  padding:
+    "9px",
 
   border:
     "1px solid #cbd5e1",
-};
-
-const refreshButtonStyle = {
-  padding:
-    "8px 14px",
-
-  border:
-    "none",
 
   borderRadius:
     "5px",
 
   backgroundColor:
-    "#16a34a",
-
-  color:
     "white",
-
-  fontWeight:
-    "bold",
-
-  cursor:
-    "pointer",
 };
 
-const panelTitleStyle = {
-  color:
-    "white",
-
+const selectedShopStyle = {
   padding:
-    "9px 12px",
+    "10px",
 
-  fontWeight:
-    "bold",
+  backgroundColor:
+    "#ecfeff",
+
+  border:
+    "1px solid #a5f3fc",
 
   borderRadius:
-    "6px 6px 0 0",
+    "5px",
 
-  marginTop:
+  color:
+    "#155e75",
+
+  fontSize:
     "10px",
 };
 
@@ -1568,201 +1056,41 @@ const panelStyle = {
     "white",
 
   border:
-    "1px solid #e2e8f0",
-
-  borderTop:
-    "none",
-
-  borderRadius:
-    "0 0 6px 6px",
-
-  overflow:
-    "hidden",
-
-  marginBottom:
-    "10px",
-};
-
-const accountantGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(220px, 1fr))",
-
-  gap:
-    "8px",
-
-  padding:
-    "10px",
-};
-
-const accountantCardStyle = {
-  backgroundColor:
-    "#f8fafc",
-
-  border:
     "1px solid #cbd5e1",
 
   borderRadius:
-    "6px",
-
-  padding:
-    "10px",
-
-  fontSize:
-    "11px",
-
-  lineHeight:
-    "1.8",
-};
-
-const accountantNameStyle = {
-  fontSize:
-    "14px",
-
-  fontWeight:
-    "bold",
-
-  color:
-    "#063c63",
-
-  marginBottom:
-    "5px",
-};
-
-const activeTextStyle = {
-  color:
-    "#15803d",
-
-  fontWeight:
-    "bold",
-};
-
-const inactiveTextStyle = {
-  color:
-    "#b91c1c",
-
-  fontWeight:
-    "bold",
-};
-
-// ==================================================
-// DAILY REPORT
-// ==================================================
-
-const reportCardsStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(7, minmax(120px, 1fr))",
-
-  gap:
     "7px",
-
-  padding:
-    "10px",
 
   overflowX:
     "auto",
 };
 
-const reportCardStyle = {
-  border:
-    "1px solid #cbd5e1",
+const tableTitleStyle = {
+  backgroundColor:
+    "#0873b9",
 
-  borderRadius:
-    "6px",
+  color:
+    "white",
 
   padding:
-    "10px",
+    "10px 12px",
+
+  fontSize:
+    "13px",
+
+  fontWeight:
+    "900",
+};
+
+const headerRowStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "100px 1fr 1.2fr 1fr 1fr 80px",
 
   minWidth:
-    "105px",
-};
-
-const reportCardTitleStyle = {
-  color:
-    "#64748b",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-
-  marginBottom:
-    "5px",
-};
-
-const reportCardValueStyle = {
-  color:
-    "#0f172a",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    "bold",
-};
-
-const reportFooterStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(4, minmax(0, 1fr))",
-
-  gap:
-    "8px",
-
-  padding:
-    "10px",
-
-  borderTop:
-    "1px solid #e2e8f0",
-
-  backgroundColor:
-    "#f8fafc",
-
-  fontSize:
-    "10px",
-};
-
-// ==================================================
-// EXPENSES
-// ==================================================
-
-const expenseSummaryStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(3, minmax(0, 1fr))",
-
-  gap:
-    "8px",
-
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#fff7ed",
-
-  borderBottom:
-    "1px solid #fed7aa",
-
-  fontSize:
-    "11px",
-};
-
-const expenseHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "55px minmax(180px, 2fr) minmax(100px, 1fr) minmax(130px, 1fr) 90px",
+    "900px",
 
   gap:
     "6px",
@@ -1771,13 +1099,13 @@ const expenseHeaderStyle = {
     "8px",
 
   backgroundColor:
-    "#fee2e2",
+    "#eef4f8",
 
   color:
-    "#7f1d1d",
+    "#475569",
 
   fontSize:
-    "9px",
+    "8px",
 
   fontWeight:
     "bold",
@@ -1786,12 +1114,15 @@ const expenseHeaderStyle = {
     "center",
 };
 
-const expenseRowStyle = {
+const accountRowStyle = {
   display:
     "grid",
 
   gridTemplateColumns:
-    "55px minmax(180px, 2fr) minmax(100px, 1fr) minmax(130px, 1fr) 90px",
+    "100px 1fr 1.2fr 1fr 1fr 80px",
+
+  minWidth:
+    "900px",
 
   gap:
     "6px",
@@ -1800,89 +1131,55 @@ const expenseRowStyle = {
     "center",
 
   padding:
-    "7px 8px",
+    "8px",
 
   borderTop:
-    "1px solid #e5e7eb",
+    "1px solid #e2e8f0",
+};
+
+const accountTypeStyle = {
+  color:
+    "#0f172a",
+
+  fontWeight:
+    "900",
 
   fontSize:
     "10px",
 };
 
-const centerStyle = {
-  textAlign:
+const inputStyle = {
+  width:
+    "100%",
+
+  boxSizing:
+    "border-box",
+
+  padding:
+    "8px",
+
+  border:
+    "1px solid #94a3b8",
+
+  borderRadius:
+    "4px",
+
+  fontSize:
+    "10px",
+};
+
+const activeWrapStyle = {
+  display:
+    "flex",
+
+  justifyContent:
     "center",
-};
 
-const amountStyle = {
-  textAlign:
-    "right",
+  alignItems:
+    "center",
 
-  fontWeight:
-    "bold",
-};
-
-const lockedStyle = {
-  display:
-    "inline-block",
-
-  padding:
-    "4px 7px",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#dcfce7",
-
-  color:
-    "#166534",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-};
-
-const openStyle = {
-  display:
-    "inline-block",
-
-  padding:
-    "4px 7px",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#fef3c7",
-
-  color:
-    "#92400e",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-};
-
-const unusedStyle = {
-  display:
-    "inline-block",
-
-  padding:
-    "4px 7px",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#f1f5f9",
-
-  color:
-    "#64748b",
+  gap:
+    "5px",
 
   fontSize:
     "9px",
@@ -1893,235 +1190,79 @@ const unusedStyle = {
 
 const noteStyle = {
   padding:
-    "8px 10px",
+    "9px",
 
   borderTop:
     "1px solid #e2e8f0",
 
-  color:
-    "#64748b",
-
   backgroundColor:
     "#f8fafc",
 
-  fontSize:
-    "9px",
+  color:
+    "#64748b",
 
   textAlign:
     "center",
+
+  fontSize:
+    "9px",
 };
 
-// ==================================================
-// TRANSACTIONS
-// ==================================================
+const saveButtonStyle = {
+  width:
+    "100%",
 
-const transactionTitleWrapStyle = {
-  position:
-    "relative",
-
-  marginTop:
-    "10px",
-};
-
-const collapseButtonStyle = {
-  position:
-    "absolute",
-
-  right:
-    "8px",
-
-  top:
-    "5px",
+  padding:
+    "11px",
 
   border:
-    "1px solid rgba(255,255,255,0.7)",
+    "none",
+
+  borderRadius:
+    "5px",
 
   backgroundColor:
-    "rgba(255,255,255,0.15)",
+    "#15803d",
 
   color:
     "white",
 
-  borderRadius:
-    "4px",
-
-  padding:
-    "4px 9px",
-
-  fontSize:
-    "9px",
-
   fontWeight:
-    "bold",
+    "900",
 
   cursor:
     "pointer",
 };
 
-const transactionHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "70px 1.15fr 1fr 1.2fr 0.8fr 0.7fr 1fr 1fr",
-
-  gap:
-    "6px",
-
+const successStyle = {
   padding:
-    "8px",
+    "10px",
 
   backgroundColor:
-    "#e0f2fe",
-
-  color:
-    "#0c4a6e",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "bold",
-
-  textAlign:
-    "center",
-
-  minWidth:
-    "900px",
-};
-
-const transactionRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "70px 1.15fr 1fr 1.2fr 0.8fr 0.7fr 1fr 1fr",
-
-  gap:
-    "6px",
-
-  alignItems:
-    "center",
-
-  padding:
-    "7px 8px",
-
-  borderTop:
-    "1px solid #e2e8f0",
-
-  fontSize:
-    "9px",
-
-  minWidth:
-    "900px",
-};
-
-const smallCenterStyle = {
-  textAlign:
-    "center",
-
-  fontSize:
-    "9px",
-};
-
-const transactionNoStyle = {
-  fontWeight:
-    "bold",
-
-  wordBreak:
-    "break-word",
-};
-
-const receiptStyle = {
-  textAlign:
-    "center",
-
-  fontFamily:
-    "monospace",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "9px",
-
-  wordBreak:
-    "break-all",
-};
-
-const statusBadgeStyle = {
-  display:
-    "inline-block",
-
-  color:
-    "white",
-
-  borderRadius:
-    "999px",
-
-  padding:
-    "4px 7px",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "bold",
-
-  whiteSpace:
-    "nowrap",
-};
-
-// ==================================================
-// GENERAL
-// ==================================================
-
-const emptyStyle = {
-  padding:
-    "22px",
-
-  textAlign:
-    "center",
-
-  color:
-    "#64748b",
-
-  fontSize:
-    "11px",
-};
-
-const loadingStyle = {
-  backgroundColor:
-    "white",
-
-  padding:
-    "30px",
-
-  textAlign:
-    "center",
-
-  color:
-    "#64748b",
-
-  borderRadius:
-    "6px",
+    "#f0fdf4",
 
   border:
-    "1px solid #e2e8f0",
+    "1px solid #86efac",
+
+  borderRadius:
+    "5px",
+
+  color:
+    "#166534",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "bold",
 };
 
 const errorStyle = {
   padding:
     "10px",
 
-  marginBottom:
-    "10px",
-
   backgroundColor:
-    "#fee2e2",
-
-  color:
-    "#991b1b",
+    "#fef2f2",
 
   border:
     "1px solid #fecaca",
@@ -2129,35 +1270,52 @@ const errorStyle = {
   borderRadius:
     "5px",
 
+  color:
+    "#991b1b",
+
   fontSize:
-    "11px",
+    "10px",
+
+  fontWeight:
+    "bold",
 };
 
-const adminNoticeStyle = {
-  backgroundColor:
-    "#eff6ff",
+const loadingStyle = {
+  padding:
+    "30px",
 
-  color:
-    "#1e3a8a",
+  backgroundColor:
+    "white",
 
   border:
-    "1px solid #bfdbfe",
+    "1px solid #cbd5e1",
 
   borderRadius:
-    "6px",
+    "7px",
+
+  color:
+    "#64748b",
+
+  textAlign:
+    "center",
+};
+
+const emptyStyle = {
+  minWidth:
+    "900px",
 
   padding:
-    "12px",
+    "25px",
 
-  marginTop:
-    "10px",
+  boxSizing:
+    "border-box",
 
-  marginBottom:
-    "12px",
+  color:
+    "#64748b",
+
+  textAlign:
+    "center",
 
   fontSize:
     "10px",
-
-  lineHeight:
-    "1.7",
 };
