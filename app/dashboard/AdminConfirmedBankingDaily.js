@@ -427,7 +427,14 @@ export default function AdminConfirmedBankingDaily({
                   </thead>
 
                   <tbody>
-                    {daily.map(
+                    {daily
+  .filter(
+    (item) =>
+      item.is_today ||
+      item.is_yesterday ||
+      Number(item.confirmed_count || 0) > 0
+  )
+  .map(
                       (
                         item
                       ) => (
@@ -1086,7 +1093,7 @@ const tableWrapStyle = {
     "auto",
 
   maxHeight:
-    "430px",
+    "260px",
 
   overflowY:
     "auto",
