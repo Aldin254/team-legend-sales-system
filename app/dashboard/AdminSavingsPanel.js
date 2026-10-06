@@ -6,7 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
-
+import AdminConfirmedBankingDaily from "./AdminConfirmedBankingDaily";
 const REFRESH_MS = 5000;
 
 export default function AdminSavingsPanel({
@@ -1726,7 +1726,7 @@ export default function AdminSavingsPanel({
           />
         </div>
       </div>
-
+<AdminConfirmedBankingDaily user={user} />
       {/* EMPLOYEE DIRECTORY */}
 
       <div
