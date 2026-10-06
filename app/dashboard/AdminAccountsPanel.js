@@ -11,17 +11,27 @@ const ACCOUNT_TYPES = [
   "RENT",
   "WIFI",
   "DSTV",
+  "ELECTRICITY",
   "BANKING",
 ];
+
+const FIXED_AMOUNT_TYPES =
+  new Set([
+    "RENT",
+    "WIFI",
+    "DSTV",
+  ]);
 
 export default function AdminAccountsPanel({
   user,
 }) {
   const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
+    process.env
+      .NEXT_PUBLIC_SUPABASE_URL;
 
   const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env
+      .NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
     user?.access_token ||
@@ -38,6 +48,11 @@ export default function AdminAccountsPanel({
   const [accounts, setAccounts] =
     useState([]);
 
+  const [
+    auditHistory,
+    setAuditHistory,
+  ] = useState([]);
+
   const [loading, setLoading] =
     useState(true);
 
@@ -46,14 +61,21 @@ export default function AdminAccountsPanel({
     setLoadingAccounts,
   ] = useState(false);
 
+  const [
+    loadingHistory,
+    setLoadingHistory,
+  ] = useState(false);
+
   const [saving, setSaving] =
     useState(false);
 
   const [message, setMessage] =
     useState("");
 
-  const [messageType, setMessageType] =
-    useState("");
+  const [
+    messageType,
+    setMessageType,
+  ] = useState("");
 
   // ==================================================
   // AUTH HEADERS
@@ -128,7 +150,9 @@ export default function AdminAccountsPanel({
           }
 
           const rows =
-            Array.isArray(result)
+            Array.isArray(
+              result
+            )
               ? result
               : [];
 
@@ -185,7 +209,9 @@ export default function AdminAccountsPanel({
           !accessToken
         ) {
           setAccounts(
-            makeBlankAccounts()
+            makeBlankAccounts(
+              shopId
+            )
           );
 
           return;
@@ -196,16 +222,13 @@ export default function AdminAccountsPanel({
             true
           );
 
-          setMessage("");
-          setMessageType("");
-
           const response =
             await fetch(
               `${supabaseUrl}/rest/v1/shop_accounts` +
                 `?shop_id=eq.${encodeURIComponent(
                   shopId
                 )}` +
-                `&select=id,shop_id,account_type,description,account_number,paybill_till,bank,is_active` +
+                `&select=id,shop_id,account_type,description,account_number,paybill_till,bank,is_active,obligation_amount,obligation_change_reason` +
                 `&order=account_type.asc`,
               {
                 method:
@@ -233,7 +256,9 @@ export default function AdminAccountsPanel({
           }
 
           const existing =
-            Array.isArray(result)
+            Array.isArray(
+              result
+            )
               ? result
               : [];
 
@@ -255,6 +280,19 @@ export default function AdminAccountsPanel({
                         .toUpperCase() ===
                       type
                   );
+
+                const obligation =
+                  found
+                    ?.obligation_amount ===
+                    null ||
+                  found
+                    ?.obligation_amount ===
+                    undefined
+                    ? ""
+                    : String(
+                        found
+                          .obligation_amount
+                      );
 
                 return {
                   id:
@@ -286,6 +324,15 @@ export default function AdminAccountsPanel({
                   is_active:
                     found?.is_active !==
                     false,
+
+                  obligation_amount:
+                    obligation,
+
+                  original_obligation_amount:
+                    obligation,
+
+                  change_reason:
+                    "",
                 };
               }
             );
@@ -327,6 +374,95 @@ export default function AdminAccountsPanel({
     );
 
   // ==================================================
+  // LOAD FIXED AMOUNT AUDIT
+  // ==================================================
+
+  const loadAuditHistory =
+    useCallback(
+      async (
+        shopId
+      ) => {
+        if (
+          !shopId ||
+          !supabaseUrl ||
+          !accessToken
+        ) {
+          setAuditHistory(
+            []
+          );
+
+          return;
+        }
+
+        try {
+          setLoadingHistory(
+            true
+          );
+
+          const response =
+            await fetch(
+              `${supabaseUrl}/rest/v1/rpc/tl_admin_shop_obligation_history`,
+              {
+                method:
+                  "POST",
+
+                headers:
+                  authHeaders(),
+
+                body:
+                  JSON.stringify({
+                    p_shop_id:
+                      shopId,
+                  }),
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          const result =
+            await safeJson(
+              response
+            );
+
+          if (!response.ok) {
+            throw new Error(
+              result?.message ||
+                result?.details ||
+                "Unable to load fixed amount history."
+            );
+          }
+
+          setAuditHistory(
+            Array.isArray(
+              result
+            )
+              ? result
+              : []
+          );
+        } catch (error) {
+          console.error(
+            "ACCOUNT AMOUNT AUDIT ERROR:",
+            error
+          );
+
+          setAuditHistory(
+            []
+          );
+        } finally {
+          setLoadingHistory(
+            false
+          );
+        }
+      },
+      [
+        supabaseUrl,
+        accessToken,
+        authHeaders,
+      ]
+    );
+
+  // ==================================================
   // INITIAL LOAD
   // ==================================================
 
@@ -337,20 +473,28 @@ export default function AdminAccountsPanel({
   ]);
 
   // ==================================================
-  // LOAD WHEN SHOP CHANGES
+  // SHOP CHANGED
   // ==================================================
 
   useEffect(() => {
     if (
       selectedShopId
     ) {
+      setMessage("");
+      setMessageType("");
+
       loadAccounts(
+        selectedShopId
+      );
+
+      loadAuditHistory(
         selectedShopId
       );
     }
   }, [
     selectedShopId,
     loadAccounts,
+    loadAuditHistory,
   ]);
 
   // ==================================================
@@ -423,6 +567,86 @@ export default function AdminAccountsPanel({
       return;
     }
 
+    // ----------------------------------------------
+    // VALIDATE FIXED AMOUNTS
+    // ----------------------------------------------
+
+    for (
+      const account of
+      accounts
+    ) {
+      if (
+        !FIXED_AMOUNT_TYPES.has(
+          account.account_type
+        )
+      ) {
+        continue;
+      }
+
+      const raw =
+        cleanValue(
+          account.obligation_amount
+        );
+
+      if (
+        raw !== ""
+      ) {
+        const amount =
+          Number(
+            raw
+          );
+
+        if (
+          !Number.isFinite(
+            amount
+          ) ||
+          amount < 0
+        ) {
+          setMessage(
+            `Enter a valid fixed amount for ${account.account_type}.`
+          );
+
+          setMessageType(
+            "error"
+          );
+
+          return;
+        }
+      }
+
+      const changed =
+        !amountsEqual(
+          account
+            .original_obligation_amount,
+          account
+            .obligation_amount
+        );
+
+      const hadExistingAmount =
+        cleanValue(
+          account
+            .original_obligation_amount
+        ) !== "";
+
+      if (
+        changed &&
+        hadExistingAmount &&
+        cleanValue(
+          account.change_reason
+        ) === ""
+      ) {
+        setMessage(
+          `Enter the reason for changing the ${account.account_type} fixed amount.`
+        );
+
+        setMessageType(
+          "error"
+        );
+
+        return;
+      }
+    }
+
     try {
       setSaving(
         true
@@ -432,9 +656,39 @@ export default function AdminAccountsPanel({
       setMessageType("");
 
       for (
-        const account
-        of accounts
+        const account of
+        accounts
       ) {
+        const fixed =
+          FIXED_AMOUNT_TYPES.has(
+            account.account_type
+          );
+
+        const changed =
+          fixed &&
+          !amountsEqual(
+            account
+              .original_obligation_amount,
+            account
+              .obligation_amount
+          );
+
+        const amountText =
+          cleanValue(
+            account
+              .obligation_amount
+          );
+
+        const obligationAmount =
+          fixed &&
+          amountText !== ""
+            ? roundMoney(
+                Number(
+                  amountText
+                )
+              )
+            : null;
+
         const payload = {
           shop_id:
             selectedShopId,
@@ -470,6 +724,19 @@ export default function AdminAccountsPanel({
             Boolean(
               account.is_active
             ),
+
+          obligation_amount:
+            obligationAmount,
+
+          obligation_change_reason:
+            fixed &&
+            changed
+              ? cleanValue(
+                  account
+                    .change_reason
+                ) ||
+                null
+              : null,
         };
 
         let response;
@@ -552,9 +819,15 @@ export default function AdminAccountsPanel({
         "success"
       );
 
-      await loadAccounts(
-        selectedShopId
-      );
+      await Promise.all([
+        loadAccounts(
+          selectedShopId
+        ),
+
+        loadAuditHistory(
+          selectedShopId
+        ),
+      ]);
     } catch (error) {
       console.error(
         "SAVE SHOP ACCOUNTS ERROR:",
@@ -584,29 +857,59 @@ export default function AdminAccountsPanel({
     loading
   ) {
     return (
-      <div style={loadingStyle}>
+      <div
+        style={
+          loadingStyle
+        }
+      >
         Loading shop accounts...
       </div>
     );
   }
 
   return (
-    <section style={wrapperStyle}>
+    <section
+      style={
+        wrapperStyle
+      }
+    >
+      {/* =========================================== */}
       {/* SHOP CONTROL */}
+      {/* =========================================== */}
 
-      <div style={controlPanelStyle}>
+      <div
+        style={
+          controlPanelStyle
+        }
+      >
         <div>
-          <div style={controlTitleStyle}>
+          <div
+            style={
+              controlTitleStyle
+            }
+          >
             SHOP ACCOUNT INFORMATION
           </div>
 
-          <div style={controlSubtitleStyle}>
-            Manage Rent, WIFI, DSTV and Banking details shown to cashiers.
+          <div
+            style={
+              controlSubtitleStyle
+            }
+          >
+            Manage payment accounts and fixed WiFi, DStv and Rent amounts.
           </div>
         </div>
 
-        <div style={shopControlStyle}>
-          <label style={labelStyle}>
+        <div
+          style={
+            shopControlStyle
+          }
+        >
+          <label
+            style={
+              labelStyle
+            }
+          >
             SELECT SHOP
           </label>
 
@@ -618,17 +921,23 @@ export default function AdminAccountsPanel({
               event
             ) => {
               setSelectedShopId(
-                event.target.value
+                event
+                  .target
+                  .value
               );
 
               setMessage("");
               setMessageType("");
             }}
-            style={shopSelectStyle}
+            style={
+              shopSelectStyle
+            }
           >
             {shops.length ===
             0 ? (
-              <option value="">
+              <option
+                value=""
+              >
                 No active shops
               </option>
             ) : (
@@ -655,11 +964,18 @@ export default function AdminAccountsPanel({
         </div>
       </div>
 
+      {/* =========================================== */}
       {/* SHOP NAME */}
+      {/* =========================================== */}
 
       {selectedShop && (
-        <div style={selectedShopStyle}>
+        <div
+          style={
+            selectedShopStyle
+          }
+        >
           Editing account information for{" "}
+
           <strong>
             {
               selectedShop.shop_name
@@ -668,7 +984,9 @@ export default function AdminAccountsPanel({
         </div>
       )}
 
+      {/* =========================================== */}
       {/* MESSAGE */}
+      {/* =========================================== */}
 
       {message && (
         <div
@@ -683,14 +1001,28 @@ export default function AdminAccountsPanel({
         </div>
       )}
 
+      {/* =========================================== */}
       {/* ACCOUNT TABLE */}
+      {/* =========================================== */}
 
-      <div style={panelStyle}>
-        <div style={tableTitleStyle}>
+      <div
+        style={
+          panelStyle
+        }
+      >
+        <div
+          style={
+            tableTitleStyle
+          }
+        >
           ACCOUNTS INFORMATION
         </div>
 
-        <div style={headerRowStyle}>
+        <div
+          style={
+            headerRowStyle
+          }
+        >
           <div>
             TYPE
           </div>
@@ -712,139 +1044,332 @@ export default function AdminAccountsPanel({
           </div>
 
           <div>
+            FIXED AMOUNT
+          </div>
+
+          <div>
+            CHANGE REASON
+          </div>
+
+          <div>
             ACTIVE
           </div>
         </div>
 
         {loadingAccounts ? (
-          <div style={emptyStyle}>
+          <div
+            style={
+              emptyStyle
+            }
+          >
             Loading account information...
           </div>
         ) : (
           accounts.map(
             (
               account
-            ) => (
-              <div
-                key={
+            ) => {
+              const fixed =
+                FIXED_AMOUNT_TYPES.has(
                   account.account_type
-                }
-                style={accountRowStyle}
-              >
-                <div style={accountTypeStyle}>
-                  {
+                );
+
+              const amountChanged =
+                fixed &&
+                !amountsEqual(
+                  account
+                    .original_obligation_amount,
+                  account
+                    .obligation_amount
+                );
+
+              return (
+                <div
+                  key={
                     account.account_type
                   }
-                </div>
+                  style={
+                    accountRowStyle
+                  }
+                >
+                  <div
+                    style={
+                      accountTypeStyle
+                    }
+                  >
+                    {
+                      account.account_type
+                    }
 
-                <input
-                  type="text"
-                  value={
-                    account.description
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateAccount(
-                      account.account_type,
-                      "description",
-                      event.target.value
-                    )
-                  }
-                  placeholder={
-                    account.account_type
-                  }
-                  style={inputStyle}
-                />
+                    {fixed && (
+                      <div
+                        style={
+                          fixedBadgeStyle
+                        }
+                      >
+                        FIXED
+                      </div>
+                    )}
 
-                <input
-                  type="text"
-                  value={
-                    account.account_number
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateAccount(
-                      account.account_type,
-                      "account_number",
-                      event.target.value
-                    )
-                  }
-                  placeholder="Account number"
-                  style={inputStyle}
-                />
+                    {account.account_type ===
+                      "ELECTRICITY" && (
+                      <div
+                        style={
+                          variableBadgeStyle
+                        }
+                      >
+                        VARIABLE
+                      </div>
+                    )}
 
-                <input
-                  type="text"
-                  value={
-                    account.paybill_till
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateAccount(
-                      account.account_type,
-                      "paybill_till",
-                      event.target.value
-                    )
-                  }
-                  placeholder="PayBill / Till"
-                  style={inputStyle}
-                />
+                    {account.account_type ===
+                      "BANKING" && (
+                      <div
+                        style={
+                          variableBadgeStyle
+                        }
+                      >
+                        EMPLOYEE
+                      </div>
+                    )}
+                  </div>
 
-                <input
-                  type="text"
-                  value={
-                    account.bank
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateAccount(
-                      account.account_type,
-                      "bank",
-                      event.target.value
-                    )
-                  }
-                  placeholder="Bank / Provider"
-                  style={inputStyle}
-                />
-
-                <label style={activeWrapStyle}>
                   <input
-                    type="checkbox"
-                    checked={
-                      account.is_active
+                    type="text"
+                    value={
+                      account.description
                     }
                     onChange={(
                       event
                     ) =>
                       updateAccount(
                         account.account_type,
-                        "is_active",
-                        event.target.checked
+                        "description",
+                        event
+                          .target
+                          .value
                       )
+                    }
+                    placeholder={
+                      account.account_type
+                    }
+                    style={
+                      inputStyle
                     }
                   />
 
-                  <span>
-                    {account.is_active
-                      ? "YES"
-                      : "NO"}
-                  </span>
-                </label>
-              </div>
-            )
+                  <input
+                    type="text"
+                    value={
+                      account.account_number
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateAccount(
+                        account.account_type,
+                        "account_number",
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    placeholder="Account number"
+                    style={
+                      inputStyle
+                    }
+                  />
+
+                  <input
+                    type="text"
+                    value={
+                      account.paybill_till
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateAccount(
+                        account.account_type,
+                        "paybill_till",
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    placeholder="PayBill / Till"
+                    style={
+                      inputStyle
+                    }
+                  />
+
+                  <input
+                    type="text"
+                    value={
+                      account.bank
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateAccount(
+                        account.account_type,
+                        "bank",
+                        event
+                          .target
+                          .value
+                      )
+                    }
+                    placeholder="Bank / Provider"
+                    style={
+                      inputStyle
+                    }
+                  />
+
+                  {fixed ? (
+                    <div
+                      style={
+                        amountWrapStyle
+                      }
+                    >
+                      <span
+                        style={
+                          currencyStyle
+                        }
+                      >
+                        KES
+                      </span>
+
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={
+                          account
+                            .obligation_amount
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          updateAccount(
+                            account.account_type,
+                            "obligation_amount",
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        placeholder="0.00"
+                        style={
+                          amountInputStyle
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      style={
+                        variableAmountStyle
+                      }
+                    >
+                      {account.account_type ===
+                      "ELECTRICITY"
+                        ? "VARIABLE"
+                        : "NO FIXED AMOUNT"}
+                    </div>
+                  )}
+
+                  {fixed ? (
+                    <input
+                      type="text"
+                      value={
+                        account
+                          .change_reason
+                      }
+                      disabled={
+                        !amountChanged
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateAccount(
+                          account.account_type,
+                          "change_reason",
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                      placeholder={
+                        amountChanged
+                          ? "Why is amount changing?"
+                          : "Only needed when amount changes"
+                      }
+                      style={{
+                        ...inputStyle,
+
+                        backgroundColor:
+                          amountChanged
+                            ? "white"
+                            : "#f8fafc",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={
+                        notApplicableStyle
+                      }
+                    >
+                      —
+                    </div>
+                  )}
+
+                  <label
+                    style={
+                      activeWrapStyle
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={
+                        account.is_active
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateAccount(
+                          account.account_type,
+                          "is_active",
+                          event
+                            .target
+                            .checked
+                        )
+                      }
+                    />
+
+                    <span>
+                      {account.is_active
+                        ? "YES"
+                        : "NO"}
+                    </span>
+                  </label>
+                </div>
+              );
+            }
           )
         )}
 
-        <div style={noteStyle}>
-          Active account information is automatically available on the cashier Accounts Information panel.
+        <div
+          style={
+            noteStyle
+          }
+        >
+          WiFi, DStv and Rent use the fixed amount shown here.
+          Electricity remains variable. Banking has no cashier-visible
+          fixed target.
         </div>
       </div>
 
+      {/* =========================================== */}
       {/* SAVE */}
+      {/* =========================================== */}
 
       <button
         type="button"
@@ -871,6 +1396,132 @@ export default function AdminAccountsPanel({
           ? "SAVING..."
           : "SAVE ACCOUNT INFORMATION"}
       </button>
+
+      {/* =========================================== */}
+      {/* FIXED AMOUNT HISTORY */}
+      {/* =========================================== */}
+
+      <div
+        style={
+          historyPanelStyle
+        }
+      >
+        <div
+          style={
+            historyTitleStyle
+          }
+        >
+          FIXED AMOUNT CHANGE HISTORY
+        </div>
+
+        {loadingHistory ? (
+          <div
+            style={
+              historyEmptyStyle
+            }
+          >
+            Loading history...
+          </div>
+        ) : auditHistory.length ===
+          0 ? (
+          <div
+            style={
+              historyEmptyStyle
+            }
+          >
+            No fixed amount changes recorded for this shop yet.
+          </div>
+        ) : (
+          <>
+            <div
+              style={
+                historyHeaderStyle
+              }
+            >
+              <div>
+                TYPE
+              </div>
+
+              <div>
+                OLD
+              </div>
+
+              <div>
+                NEW
+              </div>
+
+              <div>
+                REASON
+              </div>
+
+              <div>
+                DATE / TIME
+              </div>
+            </div>
+
+            {auditHistory
+              .slice(
+                0,
+                20
+              )
+              .map(
+                (
+                  item
+                ) => (
+                  <div
+                    key={
+                      item.id
+                    }
+                    style={
+                      historyRowStyle
+                    }
+                  >
+                    <strong>
+                      {
+                        item.account_type
+                      }
+                    </strong>
+
+                    <div>
+                      {item.old_amount ===
+                        null ||
+                      item.old_amount ===
+                        undefined
+                        ? "—"
+                        : `KES ${money(
+                            item.old_amount
+                          )}`}
+                    </div>
+
+                    <div>
+                      {item.new_amount ===
+                        null ||
+                      item.new_amount ===
+                        undefined
+                        ? "—"
+                        : `KES ${money(
+                            item.new_amount
+                          )}`}
+                    </div>
+
+                    <div>
+                      {
+                        item.reason ||
+                        "Initial amount"
+                      }
+                    </div>
+
+                    <div>
+                      {formatDateTime(
+                        item.changed_at
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+          </>
+        )}
+      </div>
     </section>
   );
 }
@@ -909,6 +1560,15 @@ function makeBlankAccounts(
 
       is_active:
         true,
+
+      obligation_amount:
+        "",
+
+      original_obligation_amount:
+        "",
+
+      change_reason:
+        "",
     })
   );
 }
@@ -920,6 +1580,126 @@ function cleanValue(
     value ??
       ""
   ).trim();
+}
+
+function normalizedAmount(
+  value
+) {
+  const cleaned =
+    cleanValue(
+      value
+    );
+
+  if (
+    cleaned ===
+    ""
+  ) {
+    return null;
+  }
+
+  const numeric =
+    Number(
+      cleaned
+    );
+
+  return Number.isFinite(
+    numeric
+  )
+    ? roundMoney(
+        numeric
+      )
+    : null;
+}
+
+function amountsEqual(
+  first,
+  second
+) {
+  const a =
+    normalizedAmount(
+      first
+    );
+
+  const b =
+    normalizedAmount(
+      second
+    );
+
+  return a === b;
+}
+
+function roundMoney(
+  value
+) {
+  return (
+    Math.round(
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
+        100
+    ) /
+    100
+  );
+}
+
+function money(
+  value
+) {
+  return Number(
+    value ||
+      0
+  ).toLocaleString(
+    "en-KE",
+    {
+      minimumFractionDigits:
+        2,
+
+      maximumFractionDigits:
+        2,
+    }
+  );
+}
+
+function formatDateTime(
+  value
+) {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return new Intl.DateTimeFormat(
+      "en-KE",
+      {
+        timeZone:
+          "Africa/Nairobi",
+
+        day:
+          "2-digit",
+
+        month:
+          "short",
+
+        year:
+          "numeric",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
+      }
+    ).format(
+      new Date(
+        value
+      )
+    );
+  } catch {
+    return "";
+  }
 }
 
 async function safeJson(
@@ -1087,10 +1867,10 @@ const headerRowStyle = {
     "grid",
 
   gridTemplateColumns:
-    "100px 1fr 1.2fr 1fr 1fr 80px",
+    "100px 1fr 1.15fr 1fr 1fr 130px 1.2fr 70px",
 
   minWidth:
-    "900px",
+    "1250px",
 
   gap:
     "6px",
@@ -1119,10 +1899,10 @@ const accountRowStyle = {
     "grid",
 
   gridTemplateColumns:
-    "100px 1fr 1.2fr 1fr 1fr 80px",
+    "100px 1fr 1.15fr 1fr 1fr 130px 1.2fr 70px",
 
   minWidth:
-    "900px",
+    "1250px",
 
   gap:
     "6px",
@@ -1148,6 +1928,52 @@ const accountTypeStyle = {
     "10px",
 };
 
+const fixedBadgeStyle = {
+  display:
+    "inline-block",
+
+  marginTop:
+    "3px",
+
+  padding:
+    "2px 4px",
+
+  borderRadius:
+    "3px",
+
+  backgroundColor:
+    "#dbeafe",
+
+  color:
+    "#1d4ed8",
+
+  fontSize:
+    "7px",
+};
+
+const variableBadgeStyle = {
+  display:
+    "inline-block",
+
+  marginTop:
+    "3px",
+
+  padding:
+    "2px 4px",
+
+  borderRadius:
+    "3px",
+
+  backgroundColor:
+    "#fef3c7",
+
+  color:
+    "#92400e",
+
+  fontSize:
+    "7px",
+};
+
 const inputStyle = {
   width:
     "100%",
@@ -1166,6 +1992,103 @@ const inputStyle = {
 
   fontSize:
     "10px",
+};
+
+const amountWrapStyle = {
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  border:
+    "1px solid #94a3b8",
+
+  borderRadius:
+    "4px",
+
+  overflow:
+    "hidden",
+
+  backgroundColor:
+    "white",
+};
+
+const currencyStyle = {
+  padding:
+    "8px 6px",
+
+  backgroundColor:
+    "#f1f5f9",
+
+  color:
+    "#475569",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "bold",
+};
+
+const amountInputStyle = {
+  width:
+    "100%",
+
+  minWidth:
+    0,
+
+  boxSizing:
+    "border-box",
+
+  padding:
+    "8px",
+
+  border:
+    "none",
+
+  outline:
+    "none",
+
+  textAlign:
+    "right",
+
+  fontSize:
+    "10px",
+};
+
+const variableAmountStyle = {
+  padding:
+    "8px",
+
+  backgroundColor:
+    "#f8fafc",
+
+  border:
+    "1px solid #cbd5e1",
+
+  borderRadius:
+    "4px",
+
+  color:
+    "#64748b",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "bold",
+};
+
+const notApplicableStyle = {
+  textAlign:
+    "center",
+
+  color:
+    "#94a3b8",
 };
 
 const activeWrapStyle = {
@@ -1302,7 +2225,7 @@ const loadingStyle = {
 
 const emptyStyle = {
   minWidth:
-    "900px",
+    "1250px",
 
   padding:
     "25px",
@@ -1318,4 +2241,104 @@ const emptyStyle = {
 
   fontSize:
     "10px",
+};
+
+const historyPanelStyle = {
+  backgroundColor:
+    "white",
+
+  border:
+    "1px solid #cbd5e1",
+
+  borderRadius:
+    "7px",
+
+  overflowX:
+    "auto",
+};
+
+const historyTitleStyle = {
+  padding:
+    "10px 12px",
+
+  backgroundColor:
+    "#7c3aed",
+
+  color:
+    "white",
+
+  fontSize:
+    "12px",
+
+  fontWeight:
+    "900",
+};
+
+const historyHeaderStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "100px 130px 130px 1fr 180px",
+
+  minWidth:
+    "800px",
+
+  gap:
+    "8px",
+
+  padding:
+    "8px",
+
+  backgroundColor:
+    "#f5f3ff",
+
+  color:
+    "#5b21b6",
+
+  fontSize:
+    "8px",
+
+  fontWeight:
+    "bold",
+};
+
+const historyRowStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "100px 130px 130px 1fr 180px",
+
+  minWidth:
+    "800px",
+
+  gap:
+    "8px",
+
+  alignItems:
+    "center",
+
+  padding:
+    "8px",
+
+  borderTop:
+    "1px solid #e2e8f0",
+
+  fontSize:
+    "9px",
+};
+
+const historyEmptyStyle = {
+  padding:
+    "20px",
+
+  color:
+    "#64748b",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "9px",
 };
