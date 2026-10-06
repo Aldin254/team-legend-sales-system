@@ -305,6 +305,36 @@ export default function CashierAccountsReturnPanel({
                   return {
                     ...previous,
 
+                    collection_method:
+                      previous.collection_method ||
+                      existingRow.collection_method ||
+                      null,
+
+                    company_account_name:
+                      previous.company_account_name ||
+                      existingRow.company_account_name ||
+                      null,
+
+                    company_account_type:
+                      previous.company_account_type ||
+                      existingRow.company_account_type ||
+                      null,
+
+                    account_reference:
+                      previous.account_reference ||
+                      existingRow.account_reference ||
+                      null,
+
+                    paybill_number:
+                      previous.paybill_number ||
+                      existingRow.paybill_number ||
+                      null,
+
+                    bank_account_number:
+                      previous.bank_account_number ||
+                      existingRow.bank_account_number ||
+                      null,
+
                     created_at:
                       previous.created_at ||
                       existingRow.created_at ||
@@ -349,6 +379,30 @@ export default function CashierAccountsReturnPanel({
 
                   company_destination:
                     pendingSend.company_destination,
+
+                  company_account_name:
+                    pendingSend.company_account_name ||
+                    null,
+
+                  company_account_type:
+                    pendingSend.company_account_type ||
+                    null,
+
+                  account_reference:
+                    pendingSend.account_reference ||
+                    null,
+
+                  collection_method:
+                    pendingSend.collection_method ||
+                    null,
+
+                  paybill_number:
+                    pendingSend.paybill_number ||
+                    null,
+
+                  bank_account_number:
+                    pendingSend.bank_account_number ||
+                    null,
 
                   created_at:
                     pendingSend.created_at ||
@@ -464,9 +518,6 @@ export default function CashierAccountsReturnPanel({
 
   // ==================================================
   // RETURN POSITIONS USED
-  //
-  // FAILED / CANCELLED / REVERSED DO NOT CONSUME
-  // A RETURN POSITION.
   // ==================================================
 
   const activeHistory =
@@ -619,9 +670,6 @@ export default function CashierAccountsReturnPanel({
             error
           );
 
-          // The transaction may have changed status
-          // at exactly the same time, for example if
-          // the receipt was submitted.
           await loadHistory({
             silent:
               true,
@@ -674,10 +722,6 @@ export default function CashierAccountsReturnPanel({
 
   // ==================================================
   // 30-SECOND AMOUNT INPUT RESET
-  //
-  // If cashier types an amount but never presses
-  // Prepare Float Return, clear it after 30 seconds.
-  // Any amount change restarts the 30-second timer.
   // ==================================================
 
   useEffect(() => {
@@ -721,12 +765,6 @@ export default function CashierAccountsReturnPanel({
 
   // ==================================================
   // 30-SECOND PREPARED RETURN AUTO-CANCEL
-  //
-  // Any receipt typing restarts the 30-second timer.
-  //
-  // Once receipt submission starts, this timer stops.
-  // Backend also guarantees only PENDING_MANUAL_SEND
-  // can ever be cancelled.
   // ==================================================
 
   useEffect(() => {
@@ -807,7 +845,7 @@ export default function CashierAccountsReturnPanel({
   ]);
 
   // ==================================================
-  // CLEAN UP TIMERS ON UNMOUNT
+  // CLEAN UP TIMERS
   // ==================================================
 
   useEffect(() => {
@@ -820,6 +858,11 @@ export default function CashierAccountsReturnPanel({
 
   // ==================================================
   // FEE PREVIEW
+  //
+  // IMPORTANT:
+  // Uses the payment-system switch in Supabase.
+  // MPESA_TO_MPESA -> M-Pesa tariff
+  // MPESA_TO_IM    -> M-Pesa -> I&M tariff
   // ==================================================
 
   useEffect(() => {
@@ -860,11 +903,8 @@ export default function CashierAccountsReturnPanel({
 
             const result =
               await callRpc(
-                "tl_mpesa_fee_for_amount",
+                "tl_cashier_to_accountant_fee",
                 {
-                  p_flow:
-                    "CASHIER_RETURN",
-
                   p_amount:
                     roundMoney(
                       numericAmount
@@ -934,7 +974,7 @@ export default function CashierAccountsReturnPanel({
   ]);
 
   // ==================================================
-  // VALUES FOR THREE PREVIEW BOXES
+  // PREVIEW VALUES
   // ==================================================
 
   const previewAmount =
@@ -969,6 +1009,17 @@ export default function CashierAccountsReturnPanel({
           previewAmount +
             previewFee
         );
+
+  const preparedRoute =
+    useMemo(
+      () =>
+        getCashierReturnRoute(
+          preparedReturn
+        ),
+      [
+        preparedReturn,
+      ]
+    );
 
   // ==================================================
   // PREPARE RETURN
@@ -1058,13 +1109,17 @@ export default function CashierAccountsReturnPanel({
           }
         );
 
-      setPreparedReturn({
+      const prepared = {
         ...result,
 
         created_at:
           result?.created_at ||
           new Date().toISOString(),
-      });
+      };
+
+      setPreparedReturn(
+        prepared
+      );
 
       setReceipt("");
 
@@ -1076,9 +1131,22 @@ export default function CashierAccountsReturnPanel({
         true
       );
 
-      setMessage(
-        "Return prepared. Send the exact amount to Legend Accounts, then enter the M-Pesa receipt number."
-      );
+      const route =
+        getCashierReturnRoute(
+          prepared
+        );
+
+      if (
+        route.isIm
+      ) {
+        setMessage(
+          "Return prepared. Send the exact amount from M-Pesa to the I&M account shown below, then enter the M-Pesa receipt number."
+        );
+      } else {
+        setMessage(
+          "Return prepared. Send the exact amount to the Legend Accounts M-Pesa number shown below, then enter the M-Pesa receipt number."
+        );
+      }
 
       setMessageType(
         "success"
@@ -1149,11 +1217,29 @@ export default function CashierAccountsReturnPanel({
       return;
     }
 
+    const route =
+      getCashierReturnRoute(
+        preparedReturn
+      );
+
+    const destinationText =
+      route.isIm
+        ? `I&M PayBill ${
+            preparedReturn.paybill_number ||
+            preparedReturn.company_destination ||
+            "-"
+          }`
+        : `Legend Accounts M-Pesa ${
+            formatPhone(
+              preparedReturn.company_destination
+            )
+          }`;
+
     const confirmed =
       window.confirm(
         `Confirm that you sent KES ${money(
           preparedReturn.amount
-        )} to Legend Accounts.\n\nM-Pesa receipt: ${cleanReceipt}\n\nAfter this, Legend Accounts must confirm receiving the money.`
+        )} to ${destinationText}.\n\nM-Pesa receipt: ${cleanReceipt}\n\nAfter this, Legend Accounts must confirm receiving the money.`
       );
 
     if (
@@ -1162,7 +1248,6 @@ export default function CashierAccountsReturnPanel({
       return;
     }
 
-    // Stop auto-cancel immediately before submission.
     clearPreparedTimers();
 
     try {
@@ -1308,15 +1393,13 @@ export default function CashierAccountsReturnPanel({
             </div>
 
             <div style={noticeTextStyle}>
-              Once confirmed, the amount plus M-Pesa fee will automatically
-              appear in this shift&apos;s expenses.
+              Once confirmed, the amount plus the applicable transaction fee
+              will automatically appear in this shift&apos;s expenses.
             </div>
           </div>
         )}
 
-      {/* ========================================== */}
-      {/* AMOUNT INPUT */}
-      {/* ========================================== */}
+      {/* AMOUNT */}
 
       <label style={labelStyle}>
         Amount To Send (KES)
@@ -1368,9 +1451,7 @@ export default function CashierAccountsReturnPanel({
           </div>
         )}
 
-      {/* ========================================== */}
-      {/* THREE SMALL BOXES */}
-      {/* ========================================== */}
+      {/* PREVIEW */}
 
       <div style={previewGridStyle}>
         <PreviewBox
@@ -1381,7 +1462,11 @@ export default function CashierAccountsReturnPanel({
         />
 
         <PreviewBox
-          title="M-PESA FEE"
+          title={
+            hasPendingReceipt
+              ? preparedRoute.feeTitle
+              : "TRANSACTION FEE"
+          }
           value={
             previewFee
           }
@@ -1421,9 +1506,7 @@ export default function CashierAccountsReturnPanel({
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* PREPARE BUTTON */}
-      {/* ========================================== */}
+      {/* PREPARE */}
 
       {!hasPendingReceipt && (
         <button
@@ -1466,9 +1549,7 @@ export default function CashierAccountsReturnPanel({
         </button>
       )}
 
-      {/* ========================================== */}
-      {/* MANUAL M-PESA SEND */}
-      {/* ========================================== */}
+      {/* PREPARED PAYMENT */}
 
       {hasPendingReceipt && (
         <div style={preparedStyle}>
@@ -1477,7 +1558,7 @@ export default function CashierAccountsReturnPanel({
               RETURN{" "}
               {preparedReturn.return_slot ||
                 ""}{" "}
-              — SEND THROUGH M-PESA
+              — {preparedRoute.routeTitle}
             </div>
 
             <div style={countdownStyle}>
@@ -1498,14 +1579,55 @@ export default function CashierAccountsReturnPanel({
             }
           />
 
-          <DetailRow
-            label="Send To"
-            value={
-              formatPhone(
-                preparedReturn.company_destination
-              )
-            }
-          />
+          {preparedRoute.isIm ? (
+            <>
+              <DetailRow
+                label="I&M PAYBILL"
+                value={
+                  preparedReturn.paybill_number ||
+                  preparedReturn.company_destination ||
+                  "-"
+                }
+                strong
+              />
+
+              <DetailRow
+                label="I&M ACCOUNT NUMBER"
+                value={
+                  preparedReturn.bank_account_number ||
+                  preparedReturn.account_reference ||
+                  "-"
+                }
+                strong
+              />
+
+              {preparedReturn.account_reference &&
+                preparedReturn.bank_account_number &&
+                String(
+                  preparedReturn.account_reference
+                ) !==
+                  String(
+                    preparedReturn.bank_account_number
+                  ) && (
+                  <DetailRow
+                    label="REFERENCE"
+                    value={
+                      preparedReturn.account_reference
+                    }
+                  />
+                )}
+            </>
+          ) : (
+            <DetailRow
+              label="M-PESA NUMBER"
+              value={
+                formatPhone(
+                  preparedReturn.company_destination
+                )
+              }
+              strong
+            />
+          )}
 
           <DetailRow
             label="Amount"
@@ -1515,7 +1637,9 @@ export default function CashierAccountsReturnPanel({
           />
 
           <DetailRow
-            label="M-Pesa Fee"
+            label={
+              preparedRoute.feeTitle
+            }
             value={`KES ${money(
               preparedReturn.estimated_fee
             )}`}
@@ -1530,15 +1654,71 @@ export default function CashierAccountsReturnPanel({
           />
 
           <div style={sendInstructionStyle}>
-            Send exactly{" "}
-            <strong>
-              KES{" "}
-              {money(
-                preparedReturn.amount
-              )}
-            </strong>{" "}
-            to the Legend Accounts number shown above.
-            After M-Pesa confirms the transfer, enter the receipt below.
+            {preparedRoute.isIm ? (
+              <>
+                Send exactly{" "}
+                <strong>
+                  KES{" "}
+                  {money(
+                    preparedReturn.amount
+                  )}
+                </strong>{" "}
+                from M-Pesa to I&M using PayBill{" "}
+                <strong>
+                  {preparedReturn.paybill_number ||
+                    preparedReturn.company_destination ||
+                    "-"}
+                </strong>
+
+                {" "}and Account Number{" "}
+
+                <strong>
+                  {preparedReturn.bank_account_number ||
+                    preparedReturn.account_reference ||
+                    "-"}
+                </strong>
+                .
+
+                {preparedReturn.account_reference &&
+                  preparedReturn.bank_account_number &&
+                  String(
+                    preparedReturn.account_reference
+                  ) !==
+                    String(
+                      preparedReturn.bank_account_number
+                    ) && (
+                    <>
+                      {" "}
+                      Use reference{" "}
+                      <strong>
+                        {preparedReturn.account_reference}
+                      </strong>
+                      .
+                    </>
+                  )}
+
+                {" "}
+                After M-Pesa confirms the transfer, enter the receipt below.
+              </>
+            ) : (
+              <>
+                Send exactly{" "}
+                <strong>
+                  KES{" "}
+                  {money(
+                    preparedReturn.amount
+                  )}
+                </strong>{" "}
+                to the Legend Accounts M-Pesa number{" "}
+
+                <strong>
+                  {formatPhone(
+                    preparedReturn.company_destination
+                  )}
+                </strong>
+                . After M-Pesa confirms the transfer, enter the receipt below.
+              </>
+            )}
           </div>
 
           <label style={labelStyle}>
@@ -1597,9 +1777,7 @@ export default function CashierAccountsReturnPanel({
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* SHIFT TRANSACTION HISTORY */}
-      {/* ========================================== */}
+      {/* HISTORY */}
 
       <button
         type="button"
@@ -1859,6 +2037,110 @@ function HistoryValue({
       </strong>
     </div>
   );
+}
+
+// ==================================================
+// ROUTE HELPER
+// ==================================================
+
+function getCashierReturnRoute(
+  transaction
+) {
+  const routeText =
+    [
+      transaction?.collection_method,
+      transaction?.payment_method,
+      transaction?.company_account_type,
+      transaction?.company_account_name,
+    ]
+      .filter(
+        Boolean
+      )
+      .join(
+        " "
+      )
+      .toUpperCase();
+
+  const normalized =
+    routeText.replace(
+      /[^A-Z0-9]/g,
+      ""
+    );
+
+  const destination =
+    String(
+      transaction?.paybill_number ||
+        transaction?.company_destination ||
+        ""
+    ).trim();
+
+  const accountNumber =
+    String(
+      transaction?.bank_account_number ||
+        transaction?.account_reference ||
+        ""
+    ).trim();
+
+  const isIm =
+    normalized.includes(
+      "MPESATOIM"
+    ) ||
+    normalized.includes(
+      "IMBANK"
+    ) ||
+    normalized.includes(
+      "IMPAYMENT"
+    ) ||
+    normalized.includes(
+      "IANDBANK"
+    ) ||
+    normalized ===
+      "IM" ||
+    (
+      accountNumber !==
+        "" &&
+      /^\d{5,7}$/.test(
+        destination
+      )
+    );
+
+  if (
+    isIm
+  ) {
+    return {
+      code:
+        "MPESA_TO_IM",
+
+      isIm:
+        true,
+
+      routeTitle:
+        "M-PESA → I&M",
+
+      destinationLabel:
+        "I&M PAYBILL",
+
+      feeTitle:
+        "M-PESA → I&M FEE",
+    };
+  }
+
+  return {
+    code:
+      "MPESA_TO_MPESA",
+
+    isIm:
+      false,
+
+    routeTitle:
+      "M-PESA → M-PESA",
+
+    destinationLabel:
+      "M-PESA NUMBER",
+
+    feeTitle:
+      "M-PESA FEE",
+  };
 }
 
 // ==================================================
