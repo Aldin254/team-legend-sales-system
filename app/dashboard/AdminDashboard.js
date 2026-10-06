@@ -12,6 +12,7 @@ import AdminShopManagementPanel from "./AdminShopManagementPanel";
 import AdminSalaryManagementPanel from "./AdminSalaryManagementPanel";
 import AdminAccountantPanel from "./AdminAccountantPanel";
 import AdminMpesaRatesPanel from "./AdminMpesaRatesPanel";
+import AdminSavingsPanel from "./AdminSavingsPanel";
 
 export default function AdminDashboard({
   user,
@@ -65,6 +66,11 @@ export default function AdminDashboard({
       id: "ACCOUNTS",
       label: "Accounts",
       icon: "₿",
+    },
+    {
+      id: "SAVINGS_BANKING",
+      label: "Savings / Banking",
+      icon: "▣",
     },
     {
       id: "SALARY",
@@ -270,6 +276,24 @@ export default function AdminDashboard({
           )}
 
           {/* ===================================== */}
+          {/* SAVINGS / BANKING */}
+          {/* ===================================== */}
+
+          {activeSection ===
+            "SAVINGS_BANKING" && (
+            <>
+              <PageHeading
+                title="Savings / Banking"
+                subtitle="Live Savings balances, payment activity, Accountant confirmations and permanent ledger audit."
+              />
+
+              <AdminSavingsPanel
+                user={user}
+              />
+            </>
+          )}
+
+          {/* ===================================== */}
           {/* EMPLOYEE SALARY */}
           {/* ===================================== */}
 
@@ -397,12 +421,24 @@ function DashboardHome({
 
         <DashboardCard
           title="ACCOUNTS"
-          description="Manage Rent, WIFI, DSTV and Banking account information for each shop."
+          description="Manage Rent, WIFI, DSTV, Electricity and Banking payment information for each shop."
           accent="#15803d"
           buttonText="Manage Accounts"
           onClick={() =>
             setActiveSection(
               "ACCOUNTS"
+            )
+          }
+        />
+
+        <DashboardCard
+          title="SAVINGS / BANKING"
+          description="Monitor live shop Savings, Banking balances, pending payments, confirmed payments, rejected requests and ledger history."
+          accent="#0f766e"
+          buttonText="Open Savings Control"
+          onClick={() =>
+            setActiveSection(
+              "SAVINGS_BANKING"
             )
           }
         />
@@ -493,6 +529,16 @@ function DashboardHome({
           />
 
           <StatusItem
+            label="Savings / Banking Monitoring"
+            status="ACTIVE"
+          />
+
+          <StatusItem
+            label="Savings Ledger Audit"
+            status="ACTIVE"
+          />
+
+          <StatusItem
             label="Salary Management"
             status="ACTIVE"
           />
@@ -525,9 +571,10 @@ function DashboardHome({
       </div>
 
       <div style={noticeStyle}>
-        Admin can monitor Legend Accounts activity, manage Safaricom
-        M-Pesa fee bands, review accountant expenses, cashier returns,
-        transaction records and protected shop corrections.
+        Admin can monitor Legend Accounts activity, Savings and Banking
+        balances, manage Safaricom M-Pesa fee bands, review accountant
+        expenses, cashier returns, transaction records and protected
+        shop corrections.
       </div>
     </>
   );
@@ -676,8 +723,8 @@ function SettingsPanel({
 
         <div style={settingsNoticeStyle}>
           Additional settings will be connected here as the
-          system expands. Existing sales, Accountant, M-Pesa
-          rate and correction functions are unaffected.
+          system expands. Existing sales, Accountant, Savings,
+          Banking, M-Pesa rate and correction functions are unaffected.
         </div>
       </div>
 
