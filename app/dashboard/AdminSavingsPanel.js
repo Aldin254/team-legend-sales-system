@@ -3763,3 +3763,138 @@ const tableCellStyle = {
 
   borderBottom:
   "1px solid #e2e8f0",
+  color:
+    "#334155",
+
+  fontSize:
+    "9px",
+
+  verticalAlign:
+    "top",
+};
+
+const badgeStyle = {
+  display:
+    "inline-block",
+
+  padding:
+    "4px 7px",
+
+  borderRadius:
+    "10px",
+
+  fontSize:
+    "7px",
+
+  fontWeight:
+    "900",
+
+  whiteSpace:
+    "nowrap",
+};
+
+const ledgerNoticeStyle = {
+  padding:
+    "9px",
+
+  backgroundColor:
+    "#ecfeff",
+
+  color:
+    "#155e75",
+
+  borderBottom:
+    "1px solid #bae6fd",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "9px",
+};
+
+const emptyStyle = {
+  padding:
+    "22px",
+
+  color:
+    "#64748b",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "10px",
+};
+
+const safetyNoticeStyle = {
+  padding:
+    "10px",
+
+  backgroundColor:
+    "#f0fdf4",
+
+  border:
+    "1px solid #86efac",
+
+  borderRadius:
+    "6px",
+
+  color:
+    "#166534",
+
+  textAlign:
+    "center",
+
+  fontSize:
+    "9px",
+
+  fontWeight:
+    "bold",
+};
+
+const errorStyle = {
+  padding:
+    "10px",
+
+  backgroundColor:
+    "#fef2f2",
+
+  border:
+    "1px solid #fecaca",
+
+  borderRadius:
+    "6px",
+
+  color:
+    "#991b1b",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "bold",
+};
+
+const successStyle = {
+  padding:
+    "10px",
+
+  backgroundColor:
+    "#f0fdf4",
+
+  border:
+    "1px solid #86efac",
+
+  borderRadius:
+    "6px",
+
+  color:
+    "#166534",
+
+  fontSize:
+    "10px",
+
+  fontWeight:
+    "bold",
+};
