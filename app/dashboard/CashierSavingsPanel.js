@@ -11,33 +11,37 @@ import {
 // TEAM LEGEND
 // CASHIER SAVINGS / BANKING
 //
+// SHOP SAVINGS
+// WIFI / DSTV / RENT / ELECTRICITY
+//   Continue working exactly as before.
+//
+// EMPLOYEE BANKING
+//   Cashier searches/selects employee.
+//   Mobile/Relief employees appear first.
+//   Normal employees display SHOP — EMPLOYEE.
+//   Multiple employees per shop supported.
+//
+// BANKING OWNER
+//   Selected employee.
+//
+// AUDIT ACTOR
+//   Logged-in cashier.
+//
 // SAVE
 //   Immediate.
-//   Adds to Savings.
-//   Adds to Expenses once.
+//   Adds to selected employee Banking Savings.
+//   Posts one expense to current shift.
 //
 // PAY
-//   Creates pending request.
-//   Accountant must confirm.
-//   Confirmed payment reduces Savings.
-//   Principal is NOT expensed again.
+//   Creates pending Accountant request.
+//   No second principal expense.
 //
 // WITHDRAW
-//   Immediate.
-//   Reduces Savings.
-//   Automatically fills next M-Shwari Float 1 -> 2 -> 3.
+//   Reduces selected employee Banking Savings.
+//   Adds money to next M-Shwari Float slot.
 //
-// BANKING
-//   Employee owned.
-//   No target displayed to cashier.
-//
-// WIFI / DSTV / RENT
-//   Shop owned.
-//   Fixed payment amount from Admin configuration.
-//
-// ELECTRICITY
-//   Shop owned.
-//   Variable amount.
+// WEEKLY TARGET
+//   Never displayed to cashier.
 // ============================================================
 
 const CATEGORY_CONFIG = [
@@ -75,8 +79,13 @@ const CATEGORY_CONFIG = [
 function blankInputs() {
   const result = {};
 
-  for (const category of CATEGORY_CONFIG) {
-    result[category.key] = {
+  for (
+    const category of
+    CATEGORY_CONFIG
+  ) {
+    result[
+      category.key
+    ] = {
       save: "",
       pay: "",
       withdraw: "",
@@ -90,29 +99,52 @@ export default function CashierSavingsPanel({
   user,
   currentShift,
 }) {
-  const [categories, setCategories] =
-    useState([]);
+  const [
+    categories,
+    setCategories,
+  ] = useState([]);
 
   const [
     paymentRequests,
     setPaymentRequests,
   ] = useState([]);
 
-  const [inputs, setInputs] =
-    useState(
-      blankInputs()
-    );
+  const [
+    bankingEmployees,
+    setBankingEmployees,
+  ] = useState([]);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    bankingSearch,
+    setBankingSearch,
+  ] = useState("");
+
+  const [
+    selectedBankingEmployeeId,
+    setSelectedBankingEmployeeId,
+  ] = useState("");
+
+  const [
+    inputs,
+    setInputs,
+  ] = useState(
+    blankInputs()
+  );
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
   const [
     actionKey,
     setActionKey,
   ] = useState("");
 
-  const [message, setMessage] =
-    useState("");
+  const [
+    message,
+    setMessage,
+  ] = useState("");
 
   const [
     messageType,
@@ -140,7 +172,7 @@ export default function CashierSavingsPanel({
     null;
 
   // ============================================================
-  // LOAD SNAPSHOT
+  // LOAD SNAPSHOT + EMPLOYEE BANKING DIRECTORY
   // ============================================================
 
   const loadSavings =
@@ -168,65 +200,159 @@ export default function CashierSavingsPanel({
             );
           }
 
-          const response =
-            await fetch(
-              `${supabaseUrl}/rest/v1/rpc/tl_cashier_savings_snapshot`,
-              {
-                method:
-                  "POST",
-
-                headers: {
-                  apikey:
-                    supabaseAnonKey,
-
-                  Authorization:
-                    `Bearer ${accessToken}`,
-
-                  "Content-Type":
-                    "application/json",
-                },
-
-                body:
-                  JSON.stringify({
-                    p_shift_id:
-                      shiftId,
-                  }),
-
-                cache:
-                  "no-store",
-              }
+          const headers =
+            authHeaders(
+              supabaseAnonKey,
+              accessToken
             );
 
-          const result =
-            await safeJson(
-              response
-            );
+          const [
+            savingsResponse,
+            bankingResponse,
+          ] =
+            await Promise.all([
+              fetch(
+                `${supabaseUrl}/rest/v1/rpc/tl_cashier_savings_snapshot`,
+                {
+                  method:
+                    "POST",
+
+                  headers,
+
+                  body:
+                    JSON.stringify({
+                      p_shift_id:
+                        shiftId,
+                    }),
+
+                  cache:
+                    "no-store",
+                }
+              ),
+
+              fetch(
+                `${supabaseUrl}/rest/v1/rpc/tl_cashier_banking_directory`,
+                {
+                  method:
+                    "POST",
+
+                  headers,
+
+                  body:
+                    JSON.stringify({
+                      p_shift_id:
+                        shiftId,
+                    }),
+
+                  cache:
+                    "no-store",
+                }
+              ),
+            ]);
+
+          const [
+            savingsResult,
+            bankingResult,
+          ] =
+            await Promise.all([
+              safeJson(
+                savingsResponse
+              ),
+
+              safeJson(
+                bankingResponse
+              ),
+            ]);
 
           if (
-            !response.ok
+            !savingsResponse.ok
           ) {
             throw new Error(
-              result?.message ||
-                result?.details ||
-                result?.hint ||
+              savingsResult?.message ||
+                savingsResult?.details ||
+                savingsResult?.hint ||
                 "Unable to load Savings."
             );
           }
 
-          setCategories(
+          if (
+            !bankingResponse.ok
+          ) {
+            throw new Error(
+              bankingResult?.message ||
+                bankingResult?.details ||
+                bankingResult?.hint ||
+                "Unable to load employee Banking directory."
+            );
+          }
+
+          const loadedCategories =
             Array.isArray(
-              result?.categories
+              savingsResult
+                ?.categories
             )
-              ? result.categories
-              : []
+              ? savingsResult
+                  .categories
+              : [];
+
+          const loadedRequests =
+            Array.isArray(
+              savingsResult
+                ?.payment_requests
+            )
+              ? savingsResult
+                  .payment_requests
+              : [];
+
+          const loadedEmployees =
+            Array.isArray(
+              bankingResult
+                ?.employees
+            )
+              ? bankingResult
+                  .employees
+              : [];
+
+          setCategories(
+            loadedCategories
           );
 
           setPaymentRequests(
-            Array.isArray(
-              result?.payment_requests
-            )
-              ? result.payment_requests
-              : []
+            loadedRequests
+          );
+
+          setBankingEmployees(
+            loadedEmployees
+          );
+
+          // Keep selected employee only if still active.
+          setSelectedBankingEmployeeId(
+            (
+              previous
+            ) => {
+              if (
+                !previous
+              ) {
+                return "";
+              }
+
+              const stillExists =
+                loadedEmployees.some(
+                  (
+                    employee
+                  ) =>
+                    String(
+                      employee.employee_id
+                    ) ===
+                    String(
+                      previous
+                    )
+                );
+
+              return stillExists
+                ? previous
+                : "";
+            }
           );
         } catch (error) {
           console.error(
@@ -282,7 +408,163 @@ export default function CashierSavingsPanel({
         timer
       );
     };
-  }, [loadSavings]);
+  }, [
+    loadSavings,
+  ]);
+
+  // ============================================================
+  // SELECTED BANKING EMPLOYEE
+  // ============================================================
+
+  const selectedBankingEmployee =
+    useMemo(
+      () => {
+        if (
+          !selectedBankingEmployeeId
+        ) {
+          return null;
+        }
+
+        return (
+          bankingEmployees.find(
+            (
+              employee
+            ) =>
+              String(
+                employee.employee_id
+              ) ===
+              String(
+                selectedBankingEmployeeId
+              )
+          ) ||
+          null
+        );
+      },
+      [
+        bankingEmployees,
+        selectedBankingEmployeeId,
+      ]
+    );
+
+  // ============================================================
+  // SEARCHABLE EMPLOYEE LIST
+  // ============================================================
+
+  const visibleBankingEmployees =
+    useMemo(
+      () => {
+        const search =
+          String(
+            bankingSearch ||
+              ""
+          )
+            .trim()
+            .toLowerCase();
+
+        const sorted =
+          [
+            ...bankingEmployees,
+          ].sort(
+            (
+              a,
+              b
+            ) => {
+              const mobileA =
+                a?.is_mobile
+                  ? 0
+                  : 1;
+
+              const mobileB =
+                b?.is_mobile
+                  ? 0
+                  : 1;
+
+              if (
+                mobileA !==
+                mobileB
+              ) {
+                return (
+                  mobileA -
+                  mobileB
+                );
+              }
+
+              const shopA =
+                String(
+                  a?.shop_name ||
+                    ""
+                );
+
+              const shopB =
+                String(
+                  b?.shop_name ||
+                    ""
+                );
+
+              const shopCompare =
+                shopA.localeCompare(
+                  shopB
+                );
+
+              if (
+                shopCompare !==
+                0
+              ) {
+                return shopCompare;
+              }
+
+              return String(
+                a?.employee_name ||
+                  ""
+              ).localeCompare(
+                String(
+                  b?.employee_name ||
+                    ""
+                )
+              );
+            }
+          );
+
+        if (
+          !search
+        ) {
+          return sorted;
+        }
+
+        return sorted.filter(
+          (
+            employee
+          ) => {
+            const text =
+              [
+                employee
+                  ?.employee_name,
+                employee
+                  ?.shop_name,
+                employee
+                  ?.display_label,
+                employee
+                  ?.role,
+              ]
+                .filter(
+                  Boolean
+                )
+                .join(
+                  " "
+                )
+                .toLowerCase();
+
+            return text.includes(
+              search
+            );
+          }
+        );
+      },
+      [
+        bankingEmployees,
+        bankingSearch,
+      ]
+    );
 
   // ============================================================
   // ROW DATA
@@ -295,6 +577,66 @@ export default function CashierSavingsPanel({
           (
             config
           ) => {
+            // ------------------------------------------
+            // BANKING comes from selected employee,
+            // not logged-in cashier snapshot.
+            // ------------------------------------------
+
+            if (
+              config.key ===
+              "BANKING"
+            ) {
+              return {
+                ...config,
+
+                accountId:
+                  null,
+
+                balance:
+                  Number(
+                    selectedBankingEmployee
+                      ?.saved_balance ||
+                      0
+                  ),
+
+                obligationAmount:
+                  null,
+
+                pendingPaymentAmount:
+                  Number(
+                    selectedBankingEmployee
+                      ?.pending_payment_amount ||
+                      0
+                  ),
+
+                availableBalance:
+                  Number(
+                    selectedBankingEmployee
+                      ?.available_balance ||
+                      0
+                  ),
+
+                employeeId:
+                  selectedBankingEmployee
+                    ?.employee_id ||
+                  null,
+
+                employeeName:
+                  selectedBankingEmployee
+                    ?.employee_name ||
+                  "",
+
+                employeeDisplay:
+                  selectedBankingEmployee
+                    ?.display_label ||
+                  "",
+              };
+            }
+
+            // ------------------------------------------
+            // SHOP SAVINGS remain exactly as before.
+            // ------------------------------------------
+
             const found =
               categories.find(
                 (
@@ -352,6 +694,7 @@ export default function CashierSavingsPanel({
       },
       [
         categories,
+        selectedBankingEmployee,
       ]
     );
 
@@ -474,12 +817,135 @@ export default function CashierSavingsPanel({
   }
 
   // ============================================================
+  // BANKING EMPLOYEE SEARCH
+  // ============================================================
+
+  function changeBankingSearch(
+    value
+  ) {
+    setBankingSearch(
+      value
+    );
+
+    // Prevent acting on an old employee while searching another.
+    setSelectedBankingEmployeeId(
+      ""
+    );
+
+    clearInput(
+      "BANKING",
+      "save"
+    );
+
+    clearInput(
+      "BANKING",
+      "pay"
+    );
+
+    clearInput(
+      "BANKING",
+      "withdraw"
+    );
+
+    setMessage(
+      ""
+    );
+
+    setMessageType(
+      ""
+    );
+  }
+
+  function selectBankingEmployee(
+    employeeId
+  ) {
+    setSelectedBankingEmployeeId(
+      employeeId
+    );
+
+    const employee =
+      bankingEmployees.find(
+        (
+          item
+        ) =>
+          String(
+            item.employee_id
+          ) ===
+          String(
+            employeeId
+          )
+      );
+
+    if (
+      employee
+    ) {
+      setBankingSearch(
+        employee.display_label ||
+          `${employee.shop_name || "MOBILE"} — ${employee.employee_name}`
+      );
+    }
+
+    clearInput(
+      "BANKING",
+      "save"
+    );
+
+    clearInput(
+      "BANKING",
+      "pay"
+    );
+
+    clearInput(
+      "BANKING",
+      "withdraw"
+    );
+
+    setMessage(
+      ""
+    );
+
+    setMessageType(
+      ""
+    );
+  }
+
+  // ============================================================
+  // VALIDATE BANKING EMPLOYEE
+  // ============================================================
+
+  function requireBankingEmployee() {
+    if (
+      selectedBankingEmployee
+    ) {
+      return true;
+    }
+
+    setMessage(
+      "Search and select an employee before using Banking."
+    );
+
+    setMessageType(
+      "error"
+    );
+
+    return false;
+  }
+
+  // ============================================================
   // SAVE
   // ============================================================
 
   async function saveMoney(
     row
   ) {
+    if (
+      row.key ===
+        "BANKING" &&
+      !requireBankingEmployee()
+    ) {
+      return;
+    }
+
     const rawAmount =
       inputs[
         row.key
@@ -509,11 +975,17 @@ export default function CashierSavingsPanel({
       return;
     }
 
+    const bankingText =
+      row.key ===
+      "BANKING"
+        ? `\nEmployee: ${selectedBankingEmployee.employee_name}\n${selectedBankingEmployee.display_label}`
+        : "";
+
     const confirmed =
       window.confirm(
         `Save KES ${money(
           amount
-        )} to ${row.label}?\n\nThis will immediately add KES ${money(
+        )} to ${row.label}?${bankingText}\n\nThis will immediately add KES ${money(
           amount
         )} to Expenses and Savings.`
       );
@@ -538,9 +1010,45 @@ export default function CashierSavingsPanel({
         ""
       );
 
+      const isBanking =
+        row.key ===
+        "BANKING";
+
+      const functionName =
+        isBanking
+          ? "tl_cashier_save_banking_employee"
+          : "tl_cashier_save_savings";
+
+      const body =
+        isBanking
+          ? {
+              p_shift_id:
+                shiftId,
+
+              p_employee_id:
+                selectedBankingEmployee.employee_id,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            }
+          : {
+              p_shift_id:
+                shiftId,
+
+              p_category:
+                row.key,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            };
+
       const response =
         await fetch(
-          `${supabaseUrl}/rest/v1/rpc/tl_cashier_save_savings`,
+          `${supabaseUrl}/rest/v1/rpc/${functionName}`,
           {
             method:
               "POST",
@@ -552,18 +1060,9 @@ export default function CashierSavingsPanel({
               ),
 
             body:
-              JSON.stringify({
-                p_shift_id:
-                  shiftId,
-
-                p_category:
-                  row.key,
-
-                p_amount:
-                  roundMoney(
-                    amount
-                  ),
-              }),
+              JSON.stringify(
+                body
+              ),
           }
         );
 
@@ -589,9 +1088,13 @@ export default function CashierSavingsPanel({
       );
 
       setMessage(
-        `${row.label}: KES ${money(
-          amount
-        )} saved successfully.`
+        isBanking
+          ? `${selectedBankingEmployee.employee_name}: KES ${money(
+              amount
+            )} Banking saved successfully.`
+          : `${row.label}: KES ${money(
+              amount
+            )} saved successfully.`
       );
 
       setMessageType(
@@ -621,7 +1124,6 @@ export default function CashierSavingsPanel({
       );
     }
   }
-
   // ============================================================
   // PAY
   // ============================================================
@@ -649,6 +1151,14 @@ export default function CashierSavingsPanel({
   async function requestPayment(
     row
   ) {
+    if (
+      row.key ===
+        "BANKING" &&
+      !requireBankingEmployee()
+    ) {
+      return;
+    }
+
     if (
       row.fixedPayment &&
       (
@@ -711,9 +1221,15 @@ export default function CashierSavingsPanel({
       return;
     }
 
+    const bankingText =
+      row.key ===
+      "BANKING"
+        ? `\nEmployee: ${selectedBankingEmployee.employee_name}\n${selectedBankingEmployee.display_label}`
+        : "";
+
     const confirmed =
       window.confirm(
-        `Request ${row.label} payment?\n\nAmount: KES ${money(
+        `Request ${row.label} payment?${bankingText}\n\nAmount: KES ${money(
           amount
         )}\n\nThe Accountant must confirm the actual payment before this amount leaves Savings.`
       );
@@ -738,9 +1254,45 @@ export default function CashierSavingsPanel({
         ""
       );
 
+      const isBanking =
+        row.key ===
+        "BANKING";
+
+      const functionName =
+        isBanking
+          ? "tl_cashier_request_banking_payment_employee"
+          : "tl_cashier_request_savings_payment";
+
+      const body =
+        isBanking
+          ? {
+              p_shift_id:
+                shiftId,
+
+              p_employee_id:
+                selectedBankingEmployee.employee_id,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            }
+          : {
+              p_shift_id:
+                shiftId,
+
+              p_category:
+                row.key,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            };
+
       const response =
         await fetch(
-          `${supabaseUrl}/rest/v1/rpc/tl_cashier_request_savings_payment`,
+          `${supabaseUrl}/rest/v1/rpc/${functionName}`,
           {
             method:
               "POST",
@@ -752,18 +1304,9 @@ export default function CashierSavingsPanel({
               ),
 
             body:
-              JSON.stringify({
-                p_shift_id:
-                  shiftId,
-
-                p_category:
-                  row.key,
-
-                p_amount:
-                  roundMoney(
-                    amount
-                  ),
-              }),
+              JSON.stringify(
+                body
+              ),
           }
         );
 
@@ -793,9 +1336,13 @@ export default function CashierSavingsPanel({
       }
 
       setMessage(
-        `${row.label} payment request sent to Accountant for KES ${money(
-          amount
-        )}.`
+        isBanking
+          ? `${selectedBankingEmployee.employee_name}: Banking payment request sent to Accountant for KES ${money(
+              amount
+            )}.`
+          : `${row.label} payment request sent to Accountant for KES ${money(
+              amount
+            )}.`
       );
 
       setMessageType(
@@ -833,6 +1380,14 @@ export default function CashierSavingsPanel({
   async function withdrawMoney(
     row
   ) {
+    if (
+      row.key ===
+        "BANKING" &&
+      !requireBankingEmployee()
+    ) {
+      return;
+    }
+
     const rawAmount =
       inputs[
         row.key
@@ -879,11 +1434,17 @@ export default function CashierSavingsPanel({
       return;
     }
 
+    const bankingText =
+      row.key ===
+      "BANKING"
+        ? `\nEmployee: ${selectedBankingEmployee.employee_name}\n${selectedBankingEmployee.display_label}`
+        : "";
+
     const confirmed =
       window.confirm(
         `Withdraw KES ${money(
           amount
-        )} from ${row.label} Savings?\n\nThe money will automatically enter the next available M-Shwari Added Float position.`
+        )} from ${row.label} Savings?${bankingText}\n\nThe money will automatically enter the next available M-Shwari Added Float position.`
       );
 
     if (!confirmed) {
@@ -906,9 +1467,45 @@ export default function CashierSavingsPanel({
         ""
       );
 
+      const isBanking =
+        row.key ===
+        "BANKING";
+
+      const functionName =
+        isBanking
+          ? "tl_cashier_withdraw_banking_employee"
+          : "tl_cashier_withdraw_savings";
+
+      const body =
+        isBanking
+          ? {
+              p_shift_id:
+                shiftId,
+
+              p_employee_id:
+                selectedBankingEmployee.employee_id,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            }
+          : {
+              p_shift_id:
+                shiftId,
+
+              p_category:
+                row.key,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            };
+
       const response =
         await fetch(
-          `${supabaseUrl}/rest/v1/rpc/tl_cashier_withdraw_savings`,
+          `${supabaseUrl}/rest/v1/rpc/${functionName}`,
           {
             method:
               "POST",
@@ -920,18 +1517,9 @@ export default function CashierSavingsPanel({
               ),
 
             body:
-              JSON.stringify({
-                p_shift_id:
-                  shiftId,
-
-                p_category:
-                  row.key,
-
-                p_amount:
-                  roundMoney(
-                    amount
-                  ),
-              }),
+              JSON.stringify(
+                body
+              ),
           }
         );
 
@@ -957,9 +1545,13 @@ export default function CashierSavingsPanel({
       );
 
       setMessage(
-        `${row.label}: KES ${money(
-          amount
-        )} withdrawn to M-Shwari Added Float ${result?.mshwari_slot || ""}.`
+        isBanking
+          ? `${selectedBankingEmployee.employee_name}: KES ${money(
+              amount
+            )} withdrawn from Banking to M-Shwari Added Float ${result?.mshwari_slot || ""}.`
+          : `${row.label}: KES ${money(
+              amount
+            )} withdrawn to M-Shwari Added Float ${result?.mshwari_slot || ""}.`
       );
 
       setMessageType(
@@ -1015,6 +1607,7 @@ export default function CashierSavingsPanel({
       >
         SAVE posts immediately to Savings and Expenses.
         PAY requires Accountant confirmation.
+        For BANKING, search and select the employee first.
       </div>
 
       {message && (
@@ -1087,6 +1680,16 @@ export default function CashierSavingsPanel({
                 actionKey !==
                 "";
 
+              const isBanking =
+                row.key ===
+                "BANKING";
+
+              const bankingReady =
+                !isBanking ||
+                Boolean(
+                  selectedBankingEmployee
+                );
+
               const fixedAmountReady =
                 row.obligationAmount !==
                   null &&
@@ -1106,9 +1709,13 @@ export default function CashierSavingsPanel({
                   key={
                     row.key
                   }
-                  style={
-                    categoryCardStyle
-                  }
+                  style={{
+                    ...categoryCardStyle,
+
+                    ...(isBanking
+                      ? bankingCategoryCardStyle
+                      : {}),
+                  }}
                 >
                   <div
                     style={
@@ -1148,8 +1755,7 @@ export default function CashierSavingsPanel({
                         </div>
                       )}
 
-                      {row.key ===
-                        "BANKING" && (
+                      {isBanking && (
                         <div
                           style={
                             variableTextStyle
@@ -1182,6 +1788,154 @@ export default function CashierSavingsPanel({
                       )}
                     </div>
                   </div>
+
+                  {/* ================================= */}
+                  {/* BANKING EMPLOYEE SELECTOR */}
+                  {/* ================================= */}
+
+                  {isBanking && (
+                    <div
+                      style={
+                        employeeSelectorStyle
+                      }
+                    >
+                      <div
+                        style={
+                          employeeSelectorTitleStyle
+                        }
+                      >
+                        SELECT EMPLOYEE
+                      </div>
+
+                      <div
+                        style={
+                          employeeSelectorHelpStyle
+                        }
+                      >
+                        Search by employee name or shop name.
+                        Mobile / Relief employees are listed first.
+                      </div>
+
+                      <input
+                        type="text"
+                        value={
+                          bankingSearch
+                        }
+                        disabled={
+                          anyBusy
+                        }
+                        placeholder="Search name or shop e.g. Nyika, Irene..."
+                        onChange={(
+                          event
+                        ) =>
+                          changeBankingSearch(
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        style={
+                          employeeSearchStyle
+                        }
+                      />
+
+                      <select
+                        value={
+                          selectedBankingEmployeeId
+                        }
+                        disabled={
+                          anyBusy ||
+                          visibleBankingEmployees.length ===
+                            0
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          selectBankingEmployee(
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        style={
+                          employeeSelectStyle
+                        }
+                      >
+                        <option
+                          value=""
+                        >
+                          {visibleBankingEmployees.length ===
+                          0
+                            ? "No employee found"
+                            : "Choose employee"}
+                        </option>
+
+                        {visibleBankingEmployees.map(
+                          (
+                            employee
+                          ) => (
+                            <option
+                              key={
+                                employee.employee_id
+                              }
+                              value={
+                                employee.employee_id
+                              }
+                            >
+                              {employee.is_mobile
+                                ? "★ "
+                                : ""}
+                              {employee.display_label ||
+                                `${employee.shop_name || "MOBILE"} — ${employee.employee_name}`}
+                            </option>
+                          )
+                        )}
+                      </select>
+
+                      {selectedBankingEmployee ? (
+                        <div
+                          style={
+                            selectedEmployeeStyle
+                          }
+                        >
+                          <div>
+                            <span
+                              style={
+                                selectedEmployeeLabelStyle
+                              }
+                            >
+                              BANKING FOR
+                            </span>
+
+                            <strong>
+                              {
+                                selectedBankingEmployee.employee_name
+                              }
+                            </strong>
+                          </div>
+
+                          <div
+                            style={
+                              selectedEmployeeShopStyle
+                            }
+                          >
+                            {selectedBankingEmployee.is_mobile
+                              ? "★ MOBILE / RELIEF"
+                              : selectedBankingEmployee.shop_name ||
+                                "UNASSIGNED"}
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          style={
+                            noEmployeeSelectedStyle
+                          }
+                        >
+                          Select the employee whose Banking money you are handling.
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {row.pendingPaymentAmount >
                     0 && (
@@ -1226,9 +1980,15 @@ export default function CashierSavingsPanel({
                         ""
                       }
                       disabled={
-                        anyBusy
+                        anyBusy ||
+                        !bankingReady
                       }
-                      placeholder="Amount"
+                      placeholder={
+                        isBanking &&
+                        !bankingReady
+                          ? "Select employee"
+                          : "Amount"
+                      }
                       onChange={(
                         event
                       ) =>
@@ -1248,7 +2008,8 @@ export default function CashierSavingsPanel({
                     <button
                       type="button"
                       disabled={
-                        anyBusy
+                        anyBusy ||
+                        !bankingReady
                       }
                       onClick={() =>
                         saveMoney(
@@ -1259,8 +2020,9 @@ export default function CashierSavingsPanel({
                         ...saveButtonStyle,
 
                         opacity:
-                          anyBusy
-                            ? 0.6
+                          anyBusy ||
+                          !bankingReady
+                            ? 0.5
                             : 1,
                       }}
                     >
@@ -1321,9 +2083,15 @@ export default function CashierSavingsPanel({
                           ""
                         }
                         disabled={
-                          anyBusy
+                          anyBusy ||
+                          !bankingReady
                         }
-                        placeholder="Amount"
+                        placeholder={
+                          isBanking &&
+                          !bankingReady
+                            ? "Select employee"
+                            : "Amount"
+                        }
                         onChange={(
                           event
                         ) =>
@@ -1345,6 +2113,7 @@ export default function CashierSavingsPanel({
                       type="button"
                       disabled={
                         anyBusy ||
+                        !bankingReady ||
                         row.availableBalance <=
                           0 ||
                         (
@@ -1362,6 +2131,7 @@ export default function CashierSavingsPanel({
 
                         opacity:
                           anyBusy ||
+                          !bankingReady ||
                           row.availableBalance <=
                             0 ||
                           (
@@ -1406,9 +2176,15 @@ export default function CashierSavingsPanel({
                         ""
                       }
                       disabled={
-                        anyBusy
+                        anyBusy ||
+                        !bankingReady
                       }
-                      placeholder="Amount"
+                      placeholder={
+                        isBanking &&
+                        !bankingReady
+                          ? "Select employee"
+                          : "Amount"
+                      }
                       onChange={(
                         event
                       ) =>
@@ -1429,6 +2205,7 @@ export default function CashierSavingsPanel({
                       type="button"
                       disabled={
                         anyBusy ||
+                        !bankingReady ||
                         row.availableBalance <=
                           0
                       }
@@ -1442,6 +2219,7 @@ export default function CashierSavingsPanel({
 
                         opacity:
                           anyBusy ||
+                          !bankingReady ||
                           row.availableBalance <=
                             0
                             ? 0.5
@@ -1467,7 +2245,11 @@ export default function CashierSavingsPanel({
               totalStyle
             }
           >
-            <div>
+            <div
+              style={
+                totalCardStyle
+              }
+            >
               <span>
                 TOTAL SAVED
               </span>
@@ -1480,7 +2262,11 @@ export default function CashierSavingsPanel({
               </strong>
             </div>
 
-            <div>
+            <div
+              style={
+                totalCardStyle
+              }
+            >
               <span>
                 PENDING PAYMENTS
               </span>
@@ -1493,7 +2279,11 @@ export default function CashierSavingsPanel({
               </strong>
             </div>
 
-            <div>
+            <div
+              style={
+                totalCardStyle
+              }
+            >
               <span>
                 AVAILABLE
               </span>
@@ -1506,6 +2296,22 @@ export default function CashierSavingsPanel({
               </strong>
             </div>
           </div>
+
+          {selectedBankingEmployee && (
+            <div
+              style={
+                bankingTotalNoticeStyle
+              }
+            >
+              Totals currently include Banking for{" "}
+              <strong>
+                {
+                  selectedBankingEmployee.employee_name
+                }
+              </strong>
+              .
+            </div>
+          )}
 
           {/* ======================================= */}
           {/* PAYMENT REQUEST HISTORY */}
@@ -1598,7 +2404,8 @@ export default function CashierSavingsPanel({
           >
             Saving reduces available shift money immediately because it
             is posted to Expenses. Paying later does not create a second
-            expense.
+            expense. Employee Banking follows the selected employee even
+            when that employee works at another shop.
           </div>
         </>
       )}
@@ -1758,585 +2565,1444 @@ function formatDateTime(
     return "";
   }
 }
+// ============================================================
+  // PAY
+  // ============================================================
+
+  function getPaymentAmount(
+    row
+  ) {
+    if (
+      row.fixedPayment
+    ) {
+      return Number(
+        row.obligationAmount ||
+          0
+      );
+    }
+
+    return Number(
+      inputs[
+        row.key
+      ]?.pay ||
+        0
+    );
+  }
+
+  async function requestPayment(
+    row
+  ) {
+    if (
+      row.key ===
+        "BANKING" &&
+      !requireBankingEmployee()
+    ) {
+      return;
+    }
+
+    if (
+      row.fixedPayment &&
+      (
+        row.obligationAmount ===
+          null ||
+        !Number.isFinite(
+          row.obligationAmount
+        ) ||
+        row.obligationAmount <=
+          0
+      )
+    ) {
+      setMessage(
+        `${row.label} fixed payment amount has not been configured by Admin yet.`
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const amount =
+      getPaymentAmount(
+        row
+      );
+
+    if (
+      !Number.isFinite(
+        amount
+      ) ||
+      amount <= 0
+    ) {
+      setMessage(
+        `Enter a valid ${row.label} payment amount.`
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    if (
+      amount >
+      row.availableBalance
+    ) {
+      setMessage(
+        `${row.label} payment cannot exceed available Savings. Available: KES ${money(
+          row.availableBalance
+        )}.`
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const bankingText =
+      row.key ===
+      "BANKING"
+        ? `\nEmployee: ${selectedBankingEmployee.employee_name}\n${selectedBankingEmployee.display_label}`
+        : "";
+
+    const confirmed =
+      window.confirm(
+        `Request ${row.label} payment?${bankingText}\n\nAmount: KES ${money(
+          amount
+        )}\n\nThe Accountant must confirm the actual payment before this amount leaves Savings.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const key =
+      `PAY-${row.key}`;
+
+    try {
+      setActionKey(
+        key
+      );
+
+      setMessage(
+        ""
+      );
+
+      setMessageType(
+        ""
+      );
+
+      const isBanking =
+        row.key ===
+        "BANKING";
+
+      const functionName =
+        isBanking
+          ? "tl_cashier_request_banking_payment_employee"
+          : "tl_cashier_request_savings_payment";
+
+      const body =
+        isBanking
+          ? {
+              p_shift_id:
+                shiftId,
+
+              p_employee_id:
+                selectedBankingEmployee.employee_id,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            }
+          : {
+              p_shift_id:
+                shiftId,
+
+              p_category:
+                row.key,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            };
+
+      const response =
+        await fetch(
+          `${supabaseUrl}/rest/v1/rpc/${functionName}`,
+          {
+            method:
+              "POST",
+
+            headers:
+              authHeaders(
+                supabaseAnonKey,
+                accessToken
+              ),
+
+            body:
+              JSON.stringify(
+                body
+              ),
+          }
+        );
+
+      const result =
+        await safeJson(
+          response
+        );
+
+      if (
+        !response.ok
+      ) {
+        throw new Error(
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            "Unable to request payment."
+        );
+      }
+
+      if (
+        !row.fixedPayment
+      ) {
+        clearInput(
+          row.key,
+          "pay"
+        );
+      }
+
+      setMessage(
+        isBanking
+          ? `${selectedBankingEmployee.employee_name}: Banking payment request sent to Accountant for KES ${money(
+              amount
+            )}.`
+          : `${row.label} payment request sent to Accountant for KES ${money(
+              amount
+            )}.`
+      );
+
+      setMessageType(
+        "success"
+      );
+
+      await loadSavings(
+        true
+      );
+    } catch (error) {
+      console.error(
+        "REQUEST PAYMENT ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to request payment."
+      );
+
+      setMessageType(
+        "error"
+      );
+    } finally {
+      setActionKey(
+        ""
+      );
+    }
+  }
+
+  // ============================================================
+  // WITHDRAW
+  // ============================================================
+
+  async function withdrawMoney(
+    row
+  ) {
+    if (
+      row.key ===
+        "BANKING" &&
+      !requireBankingEmployee()
+    ) {
+      return;
+    }
+
+    const rawAmount =
+      inputs[
+        row.key
+      ]?.withdraw;
+
+    const amount =
+      Number(
+        rawAmount
+      );
+
+    if (
+      rawAmount ===
+        "" ||
+      !Number.isFinite(
+        amount
+      ) ||
+      amount <= 0
+    ) {
+      setMessage(
+        `Enter a valid ${row.label} withdrawal amount.`
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    if (
+      amount >
+      row.availableBalance
+    ) {
+      setMessage(
+        `Withdrawal cannot exceed available ${row.label} Savings. Available: KES ${money(
+          row.availableBalance
+        )}.`
+      );
+
+      setMessageType(
+        "error"
+      );
+
+      return;
+    }
+
+    const bankingText =
+      row.key ===
+      "BANKING"
+        ? `\nEmployee: ${selectedBankingEmployee.employee_name}\n${selectedBankingEmployee.display_label}`
+        : "";
+
+    const confirmed =
+      window.confirm(
+        `Withdraw KES ${money(
+          amount
+        )} from ${row.label} Savings?${bankingText}\n\nThe money will automatically enter the next available M-Shwari Added Float position.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const key =
+      `WITHDRAW-${row.key}`;
+
+    try {
+      setActionKey(
+        key
+      );
+
+      setMessage(
+        ""
+      );
+
+      setMessageType(
+        ""
+      );
+
+      const isBanking =
+        row.key ===
+        "BANKING";
+
+      const functionName =
+        isBanking
+          ? "tl_cashier_withdraw_banking_employee"
+          : "tl_cashier_withdraw_savings";
+
+      const body =
+        isBanking
+          ? {
+              p_shift_id:
+                shiftId,
+
+              p_employee_id:
+                selectedBankingEmployee.employee_id,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            }
+          : {
+              p_shift_id:
+                shiftId,
+
+              p_category:
+                row.key,
+
+              p_amount:
+                roundMoney(
+                  amount
+                ),
+            };
+
+      const response =
+        await fetch(
+          `${supabaseUrl}/rest/v1/rpc/${functionName}`,
+          {
+            method:
+              "POST",
+
+            headers:
+              authHeaders(
+                supabaseAnonKey,
+                accessToken
+              ),
+
+            body:
+              JSON.stringify(
+                body
+              ),
+          }
+        );
+
+      const result =
+        await safeJson(
+          response
+        );
+
+      if (
+        !response.ok
+      ) {
+        throw new Error(
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            "Unable to withdraw Savings."
+        );
+      }
+
+      clearInput(
+        row.key,
+        "withdraw"
+      );
+
+      setMessage(
+        isBanking
+          ? `${selectedBankingEmployee.employee_name}: KES ${money(
+              amount
+            )} withdrawn from Banking to M-Shwari Added Float ${result?.mshwari_slot || ""}.`
+          : `${row.label}: KES ${money(
+              amount
+            )} withdrawn to M-Shwari Added Float ${result?.mshwari_slot || ""}.`
+      );
+
+      setMessageType(
+        "success"
+      );
+
+      await loadSavings(
+        true
+      );
+    } catch (error) {
+      console.error(
+        "WITHDRAW SAVINGS ERROR:",
+        error
+      );
+
+      setMessage(
+        error?.message ||
+          "Unable to withdraw Savings."
+      );
+
+      setMessageType(
+        "error"
+      );
+    } finally {
+      setActionKey(
+        ""
+      );
+    }
+  }
+
+  // ============================================================
+  // DISPLAY
+  // ============================================================
+
+  return (
+    <section
+      style={
+        panelStyle
+      }
+    >
+      <div
+        style={
+          titleStyle
+        }
+      >
+        SAVINGS / BANKING
+      </div>
+
+      <div
+        style={
+          explanationStyle
+        }
+      >
+        SAVE posts immediately to Savings and Expenses.
+        PAY requires Accountant confirmation.
+        For BANKING, search and select the employee first.
+      </div>
+
+      {message && (
+        <div
+          style={{
+            ...messageStyle,
+
+            backgroundColor:
+              messageType ===
+              "success"
+                ? "#ecfdf5"
+                : "#fef2f2",
+
+            color:
+              messageType ===
+              "success"
+                ? "#166534"
+                : "#991b1b",
+          }}
+        >
+          {message}
+        </div>
+      )}
+
+      {loading ? (
+        <div
+          style={
+            loadingStyle
+          }
+        >
+          Loading Savings...
+        </div>
+      ) : (
+        <>
+          <div
+            style={
+              headerStyle
+            }
+          >
+            <div>
+              CATEGORY
+            </div>
+
+            <div>
+              SAVED
+            </div>
+
+            <div>
+              AVAILABLE
+            </div>
+          </div>
+
+          {rows.map(
+            (
+              row
+            ) => {
+              const saveBusy =
+                actionKey ===
+                `SAVE-${row.key}`;
+
+              const payBusy =
+                actionKey ===
+                `PAY-${row.key}`;
+
+              const withdrawBusy =
+                actionKey ===
+                `WITHDRAW-${row.key}`;
+
+              const anyBusy =
+                actionKey !==
+                "";
+
+              const isBanking =
+                row.key ===
+                "BANKING";
+
+              const bankingReady =
+                !isBanking ||
+                Boolean(
+                  selectedBankingEmployee
+                );
+
+              const fixedAmountReady =
+                row.obligationAmount !==
+                  null &&
+                Number.isFinite(
+                  row.obligationAmount
+                ) &&
+                row.obligationAmount >
+                  0;
+
+              const fixedCanPay =
+                fixedAmountReady &&
+                row.availableBalance >=
+                  row.obligationAmount;
+
+              return (
+                <div
+                  key={
+                    row.key
+                  }
+                  style={{
+                    ...categoryCardStyle,
+
+                    ...(isBanking
+                      ? bankingCategoryCardStyle
+                      : {}),
+                  }}
+                >
+                  <div
+                    style={
+                      balanceRowStyle
+                    }
+                  >
+                    <div>
+                      <strong>
+                        {
+                          row.label
+                        }
+                      </strong>
+
+                      {row.fixedPayment && (
+                        <div
+                          style={
+                            fixedTextStyle
+                          }
+                        >
+                          Fixed payment:{" "}
+                          {fixedAmountReady
+                            ? `KES ${money(
+                                row.obligationAmount
+                              )}`
+                            : "Not configured"}
+                        </div>
+                      )}
+
+                      {row.key ===
+                        "ELECTRICITY" && (
+                        <div
+                          style={
+                            variableTextStyle
+                          }
+                        >
+                          Variable amount
+                        </div>
+                      )}
+
+                      {isBanking && (
+                        <div
+                          style={
+                            variableTextStyle
+                          }
+                        >
+                          Employee Banking
+                        </div>
+                      )}
+                    </div>
+
+                    <div
+                      style={
+                        moneyCellStyle
+                      }
+                    >
+                      KES{" "}
+                      {money(
+                        row.balance
+                      )}
+                    </div>
+
+                    <div
+                      style={
+                        availableCellStyle
+                      }
+                    >
+                      KES{" "}
+                      {money(
+                        row.availableBalance
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ================================= */}
+                  {/* BANKING EMPLOYEE SELECTOR */}
+                  {/* ================================= */}
+
+                  {isBanking && (
+                    <div
+                      style={
+                        employeeSelectorStyle
+                      }
+                    >
+                      <div
+                        style={
+                          employeeSelectorTitleStyle
+                        }
+                      >
+                        SELECT EMPLOYEE
+                      </div>
+
+                      <div
+                        style={
+                          employeeSelectorHelpStyle
+                        }
+                      >
+                        Search by employee name or shop name.
+                        Mobile / Relief employees are listed first.
+                      </div>
+
+                      <input
+                        type="text"
+                        value={
+                          bankingSearch
+                        }
+                        disabled={
+                          anyBusy
+                        }
+                        placeholder="Search name or shop e.g. Nyika, Irene..."
+                        onChange={(
+                          event
+                        ) =>
+                          changeBankingSearch(
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        style={
+                          employeeSearchStyle
+                        }
+                      />
+
+                      <select
+                        value={
+                          selectedBankingEmployeeId
+                        }
+                        disabled={
+                          anyBusy ||
+                          visibleBankingEmployees.length ===
+                            0
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          selectBankingEmployee(
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        style={
+                          employeeSelectStyle
+                        }
+                      >
+                        <option
+                          value=""
+                        >
+                          {visibleBankingEmployees.length ===
+                          0
+                            ? "No employee found"
+                            : "Choose employee"}
+                        </option>
+
+                        {visibleBankingEmployees.map(
+                          (
+                            employee
+                          ) => (
+                            <option
+                              key={
+                                employee.employee_id
+                              }
+                              value={
+                                employee.employee_id
+                              }
+                            >
+                              {employee.is_mobile
+                                ? "★ "
+                                : ""}
+                              {employee.display_label ||
+                                `${employee.shop_name || "MOBILE"} — ${employee.employee_name}`}
+                            </option>
+                          )
+                        )}
+                      </select>
+
+                      {selectedBankingEmployee ? (
+                        <div
+                          style={
+                            selectedEmployeeStyle
+                          }
+                        >
+                          <div>
+                            <span
+                              style={
+                                selectedEmployeeLabelStyle
+                              }
+                            >
+                              BANKING FOR
+                            </span>
+
+                            <strong>
+                              {
+                                selectedBankingEmployee.employee_name
+                              }
+                            </strong>
+                          </div>
+
+                          <div
+                            style={
+                              selectedEmployeeShopStyle
+                            }
+                          >
+                            {selectedBankingEmployee.is_mobile
+                              ? "★ MOBILE / RELIEF"
+                              : selectedBankingEmployee.shop_name ||
+                                "UNASSIGNED"}
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          style={
+                            noEmployeeSelectedStyle
+                          }
+                        >
+                          Select the employee whose Banking money you are handling.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {row.pendingPaymentAmount >
+                    0 && (
+                    <div
+                      style={
+                        reservedStyle
+                      }
+                    >
+                      KES{" "}
+                      {money(
+                        row.pendingPaymentAmount
+                      )}{" "}
+                      reserved for Accountant payment confirmation.
+                    </div>
+                  )}
+
+                  {/* ================================= */}
+                  {/* SAVE */}
+                  {/* ================================= */}
+
+                  <div
+                    style={
+                      actionRowStyle
+                    }
+                  >
+                    <div
+                      style={
+                        actionLabelStyle
+                      }
+                    >
+                      SAVE
+                    </div>
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        inputs[
+                          row.key
+                        ]?.save ||
+                        ""
+                      }
+                      disabled={
+                        anyBusy ||
+                        !bankingReady
+                      }
+                      placeholder={
+                        isBanking &&
+                        !bankingReady
+                          ? "Select employee"
+                          : "Amount"
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setInput(
+                          row.key,
+                          "save",
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                      style={
+                        inputStyle
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      disabled={
+                        anyBusy ||
+                        !bankingReady
+                      }
+                      onClick={() =>
+                        saveMoney(
+                          row
+                        )
+                      }
+                      style={{
+                        ...saveButtonStyle,
+
+                        opacity:
+                          anyBusy ||
+                          !bankingReady
+                            ? 0.5
+                            : 1,
+                      }}
+                    >
+                      {saveBusy
+                        ? "Saving..."
+                        : "Save"}
+                    </button>
+                  </div>
+
+                  {/* ================================= */}
+                  {/* PAY */}
+                  {/* ================================= */}
+
+                  <div
+                    style={
+                      actionRowStyle
+                    }
+                  >
+                    <div
+                      style={
+                        actionLabelStyle
+                      }
+                    >
+                      PAY
+                    </div>
+
+                    {row.fixedPayment ? (
+                      <input
+                        type="text"
+                        value={
+                          fixedAmountReady
+                            ? money(
+                                row.obligationAmount
+                              )
+                            : ""
+                        }
+                        readOnly
+                        placeholder="Admin fixed amount"
+                        style={{
+                          ...inputStyle,
+
+                          backgroundColor:
+                            "#f8fafc",
+
+                          cursor:
+                            "not-allowed",
+                        }}
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={
+                          inputs[
+                            row.key
+                          ]?.pay ||
+                          ""
+                        }
+                        disabled={
+                          anyBusy ||
+                          !bankingReady
+                        }
+                        placeholder={
+                          isBanking &&
+                          !bankingReady
+                            ? "Select employee"
+                            : "Amount"
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          setInput(
+                            row.key,
+                            "pay",
+                            event
+                              .target
+                              .value
+                          )
+                        }
+                        style={
+                          inputStyle
+                        }
+                      />
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={
+                        anyBusy ||
+                        !bankingReady ||
+                        row.availableBalance <=
+                          0 ||
+                        (
+                          row.fixedPayment &&
+                          !fixedCanPay
+                        )
+                      }
+                      onClick={() =>
+                        requestPayment(
+                          row
+                        )
+                      }
+                      style={{
+                        ...payButtonStyle,
+
+                        opacity:
+                          anyBusy ||
+                          !bankingReady ||
+                          row.availableBalance <=
+                            0 ||
+                          (
+                            row.fixedPayment &&
+                            !fixedCanPay
+                          )
+                            ? 0.5
+                            : 1,
+                      }}
+                    >
+                      {payBusy
+                        ? "Sending..."
+                        : "Request Pay"}
+                    </button>
+                  </div>
+
+                  {/* ================================= */}
+                  {/* WITHDRAW */}
+                  {/* ================================= */}
+
+                  <div
+                    style={
+                      actionRowStyle
+                    }
+                  >
+                    <div
+                      style={
+                        actionLabelStyle
+                      }
+                    >
+                      WITHDRAW
+                    </div>
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        inputs[
+                          row.key
+                        ]?.withdraw ||
+                        ""
+                      }
+                      disabled={
+                        anyBusy ||
+                        !bankingReady
+                      }
+                      placeholder={
+                        isBanking &&
+                        !bankingReady
+                          ? "Select employee"
+                          : "Amount"
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setInput(
+                          row.key,
+                          "withdraw",
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                      style={
+                        inputStyle
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      disabled={
+                        anyBusy ||
+                        !bankingReady ||
+                        row.availableBalance <=
+                          0
+                      }
+                      onClick={() =>
+                        withdrawMoney(
+                          row
+                        )
+                      }
+                      style={{
+                        ...withdrawButtonStyle,
+
+                        opacity:
+                          anyBusy ||
+                          !bankingReady ||
+                          row.availableBalance <=
+                            0
+                            ? 0.5
+                            : 1,
+                      }}
+                    >
+                      {withdrawBusy
+                        ? "Withdrawing..."
+                        : "Withdraw"}
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+          )}
+
+          {/* ======================================= */}
+          {/* TOTALS */}
+          {/* ======================================= */}
+
+          <div
+            style={
+              totalStyle
+            }
+          >
+            <div
+              style={
+                totalCardStyle
+              }
+            >
+              <span>
+                TOTAL SAVED
+              </span>
+
+              <strong>
+                KES{" "}
+                {money(
+                  totals.saved
+                )}
+              </strong>
+            </div>
+
+            <div
+              style={
+                totalCardStyle
+              }
+            >
+              <span>
+                PENDING PAYMENTS
+              </span>
+
+              <strong>
+                KES{" "}
+                {money(
+                  totals.reserved
+                )}
+              </strong>
+            </div>
+
+            <div
+              style={
+                totalCardStyle
+              }
+            >
+              <span>
+                AVAILABLE
+              </span>
+
+              <strong>
+                KES{" "}
+                {money(
+                  totals.available
+                )}
+              </strong>
+            </div>
+          </div>
+
+          {selectedBankingEmployee && (
+            <div
+              style={
+                bankingTotalNoticeStyle
+              }
+            >
+              Totals currently include Banking for{" "}
+              <strong>
+                {
+                  selectedBankingEmployee.employee_name
+                }
+              </strong>
+              .
+            </div>
+          )}
+
+          {/* ======================================= */}
+          {/* PAYMENT REQUEST HISTORY */}
+          {/* ======================================= */}
+
+          <div
+            style={
+              historyWrapStyle
+            }
+          >
+            <div
+              style={
+                historyTitleStyle
+              }
+            >
+              RECENT PAYMENT REQUESTS
+            </div>
+
+            {paymentRequests.length ===
+            0 ? (
+              <div
+                style={
+                  emptyHistoryStyle
+                }
+              >
+                No payment requests yet.
+              </div>
+            ) : (
+              paymentRequests
+                .slice(
+                  0,
+                  6
+                )
+                .map(
+                  (
+                    request
+                  ) => (
+                    <div
+                      key={
+                        request.id
+                      }
+                      style={
+                        historyRowStyle
+                      }
+                    >
+                      <div>
+                        <strong>
+                          {
+                            request.category
+                          }
+                        </strong>
+
+                        <div
+                          style={
+                            historyTimeStyle
+                          }
+                        >
+                          {formatDateTime(
+                            request.requested_at
+                          )}
+                        </div>
+                      </div>
+
+                      <div
+                        style={
+                          historyAmountStyle
+                        }
+                      >
+                        KES{" "}
+                        {money(
+                          request.amount
+                        )}
+                      </div>
+
+                      <StatusBadge
+                        status={
+                          request.status
+                        }
+                      />
+                    </div>
+                  )
+                )
+            )}
+          </div>
+
+          <div
+            style={
+              noteStyle
+            }
+          >
+            Saving reduces available shift money immediately because it
+            is posted to Expenses. Paying later does not create a second
+            expense. Employee Banking follows the selected employee even
+            when that employee works at another shop.
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
 
 // ============================================================
-// STYLES
+// STATUS
 // ============================================================
 
-const panelStyle = {
-  backgroundColor:
-    "white",
-
-  borderRadius:
-    "6px",
-
-  overflow:
-    "hidden",
-
-  boxShadow:
-    "0 1px 5px rgba(0,0,0,0.12)",
-};
-
-const titleStyle = {
-  backgroundColor:
-    "#0873b9",
-
-  color:
-    "white",
-
-  padding:
-    "10px 12px",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    "bold",
-};
-
-const explanationStyle = {
-  padding:
-    "8px 10px",
-
-  backgroundColor:
-    "#eff6ff",
-
-  color:
-    "#1e3a8a",
-
-  fontSize:
-    "9px",
-
-  lineHeight:
-    "1.4",
-};
-
-const loadingStyle = {
-  padding:
-    "20px",
-
-  textAlign:
-    "center",
-
-  color:
-    "#64748b",
-
-  fontSize:
-    "11px",
-};
-
-const messageStyle = {
-  margin:
-    "8px",
-
-  padding:
-    "8px",
-
-  borderRadius:
-    "5px",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "600",
-};
-
-const headerStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.25fr 0.9fr 0.9fr",
-
-  gap:
-    "6px",
-
-  padding:
-    "8px",
-
-  backgroundColor:
-    "#eef4f8",
-
-  color:
-    "#334155",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-
-  textAlign:
-    "center",
-};
-
-const categoryCardStyle = {
-  padding:
-    "8px",
-
-  borderTop:
-    "1px solid #e5e7eb",
-
-  backgroundColor:
-    "#ffffff",
-};
-
-const balanceRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.25fr 0.9fr 0.9fr",
-
-  gap:
-    "6px",
-
-  alignItems:
-    "center",
-
-  marginBottom:
-    "6px",
-
-  fontSize:
-    "11px",
-};
-
-const fixedTextStyle = {
-  marginTop:
-    "2px",
-
-  color:
-    "#64748b",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "normal",
-};
-
-const variableTextStyle = {
-  marginTop:
-    "2px",
-
-  color:
-    "#64748b",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "normal",
-};
-
-const moneyCellStyle = {
-  padding:
-    "7px",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#ecfdf5",
-
-  color:
-    "#166534",
-
-  fontWeight:
-    "bold",
-
-  textAlign:
-    "right",
-};
-
-const availableCellStyle = {
-  padding:
-    "7px",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#eff6ff",
-
-  color:
-    "#1d4ed8",
-
-  fontWeight:
-    "bold",
-
-  textAlign:
-    "right",
-};
-
-const reservedStyle = {
-  marginBottom:
-    "6px",
-
-  padding:
-    "5px 7px",
-
-  backgroundColor:
-    "#fef3c7",
-
-  color:
-    "#92400e",
-
-  borderRadius:
-    "4px",
-
-  fontSize:
-    "8px",
-};
-
-const actionRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "0.65fr 1fr 0.9fr",
-
-  gap:
-    "5px",
-
-  alignItems:
-    "center",
-
-  marginTop:
-    "5px",
-};
-
-const actionLabelStyle = {
-  color:
-    "#475569",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "bold",
-};
-
-const inputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "7px",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "4px",
-
-  fontSize:
-    "10px",
-
-  textAlign:
-    "right",
-};
-
-const saveButtonStyle = {
-  width:
-    "100%",
-
-  padding:
-    "7px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#0873b9",
-
-  color:
-    "white",
-
-  cursor:
-    "pointer",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-};
-
-const payButtonStyle = {
-  width:
-    "100%",
-
-  padding:
-    "7px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#15803d",
-
-  color:
-    "white",
-
-  cursor:
-    "pointer",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-};
-
-const withdrawButtonStyle = {
-  width:
-    "100%",
-
-  padding:
-    "7px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#d97706",
-
-  color:
-    "white",
-
-  cursor:
-    "pointer",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-};
-
-const totalStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(3, 1fr)",
-
-  gap:
-    "1px",
-
-  marginTop:
-    "3px",
-
-  backgroundColor:
-    "#d1d5db",
-
-  borderTop:
-    "1px solid #d1d5db",
-
-  borderBottom:
-    "1px solid #d1d5db",
-};
-
-const historyWrapStyle = {
-  padding:
-    "8px",
-};
-
-const historyTitleStyle = {
-  marginBottom:
-    "6px",
-
-  color:
-    "#334155",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-};
-
-const emptyHistoryStyle = {
-  padding:
-    "8px",
-
-  backgroundColor:
-    "#f8fafc",
-
-  color:
-    "#64748b",
-
-  borderRadius:
-    "4px",
-
-  fontSize:
-    "9px",
-};
-
-const historyRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.2fr 0.8fr 0.8fr",
-
-  gap:
-    "6px",
-
-  alignItems:
-    "center",
-
-  padding:
-    "6px 0",
-
-  borderBottom:
-    "1px solid #e5e7eb",
-
-  fontSize:
-    "9px",
-};
-
-const historyTimeStyle = {
-  color:
-    "#94a3b8",
-
-  marginTop:
-    "2px",
-
-  fontSize:
-    "8px",
-};
-
-const historyAmountStyle = {
-  textAlign:
-    "right",
-
-  fontWeight:
-    "bold",
-};
-
-const pendingStyle = {
-  padding:
-    "5px",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#fef3c7",
-
-  color:
-    "#92400e",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "bold",
-};
-
-const processingStyle = {
-  padding:
-    "5px",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#dbeafe",
-
-  color:
-    "#1d4ed8",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "bold",
-};
-
-const confirmedStyle = {
-  padding:
-    "5px",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#dcfce7",
-
-  color:
-    "#166534",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "bold",
-};
-
-const rejectedStyle = {
-  padding:
-    "5px",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#fee2e2",
-
-  color:
-    "#991b1b",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "bold",
-};
-
-const noteStyle = {
-  padding:
-    "8px 10px 10px",
-
-  color:
-    "#64748b",
-
-  fontSize:
-    "8px",
-
-  lineHeight:
-    "1.4",
-};
-
-// Add styling to total child cards.
-Object.assign(
-  totalStyle,
-  {}
-);
+function StatusBadge({
+  status,
+}) {
+  const value =
+    String(
+      status ||
+        ""
+    ).toUpperCase();
+
+  let style =
+    pendingStyle;
+
+  if (
+    value ===
+    "CONFIRMED"
+  ) {
+    style =
+      confirmedStyle;
+  } else if (
+    value ===
+      "REJECTED" ||
+    value ===
+      "FAILED" ||
+    value ===
+      "CANCELLED"
+  ) {
+    style =
+      rejectedStyle;
+  } else if (
+    value ===
+    "PROCESSING"
+  ) {
+    style =
+      processingStyle;
+  }
+
+  return (
+    <div
+      style={
+        style
+      }
+    >
+      {value ||
+        "PENDING"}
+    </div>
+  );
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function authHeaders(
+  anonKey,
+  accessToken
+) {
+  return {
+    apikey:
+      anonKey,
+
+    Authorization:
+      `Bearer ${accessToken}`,
+
+    "Content-Type":
+      "application/json",
+  };
+}
+
+async function safeJson(
+  response
+) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function money(
+  value
+) {
+  return Number(
+    value ||
+      0
+  ).toLocaleString(
+    "en-KE",
+    {
+      minimumFractionDigits:
+        2,
+
+      maximumFractionDigits:
+        2,
+    }
+  );
+}
+
+function roundMoney(
+  value
+) {
+  return (
+    Math.round(
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
+        100
+    ) /
+    100
+  );
+}
+
+function formatDateTime(
+  value
+) {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return new Intl.DateTimeFormat(
+      "en-KE",
+      {
+        timeZone:
+          "Africa/Nairobi",
+
+        day:
+          "2-digit",
+
+        month:
+          "short",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
+      }
+    ).format(
+      new Date(
+        value
+      )
+    );
+  } catch {
+    return "";
+  }
+}
