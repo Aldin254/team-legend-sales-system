@@ -57,38 +57,16 @@ export default function CashierReport({
   ] = useState({});
 
   const [
-    floatInputs,
-    setFloatInputs,
-  ] = useState({
-    company: [
-      "",
-      "",
-      "",
-    ],
-
-    mshwari: [
-      "",
-      "",
-      "",
-    ],
-  });
-
-  const [
     expenseInputs,
     setExpenseInputs,
   ] = useState(
     Array.from(
       {
-        length:
-          10,
+        length: 10,
       },
-
       () => ({
-        description:
-          "",
-
-        amount:
-          "",
+        description: "",
+        amount: "",
       })
     )
   );
@@ -101,11 +79,6 @@ export default function CashierReport({
   const [
     savingClosing,
     setSavingClosing,
-  ] = useState(false);
-
-  const [
-    savingFloats,
-    setSavingFloats,
   ] = useState(false);
 
   const [
@@ -123,13 +96,11 @@ export default function CashierReport({
     setMessageType,
   ] = useState("");
 
-  // Live clock used for 9:30 PM Nairobi closing window.
   const [
     now,
     setNow,
   ] = useState(
-    () =>
-      new Date()
+    () => new Date()
   );
 
   // ==================================================
@@ -380,6 +351,8 @@ export default function CashierReport({
 
           // ------------------------------------------
           // FLOATS
+          // COMPANY + M-SHWARI ARE DISPLAY-ONLY HERE.
+          // M-SHWARI IS CREATED BY SAVINGS WITHDRAWAL.
           // ------------------------------------------
 
           const incomeResponse =
@@ -429,14 +402,6 @@ export default function CashierReport({
 
           // ------------------------------------------
           // EXPENSES
-          //
-          // ALL expenses are loaded for totals.
-          //
-          // Only MANUAL non-private expenses occupy
-          // the cashier's 10 manual expense positions.
-          //
-          // Salary and Cashier -> Accounts expenses
-          // therefore never consume a manual row.
           // ------------------------------------------
 
           const expenseResponse =
@@ -532,14 +497,12 @@ export default function CashierReport({
             loadedIncome
           );
 
-          // Keep ALL expenses for total calculations.
           setExpenses(
             loadedExpenses
           );
 
           // ------------------------------------------
           // OPENING VALUES
-          // DISPLAY ONLY
           // ------------------------------------------
 
           setOpeningInputs(
@@ -647,85 +610,6 @@ export default function CashierReport({
           );
 
           // ------------------------------------------
-          // FLOAT INPUTS
-          // ------------------------------------------
-
-          const companyRows =
-            loadedIncome.filter(
-              (
-                entry
-              ) =>
-                entry.entry_type ===
-                "COMPANY_FLOAT"
-            );
-
-          const mshwariRows =
-            loadedIncome.filter(
-              (
-                entry
-              ) =>
-                entry.entry_type ===
-                "MSHWARI_FLOAT"
-            );
-
-          setFloatInputs(
-            (
-              previous
-            ) => {
-              const company = [
-                ...previous.company,
-              ];
-
-              const mshwari = [
-                ...previous.mshwari,
-              ];
-
-              for (
-                let i = 0;
-                i < 3;
-                i += 1
-              ) {
-                if (
-                  companyRows[
-                    i
-                  ]
-                ) {
-                  company[
-                    i
-                  ] =
-                    String(
-                      companyRows[
-                        i
-                      ].amount ??
-                        ""
-                    );
-                }
-
-                if (
-                  mshwariRows[
-                    i
-                  ]
-                ) {
-                  mshwari[
-                    i
-                  ] =
-                    String(
-                      mshwariRows[
-                        i
-                      ].amount ??
-                        ""
-                    );
-                }
-              }
-
-              return {
-                company,
-                mshwari,
-              };
-            }
-          );
-
-          // ------------------------------------------
           // MANUAL EXPENSE INPUTS
           // ------------------------------------------
 
@@ -736,10 +620,8 @@ export default function CashierReport({
               const next =
                 Array.from(
                   {
-                    length:
-                      10,
+                    length: 10,
                   },
-
                   (
                     _,
                     index
@@ -1028,10 +910,8 @@ export default function CashierReport({
   const companySlots =
     Array.from(
       {
-        length:
-          3,
+        length: 3,
       },
-
       (
         _,
         index
@@ -1046,10 +926,8 @@ export default function CashierReport({
   const mshwariSlots =
     Array.from(
       {
-        length:
-          3,
+        length: 3,
       },
-
       (
         _,
         index
@@ -1220,233 +1098,7 @@ export default function CashierReport({
     );
 
   // ==================================================
-  // SAVE M-SHWARI FLOAT
-  //
-  // COMPANY FLOAT IS READ-ONLY.
-  // It is posted by Legend Accounts only.
-  // ==================================================
-
-  async function saveFloats() {
-    const rowsToSave =
-      [];
-
-    for (
-      let i = 0;
-      i < 3;
-      i += 1
-    ) {
-      if (
-        !mshwariSlots[
-          i
-        ]
-      ) {
-        const raw =
-          floatInputs
-            .mshwari[
-            i
-          ];
-
-        if (
-          raw !== "" &&
-          raw !==
-            undefined
-        ) {
-          const value =
-            Number(
-              raw
-            );
-
-          if (
-            !Number.isFinite(
-              value
-            ) ||
-            value <= 0
-          ) {
-            setMessage(
-              `Enter a valid M-Shwari Float ${
-                i + 1
-              }.`
-            );
-
-            setMessageType(
-              "error"
-            );
-
-            return;
-          }
-
-          rowsToSave.push({
-            shift_id:
-              shiftId,
-
-            entry_type:
-              "MSHWARI_FLOAT",
-
-            description:
-              `Float ${
-                i + 1
-              } from M-Shwari`,
-
-            amount:
-              roundMoney(
-                value
-              ),
-          });
-        }
-      }
-    }
-
-    if (
-      rowsToSave.length ===
-      0
-    ) {
-      setMessage(
-        "Enter at least one M-Shwari float amount."
-      );
-
-      setMessageType(
-        "error"
-      );
-
-      return;
-    }
-
-    try {
-      setSavingFloats(
-        true
-      );
-
-      setMessage(
-        ""
-      );
-
-      const response =
-        await fetch(
-          `${supabaseUrl}/rest/v1/shift_income_entries`,
-          {
-            method:
-              "POST",
-
-            headers: {
-              apikey:
-                supabaseAnonKey,
-
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-
-              Prefer:
-                "return=representation",
-            },
-
-            body:
-              JSON.stringify(
-                rowsToSave
-              ),
-          }
-        );
-
-      const result =
-        await safeJson(
-          response
-        );
-
-      if (
-        !response.ok
-      ) {
-        throw new Error(
-          result?.message ||
-            result?.details ||
-            "Unable to save M-Shwari float."
-        );
-      }
-
-      const newFloatTotal =
-        roundMoney(
-          floatData.companyTotal +
-            floatData.mshwariTotal +
-            rowsToSave.reduce(
-              (
-                sum,
-                row
-              ) =>
-                sum +
-                Number(
-                  row.amount ??
-                    0
-                ),
-              0
-            )
-        );
-
-      const shiftResponse =
-        await fetch(
-          `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(
-            shiftId
-          )}`,
-          {
-            method:
-              "PATCH",
-
-            headers: {
-              apikey:
-                supabaseAnonKey,
-
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                total_added_float:
-                  newFloatTotal,
-              }),
-          }
-        );
-
-      if (
-        !shiftResponse.ok
-      ) {
-        throw new Error(
-          "M-Shwari float saved but shift total could not be updated."
-        );
-      }
-
-      setMessage(
-        "M-Shwari float saved successfully."
-      );
-
-      setMessageType(
-        "success"
-      );
-
-      await loadReport();
-    } catch (error) {
-      setMessage(
-        error?.message ||
-          "Unable to save M-Shwari float."
-      );
-
-      setMessageType(
-        "error"
-      );
-    } finally {
-      setSavingFloats(
-        false
-      );
-    }
-  }
-
-  // ==================================================
   // SAVE MANUAL EXPENSES
-  //
-  // Automatic Cashier -> Accounts expenses and
-  // private expenses do not occupy these 10 rows.
   // ==================================================
 
   async function saveExpenses() {
@@ -1627,8 +1279,6 @@ export default function CashierReport({
         );
       }
 
-      // ALL expenses count toward total,
-      // including automatic return expenses.
       const existingExpenseTotal =
         expenses.reduce(
           (
@@ -1720,10 +1370,8 @@ export default function CashierReport({
       );
     }
   }
-
   // ==================================================
   // SAVE CLOSING READINGS
-  // 12-HOUR CASHIER WINDOW: 9:30 PM - MIDNIGHT
   // ==================================================
 
   async function saveClosingReadings() {
@@ -1811,26 +1459,23 @@ export default function CashierReport({
         return;
       }
 
-      const openingRaw =
-        openingRow
-          .reading_value;
+      const opening =
+        Number(
+          openingRow
+            .reading_value
+        );
 
       const closingRaw =
         closingInputs[
           platform.id
         ];
 
-      const opening =
-        Number(
-          openingRaw
-        );
-
       const closing =
         Number(
           closingRaw
         );
 
-     if (
+      if (
         closingRaw ===
           "" ||
         closingRaw ===
@@ -2142,8 +1787,6 @@ export default function CashierReport({
         "OPEN"
     ).toUpperCase();
 
-  // Separate shift greeting restored.
-  // Uses Nairobi time so the message stays correct on every device.
   const shiftNumber =
     getShiftNumber(
       shift
@@ -2235,6 +1878,7 @@ export default function CashierReport({
         >
           <div>
             Welcome,{" "}
+
             <strong>
               {cashierName.toUpperCase()}
             </strong>
@@ -2439,11 +2083,10 @@ export default function CashierReport({
                   entry,
                   index
                 ) => (
-                  <ReadOnlyCompanyFloatRow
+                  <ReadOnlyFloatRow
                     key={`company-${index}`}
                     label={`Added Float ${
-                      index +
-                      1
+                      index + 1
                     } From Company`}
                     entry={
                       entry
@@ -2452,56 +2095,21 @@ export default function CashierReport({
                 )
               )}
 
-              {/* M-SHWARI FLOAT */}
+              {/* M-SHWARI FLOAT - READ ONLY */}
 
               {mshwariSlots.map(
                 (
                   entry,
                   index
                 ) => (
-                  <EditableFloatRow
+                  <ReadOnlyFloatRow
                     key={`mshwari-${index}`}
                     label={`Added Float ${
-                      index +
-                      1
+                      index + 1
                     } From M-Shwari`}
-                    savedEntry={
+                    entry={
                       entry
                     }
-                    value={
-                      floatInputs
-                        .mshwari[
-                        index
-                      ] ||
-                      ""
-                    }
-                    disabled={
-                      savingFloats
-                    }
-                    onChange={(
-                      value
-                    ) => {
-                      setFloatInputs(
-                        (
-                          previous
-                        ) => {
-                          const mshwari =
-                            [
-                              ...previous.mshwari,
-                            ];
-
-                          mshwari[
-                            index
-                          ] =
-                            value;
-
-                          return {
-                            ...previous,
-                            mshwari,
-                          };
-                        }
-                      );
-                    }}
                   />
                 )
               )}
@@ -2527,36 +2135,10 @@ export default function CashierReport({
                   companyFloatNoticeStyle
                 }
               >
-                Company Float 1, 2 and 3 are read-only.
-                Legend Accounts posts them automatically.
-              </div>
-
-              <div
-                style={
-                  panelButtonWrapStyle
-                }
-              >
-                <button
-                  type="button"
-                  onClick={
-                    saveFloats
-                  }
-                  disabled={
-                    savingFloats
-                  }
-                  style={{
-                    ...greenActionStyle,
-
-                    opacity:
-                      savingFloats
-                        ? 0.6
-                        : 1,
-                  }}
-                >
-                  {savingFloats
-                    ? "Saving..."
-                    : "Save M-Shwari Float"}
-                </button>
+                Company Float and M-Shwari Float 1, 2 and 3 are
+                read-only. Company Float is posted by Legend
+                Accounts. M-Shwari Float is added automatically
+                after a Savings withdrawal.
               </div>
             </section>
 
@@ -2743,7 +2325,8 @@ export default function CashierReport({
                       warningStyle
                     }
                   >
-                    Automatic opening readings are incomplete. Contact Admin.
+                    Automatic opening readings are incomplete.
+                    Contact Admin.
                   </div>
                 )}
 
@@ -2754,7 +2337,8 @@ export default function CashierReport({
                         waitingStyle
                       }
                     >
-                      Closing readings will become available at 9:30 PM Nairobi time.
+                      Closing readings will become available at
+                      9:30 PM Nairobi time.
                     </div>
                   )}
 
@@ -2836,10 +2420,8 @@ export default function CashierReport({
 
               {Array.from(
                 {
-                  length:
-                    10,
+                  length: 10,
                 },
-
                 (
                   _,
                   index
@@ -2859,8 +2441,7 @@ export default function CashierReport({
                       }
                     >
                       <div>
-                        {index +
-                          1}
+                        {index + 1}
                       </div>
 
                       {saved ? (
@@ -3006,9 +2587,9 @@ export default function CashierReport({
                   automaticExpenseNoticeStyle
                 }
               >
-                Cashier → Legend Accounts transfers are added
-                automatically to Total Expenses after Accounts
-                confirms receipt.
+                Savings are added automatically to Total Expenses
+                when saved. Cashier → Legend Accounts transfers are
+                added after Accounts confirms receipt.
               </div>
 
               <div
@@ -3137,7 +2718,6 @@ export default function CashierReport({
     </div>
   );
 }
-
 // ==================================================
 // COMPONENTS
 // ==================================================
@@ -3150,17 +2730,10 @@ function SidebarItem({
   return (
     <div
       style={{
-        padding:
-          "18px",
-
-        display:
-          "flex",
-
-        gap:
-          "12px",
-
-        color:
-          "white",
+        padding: "18px",
+        display: "flex",
+        gap: "12px",
+        color: "white",
 
         backgroundColor:
           active
@@ -3328,10 +2901,11 @@ function IncomeDisplayRow({
 }
 
 // ==================================================
-// COMPANY FLOAT - READ ONLY
+// COMPANY + M-SHWARI FLOAT
+// BOTH ARE READ ONLY
 // ==================================================
 
-function ReadOnlyCompanyFloatRow({
+function ReadOnlyFloatRow({
   label,
   entry,
 }) {
@@ -3368,70 +2942,6 @@ function ReadOnlyCompanyFloatRow({
             )
           : "0.00"}
       </div>
-    </div>
-  );
-}
-
-function EditableFloatRow({
-  label,
-  savedEntry,
-  value,
-  onChange,
-  disabled,
-}) {
-  return (
-    <div
-      style={
-        incomeRowStyle
-      }
-    >
-      <div>
-        {label}{" "}
-
-        {savedEntry && (
-          <span
-            style={
-              savedInlineStyle
-            }
-          >
-            ✓
-          </span>
-        )}
-      </div>
-
-      {savedEntry ? (
-        <div
-          style={
-            savedMoneyStyle
-          }
-        >
-          {money(
-            savedEntry.amount
-          )}
-        </div>
-      ) : (
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          value={
-            value
-          }
-          disabled={
-            disabled
-          }
-          onChange={(
-            event
-          ) =>
-            onChange(
-              event.target.value
-            )
-          }
-          style={
-            moneyInputStyle
-          }
-        />
-      )}
     </div>
   );
 }
@@ -3669,7 +3179,6 @@ function displayTime(
 
 // ==================================================
 // SHIFT GREETING
-// NAIROBI TIME
 // ==================================================
 
 function getShiftNumber(
@@ -3753,8 +3262,7 @@ function getShiftGreeting(
 }
 
 // ==================================================
-// 12-HOUR CASHIER CLOSING WINDOW
-// NAIROBI: 21:30 INCLUSIVE TO MIDNIGHT EXCLUSIVE
+// CLOSING WINDOW
 // ==================================================
 
 function is12HourClosingWindow(
@@ -3815,18 +3323,14 @@ function is12HourClosingWindow(
     );
 
   const minutesSinceMidnight =
-    hour *
-      60 +
+    hour * 60 +
     minute;
 
   return (
     minutesSinceMidnight >=
-      21 *
-        60 +
-        30 &&
+      21 * 60 + 30 &&
     minutesSinceMidnight <
-      24 *
-        60
+      24 * 60
   );
 }
 
@@ -3967,14 +3471,12 @@ const sidebarStyle = {
 };
 
 const mainStyle = {
-  flex:
-    1,
+  flex: 1,
 
   padding:
     "12px",
 
-  minWidth:
-    0,
+  minWidth: 0,
 };
 
 const topGridStyle = {
@@ -4191,14 +3693,6 @@ const missingReadingStyle = {
     "bold",
 };
 
-const savedInlineStyle = {
-  color:
-    "#15803d",
-
-  fontWeight:
-    "bold",
-};
-
 const readOnlyInlineStyle = {
   color:
     "#1d4ed8",
@@ -4245,6 +3739,9 @@ const companyFloatNoticeStyle = {
 
   fontSize:
     "9px",
+
+  lineHeight:
+    "1.4",
 };
 
 const automaticExpenseNoticeStyle = {
