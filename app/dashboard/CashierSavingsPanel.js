@@ -1783,168 +1783,73 @@ export default function CashierSavingsPanel({
                     </div>
                   </div>
 
-                  {/* ================================= */}
-                  {/* EMPLOYEE SEARCH */}
-                  {/* ================================= */}
+ {/* ================================= */}
+{/* DIRECT EMPLOYEE DROPDOWN */}
+{/* ================================= */}
 
-                  {isBanking && (
-                    <div
-                      style={
-                        employeeSelectorStyle
-                      }
-                    >
-                      <div
-                        style={
-                          employeeSelectorTitleStyle
-                        }
-                      >
-                        SELECT EMPLOYEE
-                      </div>
+{isBanking && (
+  <div style={employeeSelectorStyle}>
+    <div style={employeeSelectorTitleStyle}>
+      SELECT EMPLOYEE
+    </div>
 
-                      {!selectedBankingEmployee ? (
-                        <>
-                          <div
-                            style={
-                              employeeSelectorHelpStyle
-                            }
-                          >
-                            Search by employee name or shop name.
-                            Mobile / Relief employees are listed first.
-                          </div>
+    <div style={employeeSelectorHelpStyle}>
+      Mobile / Relief employees appear first, followed by shop employees.
+    </div>
 
-                          <input
-                            type="text"
-                            value={
-                              bankingSearch
-                            }
-                            disabled={
-                              anyBusy
-                            }
-                            placeholder="Search employee or shop..."
-                            autoComplete="off"
-                            onChange={(
-                              event
-                            ) =>
-                              changeBankingSearch(
-                                event
-                                  .target
-                                  .value
-                              )
-                            }
-                            style={
-                              employeeSearchStyle
-                            }
-                          />
+    <select
+      value={selectedBankingEmployeeId}
+      disabled={anyBusy}
+      onChange={(event) => {
+        const employeeId =
+          event.target.value;
 
-                          <div
-                            style={
-                              employeeResultsStyle
-                            }
-                          >
-                            {visibleBankingEmployees.length ===
-                            0 ? (
-                              <div
-                                style={
-                                  noEmployeeFoundStyle
-                                }
-                              >
-                                No employee found.
-                              </div>
-                            ) : (
-                              visibleBankingEmployees.map(
-                                (
-                                  employee
-                                ) => (
-                                  <button
-                                    key={
-                                      employee.employee_id
-                                    }
-                                    type="button"
-                                    disabled={
-                                      anyBusy
-                                    }
-                                    onClick={() =>
-                                      selectBankingEmployee(
-                                        employee.employee_id
-                                      )
-                                    }
-                                    style={
-                                      employeeResultButtonStyle
-                                    }
-                                  >
-                                    <span>
-                                      {employee.is_mobile
-                                        ? "★ "
-                                        : ""}
+        setSelectedBankingEmployeeId(
+          employeeId
+        );
 
-                                      {employee.display_label ||
-                                        `${employee.shop_name || "MOBILE"} — ${employee.employee_name}`}
-                                    </span>
+        clearBankingInputs();
 
-                                    <span
-                                      style={
-                                        selectEmployeeArrowStyle
-                                      }
-                                    >
-                                      ›
-                                    </span>
-                                  </button>
-                                )
-                              )
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <div
-                          style={
-                            selectedEmployeeStyle
-                          }
-                        >
-                          <div>
-                            <span
-                              style={
-                                selectedEmployeeLabelStyle
-                              }
-                            >
-                              BANKING FOR
-                            </span>
+        setMessage("");
+        setMessageType("");
+      }}
+      style={employeeDirectSelectStyle}
+    >
+      <option value="">
+        Select employee
+      </option>
 
-                            <strong>
-                              {
-                                selectedBankingEmployee.employee_name
-                              }
-                            </strong>
+      {visibleBankingEmployees.map(
+        (employee) => (
+          <option
+            key={employee.employee_id}
+            value={employee.employee_id}
+          >
+            {employee.is_mobile
+              ? `★ MOBILE — ${employee.employee_name}`
+              : `${employee.shop_name || "UNASSIGNED"} — ${employee.employee_name}`}
+          </option>
+        )
+      )}
+    </select>
 
-                            <div
-                              style={
-                                selectedEmployeeShopTextStyle
-                              }
-                            >
-                              {selectedBankingEmployee.is_mobile
-                                ? "★ MOBILE / RELIEF"
-                                : selectedBankingEmployee.shop_name ||
-                                  "UNASSIGNED"}
-                            </div>
-                          </div>
+    {selectedBankingEmployee && (
+      <div style={selectedEmployeeCompactStyle}>
+        <strong>
+          BANKING FOR{" "}
+          {selectedBankingEmployee.employee_name}
+        </strong>
 
-                          <button
-                            type="button"
-                            disabled={
-                              anyBusy
-                            }
-                            onClick={
-                              changeEmployee
-                            }
-                            style={
-                              changeEmployeeButtonStyle
-                            }
-                          >
-                            Change Employee
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
+        <span>
+          {selectedBankingEmployee.is_mobile
+            ? "★ MOBILE / RELIEF"
+            : selectedBankingEmployee.shop_name ||
+              "UNASSIGNED"}
+        </span>
+      </div>
+    )}
+  </div>
+)}
 
                   {row.pendingPaymentAmount >
                     0 && (
