@@ -1,7 +1,7 @@
 // ============================================================
 // TEAM LEGEND
 // PROFESSIONAL CASHIER THEME
-// MATTE BLACK • PREMIUM • HIGH READABILITY
+// MATTE BLACK • GOLD • WHITE
 // ============================================================
 
 export const COLORS = {
@@ -14,11 +14,13 @@ export const COLORS = {
   border: "#292F36",
   borderStrong: "#3A4149",
 
-  text: "#F8FAFC",
-  textSoft: "#D1D6DC",
-  muted: "#9AA3AD",
+  text: "#FFFFFF",
+  textSoft: "#FFFFFF",
+  muted: "#FFFFFF",
 
   gold: "#D7B36A",
+  goldDark: "#72531E",
+  goldDeep: "#584018",
   goldSoft: "#F4DDA7",
 
   blue: "#60A5FA",
@@ -26,9 +28,11 @@ export const COLORS = {
   red: "#F87171",
   amber: "#FBBF24",
 };
+
+
 // ============================================================
 // PART 1
-// PAGE • HEADER • SIDEBAR • TOP INFORMATION CARDS
+// PAGE • HEADER • SIDEBAR • TOP CARDS
 // ============================================================
 
 export const pageStyle = {
@@ -37,7 +41,7 @@ export const pageStyle = {
   background:
     "radial-gradient(circle at 72% -15%, #202832 0%, #11161B 27%, #080A0D 70%)",
 
-  color: COLORS.text,
+  color: "#FFFFFF",
 
   fontFamily:
     "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -59,13 +63,11 @@ export const loadingStyle = {
 
   background: COLORS.page,
 
-  color: COLORS.text,
+  color: "#FFFFFF",
 
   fontSize: "19px",
 
   fontWeight: 800,
-
-  letterSpacing: "0.2px",
 };
 
 
@@ -81,7 +83,7 @@ export const topHeaderStyle = {
   background:
     "linear-gradient(90deg, #090C10 0%, #11171D 50%, #090C10 100%)",
 
-  color: COLORS.text,
+  color: "#FFFFFF",
 
   minHeight: "76px",
 
@@ -96,7 +98,7 @@ export const topHeaderStyle = {
   gap: "20px",
 
   borderBottom:
-    "1px solid rgba(255,255,255,0.08)",
+    "1px solid rgba(255,255,255,0.10)",
 
   boxShadow:
     "0 12px 36px rgba(0,0,0,0.28)",
@@ -105,22 +107,17 @@ export const topHeaderStyle = {
 
 export const brandWrapStyle = {
   display: "flex",
-
   alignItems: "center",
-
   gap: "14px",
 };
 
 
 export const crownStyle = {
   width: "48px",
-
   height: "48px",
 
   display: "flex",
-
   alignItems: "center",
-
   justifyContent: "center",
 
   borderRadius: "13px",
@@ -147,7 +144,7 @@ export const brandStyle = {
 
   fontWeight: 950,
 
-  color: "#F9E8BE",
+  color: "#FFFFFF",
 
   letterSpacing: "0.8px",
 
@@ -162,7 +159,7 @@ export const taglineStyle = {
 
   fontWeight: 800,
 
-  color: "#8E98A3",
+  color: "#FFFFFF",
 
   letterSpacing: "2.4px",
 
@@ -179,7 +176,7 @@ export const headerRightStyle = {
 
   textAlign: "right",
 
-  color: COLORS.textSoft,
+  color: "#FFFFFF",
 
   fontSize: "14px",
 
@@ -190,7 +187,7 @@ export const headerRightStyle = {
 export const headerShopStyle = {
   marginTop: "4px",
 
-  color: COLORS.gold,
+  color: "#FFFFFF",
 
   fontSize: "13px",
 
@@ -208,10 +205,10 @@ export const logoutButtonStyle = {
   background:
     "linear-gradient(145deg, #1B2026, #13171C)",
 
-  color: COLORS.text,
+  color: "#FFFFFF",
 
   border:
-    "1px solid #3B434C",
+    "1px solid #4A535D",
 
   borderRadius: "10px",
 
@@ -221,22 +218,18 @@ export const logoutButtonStyle = {
 
   fontWeight: 900,
 
-  letterSpacing: "0.2px",
-
   boxShadow:
     "0 7px 18px rgba(0,0,0,0.22)",
 };
 
 
 // ============================================================
-// MAIN BODY
+// BODY
 // ============================================================
 
 export const bodyStyle = {
   display: "flex",
-
   alignItems: "stretch",
-
   width: "100%",
 };
 
@@ -259,7 +252,7 @@ export const sidebarStyle = {
     "linear-gradient(180deg, #0A0D11 0%, #0D1116 55%, #090C10 100%)",
 
   borderRight:
-    "1px solid rgba(255,255,255,0.07)",
+    "1px solid rgba(255,255,255,0.08)",
 
   boxShadow:
     "8px 0 28px rgba(0,0,0,0.16)",
@@ -280,16 +273,14 @@ export function getSidebarItemStyle(active = false) {
 
     gap: "13px",
 
-    color: active
-      ? "#F7E4B4"
-      : "#AAB2BC",
+    color: "#FFFFFF",
 
     background: active
       ? "linear-gradient(135deg, rgba(215,179,106,0.19), rgba(215,179,106,0.07))"
       : "transparent",
 
     border: active
-      ? "1px solid rgba(215,179,106,0.33)"
+      ? "1px solid rgba(215,179,106,0.42)"
       : "1px solid transparent",
 
     borderRadius: "11px",
@@ -299,12 +290,6 @@ export function getSidebarItemStyle(active = false) {
     fontWeight: active
       ? 900
       : 750,
-
-    letterSpacing: "0.1px",
-
-    boxShadow: active
-      ? "0 7px 22px rgba(0,0,0,0.22)"
-      : "none",
 
     cursor: "pointer",
   };
@@ -323,26 +308,25 @@ export const sidebarIconStyle = {
   alignItems: "center",
 
   fontSize: "18px",
+
+  color: "#FFFFFF",
 };
 
 
 // ============================================================
-// MAIN CONTENT AREA
+// MAIN CONTENT
 // ============================================================
 
 export const mainStyle = {
   flex: 1,
-
   minWidth: 0,
-
   padding: "13px",
-
   overflow: "hidden",
 };
 
 
 // ============================================================
-// TOP INFORMATION GRID
+// TOP GRID
 // ============================================================
 
 export const topGridStyle = {
@@ -380,13 +364,13 @@ export const shopCardStyle = {
 
   overflow: "hidden",
 
-  color: COLORS.text,
+  color: "#FFFFFF",
 
   background:
     "linear-gradient(145deg, rgba(215,179,106,0.19), rgba(20,25,31,0.97))",
 
   border:
-    "1px solid rgba(215,179,106,0.33)",
+    "1px solid rgba(215,179,106,0.42)",
 
   borderRadius: "12px",
 
@@ -396,7 +380,7 @@ export const shopCardStyle = {
 
 
 export const shopTitleStyle = {
-  color: "#F8E5B6",
+  color: "#FFFFFF",
 
   fontSize: "25px",
 
@@ -411,31 +395,28 @@ export const shopTitleStyle = {
 export const shopSubtitleStyle = {
   marginTop: "7px",
 
-  color: "#F2F4F6",
+  color: "#FFFFFF",
 
   fontSize: "14px",
 
   fontWeight: 900,
-
-  letterSpacing: "0.45px",
 };
 
 
 export const smallTextStyle = {
   marginTop: "7px",
 
-  color: "#9EA7B1",
+  color: "#FFFFFF",
 
   fontSize: "12px",
 
   fontWeight: 750,
-
-  letterSpacing: "0.4px",
 };
 
 
 // ============================================================
-// INFORMATION CARDS
+// OTHER FIVE TOP CARDS
+// SAME STYLE AS NYIKA01
 // ============================================================
 
 export function getInfoCardStyle() {
@@ -458,13 +439,13 @@ export function getInfoCardStyle() {
 
     overflow: "hidden",
 
-    color: COLORS.text,
+    color: "#FFFFFF",
 
     background:
       "linear-gradient(145deg, rgba(215,179,106,0.19), rgba(20,25,31,0.97))",
 
     border:
-      "1px solid rgba(215,179,106,0.33)",
+      "1px solid rgba(215,179,106,0.42)",
 
     borderRadius: "12px",
 
@@ -472,8 +453,10 @@ export function getInfoCardStyle() {
       "0 8px 22px rgba(0,0,0,0.20)",
   };
 }
+
+
 export const infoTitleStyle = {
-  color: "#9EA7B1",
+  color: "#FFFFFF",
 
   fontSize: "12px",
 
@@ -501,7 +484,7 @@ export const infoValueStyle = {
 export const infoSubvalueStyle = {
   marginTop: "6px",
 
-  color: "#AAB2BC",
+  color: "#FFFFFF",
 
   fontSize: "12px",
 
@@ -521,125 +504,101 @@ export function getInfoCardAccentStyle() {
 
     height: "3px",
 
-    borderRadius: "3px 3px 0 0",
+    borderRadius:
+      "3px 3px 0 0",
 
-    background: COLORS.gold,
+    background:
+      COLORS.gold,
 
-    opacity: 0.82,
+    opacity: 0.9,
   };
 }
 // ============================================================
 // PART 2
-// REPORT PANELS • TABLES • INPUTS • PLATFORM SALES • EXPENSES
+// REPORT PANELS
+// BLACK + WHITE
+// GOLD ONLY FOR SELECTED FINANCIAL / ACTION AREAS
 // ============================================================
 
 
 // ============================================================
-// MAIN REPORT PANELS
+// MAIN REPORT PANEL
 // ============================================================
 
 export const panelStyle = {
   background:
-    "linear-gradient(180deg, #12171D 0%, #0F1419 100%)",
+    "linear-gradient(180deg, #101419 0%, #0B0F13 100%)",
 
-  color:
-    COLORS.textSoft,
+  color: "#FFFFFF",
 
-  borderRadius:
-    "15px",
+  borderRadius: "15px",
 
-  overflow:
-    "hidden",
+  overflow: "hidden",
 
   border:
-    "1px solid #2A3139",
+    "1px solid #303840",
 
   boxShadow:
     "0 12px 30px rgba(0,0,0,0.20)",
 };
 
 
-export function getPanelTitleStyle(tone) {
-  let accent =
-    COLORS.blue;
+// ============================================================
+// INCOME / PLATFORM / EXPENSE HEADERS
+// BLACK + WHITE + SMALL GOLD EDGE
+// ============================================================
 
-  if (tone === "green") {
-    accent =
-      COLORS.green;
-  }
-
-  if (tone === "red") {
-    accent =
-      COLORS.red;
-  }
-
-  if (tone === "gold") {
-    accent =
-      COLORS.gold;
-  }
-
+export function getPanelTitleStyle() {
   return {
-    position:
-      "relative",
+    position: "relative",
 
-    padding:
-      "14px 16px",
+    padding: "13px 15px",
 
     background:
-      "linear-gradient(90deg, #171D24 0%, #12171D 100%)",
+      "linear-gradient(145deg, #11161C, #0B0F13)",
 
-    color:
-      "#F8FAFC",
+    color: "#FFFFFF",
 
-    fontSize:
-      "16px",
+    fontSize: "15px",
 
-    fontWeight:
-      950,
+    fontWeight: 950,
 
-    letterSpacing:
-      "0.5px",
+    letterSpacing: "0.5px",
 
     borderBottom:
-      `1px solid ${accent}44`,
+      "1px solid #343B43",
 
     borderLeft:
-      `4px solid ${accent}`,
+      `4px solid ${COLORS.gold}`,
   };
 }
 
 
 // ============================================================
-// GENERIC TABLE HEADER
+// TABLE HEADER
 // ============================================================
 
 export const tableHeaderStyle = {
-  display:
-    "grid",
+  display: "grid",
 
   gridTemplateColumns:
     "1.6fr 1fr",
 
-  padding:
-    "12px 14px",
+  padding: "11px 13px",
 
   backgroundColor:
-    "#181E25",
+    "#11161C",
 
-  color:
-    "#AEB6C0",
+  color: "#FFFFFF",
 
-  fontSize:
-    "13px",
+  fontSize: "13px",
 
-  fontWeight:
-    900,
+  fontWeight: 900,
 
-  letterSpacing:
-    "0.5px",
+  letterSpacing: "0.45px",
 
   borderBottom:
-    "1px solid #2A3139",
+    "1px solid #343B43",
 };
 
 
@@ -648,196 +607,175 @@ export const tableHeaderStyle = {
 // ============================================================
 
 export const incomeRowStyle = {
-  display:
-    "grid",
+  display: "grid",
 
   gridTemplateColumns:
     "1.6fr 1fr",
 
-  gap:
-    "11px",
+  gap: "10px",
 
-  padding:
-    "9px 13px",
+  padding: "8px 12px",
 
-  alignItems:
-    "center",
+  alignItems: "center",
 
-  minHeight:
-    "48px",
+  minHeight: "44px",
 
-  color:
-    "#DDE2E7",
+  backgroundColor:
+    "#0D1115",
 
-  fontSize:
-    "14px",
+  color: "#FFFFFF",
 
-  fontWeight:
-    650,
+  fontSize: "14px",
+
+  fontWeight: 700,
 
   borderBottom:
-    "1px solid #20262D",
+    "1px solid #252B31",
 };
 
 
 export const amountBoxStyle = {
-  padding:
-    "10px 11px",
+  padding: "9px 10px",
 
   border:
-    "1px solid #353E47",
+    "1px solid #3B434C",
 
   background:
-    "#0B0F13",
-
-  color:
-    "#F8FAFC",
-
-  borderRadius:
-    "9px",
-
-  textAlign:
-    "right",
-
-  fontSize:
-    "15px",
-
-  fontWeight:
-    850,
-
-  fontVariantNumeric:
-    "tabular-nums",
-};
-
-
-// ============================================================
-// MONEY INPUT
-// ============================================================
-
-export const moneyInputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  minHeight:
-    "41px",
-
-  padding:
-    "9px 11px",
-
-  border:
-    "1px solid #404A55",
-
-  backgroundColor:
-    "#090D11",
+    "#080B0E",
 
   color:
     "#FFFFFF",
 
   borderRadius:
-    "9px",
+    "8px",
 
   textAlign:
     "right",
 
   fontSize:
-    "15px",
+    "14px",
 
   fontWeight:
-    800,
-
-  fontVariantNumeric:
-    "tabular-nums",
-
-  outline:
-    "none",
-
-  boxShadow:
-    "inset 0 1px 0 rgba(255,255,255,0.025)",
+    850,
 };
 
 
 // ============================================================
-// SAVED / LOCKED MONEY
+// INPUTS
 // ============================================================
 
-export const savedMoneyStyle = {
+export const moneyInputStyle = {
+  width: "100%",
+
+  boxSizing:
+    "border-box",
+
+  minHeight:
+    "40px",
+
   padding:
-    "10px 11px",
+    "9px 10px",
 
   border:
-    "1px solid #286746",
+    "1px solid #454E58",
 
-  background:
-    "linear-gradient(145deg, #10271A, #0D2016)",
+  backgroundColor:
+    "#080B0E",
 
   color:
-    "#6EE7A2",
+    "#FFFFFF",
 
   borderRadius:
-    "9px",
+    "8px",
 
   textAlign:
     "right",
 
   fontSize:
-    "15px",
+    "14px",
 
   fontWeight:
-    900,
+    800,
 
-  fontVariantNumeric:
-    "tabular-nums",
+  outline:
+    "none",
+};
+
+
+// ============================================================
+// SAVED / LOCKED VALUES
+// NOW BLACK + WHITE
+// ============================================================
+
+export const savedMoneyStyle = {
+  padding:
+    "9px 10px",
+
+  border:
+    "1px solid #454E58",
+
+  backgroundColor:
+    "#080B0E",
+
+  color:
+    "#FFFFFF",
+
+  borderRadius:
+    "8px",
+
+  textAlign:
+    "right",
+
+  fontSize:
+    "14px",
+
+  fontWeight:
+    850,
 };
 
 
 export const lockedMoneyStyle = {
   padding:
-    "10px 11px",
+    "9px 10px",
 
   border:
-    "1px solid #353D46",
+    "1px solid #454E58",
 
   backgroundColor:
-    "#171C21",
+    "#080B0E",
 
   color:
-    "#7E8893",
+    "#FFFFFF",
 
   borderRadius:
-    "9px",
+    "8px",
 
   textAlign:
     "right",
 
   fontSize:
-    "15px",
+    "14px",
 
   fontWeight:
     850,
-
-  fontVariantNumeric:
-    "tabular-nums",
 };
 
 
 export const missingReadingStyle = {
   padding:
-    "10px 11px",
+    "9px 10px",
 
   border:
-    "1px solid #79363C",
+    "1px solid #4A535D",
 
-  background:
-    "linear-gradient(145deg, #2C1619, #251215)",
+  backgroundColor:
+    "#0D1115",
 
   color:
-    "#FCA5A5",
+    "#FFFFFF",
 
   borderRadius:
-    "9px",
+    "8px",
 
   textAlign:
     "center",
@@ -851,36 +789,30 @@ export const missingReadingStyle = {
 
 
 export const savedInlineStyle = {
-  color:
-    "#4ADE80",
+  color: "#FFFFFF",
 
-  fontWeight:
-    950,
+  fontWeight: 950,
 
-  fontSize:
-    "14px",
+  fontSize: "14px",
 };
 
 
 export const readOnlyInlineStyle = {
-  color:
-    "#60A5FA",
+  color: "#FFFFFF",
 
-  fontWeight:
-    950,
+  fontWeight: 950,
 
-  fontSize:
-    "14px",
+  fontSize: "14px",
 };
 
 
 // ============================================================
-// INCOME TOTAL
+// TOTAL ADDED
+// GOLD
 // ============================================================
 
 export const incomeTotalStyle = {
-  display:
-    "flex",
+  display: "flex",
 
   justifyContent:
     "space-between",
@@ -892,101 +824,105 @@ export const incomeTotalStyle = {
     "12px",
 
   padding:
-    "15px",
+    "13px 14px",
 
   background:
-    "linear-gradient(90deg, #10271A, #102219)",
+    "linear-gradient(135deg, #9A7734, #654A1C)",
 
   color:
-    "#72E5A4",
+    "#FFFFFF",
 
-  borderTop:
-    "1px solid #276847",
+  border:
+    `1px solid ${COLORS.gold}`,
 
   fontSize:
-    "17px",
+    "16px",
 
   fontWeight:
     950,
 
   fontVariantNumeric:
     "tabular-nums",
+
+  boxShadow:
+    "0 6px 16px rgba(0,0,0,0.20)",
 };
 
 
 // ============================================================
-// INFORMATION NOTICES
+// NOTICES
+// BLACK + WHITE
 // ============================================================
 
 export const companyFloatNoticeStyle = {
   margin:
-    "11px",
+    "10px",
 
   padding:
-    "12px 13px",
+    "11px 12px",
 
-  background:
-    "linear-gradient(145deg, #111F31, #101A29)",
+  backgroundColor:
+    "#0D1115",
 
   color:
-    "#9BCBFF",
+    "#FFFFFF",
 
   border:
-    "1px solid #294E76",
+    "1px solid #3D4650",
 
   borderRadius:
-    "10px",
+    "9px",
 
   textAlign:
     "center",
 
   fontSize:
-    "13px",
+    "12px",
 
   fontWeight:
     750,
 
   lineHeight:
-    1.55,
+    1.5,
 };
 
 
 export const automaticExpenseNoticeStyle = {
   margin:
-    "11px",
+    "10px",
 
   padding:
-    "12px 13px",
+    "11px 12px",
 
-  background:
-    "linear-gradient(145deg, #2B2111, #251C0E)",
+  backgroundColor:
+    "#0D1115",
 
   color:
-    "#F6CD79",
+    "#FFFFFF",
 
   border:
-    "1px solid #665024",
+    "1px solid #3D4650",
 
   borderRadius:
-    "10px",
+    "9px",
 
   textAlign:
     "center",
 
   fontSize:
-    "13px",
+    "12px",
 
   fontWeight:
     750,
 
   lineHeight:
-    1.55,
+    1.5,
 };
 
 
 export const panelButtonWrapStyle = {
   padding:
-    "11px",
+    "10px",
 };
 
 
@@ -995,8 +931,7 @@ export const panelButtonWrapStyle = {
 // ============================================================
 
 export const platformStatusStyle = {
-  display:
-    "flex",
+  display: "flex",
 
   justifyContent:
     "space-between",
@@ -1008,13 +943,16 @@ export const platformStatusStyle = {
     "10px",
 
   minHeight:
-    "42px",
+    "40px",
 
   padding:
-    "9px 12px",
+    "8px 11px",
+
+  backgroundColor:
+    "#0D1115",
 
   color:
-    "#B9C1CA",
+    "#FFFFFF",
 
   fontSize:
     "13px",
@@ -1023,7 +961,7 @@ export const platformStatusStyle = {
     700,
 
   borderBottom:
-    "1px solid #222931",
+    "1px solid #252B31",
 };
 
 
@@ -1032,16 +970,16 @@ export const platformHeaderStyle = {
     "grid",
 
   padding:
-    "11px 10px",
+    "10px",
 
   textAlign:
     "center",
 
-  background:
-    "linear-gradient(90deg, #14221A, #111D17)",
+  backgroundColor:
+    "#11161C",
 
   color:
-    "#A5E9BC",
+    "#FFFFFF",
 
   fontSize:
     "13px",
@@ -1049,11 +987,8 @@ export const platformHeaderStyle = {
   fontWeight:
     900,
 
-  letterSpacing:
-    "0.3px",
-
   borderBottom:
-    "1px solid #28563A",
+    "1px solid #343B43",
 };
 
 
@@ -1065,34 +1000,37 @@ export const platformRowStyle = {
     "8px",
 
   padding:
-    "9px 10px",
+    "8px 10px",
 
   minHeight:
-    "48px",
+    "44px",
 
   alignItems:
     "center",
 
+  backgroundColor:
+    "#0D1115",
+
   color:
-    "#E1E6EA",
+    "#FFFFFF",
 
   fontSize:
     "14px",
 
   fontWeight:
-    650,
+    700,
 
   borderBottom:
-    "1px solid #20262D",
+    "1px solid #252B31",
 };
 
 
 export const savedTextStyle = {
-  color:
-    "#4ADE80",
-
   fontSize:
     "12px",
+
+  color:
+    "#FFFFFF",
 
   fontWeight:
     900,
@@ -1101,59 +1039,57 @@ export const savedTextStyle = {
 
 export const outputBoxStyle = {
   padding:
-    "10px",
+    "9px",
 
   textAlign:
     "right",
 
   color:
-    "#F8FAFC",
+    "#FFFFFF",
 
   fontSize:
-    "15px",
+    "14px",
 
   fontWeight:
     900,
-
-  fontVariantNumeric:
-    "tabular-nums",
 };
 
 
 export const platformActionsStyle = {
   padding:
-    "11px",
+    "10px",
 
   display:
     "grid",
 
   gap:
-    "8px",
+    "7px",
 };
 
 
 // ============================================================
-// PLATFORM STATUS BANNERS
+// STATUS BANNERS
+// BLACK + WHITE
 // ============================================================
 
 export const completeStyle = {
   padding:
-    "11px",
+    "10px",
 
   textAlign:
     "center",
 
-  background:
-    "linear-gradient(145deg, #10271A, #0D2116)",
+  backgroundColor:
+    "#0D1115",
 
   color:
-    "#5CE690",
+    "#FFFFFF",
 
   border:
-    "1px solid #286746",
+    "1px solid #454E58",
 
   borderRadius:
-    "9px",
+    "8px",
 
   fontSize:
     "13px",
@@ -1165,22 +1101,22 @@ export const completeStyle = {
 
 export const waitingStyle = {
   padding:
-    "11px",
+    "10px",
 
   textAlign:
     "center",
 
-  background:
-    "linear-gradient(145deg, #111F31, #0F1B2B)",
+  backgroundColor:
+    "#0D1115",
 
   color:
-    "#93C5FD",
+    "#FFFFFF",
 
   border:
-    "1px solid #2C5078",
+    "1px solid #454E58",
 
   borderRadius:
-    "9px",
+    "8px",
 
   fontSize:
     "13px",
@@ -1192,22 +1128,22 @@ export const waitingStyle = {
 
 export const warningStyle = {
   padding:
-    "11px",
+    "10px",
 
   textAlign:
     "center",
 
-  background:
-    "linear-gradient(145deg, #2C1619, #251215)",
+  backgroundColor:
+    "#0D1115",
 
   color:
-    "#FCA5A5",
+    "#FFFFFF",
 
   border:
-    "1px solid #79363C",
+    "1px solid #454E58",
 
   borderRadius:
-    "9px",
+    "8px",
 
   fontSize:
     "13px",
@@ -1218,7 +1154,8 @@ export const warningStyle = {
 
 
 // ============================================================
-// PROFESSIONAL ACTION BUTTONS
+// NORMAL ACTION
+// BLACK + WHITE
 // ============================================================
 
 export const greenActionStyle = {
@@ -1226,22 +1163,22 @@ export const greenActionStyle = {
     "100%",
 
   minHeight:
-    "43px",
+    "42px",
 
   padding:
     "10px 14px",
 
   border:
-    "1px solid #327B53",
+    "1px solid #4B545E",
 
   background:
-    "linear-gradient(135deg, #17633D, #124A31)",
+    "linear-gradient(145deg, #181E24, #0E1216)",
 
   color:
     "#FFFFFF",
 
   borderRadius:
-    "10px",
+    "9px",
 
   fontSize:
     "14px",
@@ -1249,36 +1186,55 @@ export const greenActionStyle = {
   fontWeight:
     900,
 
-  letterSpacing:
-    "0.2px",
-
   cursor:
     "pointer",
 
   boxShadow:
-    "0 7px 18px rgba(0,0,0,0.22)",
+    "0 6px 16px rgba(0,0,0,0.20)",
 };
 
+
+// ============================================================
+// SAVE CLOSING READINGS
+// GOLD
+// ============================================================
 
 export const blueActionStyle = {
   ...greenActionStyle,
 
   border:
-    "1px solid #3574A9",
+    `1px solid ${COLORS.gold}`,
 
   background:
-    "linear-gradient(135deg, #185D93, #124771)",
+    "linear-gradient(135deg, #9A7734, #654A1C)",
+
+  color:
+    "#FFFFFF",
+
+  fontWeight:
+    950,
 };
 
+
+// ============================================================
+// SAVE EXPENSES
+// GOLD
+// ============================================================
 
 export const redActionStyle = {
   ...greenActionStyle,
 
   border:
-    "1px solid #914047",
+    `1px solid ${COLORS.gold}`,
 
   background:
-    "linear-gradient(135deg, #8D2B33, #6D1E25)",
+    "linear-gradient(135deg, #9A7734, #654A1C)",
+
+  color:
+    "#FFFFFF",
+
+  fontWeight:
+    950,
 };
 
 
@@ -1294,13 +1250,13 @@ export const expenseHeaderStyle = {
     "42px 1.5fr 1fr",
 
   padding:
-    "11px 10px",
+    "10px",
 
-  background:
-    "linear-gradient(90deg, #2A1619, #231316)",
+  backgroundColor:
+    "#11161C",
 
   color:
-    "#F5B7BC",
+    "#FFFFFF",
 
   fontSize:
     "13px",
@@ -1308,11 +1264,8 @@ export const expenseHeaderStyle = {
   fontWeight:
     900,
 
-  letterSpacing:
-    "0.3px",
-
   borderBottom:
-    "1px solid #68343A",
+    "1px solid #343B43",
 };
 
 
@@ -1327,25 +1280,28 @@ export const expenseRowStyle = {
     "8px",
 
   minHeight:
-    "48px",
+    "44px",
 
   padding:
-    "8px 10px",
+    "7px 10px",
 
   alignItems:
     "center",
 
+  backgroundColor:
+    "#0D1115",
+
   color:
-    "#E1E5E9",
+    "#FFFFFF",
 
   fontSize:
     "14px",
 
   fontWeight:
-    650,
+    700,
 
   borderBottom:
-    "1px solid #20262D",
+    "1px solid #252B31",
 };
 
 
@@ -1357,22 +1313,22 @@ export const expenseInputStyle = {
     "border-box",
 
   minHeight:
-    "40px",
+    "39px",
 
   padding:
     "9px 10px",
 
   border:
-    "1px solid #434C56",
+    "1px solid #454E58",
 
   backgroundColor:
-    "#090D11",
+    "#080B0E",
 
   color:
     "#FFFFFF",
 
   borderRadius:
-    "9px",
+    "8px",
 
   fontSize:
     "14px",
@@ -1387,19 +1343,19 @@ export const expenseInputStyle = {
 
 export const savedExpenseStyle = {
   padding:
-    "10px",
+    "9px 10px",
 
   border:
-    "1px solid #286746",
+    "1px solid #454E58",
 
-  background:
-    "linear-gradient(145deg, #10271A, #0D2016)",
+  backgroundColor:
+    "#080B0E",
 
   color:
-    "#6EE7A2",
+    "#FFFFFF",
 
   borderRadius:
-    "9px",
+    "8px",
 
   fontSize:
     "14px",
@@ -1408,6 +1364,11 @@ export const savedExpenseStyle = {
     850,
 };
 
+
+// ============================================================
+// TOTAL EXPENSES INSIDE EXPENSE PANEL
+// GOLD
+// ============================================================
 
 export const expenseTotalStyle = {
   display:
@@ -1423,19 +1384,19 @@ export const expenseTotalStyle = {
     "12px",
 
   padding:
-    "15px",
+    "13px 14px",
 
   background:
-    "linear-gradient(90deg, #35191D, #2D1518)",
+    "linear-gradient(135deg, #9A7734, #654A1C)",
 
   color:
-    "#FFA1A9",
+    "#FFFFFF",
 
-  borderTop:
-    "1px solid #79383F",
+  border:
+    `1px solid ${COLORS.gold}`,
 
   fontSize:
-    "17px",
+    "16px",
 
   fontWeight:
     950,
@@ -1445,176 +1406,137 @@ export const expenseTotalStyle = {
 };
 // ============================================================
 // PART 3
-// REPORT LAYOUT • SUMMARY • LOWER MODULES • MESSAGES
+// LAYOUT • SUMMARY • LOWER MODULES • MESSAGES
 // ============================================================
 
 
 // ============================================================
-// MAIN REPORT GRID
-// Income Statement • Platform Sales • Expenses
+// MAIN 3-COLUMN REPORT GRID
 // ============================================================
 
 export const reportGridStyle = {
-  display: "grid",
+  display:
+    "grid",
 
   gridTemplateColumns:
     "repeat(3, minmax(300px, 1fr))",
 
-  gap: "10px",
+  gap:
+    "10px",
 
-  alignItems: "start",
+  alignItems:
+    "start",
 
-  width: "100%",
+  width:
+    "100%",
 };
 
 
 // ============================================================
 // SHIFT GREETING
+// BLACK + WHITE
 // ============================================================
 
 export const shiftGreetingStyle = {
-  marginBottom: "14px",
+  marginBottom:
+    "10px",
 
-  padding: "13px 17px",
+  padding:
+    "10px 14px",
 
-  background:
-    "linear-gradient(90deg, rgba(215,179,106,0.14), rgba(215,179,106,0.055))",
-
-  color:
-    "#F5DDA7",
-
-  border:
-    "1px solid rgba(215,179,106,0.30)",
-
-  borderRadius:
-    "11px",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "16px",
-
-  fontWeight:
-    900,
-
-  letterSpacing:
-    "0.2px",
-
-  boxShadow:
-    "0 8px 22px rgba(0,0,0,0.16)",
-};
-
-
-// ============================================================
-// SYSTEM MESSAGES
-// ============================================================
-
-export const messageStyle = {
-  marginBottom: "14px",
-
-  padding: "13px 15px",
-
-  borderRadius: "10px",
-
-  fontSize: "14px",
-
-  fontWeight: 850,
-
-  lineHeight: 1.45,
-
-  border:
-    "1px solid rgba(255,255,255,0.10)",
-};
-
-
-// ============================================================
-// SUMMARY CARDS
-// TOTAL SALES • TOTAL EXPENSES • CLOSING BALANCE
-// ============================================================
-
-export const summaryGridStyle = {
-  display: "grid",
-
-  gridTemplateColumns:
-    "repeat(3, minmax(220px, 1fr))",
-
-  gap: "14px",
-
-  marginTop: "14px",
-};
-
-
-export const summaryValueStyle = {
-  marginTop: "10px",
-
-  padding: "13px 12px",
-
-  background:
-    "linear-gradient(145deg, #0A0E12, #10151A)",
+  backgroundColor:
+    "#0D1115",
 
   color:
     "#FFFFFF",
 
   border:
-    "1px solid #343D47",
+    "1px solid #3B434C",
 
   borderRadius:
-    "10px",
+    "9px",
+
+  textAlign:
+    "center",
 
   fontSize:
-    "23px",
+    "14px",
 
   fontWeight:
-    950,
-
-  lineHeight:
-    1.15,
-
-  fontVariantNumeric:
-    "tabular-nums",
-
-  letterSpacing:
-    "0.2px",
+    900,
 };
 
 
-export function getSummaryBoxStyle(tone) {
-  let accent =
-    COLORS.blue;
+// ============================================================
+// SYSTEM MESSAGE BASE
+// ============================================================
 
-  let glow =
-    "rgba(96,165,250,0.11)";
+export const messageStyle = {
+  marginBottom:
+    "10px",
 
-  if (tone === "red") {
-    accent =
-      COLORS.red;
+  padding:
+    "11px 13px",
 
-    glow =
-      "rgba(248,113,113,0.10)";
-  }
+  borderRadius:
+    "9px",
 
-  if (tone === "navy") {
-    accent =
-      COLORS.gold;
+  fontSize:
+    "14px",
 
-    glow =
-      "rgba(215,179,106,0.11)";
-  }
+  fontWeight:
+    850,
 
+  lineHeight:
+    1.45,
+
+  border:
+    "1px solid rgba(255,255,255,0.15)",
+};
+
+
+// ============================================================
+// BOTTOM FINANCIAL SUMMARY GRID
+// ============================================================
+
+export const summaryGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "repeat(3, minmax(220px, 1fr))",
+
+  gap:
+    "10px",
+
+  marginTop:
+    "10px",
+};
+
+
+// ============================================================
+// TOTAL SALES
+// TOTAL EXPENSES
+// CLOSING BALANCE
+// ALL GOLD
+// ============================================================
+
+export function getSummaryBoxStyle() {
   return {
-    padding: "16px",
+    padding:
+      "13px",
 
-    color: "#F8FAFC",
+    color:
+      "#FFFFFF",
 
     background:
-      `linear-gradient(145deg, ${glow}, #11161C 72%)`,
+      "linear-gradient(135deg, #9A7734, #654A1C)",
 
     border:
-      `1px solid ${accent}55`,
+      `1px solid ${COLORS.gold}`,
 
     borderRadius:
-      "15px",
+      "11px",
 
     textAlign:
       "center",
@@ -1626,44 +1548,82 @@ export function getSummaryBoxStyle(tone) {
       950,
 
     letterSpacing:
-      "0.5px",
+      "0.45px",
 
     boxShadow:
-      "0 12px 30px rgba(0,0,0,0.22)",
+      "0 8px 22px rgba(0,0,0,0.22)",
   };
 }
 
 
-// ============================================================
-// LOWER MODULES
-// Savings • Salary • Management • Accounts
-// ============================================================
+export const summaryValueStyle = {
+  marginTop:
+    "8px",
 
-export const lowerGridStyle = {
-  display: "grid",
+  padding:
+    "10px",
 
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(340px, 1fr))",
+  background:
+    "rgba(0,0,0,0.20)",
 
-  gap: "14px",
+  color:
+    "#FFFFFF",
 
-  marginTop: "14px",
+  border:
+    "1px solid rgba(255,255,255,0.22)",
 
-  alignItems: "start",
+  borderRadius:
+    "8px",
+
+  fontSize:
+    "21px",
+
+  fontWeight:
+    950,
+
+  lineHeight:
+    1.15,
+
+  fontVariantNumeric:
+    "tabular-nums",
 };
 
 
 // ============================================================
-// OPTIONAL PROFESSIONAL SECTION WRAPPER
-// Can be reused later for new cashier modules.
+// LOWER MODULES
+// ============================================================
+
+export const lowerGridStyle = {
+  display:
+    "grid",
+
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(340px, 1fr))",
+
+  gap:
+    "14px",
+
+  marginTop:
+    "14px",
+
+  alignItems:
+    "start",
+};
+
+
+// ============================================================
+// PROFESSIONAL SECTION
 // ============================================================
 
 export const professionalSectionStyle = {
   background:
-    "linear-gradient(180deg, #12171D 0%, #0E1318 100%)",
+    "linear-gradient(180deg, #11161C 0%, #0B0F13 100%)",
+
+  color:
+    "#FFFFFF",
 
   border:
-    "1px solid #292F36",
+    "1px solid #303840",
 
   borderRadius:
     "15px",
@@ -1676,22 +1636,15 @@ export const professionalSectionStyle = {
 };
 
 
-// ============================================================
-// LARGE SECTION HEADING
-// ============================================================
-
 export const professionalHeadingStyle = {
   color:
-    "#F8FAFC",
+    "#FFFFFF",
 
   fontSize:
     "18px",
 
   fontWeight:
     950,
-
-  letterSpacing:
-    "0.3px",
 };
 
 
@@ -1700,7 +1653,7 @@ export const professionalSubheadingStyle = {
     "4px",
 
   color:
-    "#929CA7",
+    "#FFFFFF",
 
   fontSize:
     "13px",
@@ -1713,10 +1666,6 @@ export const professionalSubheadingStyle = {
 };
 
 
-// ============================================================
-// DIVIDERS
-// ============================================================
-
 export const dividerStyle = {
   height:
     "1px",
@@ -1725,16 +1674,12 @@ export const dividerStyle = {
     "100%",
 
   background:
-    "#292F36",
+    "#343B43",
 
   margin:
     "14px 0",
 };
 
-
-// ============================================================
-// PROFESSIONAL VALUE / MONEY DISPLAY
-// ============================================================
 
 export const largeMoneyStyle = {
   color:
@@ -1748,19 +1693,12 @@ export const largeMoneyStyle = {
 
   fontVariantNumeric:
     "tabular-nums",
-
-  letterSpacing:
-    "0.2px",
 };
 
 
-// ============================================================
-// SMALL STATUS TEXT
-// ============================================================
-
 export const statusTextStyle = {
   color:
-    "#A9B2BC",
+    "#FFFFFF",
 
   fontSize:
     "13px",
@@ -1770,10 +1708,6 @@ export const statusTextStyle = {
 };
 
 
-// ============================================================
-// PROFESSIONAL EMPTY STATE
-// ============================================================
-
 export const emptyStateStyle = {
   padding:
     "22px",
@@ -1782,13 +1716,13 @@ export const emptyStateStyle = {
     "center",
 
   color:
-    "#929CA7",
+    "#FFFFFF",
 
   backgroundColor:
-    "#10151A",
+    "#0D1115",
 
   border:
-    "1px dashed #343C45",
+    "1px dashed #454E58",
 
   borderRadius:
     "10px",
@@ -1803,9 +1737,6 @@ export const emptyStateStyle = {
 
 // ============================================================
 // RESPONSIVE HELPERS
-//
-// These can be used later if we want CashierReport to switch
-// layout depending on screen width.
 // ============================================================
 
 export function getProfessionalTopGridStyle(
