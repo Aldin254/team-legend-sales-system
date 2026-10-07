@@ -7,6 +7,27 @@ import {
   useState,
 } from "react";
 
+const COLORS = {
+  black: "#111111",
+  black2: "#181818",
+  black3: "#222222",
+  border: "#343434",
+  white: "#ffffff",
+  muted: "#b8b8b8",
+
+  green: "#22c55e",
+  greenBg: "#102b1a",
+
+  red: "#ef4444",
+  redBg: "#321414",
+
+  blue: "#3b82f6",
+  blueBg: "#10213b",
+
+  amber: "#f59e0b",
+  amberBg: "#33250c",
+};
+
 function money(value) {
   return new Intl.NumberFormat("en-KE", {
     style: "currency",
@@ -29,32 +50,32 @@ function cleanTime(value) {
 function statusStyle(status) {
   if (status === "ON_TIME") {
     return {
-      background: "#dcfce7",
-      color: "#166534",
-      border: "#bbf7d0",
+      background: COLORS.greenBg,
+      color: COLORS.green,
+      border: COLORS.green,
     };
   }
 
   if (status === "LATE") {
     return {
-      background: "#fee2e2",
-      color: "#b91c1c",
-      border: "#fecaca",
+      background: COLORS.redBg,
+      color: "#ff6b6b",
+      border: COLORS.red,
     };
   }
 
   if (status === "EXEMPT") {
     return {
-      background: "#dbeafe",
-      color: "#1d4ed8",
-      border: "#bfdbfe",
+      background: COLORS.blueBg,
+      color: "#60a5fa",
+      border: COLORS.blue,
     };
   }
 
   return {
-    background: "#f3f4f6",
-    color: "#4b5563",
-    border: "#e5e7eb",
+    background: COLORS.amberBg,
+    color: "#fbbf24",
+    border: COLORS.amber,
   };
 }
 
@@ -75,14 +96,16 @@ function StatusBadge({ status }) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        borderRadius: 999,
-        padding: "5px 9px",
-        fontSize: 11,
-        fontWeight: 900,
+        justifyContent: "center",
+        borderRadius: "999px",
+        padding: "8px 15px",
+        fontSize: "14px",
+        fontWeight: 950,
         background: c.background,
         color: c.color,
         border: `1px solid ${c.border}`,
         whiteSpace: "nowrap",
+        letterSpacing: "0.4px",
       }}
     >
       {label}
@@ -97,37 +120,41 @@ function BenefitBox({
   signedIn,
 }) {
   let value = "Pending sign-in";
-  let background = "#f9fafb";
-  let color = "#6b7280";
+  let background = COLORS.black3;
+  let color = "#fbbf24";
+  let border = "#454545";
 
   if (signedIn) {
     if (eligible && Number(rate || 0) > 0) {
       value = `${money(rate)} ✓`;
-      background = "#f0fdf4";
-      color = "#166534";
+      background = COLORS.greenBg;
+      color = "#4ade80";
+      border = "#166534";
     } else {
       value = "KES 0";
-      background = "#fef2f2";
-      color = "#991b1b";
+      background = COLORS.redBg;
+      color = "#ff6b6b";
+      border = "#7f1d1d";
     }
   }
 
   return (
     <div
       style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 9,
-        padding: "8px 10px",
+        border: `1px solid ${border}`,
+        borderRadius: "12px",
+        padding: "14px 16px",
         background,
+        minHeight: "72px",
       }}
     >
       <div
         style={{
-          fontSize: 10,
-          fontWeight: 900,
-          color: "#6b7280",
+          fontSize: "13px",
+          fontWeight: 950,
+          color: "#cfcfcf",
           textTransform: "uppercase",
-          letterSpacing: 0.4,
+          letterSpacing: "0.8px",
         }}
       >
         {label}
@@ -135,9 +162,9 @@ function BenefitBox({
 
       <div
         style={{
-          marginTop: 3,
-          fontSize: 12,
-          fontWeight: 900,
+          marginTop: "7px",
+          fontSize: "17px",
+          fontWeight: 950,
           color,
         }}
       >
@@ -183,7 +210,6 @@ export default function CashierAttendancePanel({
       ),
     [supabaseUrl]
   );
-
   const rpc = useCallback(
     async (name, body = {}) => {
       if (
@@ -235,6 +261,7 @@ export default function CashierAttendancePanel({
       accessToken,
     ]
   );
+
   const loadAttendance =
     useCallback(async () => {
       if (
@@ -383,32 +410,37 @@ export default function CashierAttendancePanel({
   return (
     <section
       style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
-        background: "#ffffff",
+        background: COLORS.black,
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: "16px",
         overflow: "hidden",
-        marginBottom: 16,
+        margin: "14px 12px 18px",
+        boxShadow:
+          "0 10px 30px rgba(0,0,0,0.32)",
+        color: COLORS.white,
       }}
     >
       <div
         style={{
-          padding: "14px 16px",
+          padding: "20px 22px",
+          background: "#0d0d0d",
           borderBottom:
-            "1px solid #e5e7eb",
+            `1px solid ${COLORS.border}`,
           display: "flex",
           justifyContent:
             "space-between",
           alignItems: "center",
-          gap: 12,
+          gap: "14px",
           flexWrap: "wrap",
         }}
       >
         <div>
           <div
             style={{
-              fontSize: 17,
+              fontSize: "24px",
               fontWeight: 950,
-              color: "#111827",
+              color: COLORS.white,
+              letterSpacing: "0.2px",
             }}
           >
             Today&apos;s Duty / Sign In
@@ -416,12 +448,13 @@ export default function CashierAttendancePanel({
 
           <div
             style={{
-              marginTop: 3,
-              fontSize: 11,
-              color: "#6b7280",
+              marginTop: "6px",
+              fontSize: "14px",
+              color: COLORS.muted,
+              fontWeight: 700,
             }}
           >
-            Nairobi server time • Cutoff
+            Nairobi Server Time • Cutoff
             10:50 AM • First sign-in is
             permanent
           </div>
@@ -433,12 +466,13 @@ export default function CashierAttendancePanel({
           disabled={loading}
           style={{
             border:
-              "1px solid #d1d5db",
-            background: "#ffffff",
-            borderRadius: 8,
-            padding: "8px 11px",
-            fontWeight: 800,
-            fontSize: 11,
+              "1px solid #525252",
+            background: "#202020",
+            color: "#ffffff",
+            borderRadius: "10px",
+            padding: "11px 16px",
+            fontWeight: 900,
+            fontSize: "14px",
             cursor: loading
               ? "not-allowed"
               : "pointer",
@@ -453,15 +487,15 @@ export default function CashierAttendancePanel({
       {snapshot ? (
         <div
           style={{
-            padding: "10px 16px",
-            background: "#f9fafb",
+            padding: "13px 22px",
+            background: COLORS.black2,
             borderBottom:
-              "1px solid #e5e7eb",
+              `1px solid ${COLORS.border}`,
             display: "flex",
-            gap: 14,
+            gap: "24px",
             flexWrap: "wrap",
-            fontSize: 11,
-            color: "#4b5563",
+            fontSize: "14px",
+            color: "#d4d4d4",
           }}
         >
           <span>
@@ -490,19 +524,18 @@ export default function CashierAttendancePanel({
           </span>
         </div>
       ) : null}
-
-      {message ? (
+{message ? (
         <div
           style={{
-            margin: "12px 14px 0",
-            padding: "10px 12px",
-            borderRadius: 9,
+            margin: "14px 18px 0",
+            padding: "13px 15px",
+            borderRadius: "10px",
             border:
-              "1px solid #bbf7d0",
-            background: "#f0fdf4",
-            color: "#166534",
-            fontSize: 12,
-            fontWeight: 800,
+              "1px solid #166534",
+            background: COLORS.greenBg,
+            color: "#4ade80",
+            fontSize: "15px",
+            fontWeight: 900,
           }}
         >
           {message}
@@ -512,15 +545,15 @@ export default function CashierAttendancePanel({
       {error ? (
         <div
           style={{
-            margin: "12px 14px 0",
-            padding: "10px 12px",
-            borderRadius: 9,
+            margin: "14px 18px 0",
+            padding: "13px 15px",
+            borderRadius: "10px",
             border:
-              "1px solid #fecaca",
-            background: "#fef2f2",
-            color: "#991b1b",
-            fontSize: 12,
-            fontWeight: 800,
+              "1px solid #7f1d1d",
+            background: COLORS.redBg,
+            color: "#ff6b6b",
+            fontSize: "15px",
+            fontWeight: 900,
           }}
         >
           {error}
@@ -529,18 +562,19 @@ export default function CashierAttendancePanel({
 
       <div
         style={{
-          padding: 14,
+          padding: "18px",
           display: "grid",
-          gap: 10,
+          gap: "14px",
         }}
       >
-{loading && !snapshot ? (
+        {loading && !snapshot ? (
           <div
             style={{
-              padding: 24,
+              padding: "30px",
               textAlign: "center",
-              color: "#6b7280",
-              fontSize: 12,
+              color: COLORS.muted,
+              fontSize: "16px",
+              fontWeight: 700,
             }}
           >
             Loading today&apos;s duty...
@@ -551,19 +585,20 @@ export default function CashierAttendancePanel({
         employees.length === 0 ? (
           <div
             style={{
-              padding: 18,
+              padding: "22px",
               border:
-                "1px solid #e5e7eb",
-              borderRadius: 10,
-              background: "#f9fafb",
-              color: "#6b7280",
-              fontSize: 12,
+                `1px solid ${COLORS.border}`,
+              borderRadius: "12px",
+              background: COLORS.black2,
+              color: COLORS.muted,
+              fontSize: "15px",
+              fontWeight: 700,
               textAlign: "center",
             }}
           >
-            No linked employees are
-            currently assigned to this shop
-            for sign-in today.
+            No linked employees are currently
+            assigned to this shop for sign-in
+            today.
           </div>
         ) : null}
 
@@ -580,12 +615,12 @@ export default function CashierAttendancePanel({
               key={employee.employee_id}
               style={{
                 border:
-                  "1px solid #e5e7eb",
-                borderRadius: 12,
-                padding: 12,
+                  `1px solid ${COLORS.border}`,
+                borderRadius: "14px",
+                padding: "18px",
                 display: "grid",
-                gap: 10,
-                background: "#ffffff",
+                gap: "14px",
+                background: COLORS.black2,
               }}
             >
               <div
@@ -595,16 +630,16 @@ export default function CashierAttendancePanel({
                     "space-between",
                   alignItems:
                     "flex-start",
-                  gap: 10,
+                  gap: "14px",
                   flexWrap: "wrap",
                 }}
               >
                 <div>
                   <div
                     style={{
-                      fontSize: 14,
+                      fontSize: "22px",
                       fontWeight: 950,
-                      color: "#111827",
+                      color: COLORS.white,
                     }}
                   >
                     {
@@ -614,9 +649,10 @@ export default function CashierAttendancePanel({
 
                   <div
                     style={{
-                      marginTop: 3,
-                      fontSize: 11,
-                      color: "#6b7280",
+                      marginTop: "6px",
+                      fontSize: "14px",
+                      color: COLORS.muted,
+                      fontWeight: 700,
                     }}
                   >
                     {employee.position_code ===
@@ -650,21 +686,20 @@ export default function CashierAttendancePanel({
               {signedIn ? (
                 <div
                   style={{
-                    padding:
-                      "9px 10px",
-                    borderRadius: 9,
+                    padding: "13px 15px",
+                    borderRadius: "10px",
                     background:
                       employee.attendance_status ===
                       "LATE"
-                        ? "#fef2f2"
-                        : "#f0fdf4",
-                    fontSize: 12,
-                    fontWeight: 800,
+                        ? COLORS.redBg
+                        : COLORS.greenBg,
+                    fontSize: "16px",
+                    fontWeight: 900,
                     color:
                       employee.attendance_status ===
                       "LATE"
-                        ? "#991b1b"
-                        : "#166534",
+                        ? "#ff6b6b"
+                        : "#4ade80",
                   }}
                 >
                   Signed in at{" "}
@@ -675,14 +710,13 @@ export default function CashierAttendancePanel({
               ) : (
                 <div
                   style={{
-                    padding:
-                      "9px 10px",
-                    borderRadius: 9,
+                    padding: "13px 15px",
+                    borderRadius: "10px",
                     background:
-                      "#fff7ed",
-                    color: "#9a3412",
-                    fontSize: 12,
-                    fontWeight: 800,
+                      COLORS.amberBg,
+                    color: "#fbbf24",
+                    fontSize: "16px",
+                    fontWeight: 900,
                   }}
                 >
                   Waiting for today&apos;s
@@ -694,8 +728,8 @@ export default function CashierAttendancePanel({
                 style={{
                   display: "grid",
                   gridTemplateColumns:
-                    "repeat(auto-fit, minmax(120px, 1fr))",
-                  gap: 7,
+                    "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: "10px",
                 }}
               >
                 <BenefitBox
@@ -738,14 +772,15 @@ export default function CashierAttendancePanel({
                   justifyContent:
                     "space-between",
                   alignItems: "center",
-                  gap: 10,
+                  gap: "12px",
                   flexWrap: "wrap",
                 }}
               >
                 <div
                   style={{
-                    fontSize: 10,
-                    color: "#9ca3af",
+                    fontSize: "13px",
+                    color: "#8f8f8f",
+                    fontWeight: 700,
                   }}
                 >
                   Duty source:{" "}
@@ -763,23 +798,27 @@ export default function CashierAttendancePanel({
                     signIn(employee)
                   }
                   style={{
-                    border: 0,
-                    borderRadius: 9,
+                    minWidth: "160px",
+                    border: signedIn
+                      ? "1px solid #444"
+                      : "1px solid #ffffff",
+                    borderRadius: "11px",
                     padding:
-                      "9px 14px",
+                      "13px 24px",
                     background: signedIn
-                      ? "#d1d5db"
-                      : "#111827",
-                    color: signedIn
-                      ? "#6b7280"
+                      ? "#292929"
                       : "#ffffff",
-                    fontSize: 12,
-                    fontWeight: 900,
+                    color: signedIn
+                      ? "#777777"
+                      : "#111111",
+                    fontSize: "16px",
+                    fontWeight: 950,
                     cursor:
                       signedIn ||
                       isSigning
                         ? "not-allowed"
                         : "pointer",
+                    letterSpacing: "0.5px",
                   }}
                 >
                   {signedIn
@@ -796,23 +835,23 @@ export default function CashierAttendancePanel({
         <div
           style={{
             borderTop:
-              "1px solid #e5e7eb",
-            paddingTop: 10,
-            fontSize: 10,
-            lineHeight: 1.6,
-            color: "#6b7280",
+              `1px solid ${COLORS.border}`,
+            paddingTop: "14px",
+            fontSize: "13px",
+            lineHeight: 1.7,
+            color: "#969696",
+            fontWeight: 600,
           }}
         >
-          Sign-in time comes from the
-          server in Africa/Nairobi time,
-          not the employee&apos;s phone.
-          Standard 12-hour employees who
-          sign in after 10:50 AM lose
-          baseline Lunch and Supper
-          eligibility. Daily Relief
+          Sign-in time comes from the server
+          in Africa/Nairobi time, not from
+          the employee&apos;s phone. Standard
+          12-hour employees who sign in after
+          10:50 AM lose baseline Lunch and
+          Supper eligibility. Daily Relief
           employees still sign in but
-          currently receive KES 0 Lunch
-          and Supper.
+          currently receive KES 0 Lunch and
+          Supper.
         </div>
       </div>
     </section>
