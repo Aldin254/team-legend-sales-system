@@ -335,7 +335,7 @@ export const mainStyle = {
 
   minWidth: 0,
 
-  padding: "18px",
+  padding: "13px",
 
   overflow: "hidden",
 };
@@ -349,11 +349,11 @@ export const topGridStyle = {
   display: "grid",
 
   gridTemplateColumns:
-    "minmax(230px, 1.7fr) repeat(5, minmax(135px, 1fr))",
+    "minmax(210px, 1.6fr) repeat(5, minmax(120px, 1fr))",
 
-  gap: "12px",
+  gap: "9px",
 
-  marginBottom: "14px",
+  marginBottom: "10px",
 };
 
 
@@ -364,9 +364,9 @@ export const topGridStyle = {
 export const shopCardStyle = {
   position: "relative",
 
-  minHeight: "105px",
+  minHeight: "86px",
 
-  padding: "16px",
+  padding: "11px 13px",
 
   display: "flex",
 
@@ -388,10 +388,10 @@ export const shopCardStyle = {
   border:
     "1px solid rgba(215,179,106,0.33)",
 
-  borderRadius: "15px",
+  borderRadius: "12px",
 
   boxShadow:
-    "0 12px 30px rgba(0,0,0,0.22)",
+    "0 8px 22px rgba(0,0,0,0.20)",
 };
 
 
@@ -460,10 +460,10 @@ export function getInfoCardStyle(tone) {
   return {
     position: "relative",
 
-    minHeight: "105px",
+    minHeight: "86px",
 
-    padding: "15px 13px",
-
+    padding: "11px 10px",
+    
     display: "flex",
 
     flexDirection: "column",
@@ -484,10 +484,10 @@ export function getInfoCardStyle(tone) {
     border:
       `1px solid ${accent}55`,
 
-    borderRadius: "15px",
+    borderRadius: "12px",
 
     boxShadow:
-      "0 12px 28px rgba(0,0,0,0.20)",
+       "0 8px 22px rgba(0,0,0,0.18)",
   };
 }
 
@@ -1492,9 +1492,9 @@ export const reportGridStyle = {
   display: "grid",
 
   gridTemplateColumns:
-    "repeat(3, minmax(330px, 1fr))",
+    "repeat(3, minmax(300px, 1fr))",
 
-  gap: "14px",
+  gap: "10px",
 
   alignItems: "start",
 
