@@ -15,6 +15,72 @@ import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
 import CashierAttendancePanel from "./CashierAttendancePanel";
+import {
+  pageStyle,
+  loadingStyle,
+  topHeaderStyle,
+  brandWrapStyle,
+  crownStyle,
+  brandStyle,
+  taglineStyle,
+  headerRightStyle,
+  headerShopStyle,
+  logoutButtonStyle,
+  bodyStyle,
+  sidebarStyle,
+  mainStyle,
+  topGridStyle,
+  shopCardStyle,
+  shopTitleStyle,
+  shopSubtitleStyle,
+  smallTextStyle,
+  infoValueStyle,
+  infoTitleStyle,
+  infoSubvalueStyle,
+  reportGridStyle,
+  panelStyle,
+  tableHeaderStyle,
+  incomeRowStyle,
+  amountBoxStyle,
+  moneyInputStyle,
+  savedMoneyStyle,
+  lockedMoneyStyle,
+  missingReadingStyle,
+  savedInlineStyle,
+  readOnlyInlineStyle,
+  incomeTotalStyle,
+  companyFloatNoticeStyle,
+  automaticExpenseNoticeStyle,
+  panelButtonWrapStyle,
+  platformStatusStyle,
+  platformHeaderStyle,
+  platformRowStyle,
+  savedTextStyle,
+  outputBoxStyle,
+  platformActionsStyle,
+  completeStyle,
+  waitingStyle,
+  warningStyle,
+  greenActionStyle,
+  blueActionStyle,
+  redActionStyle,
+  expenseHeaderStyle,
+  expenseRowStyle,
+  expenseInputStyle,
+  savedExpenseStyle,
+  expenseTotalStyle,
+  summaryGridStyle,
+  summaryValueStyle,
+  lowerGridStyle,
+  shiftGreetingStyle,
+  messageStyle,
+  getSidebarItemStyle,
+  sidebarIconStyle,
+  getInfoCardStyle,
+  getInfoCardAccentStyle,
+  getPanelTitleStyle,
+  getSummaryBoxStyle,
+} from "./CashierProfessionalTheme";
 export default function CashierReport({
   user,
   currentShift,
@@ -2727,19 +2793,9 @@ function SidebarItem({
 }) {
   return (
     <div
-      style={{
-        padding: "18px",
-        display: "flex",
-        gap: "12px",
-        color: "white",
-
-        backgroundColor:
-          active
-            ? "#1687ee"
-            : "transparent",
-      }}
+      style={getSidebarItemStyle(active)}
     >
-      <span>
+      <span style={sidebarIconStyle}>
         {icon}
       </span>
 
@@ -2756,83 +2812,46 @@ function TopCard({
   footer,
 }) {
   return (
-    <div
-      style={
-        shopCardStyle
-      }
-    >
-      <div
-        style={
-          shopTitleStyle
-        }
-      >
+    <div style={shopCardStyle}>
+      <div style={shopTitleStyle}>
         {title}
       </div>
 
-      <strong>
+      <div style={shopSubtitleStyle}>
         {subtitle}
-      </strong>
+      </div>
 
-      <div
-        style={
-          smallTextStyle
-        }
-      >
+      <div style={smallTextStyle}>
         {footer}
       </div>
     </div>
   );
 }
-
 function InfoCard({
   title,
   value,
   subvalue,
   tone,
 }) {
-  const background =
-    tone ===
-    "green"
-      ? "#07912a"
-      : tone ===
-        "brown"
-      ? "#99500d"
-      : "#0873b9";
-
   return (
-    <div
-      style={{
-        backgroundColor:
-          background,
-
-        color:
-          "white",
-
-        borderRadius:
-          "8px",
-
-        padding:
-          "12px",
-
-        textAlign:
-          "center",
-      }}
-    >
-      <strong>
+    <div style={getInfoCardStyle(tone)}>
+      <div style={infoTitleStyle}>
         {title}
-      </strong>
+      </div>
 
-      <div
-        style={
-          infoValueStyle
-        }
-      >
+      <div style={infoValueStyle}>
         {value}
       </div>
 
-      <small>
-        {subvalue}
-      </small>
+      {subvalue ? (
+        <div style={infoSubvalueStyle}>
+          {subvalue}
+        </div>
+      ) : null}
+
+      <div
+        style={getInfoCardAccentStyle(tone)}
+      />
     </div>
   );
 }
@@ -2841,36 +2860,12 @@ function PanelTitle({
   title,
   tone,
 }) {
-  const background =
-    tone ===
-    "green"
-      ? "#087c33"
-      : tone ===
-        "red"
-      ? "#b60000"
-      : "#0873b9";
-
   return (
-    <div
-      style={{
-        backgroundColor:
-          background,
-
-        color:
-          "white",
-
-        padding:
-          "9px",
-
-        fontWeight:
-          "bold",
-      }}
-    >
+    <div style={getPanelTitleStyle(tone)}>
       {title}
     </div>
   );
 }
-
 function IncomeDisplayRow({
   label,
   amount,
@@ -2993,53 +2988,16 @@ function SummaryBox({
   amount,
   tone,
 }) {
-  const background =
-    tone ===
-    "red"
-      ? "#ef233c"
-      : tone ===
-        "navy"
-      ? "#075b95"
-      : "#0789dd";
-
   return (
-    <div
-      style={{
-        backgroundColor:
-          background,
-
-        color:
-          "white",
-
-        padding:
-          "13px",
-
-        borderRadius:
-          "7px",
-
-        textAlign:
-          "center",
-
-        fontWeight:
-          "bold",
-      }}
-    >
+    <div style={getSummaryBoxStyle(tone)}>
       {title}
 
-      <div
-        style={
-          summaryValueStyle
-        }
-      >
-        KES{" "}
-        {money(
-          amount
-        )}
+      <div style={summaryValueStyle}>
+        KES {money(amount)}
       </div>
     </div>
   );
 }
-
 // ==================================================
 // HELPERS
 // ==================================================
@@ -3336,799 +3294,3 @@ function is12HourClosingWindow(
 // STYLES
 // ==================================================
 
-const pageStyle = {
-  minHeight:
-    "100vh",
-
-  backgroundColor:
-    "#edf2f7",
-
-  fontFamily:
-    "Arial, sans-serif",
-};
-
-const loadingStyle = {
-  minHeight:
-    "100vh",
-
-  display:
-    "flex",
-
-  justifyContent:
-    "center",
-
-  alignItems:
-    "center",
-};
-
-const topHeaderStyle = {
-  backgroundColor:
-    "#063c63",
-
-  color:
-    "white",
-
-  padding:
-    "12px 22px",
-
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
-};
-
-const brandWrapStyle = {
-  display:
-    "flex",
-
-  gap:
-    "12px",
-
-  alignItems:
-    "center",
-};
-
-const crownStyle = {
-  fontSize:
-    "45px",
-};
-
-const brandStyle = {
-  fontSize:
-    "30px",
-
-  fontWeight:
-    "900",
-};
-
-const taglineStyle = {
-  fontSize:
-    "10px",
-
-  letterSpacing:
-    "3px",
-};
-
-const headerRightStyle = {
-  display:
-    "flex",
-
-  gap:
-    "18px",
-
-  alignItems:
-    "center",
-
-  textAlign:
-    "right",
-};
-
-const headerShopStyle = {
-  fontSize:
-    "12px",
-};
-
-const logoutButtonStyle = {
-  background:
-    "transparent",
-
-  color:
-    "white",
-
-  border:
-    "1px solid white",
-
-  padding:
-    "8px 14px",
-
-  borderRadius:
-    "6px",
-
-  cursor:
-    "pointer",
-};
-
-const bodyStyle = {
-  display:
-    "flex",
-};
-
-const sidebarStyle = {
-  width:
-    "190px",
-
-  backgroundColor:
-    "#073555",
-
-  minHeight:
-    "calc(100vh - 70px)",
-};
-
-const mainStyle = {
-  flex: 1,
-
-  padding:
-    "12px",
-
-  minWidth: 0,
-};
-
-const topGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "2fr repeat(5,1fr)",
-
-  gap:
-    "7px",
-
-  marginBottom:
-    "10px",
-};
-
-const shopCardStyle = {
-  backgroundColor:
-    "#08628f",
-
-  color:
-    "white",
-
-  padding:
-    "12px",
-
-  borderRadius:
-    "8px",
-
-  textAlign:
-    "center",
-};
-
-const shopTitleStyle = {
-  fontSize:
-    "27px",
-
-  fontWeight:
-    "900",
-};
-
-const smallTextStyle = {
-  fontSize:
-    "10px",
-
-  marginTop:
-    "4px",
-};
-
-const infoValueStyle = {
-  fontSize:
-    "17px",
-
-  fontWeight:
-    "bold",
-
-  marginTop:
-    "8px",
-};
-
-const reportGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1fr 1.2fr 1.1fr",
-
-  gap:
-    "10px",
-};
-
-const panelStyle = {
-  backgroundColor:
-    "white",
-
-  borderRadius:
-    "6px",
-
-  overflow:
-    "hidden",
-};
-
-const tableHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.6fr 1fr",
-
-  padding:
-    "9px",
-
-  backgroundColor:
-    "#eef4f8",
-
-  fontSize:
-    "11px",
-
-  fontWeight:
-    "bold",
-};
-
-const incomeRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.6fr 1fr",
-
-  gap:
-    "8px",
-
-  padding:
-    "5px 9px",
-
-  alignItems:
-    "center",
-
-  fontSize:
-    "11px",
-};
-
-const amountBoxStyle = {
-  padding:
-    "7px",
-
-  border:
-    "1px solid #ddd",
-
-  textAlign:
-    "right",
-};
-
-const moneyInputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "7px",
-
-  border:
-    "1px solid #94a3b8",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "right",
-};
-
-const savedMoneyStyle = {
-  padding:
-    "7px",
-
-  border:
-    "1px solid #86efac",
-
-  backgroundColor:
-    "#ecfdf5",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "right",
-};
-
-const lockedMoneyStyle = {
-  padding:
-    "7px",
-
-  border:
-    "1px solid #cbd5e1",
-
-  backgroundColor:
-    "#f1f5f9",
-
-  color:
-    "#64748b",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "right",
-
-  fontWeight:
-    "bold",
-};
-
-const missingReadingStyle = {
-  padding:
-    "7px",
-
-  border:
-    "1px solid #fecaca",
-
-  backgroundColor:
-    "#fef2f2",
-
-  color:
-    "#991b1b",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "center",
-
-  fontWeight:
-    "bold",
-};
-
-const readOnlyInlineStyle = {
-  color:
-    "#1d4ed8",
-
-  fontWeight:
-    "bold",
-};
-
-const incomeTotalStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  padding:
-    "11px",
-
-  backgroundColor:
-    "#dcfce7",
-};
-
-const companyFloatNoticeStyle = {
-  margin:
-    "8px",
-
-  padding:
-    "8px",
-
-  backgroundColor:
-    "#eff6ff",
-
-  color:
-    "#1e40af",
-
-  border:
-    "1px solid #bfdbfe",
-
-  borderRadius:
-    "5px",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "9px",
-
-  lineHeight:
-    "1.4",
-};
-
-const automaticExpenseNoticeStyle = {
-  margin:
-    "8px",
-
-  padding:
-    "8px",
-
-  backgroundColor:
-    "#fff7ed",
-
-  color:
-    "#9a3412",
-
-  border:
-    "1px solid #fed7aa",
-
-  borderRadius:
-    "5px",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "9px",
-
-  lineHeight:
-    "1.4",
-};
-
-const panelButtonWrapStyle = {
-  padding:
-    "8px",
-};
-
-const platformStatusStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  padding:
-    "6px 9px",
-
-  fontSize:
-    "10px",
-};
-
-const platformHeaderStyle = {
-  display:
-    "grid",
-
-  padding:
-    "8px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#eaf6ef",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-};
-
-const platformRowStyle = {
-  display:
-    "grid",
-
-  gap:
-    "6px",
-
-  padding:
-    "5px 8px",
-
-  alignItems:
-    "center",
-
-  fontSize:
-    "11px",
-};
-
-const savedTextStyle = {
-  fontSize:
-    "8px",
-
-  color:
-    "#15803d",
-};
-
-const outputBoxStyle = {
-  padding:
-    "7px",
-
-  textAlign:
-    "right",
-
-  fontWeight:
-    "bold",
-};
-
-const platformActionsStyle = {
-  padding:
-    "8px",
-
-  display:
-    "grid",
-
-  gap:
-    "5px",
-};
-
-const completeStyle = {
-  padding:
-    "7px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#ecfdf5",
-
-  color:
-    "#166534",
-
-  fontWeight:
-    "bold",
-};
-
-const waitingStyle = {
-  padding:
-    "8px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#eff6ff",
-
-  color:
-    "#1e40af",
-
-  borderRadius:
-    "5px",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "11px",
-};
-
-const warningStyle = {
-  padding:
-    "8px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#fef2f2",
-
-  color:
-    "#991b1b",
-
-  borderRadius:
-    "5px",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "11px",
-};
-
-const greenActionStyle = {
-  width:
-    "100%",
-
-  padding:
-    "9px",
-
-  border:
-    "none",
-
-  backgroundColor:
-    "#07912a",
-
-  color:
-    "white",
-
-  borderRadius:
-    "5px",
-
-  fontWeight:
-    "bold",
-
-  cursor:
-    "pointer",
-};
-
-const blueActionStyle = {
-  ...greenActionStyle,
-
-  backgroundColor:
-    "#0873b9",
-};
-
-const redActionStyle = {
-  ...greenActionStyle,
-
-  backgroundColor:
-    "#c50000",
-};
-
-const expenseHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "35px 1.5fr 1fr",
-
-  padding:
-    "8px",
-
-  backgroundColor:
-    "#fff0f0",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-};
-
-const expenseRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "35px 1.5fr 1fr",
-
-  gap:
-    "6px",
-
-  padding:
-    "4px 8px",
-
-  alignItems:
-    "center",
-};
-
-const expenseInputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "6px",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "4px",
-};
-
-const savedExpenseStyle = {
-  padding:
-    "6px",
-
-  border:
-    "1px solid #86efac",
-
-  backgroundColor:
-    "#ecfdf5",
-
-  borderRadius:
-    "4px",
-};
-
-const expenseTotalStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#c50000",
-
-  color:
-    "white",
-};
-
-const summaryGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(3,1fr)",
-
-  gap:
-    "10px",
-
-  marginTop:
-    "10px",
-};
-
-const summaryValueStyle = {
-  marginTop:
-    "8px",
-
-  padding:
-    "9px",
-
-  backgroundColor:
-    "white",
-
-  color:
-    "#111",
-
-  borderRadius:
-    "5px",
-
-  fontSize:
-    "20px",
-};
-
-const lowerGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(280px,1fr))",
-
-  gap:
-    "10px",
-
-  marginTop:
-    "10px",
-
-  alignItems:
-    "start",
-};
-
-const shiftGreetingStyle = {
-  padding:
-    "10px 14px",
-
-  marginBottom:
-    "8px",
-
-  borderRadius:
-    "6px",
-
-  backgroundColor:
-    "#eff6ff",
-
-  border:
-    "1px solid #bfdbfe",
-
-  color:
-    "#1e3a8a",
-
-  fontWeight:
-    "bold",
-
-  textAlign:
-    "center",
-};
-
-const messageStyle = {
-  padding:
-    "9px",
-
-  marginBottom:
-    "8px",
-
-  borderRadius:
-    "5px",
-};
