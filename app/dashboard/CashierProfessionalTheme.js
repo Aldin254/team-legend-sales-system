@@ -813,41 +813,23 @@ export const readOnlyInlineStyle = {
 
 export const incomeTotalStyle = {
   display: "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
-
-  gap:
-    "12px",
-
-  padding:
-    "13px 14px",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  padding: "13px 14px",
 
   background:
-    "linear-gradient(135deg, #9A7734, #654A1C)",
+    "linear-gradient(145deg, #11161C, #0B0F13)",
 
-  color:
-    "#FFFFFF",
+  color: "#FFFFFF",
 
-  border:
-    `1px solid ${COLORS.gold}`,
+  borderTop: "1px solid #343B43",
+  borderBottom: "1px solid #343B43",
 
-  fontSize:
-    "16px",
-
-  fontWeight:
-    950,
-
-  fontVariantNumeric:
-    "tabular-nums",
-
-  boxShadow:
-    "0 6px 16px rgba(0,0,0,0.20)",
+  fontSize: "16px",
+  fontWeight: 950,
+  fontVariantNumeric: "tabular-nums",
 };
-
 
 // ============================================================
 // NOTICES
@@ -1222,19 +1204,26 @@ export const blueActionStyle = {
 // ============================================================
 
 export const redActionStyle = {
-  ...greenActionStyle,
+  width: "100%",
+  minHeight: "42px",
+  padding: "10px 14px",
 
-  border:
-    `1px solid ${COLORS.gold}`,
+  border: "1px solid #454E58",
 
   background:
-    "linear-gradient(135deg, #9A7734, #654A1C)",
+    "linear-gradient(145deg, #171C22, #0D1115)",
 
-  color:
-    "#FFFFFF",
+  color: "#FFFFFF",
 
-  fontWeight:
-    950,
+  borderRadius: "9px",
+
+  fontSize: "14px",
+  fontWeight: 900,
+
+  cursor: "pointer",
+
+  boxShadow:
+    "0 6px 16px rgba(0,0,0,0.20)",
 };
 
 
@@ -1371,38 +1360,23 @@ export const savedExpenseStyle = {
 // ============================================================
 
 export const expenseTotalStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
-
-  gap:
-    "12px",
-
-  padding:
-    "13px 14px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  padding: "13px 14px",
 
   background:
-    "linear-gradient(135deg, #9A7734, #654A1C)",
+    "linear-gradient(145deg, #11161C, #0B0F13)",
 
-  color:
-    "#FFFFFF",
+  color: "#FFFFFF",
 
-  border:
-    `1px solid ${COLORS.gold}`,
+  borderTop: "1px solid #343B43",
+  borderBottom: "1px solid #343B43",
 
-  fontSize:
-    "16px",
-
-  fontWeight:
-    950,
-
-  fontVariantNumeric:
-    "tabular-nums",
+  fontSize: "16px",
+  fontWeight: 950,
+  fontVariantNumeric: "tabular-nums",
 };
 // ============================================================
 // PART 3
@@ -1523,71 +1497,56 @@ export const summaryGridStyle = {
 
 export function getSummaryBoxStyle() {
   return {
-    padding:
-      "13px",
+    position: "relative",
 
-    color:
-      "#FFFFFF",
+    minHeight: "86px",
+
+    padding: "11px 13px",
+
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+
+    textAlign: "center",
+
+    overflow: "hidden",
+
+    color: "#FFFFFF",
 
     background:
-      "linear-gradient(135deg, #9A7734, #654A1C)",
+      "linear-gradient(145deg, rgba(215,179,106,0.19), rgba(20,25,31,0.97))",
 
     border:
-      `1px solid ${COLORS.gold}`,
+      "1px solid rgba(215,179,106,0.42)",
 
-    borderRadius:
-      "11px",
-
-    textAlign:
-      "center",
-
-    fontSize:
-      "14px",
-
-    fontWeight:
-      950,
-
-    letterSpacing:
-      "0.45px",
+    borderRadius: "12px",
 
     boxShadow:
-      "0 8px 22px rgba(0,0,0,0.22)",
+      "0 8px 22px rgba(0,0,0,0.20)",
   };
 }
 
 
 export const summaryValueStyle = {
-  marginTop:
-    "8px",
+  marginTop: "8px",
 
-  padding:
-    "10px",
+  padding: 0,
 
-  background:
-    "rgba(0,0,0,0.20)",
+  background: "transparent",
 
-  color:
-    "#FFFFFF",
+  border: "none",
 
-  border:
-    "1px solid rgba(255,255,255,0.22)",
+  color: "#FFFFFF",
 
-  borderRadius:
-    "8px",
+  fontSize: "21px",
 
-  fontSize:
-    "21px",
+  fontWeight: 950,
 
-  fontWeight:
-    950,
+  lineHeight: 1.1,
 
-  lineHeight:
-    1.15,
-
-  fontVariantNumeric:
-    "tabular-nums",
+  fontVariantNumeric: "tabular-nums",
 };
-
 
 // ============================================================
 // LOWER MODULES
