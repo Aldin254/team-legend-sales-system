@@ -1967,14 +1967,6 @@ export default function CashierReport({
     value={cashierName}
     tone="brown"
   />
-              <InfoCard
-              title="CASHIER ON DUTY"
-              value={
-                cashierName
-              }
-              tone="brown"
-            />
-
             <InfoCard
               title="DATE"
               value={
