@@ -438,24 +438,40 @@ export const smallTextStyle = {
 // INFORMATION CARDS
 // ============================================================
 
-export function getInfoCardStyle(tone) {
-  let accent = COLORS.blue;
-  let glow = "rgba(96,165,250,0.10)";
+export function getInfoCardStyle() {
+  return {
+    position: "relative",
 
-  if (tone === "green") {
-    accent = COLORS.green;
-    glow = "rgba(52,211,153,0.10)";
-  }
+    minHeight: "86px",
 
-  if (tone === "brown") {
-    accent = COLORS.gold;
-    glow = "rgba(215,179,106,0.11)";
-  }
+    padding: "11px 10px",
 
-  if (tone === "red") {
-    accent = COLORS.red;
-    glow = "rgba(248,113,113,0.10)";
-  }
+    display: "flex",
+
+    flexDirection: "column",
+
+    justifyContent: "center",
+
+    alignItems: "center",
+
+    textAlign: "center",
+
+    overflow: "hidden",
+
+    color: COLORS.text,
+
+    background:
+      "linear-gradient(145deg, rgba(215,179,106,0.19), rgba(20,25,31,0.97))",
+
+    border:
+      "1px solid rgba(215,179,106,0.33)",
+
+    borderRadius: "12px",
+
+    boxShadow:
+      "0 8px 22px rgba(0,0,0,0.20)",
+  };
+}
 
   return {
     position: "relative",
@@ -529,21 +545,7 @@ export const infoSubvalueStyle = {
 };
 
 
-export function getInfoCardAccentStyle(tone) {
-  let accent = COLORS.blue;
-
-  if (tone === "green") {
-    accent = COLORS.green;
-  }
-
-  if (tone === "brown") {
-    accent = COLORS.gold;
-  }
-
-  if (tone === "red") {
-    accent = COLORS.red;
-  }
-
+export function getInfoCardAccentStyle() {
   return {
     position: "absolute",
 
@@ -557,7 +559,7 @@ export function getInfoCardAccentStyle(tone) {
 
     borderRadius: "3px 3px 0 0",
 
-    background: accent,
+    background: COLORS.gold,
 
     opacity: 0.82,
   };
