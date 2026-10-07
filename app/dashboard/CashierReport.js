@@ -1905,7 +1905,10 @@ export default function CashierReport({
           </button>
         </div>
       </header>
-
+<CashierAttendancePanel
+  user={user}
+  currentShift={currentShift}
+/>
       <div
         style={
           bodyStyle
@@ -1948,12 +1951,7 @@ export default function CashierReport({
             mainStyle
           }
         >
-            <CashierAttendancePanel
-  user={user}
-  currentShift={currentShift}
-/>
-
-<div
+    <div
   style={{
     ...topGridStyle
   }}
