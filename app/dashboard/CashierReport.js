@@ -1967,20 +1967,7 @@ export default function CashierReport({
     value={cashierName}
     tone="brown"
   />
-          <div
-            style={
-              topGridStyle
-            }
-          >
-            <TopCard
-              title={
-                shopName.toUpperCase()
-              }
-              subtitle="DAILY SALES REPORT"
-              footer="12-HOUR SHOP"
-            />
-
-            <InfoCard
+              <InfoCard
               title="CASHIER ON DUTY"
               value={
                 cashierName
