@@ -472,42 +472,6 @@ export function getInfoCardStyle() {
       "0 8px 22px rgba(0,0,0,0.20)",
   };
 }
-
-  return {
-    position: "relative",
-
-    minHeight: "86px",
-
-    padding: "11px 10px",
-    
-    display: "flex",
-
-    flexDirection: "column",
-
-    justifyContent: "center",
-
-    alignItems: "center",
-
-    textAlign: "center",
-
-    overflow: "hidden",
-
-    color: COLORS.text,
-
-    background:
-      `linear-gradient(145deg, ${glow}, rgba(17,22,28,0.97))`,
-
-    border:
-      `1px solid ${accent}55`,
-
-    borderRadius: "12px",
-
-    boxShadow:
-       "0 8px 22px rgba(0,0,0,0.18)",
-  };
-}
-
-
 export const infoTitleStyle = {
   color: "#9EA7B1",
 
