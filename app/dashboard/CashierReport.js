@@ -14,7 +14,7 @@ import CashierSalaryPanel from "./CashierSalaryPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
-
+import CashierAttendancePanel from "./CashierAttendancePanel";
 export default function CashierReport({
   user,
   currentShift,
@@ -1948,6 +1948,27 @@ export default function CashierReport({
             mainStyle
           }
         >
+            <CashierAttendancePanel
+  user={user}
+  currentShift={currentShift}
+/>
+
+<div
+  style={{
+    ...topGridStyle
+  }}
+>
+  <TopCard
+    title={shopName.toUpperCase()}
+    subtitle="DAILY SALES REPORT"
+    footer="12-HOUR SHOP"
+  />
+
+  <InfoCard
+    title="CASHIER ON DUTY"
+    value={cashierName}
+    tone="brown"
+  />
           <div
             style={
               topGridStyle
