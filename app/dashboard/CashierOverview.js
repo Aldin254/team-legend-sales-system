@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-
+import CashierAttendancePanel from "./CashierAttendancePanel";
 export default function CashierOverview({
   user,
   currentShift,
@@ -252,21 +252,26 @@ export default function CashierOverview({
     return null;
   }
 
-  return (
+ return (
+  <div
+    style={{
+      marginTop: "20px",
+      marginBottom: "20px",
+      backgroundColor: "white",
+      padding: "22px",
+      borderRadius: "12px",
+      boxShadow:
+        "0 2px 10px rgba(0,0,0,0.08)",
+    }}
+  >
+    <CashierAttendancePanel
+      user={user}
+      currentShift={currentShift}
+    />
+
     <div
       style={{
-        marginTop: "20px",
-        marginBottom: "20px",
-        backgroundColor: "white",
-        padding: "22px",
-        borderRadius: "12px",
-        boxShadow:
-          "0 2px 10px rgba(0,0,0,0.08)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
+        display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           gap: "15px",
