@@ -22,17 +22,14 @@ export default function CashierAccountsReturnPanel({
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
-    user?.access_token ||
-    null;
+    user?.access_token || null;
 
   const shiftId =
-    currentShift?.id ||
-    null;
+    currentShift?.id || null;
 
   const shiftStatus =
     String(
-      currentShift?.status ||
-        ""
+      currentShift?.status || ""
     )
       .trim()
       .toUpperCase();
@@ -59,23 +56,31 @@ export default function CashierAccountsReturnPanel({
   const [receipt, setReceipt] =
     useState("");
 
-  const [submittingReceipt, setSubmittingReceipt] =
-    useState(false);
+  const [
+    submittingReceipt,
+    setSubmittingReceipt,
+  ] = useState(false);
 
   const [history, setHistory] =
     useState([]);
 
-  const [historyLoading, setHistoryLoading] =
-    useState(true);
+  const [
+    historyLoading,
+    setHistoryLoading,
+  ] = useState(true);
 
-  const [historyOpen, setHistoryOpen] =
-    useState(false);
+  const [
+    historyOpen,
+    setHistoryOpen,
+  ] = useState(false);
 
   const [message, setMessage] =
     useState("");
 
-  const [messageType, setMessageType] =
-    useState("");
+  const [
+    messageType,
+    setMessageType,
+  ] = useState("");
 
   const [
     secondsLeft,
@@ -99,32 +104,29 @@ export default function CashierAccountsReturnPanel({
   // ==================================================
 
   const clearPreparedTimers =
-    useCallback(
-      () => {
-        if (
+    useCallback(() => {
+      if (
+        preparedTimeoutRef.current
+      ) {
+        clearTimeout(
           preparedTimeoutRef.current
-        ) {
-          clearTimeout(
-            preparedTimeoutRef.current
-          );
+        );
 
-          preparedTimeoutRef.current =
-            null;
-        }
+        preparedTimeoutRef.current =
+          null;
+      }
 
-        if (
+      if (
+        preparedIntervalRef.current
+      ) {
+        clearInterval(
           preparedIntervalRef.current
-        ) {
-          clearInterval(
-            preparedIntervalRef.current
-          );
+        );
 
-          preparedIntervalRef.current =
-            null;
-        }
-      },
-      []
-    );
+        preparedIntervalRef.current =
+          null;
+      }
+    }, []);
 
   // ==================================================
   // AUTH HEADERS
@@ -193,7 +195,9 @@ export default function CashierAccountsReturnPanel({
             response
           );
 
-        if (!response.ok) {
+        if (
+          !response.ok
+        ) {
           throw new Error(
             result?.message ||
               result?.details ||
@@ -226,13 +230,17 @@ export default function CashierAccountsReturnPanel({
           !accessToken
         ) {
           setHistory([]);
-          setHistoryLoading(false);
+          setHistoryLoading(
+            false
+          );
 
           return;
         }
 
         try {
-          if (!silent) {
+          if (
+            !silent
+          ) {
             setHistoryLoading(
               true
             );
@@ -275,9 +283,7 @@ export default function CashierAccountsReturnPanel({
             );
 
           setPreparedReturn(
-            (
-              previous
-            ) => {
+            (previous) => {
               if (
                 previous?.transaction_id
               ) {
@@ -463,7 +469,9 @@ export default function CashierAccountsReturnPanel({
             error
           );
 
-          if (!silent) {
+          if (
+            !silent
+          ) {
             setMessage(
               error?.message ||
                 "Unable to load return transactions."
@@ -474,7 +482,9 @@ export default function CashierAccountsReturnPanel({
             );
           }
         } finally {
-          if (!silent) {
+          if (
+            !silent
+          ) {
             setHistoryLoading(
               false
             );
@@ -738,7 +748,9 @@ export default function CashierAccountsReturnPanel({
       setTimeout(
         () => {
           setAmount("");
-          setFeePreview(0);
+          setFeePreview(
+            0
+          );
 
           setMessage(
             "Unused amount cleared automatically after 30 seconds of inactivity."
@@ -855,12 +867,8 @@ export default function CashierAccountsReturnPanel({
   }, [
     clearPreparedTimers,
   ]);
-
   // ==================================================
   // FEE PREVIEW
-  //
-  // MPESA_TO_MPESA -> original M-Pesa tariff
-  // MPESA_TO_IM    -> M-Pesa -> I&M tariff
   // ==================================================
 
   useEffect(() => {
@@ -1234,11 +1242,9 @@ export default function CashierAccountsReturnPanel({
             preparedReturn.company_account_name ||
             "-"
           }`
-        : `Legend Accounts M-Pesa ${
-            formatPhone(
-              preparedReturn.company_destination
-            )
-          }${
+        : `Legend Accounts M-Pesa ${formatPhone(
+            preparedReturn.company_destination
+          )}${
             preparedReturn.company_account_name
               ? `, Account Name ${preparedReturn.company_account_name}`
               : ""
@@ -1346,43 +1352,79 @@ export default function CashierAccountsReturnPanel({
   }
 
   return (
-    <section style={panelStyle}>
-      <div style={headerStyle}>
+    <section
+      style={
+        panelStyle
+      }
+    >
+      <div
+        style={
+          headerStyle
+        }
+      >
         <div>
-          <div style={titleStyle}>
+          <div
+            style={
+              titleStyle
+            }
+          >
             SEND FLOAT TO LEGEND ACCOUNTS
           </div>
 
-          <div style={subtitleStyle}>
+          <div
+            style={
+              subtitleStyle
+            }
+          >
             Cashier → Legend Accounts
           </div>
         </div>
 
-        <div style={slotBadgeStyle}>
+        <div
+          style={
+            slotBadgeStyle
+          }
+        >
           {returnPositionsUsed}/3 RETURNS
         </div>
       </div>
 
       {shiftClosed && (
-        <div style={warningStyle}>
+        <div
+          style={
+            warningStyle
+          }
+        >
           This shift is closed. No new return can be started.
         </div>
       )}
 
       {allReturnPositionsUsed && (
-        <div style={warningStyle}>
+        <div
+          style={
+            warningStyle
+          }
+        >
           All 3 Float Return positions have been used for this shift.
         </div>
       )}
 
       {awaitingConfirmation &&
         !hasPendingReceipt && (
-          <div style={awaitingStyle}>
+          <div
+            style={
+              awaitingStyle
+            }
+          >
             <strong>
               WAITING FOR LEGEND ACCOUNTS
             </strong>
 
-            <div style={noticeTextStyle}>
+            <div
+              style={
+                noticeTextStyle
+              }
+            >
               Return{" "}
               {awaitingConfirmation.return_slot ||
                 ""}{" "}
@@ -1393,7 +1435,11 @@ export default function CashierAccountsReturnPanel({
               is waiting for Accountant confirmation.
             </div>
 
-            <div style={noticeTextStyle}>
+            <div
+              style={
+                noticeTextStyle
+              }
+            >
               Receipt:{" "}
               <strong>
                 {awaitingConfirmation.manual_receipt_no ||
@@ -1401,16 +1447,22 @@ export default function CashierAccountsReturnPanel({
               </strong>
             </div>
 
-            <div style={noticeTextStyle}>
+            <div
+              style={
+                noticeTextStyle
+              }
+            >
               Once confirmed, the amount plus the applicable transaction fee
               will automatically appear in this shift&apos;s expenses.
             </div>
           </div>
         )}
 
-      {/* AMOUNT */}
-
-      <label style={labelStyle}>
+      <label
+        style={
+          labelStyle
+        }
+      >
         Amount To Send (KES)
       </label>
 
@@ -1447,22 +1499,27 @@ export default function CashierAccountsReturnPanel({
           backgroundColor:
             unresolvedTransaction ||
             shiftClosed
-              ? "#f1f5f9"
-              : "white",
+              ? "#171C22"
+              : "#080B0E",
         }}
       />
 
       {!hasPendingReceipt &&
         amount !== "" && (
-          <div style={autoResetNoteStyle}>
-            Unused amount will clear automatically after 30 seconds of
-            inactivity.
+          <div
+            style={
+              autoResetNoteStyle
+            }
+          >
+            Unused amount will clear automatically after 30 seconds of inactivity.
           </div>
         )}
 
-      {/* PREVIEW */}
-
-      <div style={previewGridStyle}>
+      <div
+        style={
+          previewGridStyle
+        }
+      >
         <PreviewBox
           title="AMOUNT TO ACCOUNTS"
           value={
@@ -1493,7 +1550,11 @@ export default function CashierAccountsReturnPanel({
         />
       </div>
 
-      <div style={expenseNoticeStyle}>
+      <div
+        style={
+          expenseNoticeStyle
+        }
+      >
         After Legend Accounts confirms receiving the money,
         <strong>
           {" "}
@@ -1514,8 +1575,6 @@ export default function CashierAccountsReturnPanel({
           {message}
         </div>
       )}
-
-      {/* PREPARE */}
 
       {!hasPendingReceipt && (
         <button
@@ -1558,24 +1617,42 @@ export default function CashierAccountsReturnPanel({
         </button>
       )}
 
-      {/* PREPARED PAYMENT */}
-
       {hasPendingReceipt && (
-        <div style={preparedStyle}>
-          <div style={preparedHeaderStyle}>
-            <div style={preparedTitleStyle}>
+        <div
+          style={
+            preparedStyle
+          }
+        >
+          <div
+            style={
+              preparedHeaderStyle
+            }
+          >
+            <div
+              style={
+                preparedTitleStyle
+              }
+            >
               RETURN{" "}
               {preparedReturn.return_slot ||
                 ""}{" "}
               — {preparedRoute.routeTitle}
             </div>
 
-            <div style={countdownStyle}>
+            <div
+              style={
+                countdownStyle
+              }
+            >
               AUTO-CLOSE: {secondsLeft}s
             </div>
           </div>
 
-          <div style={preparedTimeoutNoteStyle}>
+          <div
+            style={
+              preparedTimeoutNoteStyle
+            }
+          >
             If no receipt is submitted, this unfinished return will cancel
             automatically after 30 seconds of inactivity.
           </div>
@@ -1682,7 +1759,11 @@ export default function CashierAccountsReturnPanel({
             strong
           />
 
-          <div style={sendInstructionStyle}>
+          <div
+            style={
+              sendInstructionStyle
+            }
+          >
             {preparedRoute.isIm ? (
               <>
                 Send exactly{" "}
@@ -1697,8 +1778,7 @@ export default function CashierAccountsReturnPanel({
                   {preparedReturn.paybill_number ||
                     preparedReturn.company_destination ||
                     "-"}
-                </strong>
-                {" "}
+                </strong>{" "}
                 and Account Number{" "}
                 <strong>
                   {preparedReturn.bank_account_number ||
@@ -1725,7 +1805,11 @@ export default function CashierAccountsReturnPanel({
                     </>
                   )}
 
-                <div style={nameCheckStyle}>
+                <div
+                  style={
+                    nameCheckStyle
+                  }
+                >
                   <strong>
                     IMPORTANT:
                   </strong>{" "}
@@ -1750,7 +1834,6 @@ export default function CashierAccountsReturnPanel({
                   )}
                 </strong>{" "}
                 to the Legend Accounts M-Pesa number{" "}
-
                 <strong>
                   {formatPhone(
                     preparedReturn.company_destination
@@ -1775,7 +1858,11 @@ export default function CashierAccountsReturnPanel({
             )}
           </div>
 
-          <label style={labelStyle}>
+          <label
+            style={
+              labelStyle
+            }
+          >
             M-Pesa Receipt Number
           </label>
 
@@ -1804,7 +1891,9 @@ export default function CashierAccountsReturnPanel({
             }}
             maxLength={30}
             placeholder="e.g. TABC123XYZ"
-            style={inputStyle}
+            style={
+              inputStyle
+            }
           />
 
           <button
@@ -1831,19 +1920,17 @@ export default function CashierAccountsReturnPanel({
         </div>
       )}
 
-      {/* HISTORY */}
-
       <button
         type="button"
         onClick={() =>
           setHistoryOpen(
-            (
-              previous
-            ) =>
+            (previous) =>
               !previous
           )
         }
-        style={historyToggleStyle}
+        style={
+          historyToggleStyle
+        }
       >
         <span>
           {historyOpen
@@ -1857,14 +1944,26 @@ export default function CashierAccountsReturnPanel({
       </button>
 
       {historyOpen && (
-        <div style={historyWrapStyle}>
+        <div
+          style={
+            historyWrapStyle
+          }
+        >
           {historyLoading ? (
-            <div style={emptyStyle}>
+            <div
+              style={
+                emptyStyle
+              }
+            >
               Loading transactions...
             </div>
           ) : history.length ===
             0 ? (
-            <div style={emptyStyle}>
+            <div
+              style={
+                emptyStyle
+              }
+            >
               No Cashier → Accounts transactions in this shift.
             </div>
           ) : (
@@ -1907,7 +2006,11 @@ function PreviewBox({
           : {}),
       }}
     >
-      <div style={previewTitleStyle}>
+      <div
+        style={
+          previewTitleStyle
+        }
+      >
         {title}
       </div>
 
@@ -1940,7 +2043,11 @@ function DetailRow({
   strong = false,
 }) {
   return (
-    <div style={detailRowStyle}>
+    <div
+      style={
+        detailRowStyle
+      }
+    >
       <span>
         {label}
       </span>
@@ -1998,8 +2105,16 @@ function HistoryRow({
     );
 
   return (
-    <div style={historyRowStyle}>
-      <div style={historyTopStyle}>
+    <div
+      style={
+        historyRowStyle
+      }
+    >
+      <div
+        style={
+          historyTopStyle
+        }
+      >
         <div>
           <strong>
             RETURN{" "}
@@ -2007,7 +2122,11 @@ function HistoryRow({
               "-"}
           </strong>
 
-          <div style={transactionNoStyle}>
+          <div
+            style={
+              transactionNoStyle
+            }
+          >
             {transaction.transaction_no ||
               "-"}
           </div>
@@ -2022,6 +2141,9 @@ function HistoryRow({
 
             color:
               statusStyle.color,
+
+            border:
+              `1px solid ${statusStyle.border}`,
           }}
         >
           {friendlyStatus(
@@ -2030,7 +2152,11 @@ function HistoryRow({
         </span>
       </div>
 
-      <div style={historyBoxesStyle}>
+      <div
+        style={
+          historyBoxesStyle
+        }
+      >
         <HistoryValue
           title="AMOUNT"
           value={`KES ${money(
@@ -2053,7 +2179,11 @@ function HistoryRow({
         />
       </div>
 
-      <div style={historyBottomStyle}>
+      <div
+        style={
+          historyBottomStyle
+        }
+      >
         <span>
           Receipt:{" "}
           <strong>
@@ -2072,16 +2202,16 @@ function HistoryRow({
   );
 }
 
-// ==================================================
-// HISTORY VALUE
-// ==================================================
-
 function HistoryValue({
   title,
   value,
 }) {
   return (
-    <div style={historyValueStyle}>
+    <div
+      style={
+        historyValueStyle
+      }
+    >
       <span>
         {title}
       </span>
@@ -2092,7 +2222,6 @@ function HistoryValue({
     </div>
   );
 }
-
 // ==================================================
 // ROUTE HELPER
 // ==================================================
@@ -2107,12 +2236,8 @@ function getCashierReturnRoute(
       transaction?.company_account_type,
       transaction?.company_account_name,
     ]
-      .filter(
-        Boolean
-      )
-      .join(
-        " "
-      )
+      .filter(Boolean)
+      .join(" ")
       .toUpperCase();
 
   const normalized =
@@ -2288,7 +2413,9 @@ function formatPhone(
 function formatDateTime(
   value
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return "-";
   }
 
@@ -2365,10 +2492,13 @@ function getStatusStyle(
   ) {
     return {
       backgroundColor:
-        "#dcfce7",
+        "#10261A",
 
       color:
-        "#166534",
+        "#FFFFFF",
+
+      border:
+        "#2F6B47",
     };
   }
 
@@ -2378,10 +2508,13 @@ function getStatusStyle(
   ) {
     return {
       backgroundColor:
-        "#fef3c7",
+        "#221C10",
 
       color:
-        "#92400e",
+        "#FFFFFF",
+
+      border:
+        "#705921",
     };
   }
 
@@ -2391,42 +2524,59 @@ function getStatusStyle(
   ) {
     return {
       backgroundColor:
-        "#dbeafe",
+        "#111C28",
 
       color:
-        "#1d4ed8",
+        "#FFFFFF",
+
+      border:
+        "#31577B",
     };
   }
 
   return {
     backgroundColor:
-      "#fee2e2",
+      "#2C1619",
 
     color:
-      "#991b1b",
+      "#FFFFFF",
+
+    border:
+      "#79363C",
   };
 }
 
 // ==================================================
-// STYLES
+// PROFESSIONAL MATTE BLACK STYLES
 // ==================================================
 
 const panelStyle = {
-  backgroundColor:
-    "white",
+  minWidth:
+    0,
 
-  borderRadius:
-    "7px",
+  background:
+    "linear-gradient(180deg, #11161C 0%, #0B0F13 100%)",
 
-  padding:
-    "14px",
-
-  boxShadow:
-    "0 1px 5px rgba(0,0,0,0.12)",
+  color:
+    "#FFFFFF",
 
   border:
-    "1px solid #cbd5e1",
+    "1px solid #303840",
+
+  borderRadius:
+    "14px",
+
+  padding:
+    "13px",
+
+  boxShadow:
+    "0 10px 28px rgba(0,0,0,0.22)",
 };
+
+
+// ==================================================
+// HEADER
+// ==================================================
 
 const headerStyle = {
   display:
@@ -2441,68 +2591,101 @@ const headerStyle = {
   gap:
     "10px",
 
-  marginBottom:
-    "12px",
+  margin:
+    "-13px -13px 12px",
+
+  padding:
+    "13px 15px",
+
+  background:
+    "linear-gradient(145deg, rgba(215,179,106,0.15), rgba(17,22,28,0.98))",
+
+  borderBottom:
+    "1px solid rgba(215,179,106,0.34)",
+
+  borderLeft:
+    "4px solid #D7B36A",
 };
+
 
 const titleStyle = {
+  color:
+    "#FFFFFF",
+
   fontWeight:
-    "900",
+    950,
 
   fontSize:
-    "13px",
+    "15px",
 
-  color:
-    "#0f172a",
+  letterSpacing:
+    "0.5px",
 };
+
 
 const subtitleStyle = {
   marginTop:
     "3px",
 
   color:
-    "#64748b",
+    "#AAB2BC",
 
   fontSize:
-    "9px",
+    "10px",
+
+  fontWeight:
+    700,
 };
+
 
 const slotBadgeStyle = {
   backgroundColor:
-    "#0f766e",
+    "#171C22",
 
   color:
-    "white",
+    "#FFFFFF",
 
   padding:
-    "5px 8px",
+    "6px 9px",
+
+  border:
+    "1px solid rgba(215,179,106,0.44)",
 
   borderRadius:
     "12px",
 
   fontWeight:
-    "bold",
+    900,
 
   fontSize:
-    "8px",
+    "9px",
 
   whiteSpace:
     "nowrap",
 };
+
+
+// ==================================================
+// LABELS / INPUTS
+// ==================================================
 
 const labelStyle = {
   display:
     "block",
 
   marginBottom:
-    "5px",
+    "6px",
+
+  color:
+    "#FFFFFF",
 
   fontWeight:
-    "bold",
+    900,
 
   fontSize:
-    "10px",
+    "11px",
 };
+
 
 const inputStyle = {
   width:
@@ -2511,21 +2694,37 @@ const inputStyle = {
   boxSizing:
     "border-box",
 
+  minHeight:
+    "39px",
+
   padding:
-    "9px",
+    "9px 10px",
 
   border:
-    "1px solid #94a3b8",
+    "1px solid #454E58",
 
   borderRadius:
-    "5px",
+    "7px",
+
+  backgroundColor:
+    "#080B0E",
+
+  color:
+    "#FFFFFF",
 
   fontSize:
     "12px",
 
+  fontWeight:
+    750,
+
   marginBottom:
     "10px",
+
+  outline:
+    "none",
 };
+
 
 const autoResetNoteStyle = {
   marginTop:
@@ -2535,20 +2734,28 @@ const autoResetNoteStyle = {
     "10px",
 
   padding:
-    "6px 8px",
+    "7px 8px",
 
   backgroundColor:
-    "#f8fafc",
+    "#0D1115",
 
   color:
-    "#64748b",
+    "#AAB2BC",
+
+  border:
+    "1px solid #343C45",
 
   borderRadius:
-    "4px",
+    "6px",
 
   fontSize:
-    "8px",
+    "9px",
 };
+
+
+// ==================================================
+// PREVIEW
+// ==================================================
 
 const previewGridStyle = {
   display:
@@ -2564,112 +2771,144 @@ const previewGridStyle = {
     "10px",
 };
 
+
 const previewBoxStyle = {
   backgroundColor:
-    "#f8fafc",
+    "#080B0E",
 
   border:
-    "1px solid #e2e8f0",
+    "1px solid #39424C",
 
   borderRadius:
-    "5px",
+    "7px",
 
   padding:
     "9px",
 
   textAlign:
     "center",
+
+  color:
+    "#FFFFFF",
 };
+
 
 const previewStrongStyle = {
-  backgroundColor:
-    "#fff7ed",
+  background:
+    "linear-gradient(145deg, rgba(215,179,106,0.10), #0D1115)",
 
   border:
-    "1px solid #fdba74",
+    "1px solid rgba(215,179,106,0.48)",
 };
+
 
 const previewTitleStyle = {
   color:
-    "#64748b",
+    "#AAB2BC",
 
   fontSize:
-    "7px",
+    "8px",
 
   fontWeight:
-    "bold",
+    900,
 };
+
 
 const previewValueStyle = {
   marginTop:
     "5px",
 
   color:
-    "#0f172a",
+    "#FFFFFF",
 
   fontSize:
-    "11px",
+    "12px",
 
   fontWeight:
-    "900",
+    950,
 };
+
 
 const previewStrongValueStyle = {
   color:
-    "#c2410c",
+    "#FFFFFF",
 };
+
+
+// ==================================================
+// EXPENSE NOTICE
+// ==================================================
 
 const expenseNoticeStyle = {
   padding:
-    "8px",
+    "8px 9px",
 
   marginBottom:
     "10px",
 
   backgroundColor:
-    "#f8fafc",
+    "#0D1115",
+
+  border:
+    "1px solid #343C45",
 
   borderRadius:
-    "5px",
+    "7px",
 
   color:
-    "#475569",
+    "#FFFFFF",
 
   fontSize:
     "9px",
 
   lineHeight:
-    "1.4",
+    1.45,
 };
+
+
+// ==================================================
+// PRIMARY BUTTON
+// ==================================================
 
 const primaryButtonStyle = {
   width:
     "100%",
 
+  minHeight:
+    "40px",
+
   padding:
     "10px",
 
   border:
-    "none",
+    "1px solid #327B53",
 
   borderRadius:
-    "5px",
+    "7px",
 
-  backgroundColor:
-    "#0f766e",
+  background:
+    "linear-gradient(135deg, #17633D, #124A31)",
 
   color:
-    "white",
+    "#FFFFFF",
 
   fontWeight:
-    "bold",
+    900,
 
   fontSize:
-    "10px",
+    "11px",
 
   marginBottom:
     "10px",
+
+  boxShadow:
+    "0 6px 16px rgba(0,0,0,0.20)",
 };
+
+
+// ==================================================
+// PREPARED RETURN
+// ==================================================
 
 const preparedStyle = {
   marginTop:
@@ -2679,17 +2918,21 @@ const preparedStyle = {
     "10px",
 
   padding:
-    "12px",
+    "11px",
 
-  backgroundColor:
-    "#f0fdfa",
+  background:
+    "linear-gradient(145deg, #151A20, #0C1014)",
 
   border:
-    "2px solid #0f766e",
+    "1px solid rgba(215,179,106,0.50)",
 
   borderRadius:
-    "6px",
+    "9px",
+
+  color:
+    "#FFFFFF",
 };
+
 
 const preparedHeaderStyle = {
   display:
@@ -2708,39 +2951,45 @@ const preparedHeaderStyle = {
     "7px",
 };
 
+
 const preparedTitleStyle = {
   color:
-    "#115e59",
+    "#FFFFFF",
 
   fontWeight:
-    "900",
+    950,
 
   fontSize:
     "11px",
 };
 
+
 const countdownStyle = {
   padding:
-    "4px 7px",
+    "5px 7px",
 
   backgroundColor:
-    "#fef3c7",
+    "#221C10",
 
   color:
-    "#92400e",
+    "#FFFFFF",
+
+  border:
+    "1px solid #705921",
 
   borderRadius:
     "10px",
 
   fontSize:
-    "7px",
+    "8px",
 
   fontWeight:
-    "900",
+    900,
 
   whiteSpace:
     "nowrap",
 };
+
 
 const preparedTimeoutNoteStyle = {
   marginBottom:
@@ -2750,20 +2999,21 @@ const preparedTimeoutNoteStyle = {
     "7px",
 
   backgroundColor:
-    "#ecfeff",
+    "#0D1115",
 
   color:
-    "#155e75",
+    "#FFFFFF",
 
   border:
-    "1px solid #a5f3fc",
+    "1px solid #39424C",
 
   borderRadius:
-    "4px",
+    "6px",
 
   fontSize:
-    "8px",
+    "9px",
 };
+
 
 const detailRowStyle = {
   display:
@@ -2772,23 +3022,38 @@ const detailRowStyle = {
   justifyContent:
     "space-between",
 
+  alignItems:
+    "center",
+
   gap:
     "12px",
 
   padding:
-    "6px 0",
+    "7px 0",
 
   borderBottom:
-    "1px solid #ccfbf1",
+    "1px solid #292F36",
+
+  color:
+    "#FFFFFF",
 
   fontSize:
-    "9px",
+    "10px",
 };
+
 
 const detailStrongStyle = {
   color:
-    "#166534",
+    "#FFFFFF",
+
+  fontWeight:
+    950,
 };
+
+
+// ==================================================
+// PAYMENT INSTRUCTIONS
+// ==================================================
 
 const sendInstructionStyle = {
   margin:
@@ -2797,21 +3062,25 @@ const sendInstructionStyle = {
   padding:
     "9px",
 
-  backgroundColor:
-    "#fef3c7",
+  background:
+    "linear-gradient(145deg, rgba(215,179,106,0.10), #0D1115)",
 
   color:
-    "#92400e",
+    "#FFFFFF",
+
+  border:
+    "1px solid rgba(215,179,106,0.42)",
 
   borderRadius:
-    "5px",
+    "7px",
 
   fontSize:
     "9px",
 
   lineHeight:
-    "1.5",
+    1.55,
 };
+
 
 const nameCheckStyle = {
   margin:
@@ -2821,46 +3090,59 @@ const nameCheckStyle = {
     "8px",
 
   backgroundColor:
-    "#fff7ed",
+    "#0D1115",
 
   border:
-    "1px solid #fb923c",
+    "1px solid rgba(215,179,106,0.48)",
 
   borderRadius:
-    "5px",
+    "7px",
 
   color:
-    "#9a3412",
+    "#FFFFFF",
 
   fontWeight:
-    "700",
+    800,
 };
+
+
+// ==================================================
+// RECEIPT BUTTON
+// ==================================================
 
 const receiptButtonStyle = {
   width:
     "100%",
 
+  minHeight:
+    "40px",
+
   padding:
     "10px",
 
   border:
-    "none",
+    "1px solid #327B53",
 
   borderRadius:
-    "5px",
+    "7px",
 
-  backgroundColor:
-    "#15803d",
+  background:
+    "linear-gradient(135deg, #17633D, #124A31)",
 
   color:
-    "white",
+    "#FFFFFF",
 
   fontWeight:
-    "bold",
+    900,
 
   cursor:
     "pointer",
 };
+
+
+// ==================================================
+// HISTORY
+// ==================================================
 
 const historyToggleStyle = {
   width:
@@ -2882,19 +3164,19 @@ const historyToggleStyle = {
     "9px",
 
   border:
-    "1px solid #cbd5e1",
+    "1px solid #3D4650",
 
   borderRadius:
-    "5px",
+    "7px",
 
   backgroundColor:
-    "#f8fafc",
+    "#0D1115",
 
   color:
-    "#334155",
+    "#FFFFFF",
 
   fontWeight:
-    "bold",
+    900,
 
   fontSize:
     "9px",
@@ -2902,6 +3184,7 @@ const historyToggleStyle = {
   cursor:
     "pointer",
 };
+
 
 const historyWrapStyle = {
   marginTop:
@@ -2914,19 +3197,24 @@ const historyWrapStyle = {
     "7px",
 };
 
+
 const historyRowStyle = {
   border:
-    "1px solid #e2e8f0",
+    "1px solid #343C45",
 
   borderRadius:
-    "5px",
+    "8px",
 
   padding:
     "9px",
 
   backgroundColor:
-    "#ffffff",
+    "#0D1115",
+
+  color:
+    "#FFFFFF",
 };
+
 
 const historyTopStyle = {
   display:
@@ -2941,37 +3229,43 @@ const historyTopStyle = {
   alignItems:
     "center",
 
+  color:
+    "#FFFFFF",
+
   fontSize:
-    "9px",
+    "10px",
 };
+
 
 const transactionNoStyle = {
   marginTop:
     "2px",
 
   color:
-    "#64748b",
+    "#AAB2BC",
 
   fontSize:
-    "8px",
+    "9px",
 };
+
 
 const historyStatusStyle = {
   padding:
-    "4px 6px",
+    "5px 7px",
 
   borderRadius:
     "10px",
 
   fontSize:
-    "7px",
+    "8px",
 
   fontWeight:
-    "bold",
+    900,
 
   whiteSpace:
     "nowrap",
 };
+
 
 const historyBoxesStyle = {
   display:
@@ -2987,6 +3281,7 @@ const historyBoxesStyle = {
     "8px",
 };
 
+
 const historyValueStyle = {
   display:
     "flex",
@@ -2998,17 +3293,24 @@ const historyValueStyle = {
     "3px",
 
   padding:
-    "6px",
+    "7px",
 
   backgroundColor:
-    "#f8fafc",
+    "#080B0E",
+
+  border:
+    "1px solid #343C45",
 
   borderRadius:
-    "4px",
+    "6px",
+
+  color:
+    "#FFFFFF",
 
   fontSize:
-    "8px",
+    "9px",
 };
+
 
 const historyBottomStyle = {
   marginTop:
@@ -3027,11 +3329,16 @@ const historyBottomStyle = {
     "6px",
 
   color:
-    "#64748b",
+    "#AAB2BC",
 
   fontSize:
-    "8px",
+    "9px",
 };
+
+
+// ==================================================
+// WAITING / WARNING / MESSAGES
+// ==================================================
 
 const awaitingStyle = {
   padding:
@@ -3041,25 +3348,30 @@ const awaitingStyle = {
     "10px",
 
   backgroundColor:
-    "#fffbeb",
+    "#221C10",
 
   border:
-    "1px solid #fde68a",
+    "1px solid #705921",
 
   color:
-    "#92400e",
+    "#FFFFFF",
 
   borderRadius:
-    "5px",
+    "7px",
 
   fontSize:
     "9px",
 };
 
+
 const noticeTextStyle = {
   marginTop:
     "4px",
+
+  color:
+    "#FFFFFF",
 };
+
 
 const warningStyle = {
   padding:
@@ -3069,20 +3381,21 @@ const warningStyle = {
     "10px",
 
   backgroundColor:
-    "#fff7ed",
+    "#2B1D13",
 
   border:
-    "1px solid #fdba74",
+    "1px solid #7A512D",
 
   color:
-    "#9a3412",
+    "#FFFFFF",
 
   borderRadius:
-    "5px",
+    "7px",
 
   fontSize:
     "9px",
 };
+
 
 const successStyle = {
   padding:
@@ -3092,20 +3405,21 @@ const successStyle = {
     "10px",
 
   backgroundColor:
-    "#f0fdf4",
+    "#10261A",
 
   border:
-    "1px solid #86efac",
+    "1px solid #2F6B47",
 
   color:
-    "#166534",
+    "#FFFFFF",
 
   borderRadius:
-    "5px",
+    "7px",
 
   fontSize:
     "9px",
 };
+
 
 const errorStyle = {
   padding:
@@ -3115,20 +3429,21 @@ const errorStyle = {
     "10px",
 
   backgroundColor:
-    "#fef2f2",
+    "#2C1619",
 
   border:
-    "1px solid #fecaca",
+    "1px solid #79363C",
 
   color:
-    "#991b1b",
+    "#FFFFFF",
 
   borderRadius:
-    "5px",
+    "7px",
 
   fontSize:
     "9px",
 };
+
 
 const emptyStyle = {
   padding:
@@ -3138,13 +3453,16 @@ const emptyStyle = {
     "center",
 
   color:
-    "#64748b",
+    "#FFFFFF",
 
   backgroundColor:
-    "#f8fafc",
+    "#0D1115",
+
+  border:
+    "1px solid #343C45",
 
   borderRadius:
-    "5px",
+    "7px",
 
   fontSize:
     "9px",
