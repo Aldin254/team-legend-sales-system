@@ -92,6 +92,11 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   icon: "●",
     },
     {
+  id: "ATTENDANCE_CONTROL",
+  label: "Attendance Control",
+  icon: "✓",
+   },
+   {
       id: "SALARY",
       label: "Employee Salary",
       icon: "💰",
