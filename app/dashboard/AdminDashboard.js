@@ -17,7 +17,7 @@ import AdminDutyControlPanel from "./AdminDutyControlPanel";
 import AdminLiveFeedPanel from "./AdminLiveFeedPanel";
 import AdminAttendanceControlPanel from "./AdminAttendanceControlPanel";
 export default function AdminDashboard({
-  user,
+  user,  
 }) {
   const supabaseUrl = 
 process.env.NEXT_PUBLIC_SUPABASE_URL;
