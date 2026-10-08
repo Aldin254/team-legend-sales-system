@@ -76,7 +76,8 @@ export default function CashierLiveFeedPanel({
           await fetch(
             `${supabaseUrl}/rest/v1/rpc/${functionName}`,
             {
-              method: "POST",
+              method:
+                "POST",
 
               headers:
                 authHeaders(),
@@ -474,6 +475,7 @@ export default function CashierLiveFeedPanel({
     </>
   );
 }
+
 // ==================================================
 // TICKER ITEM
 // ==================================================
@@ -501,7 +503,6 @@ function TickerItem({
     </div>
   );
 }
-
 
 // ==================================================
 // BUILD DUTY MESSAGE
@@ -685,7 +686,6 @@ function buildDutyMessage(
   return message;
 }
 
-
 // ==================================================
 // HELPERS
 // ==================================================
@@ -700,7 +700,6 @@ async function safeJson(
   }
 }
 
-
 function cleanText(
   value
 ) {
@@ -712,16 +711,18 @@ function cleanText(
 
   return text;
 }
+
 // ==================================================
 // LIVE FEED STYLES
-// TARGET BACKGROUND: #111C30
-// ALL LETTERS: WHITE
 // ==================================================
 
 const panelStyle = {
-  width: "100%",
+  width:
+    "100%",
 
-  minHeight: "60px",
+  minHeight:
+    "60px",
+
   boxSizing:
     "border-box",
 
@@ -746,7 +747,6 @@ const panelStyle = {
   color:
     "#FFFFFF",
 };
-
 
 const labelStyle = {
   flexShrink:
@@ -780,7 +780,7 @@ const labelStyle = {
     "1px solid rgba(255,255,255,0.18)",
 
   fontSize:
-    "12px",
+    "13px",
 
   fontWeight:
     900,
@@ -792,27 +792,25 @@ const labelStyle = {
     2,
 };
 
-
 const liveDotStyle = {
   width:
-    "8px",
+    "9px",
 
   height:
-    "8px",
+    "9px",
 
   borderRadius:
     "50%",
 
   backgroundColor:
-    "#FFFFFF",
+    "#22C55E",
 
   boxShadow:
-    "0 0 8px rgba(255,255,255,0.65)",
+    "0 0 9px rgba(34,197,94,0.85)",
 
   flexShrink:
     0,
 };
-
 
 const tickerWindowStyle = {
   flex:
@@ -840,7 +838,6 @@ const tickerWindowStyle = {
     "#FFFFFF",
 };
 
-
 const tickerItemStyle = {
   display:
     "inline-flex",
@@ -849,7 +846,7 @@ const tickerItemStyle = {
     "center",
 
   gap:
-    "13px",
+    "12px",
 
   paddingRight:
     "42px",
@@ -858,7 +855,7 @@ const tickerItemStyle = {
     "#FFFFFF",
 
   fontSize:
-    "13px",
+    "14px",
 
   fontWeight:
     800,
@@ -869,7 +866,6 @@ const tickerItemStyle = {
   whiteSpace:
     "nowrap",
 };
-
 
 const separatorStyle = {
   color:
@@ -882,7 +878,6 @@ const separatorStyle = {
     0.8,
 };
 
-
 const staticMessageStyle = {
   width:
     "100%",
@@ -894,7 +889,7 @@ const staticMessageStyle = {
     "#FFFFFF",
 
   fontSize:
-    "12px",
+    "14px",
 
   fontWeight:
     700,
