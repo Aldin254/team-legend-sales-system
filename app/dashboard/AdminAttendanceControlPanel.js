@@ -7,39 +7,24 @@ import {
   useState,
 } from "react";
 
-// ==========================================================
-// HELPERS
-// ==========================================================
-
 function nairobiToday() {
   try {
     const parts =
       new Intl.DateTimeFormat(
         "en-CA",
         {
-          timeZone:
-            "Africa/Nairobi",
-          year:
-            "numeric",
-          month:
-            "2-digit",
-          day:
-            "2-digit",
+          timeZone: "Africa/Nairobi",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
         }
-      ).formatToParts(
-        new Date()
-      );
+      ).formatToParts(new Date());
 
     const values = {};
 
     for (const part of parts) {
-      if (
-        part.type !==
-        "literal"
-      ) {
-        values[
-          part.type
-        ] = part.value;
+      if (part.type !== "literal") {
+        values[part.type] = part.value;
       }
     }
 
@@ -52,54 +37,36 @@ function nairobiToday() {
 }
 
 function money(value) {
-  const number =
-    Number(value || 0);
-
   return new Intl.NumberFormat(
     "en-KE",
     {
-      minimumFractionDigits:
-        2,
-      maximumFractionDigits:
-        2,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }
-  ).format(number);
+  ).format(Number(value || 0));
 }
 
 function displayTime(value) {
-  if (!value) {
-    return "—";
-  }
-
-  return String(value)
-    .slice(0, 8);
+  if (!value) return "—";
+  return String(value).slice(0, 8);
 }
-
-// ==========================================================
-// COMPONENT
-// ==========================================================
 
 export default function AdminAttendanceControlPanel({
   user,
 }) {
   const supabaseUrl =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_URL;
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
 
   const supabaseAnonKey =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
-    user?.access_token ||
-    null;
+    user?.access_token || null;
 
   const [
     selectedDate,
     setSelectedDate,
-  ] = useState(
-    nairobiToday()
-  );
+  ] = useState(nairobiToday());
 
   const [
     snapshot,
@@ -117,11 +84,6 @@ export default function AdminAttendanceControlPanel({
   ] = useState(true);
 
   const [
-    applying,
-    setApplying,
-  ] = useState(false);
-
-  const [
     error,
     setError,
   ] = useState("");
@@ -132,6 +94,31 @@ export default function AdminAttendanceControlPanel({
   ] = useState("");
 
   const [
+    lunchEnabled,
+    setLunchEnabled,
+  ] = useState(true);
+
+  const [
+    supperEnabled,
+    setSupperEnabled,
+  ] = useState(false);
+
+  const [
+    savingCompanyMeals,
+    setSavingCompanyMeals,
+  ] = useState(false);
+
+  const [
+    mealRateRows,
+    setMealRateRows,
+  ] = useState([]);
+
+  const [
+    savingRateId,
+    setSavingRateId,
+  ] = useState(null);
+
+  const [
     selectedEmployeeId,
     setSelectedEmployeeId,
   ] = useState("");
@@ -139,178 +126,201 @@ export default function AdminAttendanceControlPanel({
   const [
     selectedAction,
     setSelectedAction,
-  ] = useState(
-    "REVOKE_LUNCH"
-  );
+  ] = useState("REVOKE_LUNCH");
 
   const [
     reason,
     setReason,
   ] = useState("");
 
-  // ========================================================
-  // RPC
-  // ========================================================
+  const [
+    applying,
+    setApplying,
+  ] = useState(false);
 
-  const rpc =
-    useCallback(
-      async (
-        functionName,
-        payload = {}
-      ) => {
-        if (
-          !supabaseUrl ||
-          !supabaseAnonKey ||
-          !accessToken
-        ) {
-          throw new Error(
-            "Admin session or Supabase configuration is missing."
-          );
-        }
+  const rpc = useCallback(
+    async (
+      functionName,
+      payload = {}
+    ) => {
+      if (
+        !supabaseUrl ||
+        !supabaseAnonKey ||
+        !accessToken
+      ) {
+        throw new Error(
+          "Admin session or Supabase configuration is missing."
+        );
+      }
 
-        const response =
-          await fetch(
-            `${supabaseUrl}/rest/v1/rpc/${functionName}`,
-            {
-              method:
-                "POST",
+      const response =
+        await fetch(
+          `${supabaseUrl}/rest/v1/rpc/${functionName}`,
+          {
+            method: "POST",
 
-              headers: {
-                apikey:
-                  supabaseAnonKey,
+            headers: {
+              apikey: supabaseAnonKey,
 
-                Authorization:
-                  `Bearer ${accessToken}`,
+              Authorization:
+                `Bearer ${accessToken}`,
 
-                "Content-Type":
-                  "application/json",
-              },
+              "Content-Type":
+                "application/json",
+            },
 
-              body:
-                JSON.stringify(
-                  payload
-                ),
-            }
-          );
-
-        const text =
-          await response.text();
-
-        let data = null;
-
-        if (text) {
-          try {
-            data =
-              JSON.parse(
-                text
-              );
-          } catch {
-            data =
-              text;
+            body:
+              JSON.stringify(payload),
           }
-        }
+        );
 
-        if (!response.ok) {
-          const message =
-            data?.message ||
-            data?.error_description ||
-            data?.hint ||
-            text ||
-            "Request failed.";
+      const text =
+        await response.text();
 
-          throw new Error(
-            message
-          );
-        }
+      let data = null;
 
-        return data;
-      },
-      [
-        accessToken,
-        supabaseAnonKey,
-        supabaseUrl,
-      ]
-    );
-
-  // ========================================================
-  // LOAD
-  // ========================================================
-
-  const loadData =
-    useCallback(
-      async (
-        silent = false
-      ) => {
-        if (!silent) {
-          setLoading(
-            true
-          );
-        }
-
-        setError("");
-
+      if (text) {
         try {
-          const [
-            snapshotData,
-            historyData,
-          ] =
-            await Promise.all([
-              rpc(
-                "tl_admin_attendance_control_snapshot",
-                {
-                  p_duty_date:
-                    selectedDate,
-                }
-              ),
-
-              rpc(
-                "tl_admin_meal_override_history",
-                {
-                  p_employee_id:
-                    null,
-
-                  p_meal_date:
-                    selectedDate,
-                }
-              ),
-            ]);
-
-          setSnapshot(
-            snapshotData ||
-              null
-          );
-
-          setHistory(
-            Array.isArray(
-              historyData
-            )
-              ? historyData
-              : []
-          );
-        } catch (err) {
-          setError(
-            err?.message ||
-              "Unable to load attendance control."
-          );
-        } finally {
-          if (!silent) {
-            setLoading(
-              false
-            );
-          }
+          data = JSON.parse(text);
+        } catch {
+          data = text;
         }
-      },
-      [
-        rpc,
-        selectedDate,
-      ]
-    );
+      }
+
+      if (!response.ok) {
+        const message =
+          data?.message ||
+          data?.error_description ||
+          data?.hint ||
+          text ||
+          "Request failed.";
+
+        throw new Error(message);
+      }
+
+      return data;
+    },
+    [
+      accessToken,
+      supabaseAnonKey,
+      supabaseUrl,
+    ]
+  );
+
+  const loadData = useCallback(
+    async (
+      silent = false
+    ) => {
+      if (!silent) {
+        setLoading(true);
+      }
+
+      setError("");
+
+      try {
+        const [
+          attendanceData,
+          historyData,
+          companyMealData,
+          employeeRatesData,
+        ] =
+          await Promise.all([
+            rpc(
+              "tl_admin_attendance_control_snapshot",
+              {
+                p_duty_date:
+                  selectedDate,
+              }
+            ),
+
+            rpc(
+              "tl_admin_meal_override_history",
+              {
+                p_employee_id:
+                  null,
+
+                p_meal_date:
+                  selectedDate,
+              }
+            ),
+
+            rpc(
+              "tl_admin_company_meal_settings_snapshot"
+            ),
+
+            rpc(
+              "tl_admin_employee_meal_rates_snapshot"
+            ),
+          ]);
+
+        setSnapshot(
+          attendanceData || null
+        );
+
+        setHistory(
+          Array.isArray(historyData)
+            ? historyData
+            : []
+        );
+
+        setLunchEnabled(
+          companyMealData
+            ?.lunch_enabled === true
+        );
+
+        setSupperEnabled(
+          companyMealData
+            ?.supper_enabled === true
+        );
+
+        const rates =
+          Array.isArray(
+            employeeRatesData
+              ?.employees
+          )
+            ? employeeRatesData.employees
+            : [];
+
+        setMealRateRows(
+          rates.map(
+            (row) => ({
+              ...row,
+
+              lunch_amount:
+                String(
+                  row.lunch_amount ??
+                    "0"
+                ),
+
+              supper_amount:
+                String(
+                  row.supper_amount ??
+                    "0"
+                ),
+            })
+          )
+        );
+      } catch (err) {
+        setError(
+          err?.message ||
+            "Unable to load Attendance Control."
+        );
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [
+      rpc,
+      selectedDate,
+    ]
+  );
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Optional light refresh.
   useEffect(() => {
     const timer =
       setInterval(
@@ -321,14 +331,8 @@ export default function AdminAttendanceControlPanel({
       );
 
     return () =>
-      clearInterval(
-        timer
-      );
+      clearInterval(timer);
   }, [loadData]);
-
-  // ========================================================
-  // EMPLOYEES
-  // ========================================================
 
   const employees =
     useMemo(() => {
@@ -359,8 +363,7 @@ export default function AdminAttendanceControlPanel({
       employees.length > 0
     ) {
       setSelectedEmployeeId(
-        employees[0]
-          .employee_id
+        employees[0].employee_id
       );
     }
   }, [
@@ -368,60 +371,167 @@ export default function AdminAttendanceControlPanel({
     selectedEmployeeId,
   ]);
 
-  // ========================================================
-  // ACTION MAPPING
-  // ========================================================
+  async function saveCompanyMealSettings() {
+    setError("");
+    setSuccess("");
+    setSavingCompanyMeals(true);
+
+    try {
+      await rpc(
+        "tl_admin_update_company_meal_settings",
+        {
+          p_lunch_enabled:
+            lunchEnabled,
+
+          p_supper_enabled:
+            supperEnabled,
+        }
+      );
+
+      setSuccess(
+        "Company meal settings saved successfully."
+      );
+
+      await loadData(true);
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Unable to save company meal settings."
+      );
+    } finally {
+      setSavingCompanyMeals(false);
+    }
+  }
+
+  function updateRateField(
+    employeeId,
+    field,
+    value
+  ) {
+    if (
+      value !== "" &&
+      Number(value) < 0
+    ) {
+      return;
+    }
+
+    setMealRateRows(
+      (current) =>
+        current.map(
+          (row) =>
+            row.employee_id ===
+            employeeId
+              ? {
+                  ...row,
+                  [field]: value,
+                }
+              : row
+        )
+    );
+  }
+
+  async function saveEmployeeRate(
+    row
+  ) {
+    setError("");
+    setSuccess("");
+
+    const lunch =
+      Number(row.lunch_amount);
+
+    const supper =
+      Number(row.supper_amount);
+
+    if (
+      Number.isNaN(lunch) ||
+      lunch < 0
+    ) {
+      setError(
+        "Lunch amount must be 0 or more."
+      );
+      return;
+    }
+
+    if (
+      Number.isNaN(supper) ||
+      supper < 0
+    ) {
+      setError(
+        "Supper amount must be 0 or more."
+      );
+      return;
+    }
+
+    setSavingRateId(
+      row.employee_id
+    );
+
+    try {
+      await rpc(
+        "tl_admin_update_employee_meal_rates",
+        {
+          p_employee_id:
+            row.employee_id,
+
+          p_lunch_amount:
+            lunch,
+
+          p_supper_amount:
+            supper,
+        }
+      );
+
+      setSuccess(
+        `Meal rates saved for ${row.employee_name}.`
+      );
+
+      await loadData(true);
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Unable to save employee meal rates."
+      );
+    } finally {
+      setSavingRateId(null);
+    }
+  }
 
   function getActionPayload() {
-    switch (
-      selectedAction
-    ) {
+    switch (selectedAction) {
       case "GRANT_LUNCH":
         return {
-          mealType:
-            "LUNCH",
-          eligible:
-            true,
+          mealType: "LUNCH",
+          eligible: true,
         };
 
       case "REVOKE_LUNCH":
         return {
-          mealType:
-            "LUNCH",
-          eligible:
-            false,
+          mealType: "LUNCH",
+          eligible: false,
         };
 
       case "GRANT_SUPPER":
         return {
-          mealType:
-            "SUPPER",
-          eligible:
-            true,
+          mealType: "SUPPER",
+          eligible: true,
         };
 
       case "REVOKE_SUPPER":
         return {
-          mealType:
-            "SUPPER",
-          eligible:
-            false,
+          mealType: "SUPPER",
+          eligible: false,
         };
 
       case "GRANT_BOTH":
         return {
-          mealType:
-            "BOTH",
-          eligible:
-            true,
+          mealType: "BOTH",
+          eligible: true,
         };
 
       case "REVOKE_BOTH":
         return {
-          mealType:
-            "BOTH",
-          eligible:
-            false,
+          mealType: "BOTH",
+          eligible: false,
         };
 
       default:
@@ -429,17 +539,11 @@ export default function AdminAttendanceControlPanel({
     }
   }
 
-  // ========================================================
-  // APPLY
-  // ========================================================
-
   async function applyOverride() {
     setError("");
     setSuccess("");
 
-    if (
-      !selectedEmployeeId
-    ) {
+    if (!selectedEmployeeId) {
       setError(
         "Select an employee."
       );
@@ -447,8 +551,7 @@ export default function AdminAttendanceControlPanel({
     }
 
     if (
-      reason.trim().length <
-      2
+      reason.trim().length < 2
     ) {
       setError(
         "Enter a reason for the meal override."
@@ -472,11 +575,10 @@ export default function AdminAttendanceControlPanel({
       "this employee";
 
     const actionName =
-      selectedAction
-        .replaceAll(
-          "_",
-          " "
-        );
+      selectedAction.replaceAll(
+        "_",
+        " "
+      );
 
     const confirmed =
       window.confirm(
@@ -523,21 +625,18 @@ export default function AdminAttendanceControlPanel({
           "Unable to apply meal override."
       );
     } finally {
-      setApplying(
-        false
-      );
+      setApplying(false);
     }
   }
-
   // ========================================================
   // RENDER
   // ========================================================
 
   return (
     <div style={panelStyle}>
-      {/* ================================================ */}
+      {/* ================================================== */}
       {/* HEADER */}
-      {/* ================================================ */}
+      {/* ================================================== */}
 
       <div style={panelHeaderStyle}>
         <div>
@@ -546,7 +645,7 @@ export default function AdminAttendanceControlPanel({
           </div>
 
           <div style={panelSubtitleStyle}>
-            Sign-in monitoring • 24-hour exemptions • Lunch / Supper control
+            Sign-in monitoring • 24-hour exemptions • Company meals • Employee rates
           </div>
         </div>
 
@@ -555,55 +654,9 @@ export default function AdminAttendanceControlPanel({
         </div>
       </div>
 
-      {/* ================================================ */}
-      {/* DATE */}
-      {/* ================================================ */}
-
-      <div style={toolbarStyle}>
-        <div style={fieldGroupStyle}>
-          <label style={labelStyle}>
-            DUTY DATE
-          </label>
-
-          <input
-            type="date"
-            value={
-              selectedDate
-            }
-            onChange={(
-              event
-            ) => {
-              setSelectedDate(
-                event.target
-                  .value
-              );
-
-              setSelectedEmployeeId(
-                ""
-              );
-
-              setSuccess(
-                ""
-              );
-            }}
-            style={inputStyle}
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={() =>
-            loadData()
-          }
-          style={refreshButtonStyle}
-        >
-          Refresh
-        </button>
-      </div>
-
-      {/* ================================================ */}
+      {/* ================================================== */}
       {/* MESSAGES */}
-      {/* ================================================ */}
+      {/* ================================================== */}
 
       {error && (
         <div style={errorStyle}>
@@ -617,16 +670,252 @@ export default function AdminAttendanceControlPanel({
         </div>
       )}
 
-      {/* ================================================ */}
+      {/* ================================================== */}
+      {/* COMPANY MEAL SETTINGS */}
+      {/* ================================================== */}
+
+      <div style={sectionStyle}>
+        <div style={sectionTitleStyle}>
+          COMPANY MEAL SETTINGS
+        </div>
+
+        <div style={companyMealBodyStyle}>
+          <div style={mealSwitchGridStyle}>
+            <MealSwitch
+              title="LUNCH"
+              description="Enable or disable Lunch for the whole company."
+              enabled={lunchEnabled}
+              onChange={setLunchEnabled}
+            />
+
+            <MealSwitch
+              title="SUPPER"
+              description="Enable or disable Supper for the whole company."
+              enabled={supperEnabled}
+              onChange={setSupperEnabled}
+            />
+          </div>
+
+          <div style={companyRuleStyle}>
+            Company switch overrides the individual meal result.
+            Employee amounts remain saved even while a meal is disabled.
+          </div>
+
+          <button
+            type="button"
+            disabled={savingCompanyMeals}
+            onClick={saveCompanyMealSettings}
+            style={{
+              ...saveCompanyButtonStyle,
+              opacity: savingCompanyMeals
+                ? 0.55
+                : 1,
+            }}
+          >
+            {savingCompanyMeals
+              ? "Saving..."
+              : "Save Company Meal Settings"}
+          </button>
+        </div>
+      </div>
+
+      {/* ================================================== */}
+      {/* EMPLOYEE MEAL RATES */}
+      {/* ================================================== */}
+
+      <div style={sectionStyle}>
+        <div style={sectionTitleStyle}>
+          EMPLOYEE MEAL RATES
+        </div>
+
+        <div style={rateInfoStyle}>
+          Set each employee&apos;s normal Lunch and Supper amount.
+          A rate can remain saved even when that meal is disabled company-wide.
+        </div>
+
+        {loading ? (
+          <div style={emptyStyle}>
+            Loading employee meal rates...
+          </div>
+        ) : mealRateRows.length === 0 ? (
+          <div style={emptyStyle}>
+            No employee work settings found.
+          </div>
+        ) : (
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>
+                    Employee
+                  </th>
+
+                  <th style={thStyle}>
+                    Shop
+                  </th>
+
+                  <th style={thStyle}>
+                    Position
+                  </th>
+
+                  <th style={thStyle}>
+                    Lunch
+                  </th>
+
+                  <th style={thStyle}>
+                    Supper
+                  </th>
+
+                  <th style={thStyle}>
+                    Save
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {mealRateRows.map(
+                  (row) => (
+                    <tr key={row.employee_id}>
+                      <td style={tdStyle}>
+                        <strong>
+                          {row.employee_name}
+                        </strong>
+                      </td>
+
+                      <td style={tdStyle}>
+                        {row.shop_name ||
+                          "Relief / No Home Shop"}
+                      </td>
+
+                      <td style={tdStyle}>
+                        {row.position_code ||
+                          "EMPLOYEE"}
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div style={amountInputWrapStyle}>
+                          <span style={kesStyle}>
+                            KES
+                          </span>
+
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={row.lunch_amount}
+                            onChange={(event) =>
+                              updateRateField(
+                                row.employee_id,
+                                "lunch_amount",
+                                event.target.value
+                              )
+                            }
+                            style={amountInputStyle}
+                          />
+                        </div>
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div style={amountInputWrapStyle}>
+                          <span style={kesStyle}>
+                            KES
+                          </span>
+
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={row.supper_amount}
+                            onChange={(event) =>
+                              updateRateField(
+                                row.employee_id,
+                                "supper_amount",
+                                event.target.value
+                              )
+                            }
+                            style={amountInputStyle}
+                          />
+                        </div>
+                      </td>
+
+                      <td style={tdStyle}>
+                        <button
+                          type="button"
+                          disabled={
+                            savingRateId ===
+                            row.employee_id
+                          }
+                          onClick={() =>
+                            saveEmployeeRate(row)
+                          }
+                          style={{
+                            ...rateSaveButtonStyle,
+                            opacity:
+                              savingRateId ===
+                              row.employee_id
+                                ? 0.55
+                                : 1,
+                          }}
+                        >
+                          {savingRateId ===
+                          row.employee_id
+                            ? "Saving..."
+                            : "Save"}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ================================================== */}
+      {/* DATE TOOLBAR */}
+      {/* ================================================== */}
+
+      <div style={toolbarStyle}>
+        <div style={fieldGroupStyle}>
+          <label style={labelStyle}>
+            DUTY DATE
+          </label>
+
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(event) => {
+              setSelectedDate(
+                event.target.value
+              );
+
+              setSelectedEmployeeId("");
+
+              setSuccess("");
+            }}
+            style={inputStyle}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => loadData()}
+          style={refreshButtonStyle}
+        >
+          Refresh
+        </button>
+      </div>
+
+      {/* ================================================== */}
       {/* SUMMARY */}
-      {/* ================================================ */}
+      {/* ================================================== */}
 
       <div style={summaryGridStyle}>
         <SummaryBox
           label="Duty Date"
           value={
-            snapshot
-              ?.duty_date ||
+            snapshot?.duty_date ||
             selectedDate
           }
         />
@@ -634,35 +923,31 @@ export default function AdminAttendanceControlPanel({
         <SummaryBox
           label="On Duty"
           value={
-            snapshot
-              ?.employee_count ??
+            snapshot?.employee_count ??
             employees.length
           }
         />
 
         <SummaryBox
-          label="24HR Exempt"
+          label="Sign-In Exempt"
           value={
             employees.filter(
               (employee) =>
-                employee
-                  .sign_in_required ===
+                employee.sign_in_required ===
                 false
             ).length
           }
         />
 
         <SummaryBox
-          label="Overrides Today"
-          value={
-            history.length
-          }
+          label="Meal Overrides"
+          value={history.length}
         />
       </div>
 
-      {/* ================================================ */}
-      {/* TABLE */}
-      {/* ================================================ */}
+      {/* ================================================== */}
+      {/* EMPLOYEES ON DUTY */}
+      {/* ================================================== */}
 
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>
@@ -673,8 +958,7 @@ export default function AdminAttendanceControlPanel({
           <div style={emptyStyle}>
             Loading attendance...
           </div>
-        ) : employees.length ===
-          0 ? (
+        ) : employees.length === 0 ? (
           <div style={emptyStyle}>
             No on-duty employees found for this date.
           </div>
@@ -726,9 +1010,7 @@ export default function AdminAttendanceControlPanel({
 
                     return (
                       <tr
-                        key={
-                          employee.employee_id
-                        }
+                        key={employee.employee_id}
                         style={
                           selected
                             ? selectedRowStyle
@@ -737,18 +1019,14 @@ export default function AdminAttendanceControlPanel({
                       >
                         <td style={tdStyle}>
                           <strong>
-                            {
-                              employee.employee_name
-                            }
+                            {employee.employee_name}
                           </strong>
                         </td>
 
                         <td style={tdStyle}>
                           <div>
-                            {
-                              employee.shop_name ||
-                              "—"
-                            }
+                            {employee.shop_name ||
+                              "—"}
                           </div>
 
                           {employee.shop_type ===
@@ -784,15 +1062,6 @@ export default function AdminAttendanceControlPanel({
                               type="orange"
                             />
                           )}
-
-                          {exempt && (
-                            <div style={smallMutedStyle}>
-                              {employee.shop_type ===
-                              "24_HOUR"
-                                ? "24HR SHOP"
-                                : "EXEMPT RULE"}
-                            </div>
-                          )}
                         </td>
 
                         <td style={tdStyle}>
@@ -805,6 +1074,7 @@ export default function AdminAttendanceControlPanel({
 
                         <td style={tdStyle}>
                           <MealState
+                            enabled={lunchEnabled}
                             eligible={
                               employee.lunch_eligible
                             }
@@ -822,6 +1092,7 @@ export default function AdminAttendanceControlPanel({
 
                         <td style={tdStyle}>
                           <MealState
+                            enabled={supperEnabled}
                             eligible={
                               employee.supper_eligible
                             }
@@ -847,7 +1118,6 @@ export default function AdminAttendanceControlPanel({
                             }
                             style={{
                               ...selectButtonStyle,
-
                               ...(selected
                                 ? selectedButtonStyle
                                 : {}),
@@ -868,13 +1138,13 @@ export default function AdminAttendanceControlPanel({
         )}
       </div>
 
-      {/* ================================================ */}
-      {/* MEAL CONTROL */}
-      {/* ================================================ */}
+      {/* ================================================== */}
+      {/* INDIVIDUAL OVERRIDE */}
+      {/* ================================================== */}
 
       <div style={mealControlStyle}>
         <div style={sectionTitleStyle}>
-          LUNCH / SUPPER OVERRIDE
+          INDIVIDUAL LUNCH / SUPPER OVERRIDE
         </div>
 
         <div style={selectedEmployeeStyle}>
@@ -891,6 +1161,7 @@ export default function AdminAttendanceControlPanel({
           {selectedEmployee && (
             <span style={selectedShopStyle}>
               {selectedEmployee.shop_name}
+
               {selectedEmployee.shop_type ===
               "24_HOUR"
                 ? " • 24HR SIGN-IN EXEMPT"
@@ -906,15 +1177,10 @@ export default function AdminAttendanceControlPanel({
             </label>
 
             <select
-              value={
-                selectedAction
-              }
-              onChange={(
-                event
-              ) =>
+              value={selectedAction}
+              onChange={(event) =>
                 setSelectedAction(
-                  event.target
-                    .value
+                  event.target.value
                 )
               }
               style={inputStyle}
@@ -955,12 +1221,9 @@ export default function AdminAttendanceControlPanel({
               value={reason}
               maxLength={500}
               placeholder="Example: Disciplinary action / Admin approved meal"
-              onChange={(
-                event
-              ) =>
+              onChange={(event) =>
                 setReason(
-                  event.target
-                    .value
+                  event.target.value
                 )
               }
               style={inputStyle}
@@ -973,12 +1236,9 @@ export default function AdminAttendanceControlPanel({
               applying ||
               !selectedEmployee
             }
-            onClick={
-              applyOverride
-            }
+            onClick={applyOverride}
             style={{
               ...applyButtonStyle,
-
               opacity:
                 applying ||
                 !selectedEmployee
@@ -993,23 +1253,21 @@ export default function AdminAttendanceControlPanel({
         </div>
 
         <div style={controlNoteStyle}>
-          Admin overrides do not erase the original attendance result.
-          The latest Admin meal decision becomes the effective Lunch or
-          Supper status and remains in the audit history.
+          Individual overrides do not erase the original attendance result.
+          The company-wide Lunch or Supper switch still has final control.
         </div>
       </div>
 
-      {/* ================================================ */}
+      {/* ================================================== */}
       {/* HISTORY */}
-      {/* ================================================ */}
+      {/* ================================================== */}
 
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>
           OVERRIDE HISTORY
         </div>
 
-        {history.length ===
-        0 ? (
+        {history.length === 0 ? (
           <div style={emptyStyle}>
             No meal overrides recorded for {selectedDate}.
           </div>
@@ -1047,28 +1305,18 @@ export default function AdminAttendanceControlPanel({
               <tbody>
                 {history.map(
                   (item) => (
-                    <tr
-                      key={
-                        item.id
-                      }
-                    >
+                    <tr key={item.id}>
                       <td style={tdStyle}>
-                        {
-                          item.employee_name
-                        }
+                        {item.employee_name}
                       </td>
 
                       <td style={tdStyle}>
-                        {
-                          item.meal_type
-                        }
+                        {item.meal_type}
                       </td>
 
                       <td style={tdStyle}>
                         <Badge
-                          text={
-                            item.action
-                          }
+                          text={item.action}
                           type={
                             item.eligible
                               ? "green"
@@ -1078,16 +1326,12 @@ export default function AdminAttendanceControlPanel({
                       </td>
 
                       <td style={tdStyle}>
-                        {
-                          item.reason
-                        }
+                        {item.reason}
                       </td>
 
                       <td style={tdStyle}>
-                        {
-                          item.admin_name ||
-                          "ADMIN"
-                        }
+                        {item.admin_name ||
+                          "ADMIN"}
                       </td>
 
                       <td style={tdStyle}>
@@ -1136,45 +1380,78 @@ function SummaryBox({
   );
 }
 
+function MealSwitch({
+  title,
+  description,
+  enabled,
+  onChange,
+}) {
+  return (
+    <div style={mealSwitchCardStyle}>
+      <div>
+        <div style={mealSwitchTitleStyle}>
+          {title}
+        </div>
+
+        <div style={mealSwitchDescriptionStyle}>
+          {description}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() =>
+          onChange(!enabled)
+        }
+        style={{
+          ...toggleButtonStyle,
+          backgroundColor:
+            enabled
+              ? "#15803d"
+              : "#64748b",
+        }}
+      >
+        {enabled
+          ? "ENABLED"
+          : "DISABLED"}
+      </button>
+    </div>
+  );
+}
+
 function Badge({
   text,
   type,
 }) {
   const styles = {
     green: {
-      backgroundColor:
-        "#dcfce7",
-      color:
-        "#166534",
-      border:
-        "1px solid #86efac",
+      backgroundColor: "#dcfce7",
+      color: "#166534",
+      border: "1px solid #86efac",
     },
 
     red: {
-      backgroundColor:
-        "#fee2e2",
-      color:
-        "#991b1b",
-      border:
-        "1px solid #fca5a5",
+      backgroundColor: "#fee2e2",
+      color: "#991b1b",
+      border: "1px solid #fca5a5",
     },
 
     orange: {
-      backgroundColor:
-        "#ffedd5",
-      color:
-        "#9a3412",
-      border:
-        "1px solid #fdba74",
+      backgroundColor: "#ffedd5",
+      color: "#9a3412",
+      border: "1px solid #fdba74",
     },
 
     blue: {
-      backgroundColor:
-        "#dbeafe",
-      color:
-        "#1e40af",
-      border:
-        "1px solid #93c5fd",
+      backgroundColor: "#dbeafe",
+      color: "#1e40af",
+      border: "1px solid #93c5fd",
+    },
+
+    gray: {
+      backgroundColor: "#e2e8f0",
+      color: "#475569",
+      border: "1px solid #cbd5e1",
     },
   };
 
@@ -1192,17 +1469,33 @@ function Badge({
 }
 
 function MealState({
+  enabled,
   eligible,
   overridden,
   amount,
 }) {
+  if (!enabled) {
+    return (
+      <div>
+        <Badge
+          text="COMPANY OFF"
+          type="gray"
+        />
+
+        <div style={smallMutedStyle}>
+          Saved: KES {money(amount)}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <Badge
         text={
           eligible
             ? "ELIGIBLE"
-            : "REVOKED"
+            : "NOT ELIGIBLE"
         }
         type={
           eligible
@@ -1221,608 +1514,404 @@ function MealState({
     </div>
   );
 }
-
 // ==========================================================
 // STYLES
 // ==========================================================
 
 const panelStyle = {
-  width:
-    "100%",
-
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  gap:
-    "14px",
+  width: "100%",
+  display: "flex",
+  flexDirection: "column",
+  gap: "14px",
 };
 
 const panelHeaderStyle = {
-  padding:
-    "16px 18px",
-
-  backgroundColor:
-    "#111C30",
-
-  borderRadius:
-    "7px",
-
-  color:
-    "#ffffff",
-
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
-
-  gap:
-    "12px",
+  padding: "16px 18px",
+  backgroundColor: "#111C30",
+  borderRadius: "7px",
+  color: "#ffffff",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
 };
 
 const panelTitleStyle = {
-  fontSize:
-    "15px",
-
-  fontWeight:
-    "900",
+  fontSize: "15px",
+  fontWeight: "900",
 };
 
 const panelSubtitleStyle = {
-  marginTop:
-    "4px",
-
-  fontSize:
-    "10px",
-
-  color:
-    "#cbd5e1",
+  marginTop: "4px",
+  fontSize: "10px",
+  color: "#cbd5e1",
 };
 
 const headerBadgeStyle = {
-  padding:
-    "7px 11px",
-
+  padding: "7px 11px",
   border:
     "1px solid rgba(255,255,255,0.25)",
-
-  borderRadius:
-    "20px",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "900",
-};
-
-const toolbarStyle = {
-  backgroundColor:
-    "#ffffff",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "7px",
-
-  padding:
-    "12px",
-
-  display:
-    "flex",
-
-  alignItems:
-    "flex-end",
-
-  gap:
-    "10px",
-
-  flexWrap:
-    "wrap",
-};
-
-const fieldGroupStyle = {
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  gap:
-    "5px",
-};
-
-const reasonGroupStyle = {
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  gap:
-    "5px",
-
-  flex:
-    1,
-
-  minWidth:
-    "220px",
-};
-
-const labelStyle = {
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "900",
-
-  color:
-    "#475569",
-};
-
-const inputStyle = {
-  minHeight:
-    "36px",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "8px 10px",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "5px",
-
-  backgroundColor:
-    "#ffffff",
-
-  color:
-    "#0f172a",
-
-  fontSize:
-    "11px",
-
-  outline:
-    "none",
-};
-
-const refreshButtonStyle = {
-  minHeight:
-    "36px",
-
-  padding:
-    "8px 15px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "5px",
-
-  backgroundColor:
-    "#0e7490",
-
-  color:
-    "#ffffff",
-
-  fontWeight:
-    "900",
-
-  fontSize:
-    "10px",
-
-  cursor:
-    "pointer",
-};
-
-const summaryGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(150px,1fr))",
-
-  gap:
-    "10px",
-};
-
-const summaryBoxStyle = {
-  padding:
-    "12px",
-
-  backgroundColor:
-    "#ffffff",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "7px",
-};
-
-const summaryLabelStyle = {
-  color:
-    "#64748b",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-};
-
-const summaryValueStyle = {
-  marginTop:
-    "5px",
-
-  fontSize:
-    "18px",
-
-  fontWeight:
-    "900",
-
-  color:
-    "#0f172a",
+  borderRadius: "20px",
+  fontSize: "9px",
+  fontWeight: "900",
 };
 
 const sectionStyle = {
-  backgroundColor:
-    "#ffffff",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "7px",
-
-  overflow:
-    "hidden",
+  backgroundColor: "#ffffff",
+  border: "1px solid #cbd5e1",
+  borderRadius: "7px",
+  overflow: "hidden",
 };
 
 const sectionTitleStyle = {
-  padding:
-    "11px 14px",
+  padding: "11px 14px",
+  backgroundColor: "#111C30",
+  color: "#ffffff",
+  fontWeight: "900",
+  fontSize: "11px",
+};
 
-  backgroundColor:
-    "#111C30",
+const companyMealBodyStyle = {
+  padding: "14px",
+};
 
-  color:
-    "#ffffff",
+const mealSwitchGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(240px,1fr))",
+  gap: "10px",
+};
 
-  fontWeight:
-    "900",
+const mealSwitchCardStyle = {
+  padding: "14px",
+  border: "1px solid #e2e8f0",
+  borderRadius: "7px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "14px",
+  backgroundColor: "#f8fafc",
+};
 
-  fontSize:
-    "11px",
+const mealSwitchTitleStyle = {
+  fontSize: "12px",
+  fontWeight: "900",
+  color: "#0f172a",
+};
+
+const mealSwitchDescriptionStyle = {
+  marginTop: "4px",
+  color: "#64748b",
+  fontSize: "9px",
+  lineHeight: "1.4",
+};
+
+const toggleButtonStyle = {
+  minWidth: "90px",
+  padding: "8px 10px",
+  border: "none",
+  borderRadius: "20px",
+  color: "#ffffff",
+  fontSize: "9px",
+  fontWeight: "900",
+  cursor: "pointer",
+};
+
+const companyRuleStyle = {
+  marginTop: "12px",
+  padding: "9px",
+  backgroundColor: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: "5px",
+  color: "#1e40af",
+  fontSize: "9px",
+  lineHeight: "1.5",
+};
+
+const saveCompanyButtonStyle = {
+  marginTop: "12px",
+  padding: "9px 14px",
+  border: "none",
+  borderRadius: "5px",
+  backgroundColor: "#0e7490",
+  color: "#ffffff",
+  fontSize: "10px",
+  fontWeight: "900",
+  cursor: "pointer",
+};
+
+const rateInfoStyle = {
+  padding: "10px 14px",
+  backgroundColor: "#f8fafc",
+  borderBottom: "1px solid #e2e8f0",
+  color: "#64748b",
+  fontSize: "9px",
+};
+
+const amountInputWrapStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "5px",
+};
+
+const kesStyle = {
+  color: "#64748b",
+  fontSize: "8px",
+  fontWeight: "900",
+};
+
+const amountInputStyle = {
+  width: "85px",
+  minHeight: "32px",
+  padding: "6px 8px",
+  boxSizing: "border-box",
+  border: "1px solid #cbd5e1",
+  borderRadius: "4px",
+  fontSize: "10px",
+  color: "#0f172a",
+  backgroundColor: "#ffffff",
+};
+
+const rateSaveButtonStyle = {
+  padding: "7px 12px",
+  border: "none",
+  borderRadius: "4px",
+  backgroundColor: "#15803d",
+  color: "#ffffff",
+  fontSize: "9px",
+  fontWeight: "900",
+  cursor: "pointer",
+};
+
+const toolbarStyle = {
+  backgroundColor: "#ffffff",
+  border: "1px solid #cbd5e1",
+  borderRadius: "7px",
+  padding: "12px",
+  display: "flex",
+  alignItems: "flex-end",
+  gap: "10px",
+  flexWrap: "wrap",
+};
+
+const fieldGroupStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "5px",
+};
+
+const reasonGroupStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "5px",
+  flex: 1,
+  minWidth: "220px",
+};
+
+const labelStyle = {
+  fontSize: "9px",
+  fontWeight: "900",
+  color: "#475569",
+};
+
+const inputStyle = {
+  minHeight: "36px",
+  boxSizing: "border-box",
+  padding: "8px 10px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "5px",
+  backgroundColor: "#ffffff",
+  color: "#0f172a",
+  fontSize: "11px",
+  outline: "none",
+};
+
+const refreshButtonStyle = {
+  minHeight: "36px",
+  padding: "8px 15px",
+  border: "none",
+  borderRadius: "5px",
+  backgroundColor: "#0e7490",
+  color: "#ffffff",
+  fontWeight: "900",
+  fontSize: "10px",
+  cursor: "pointer",
+};
+
+const summaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(150px,1fr))",
+  gap: "10px",
+};
+
+const summaryBoxStyle = {
+  padding: "12px",
+  backgroundColor: "#ffffff",
+  border: "1px solid #cbd5e1",
+  borderRadius: "7px",
+};
+
+const summaryLabelStyle = {
+  color: "#64748b",
+  fontSize: "9px",
+  fontWeight: "bold",
+};
+
+const summaryValueStyle = {
+  marginTop: "5px",
+  fontSize: "18px",
+  fontWeight: "900",
+  color: "#0f172a",
 };
 
 const tableWrapStyle = {
-  overflowX:
-    "auto",
+  overflowX: "auto",
 };
 
 const tableStyle = {
-  width:
-    "100%",
-
-  borderCollapse:
-    "collapse",
-
-  minWidth:
-    "850px",
+  width: "100%",
+  borderCollapse: "collapse",
+  minWidth: "850px",
 };
 
 const thStyle = {
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#f8fafc",
-
+  padding: "10px",
+  backgroundColor: "#f8fafc",
   borderBottom:
     "1px solid #cbd5e1",
-
-  color:
-    "#475569",
-
-  textAlign:
-    "left",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "900",
+  color: "#475569",
+  textAlign: "left",
+  fontSize: "9px",
+  fontWeight: "900",
 };
 
 const tdStyle = {
-  padding:
-    "10px",
-
+  padding: "10px",
   borderBottom:
     "1px solid #e2e8f0",
-
-  color:
-    "#0f172a",
-
-  fontSize:
-    "10px",
-
-  verticalAlign:
-    "middle",
+  color: "#0f172a",
+  fontSize: "10px",
+  verticalAlign: "middle",
 };
 
 const selectedRowStyle = {
-  backgroundColor:
-    "#f0f9ff",
+  backgroundColor: "#f0f9ff",
 };
 
 const badgeStyle = {
-  display:
-    "inline-block",
-
-  padding:
-    "4px 7px",
-
-  borderRadius:
-    "20px",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "900",
+  display: "inline-block",
+  padding: "4px 7px",
+  borderRadius: "20px",
+  fontSize: "8px",
+  fontWeight: "900",
 };
 
 const smallMutedStyle = {
-  marginTop:
-    "4px",
-
-  color:
-    "#64748b",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "bold",
+  marginTop: "4px",
+  color: "#64748b",
+  fontSize: "8px",
+  fontWeight: "bold",
 };
 
 const selectButtonStyle = {
-  padding:
-    "6px 10px",
-
-  border:
-    "1px solid #94a3b8",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#ffffff",
-
-  color:
-    "#334155",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "900",
-
-  cursor:
-    "pointer",
+  padding: "6px 10px",
+  border: "1px solid #94a3b8",
+  borderRadius: "4px",
+  backgroundColor: "#ffffff",
+  color: "#334155",
+  fontSize: "8px",
+  fontWeight: "900",
+  cursor: "pointer",
 };
 
 const selectedButtonStyle = {
-  backgroundColor:
-    "#0e7490",
-
-  border:
-    "1px solid #0e7490",
-
-  color:
-    "#ffffff",
+  backgroundColor: "#0e7490",
+  border: "1px solid #0e7490",
+  color: "#ffffff",
 };
 
 const mealControlStyle = {
-  padding:
-    "0 0 14px",
-
-  backgroundColor:
-    "#ffffff",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "7px",
-
-  overflow:
-    "hidden",
+  padding: "0 0 14px",
+  backgroundColor: "#ffffff",
+  border: "1px solid #cbd5e1",
+  borderRadius: "7px",
+  overflow: "hidden",
 };
 
 const selectedEmployeeStyle = {
-  margin:
-    "14px",
-
-  padding:
-    "10px",
-
-  border:
-    "1px solid #e2e8f0",
-
-  borderRadius:
-    "5px",
-
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "10px",
-
-  flexWrap:
-    "wrap",
-
-  fontSize:
-    "10px",
+  margin: "14px",
+  padding: "10px",
+  border: "1px solid #e2e8f0",
+  borderRadius: "5px",
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  flexWrap: "wrap",
+  fontSize: "10px",
 };
 
 const selectedShopStyle = {
-  marginLeft:
-    "auto",
-
-  color:
-    "#64748b",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
+  marginLeft: "auto",
+  color: "#64748b",
+  fontSize: "9px",
+  fontWeight: "bold",
 };
 
 const controlGridStyle = {
-  padding:
-    "0 14px",
-
-  display:
-    "flex",
-
-  alignItems:
-    "flex-end",
-
-  gap:
-    "10px",
-
-  flexWrap:
-    "wrap",
+  padding: "0 14px",
+  display: "flex",
+  alignItems: "flex-end",
+  gap: "10px",
+  flexWrap: "wrap",
 };
 
 const applyButtonStyle = {
-  minHeight:
-    "36px",
-
-  padding:
-    "8px 16px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "5px",
-
-  backgroundColor:
-    "#b45309",
-
-  color:
-    "#ffffff",
-
-  fontWeight:
-    "900",
-
-  fontSize:
-    "10px",
-
-  cursor:
-    "pointer",
+  minHeight: "36px",
+  padding: "8px 16px",
+  border: "none",
+  borderRadius: "5px",
+  backgroundColor: "#b45309",
+  color: "#ffffff",
+  fontWeight: "900",
+  fontSize: "10px",
+  cursor: "pointer",
 };
 
 const controlNoteStyle = {
-  margin:
-    "12px 14px 0",
-
-  padding:
-    "9px",
-
-  backgroundColor:
-    "#fffbeb",
-
-  border:
-    "1px solid #fde68a",
-
-  borderRadius:
-    "5px",
-
-  color:
-    "#92400e",
-
-  fontSize:
-    "9px",
-
-  lineHeight:
-    "1.5",
+  margin: "12px 14px 0",
+  padding: "9px",
+  backgroundColor: "#fffbeb",
+  border: "1px solid #fde68a",
+  borderRadius: "5px",
+  color: "#92400e",
+  fontSize: "9px",
+  lineHeight: "1.5",
 };
 
 const emptyStyle = {
-  padding:
-    "20px",
-
-  color:
-    "#64748b",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "10px",
+  padding: "20px",
+  color: "#64748b",
+  textAlign: "center",
+  fontSize: "10px",
 };
 
 const errorStyle = {
-  padding:
-    "10px 12px",
-
-  backgroundColor:
-    "#fee2e2",
-
-  border:
-    "1px solid #fca5a5",
-
-  borderRadius:
-    "5px",
-
-  color:
-    "#991b1b",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
+  padding: "10px 12px",
+  backgroundColor: "#fee2e2",
+  border: "1px solid #fca5a5",
+  borderRadius: "5px",
+  color: "#991b1b",
+  fontSize: "10px",
+  fontWeight: "bold",
 };
 
 const successStyle = {
-  padding:
-    "10px 12px",
-
-  backgroundColor:
-    "#dcfce7",
-
-  border:
-    "1px solid #86efac",
-
-  borderRadius:
-    "5px",
-
-  color:
-    "#166534",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
+  padding: "10px 12px",
+  backgroundColor: "#dcfce7",
+  border: "1px solid #86efac",
+  borderRadius: "5px",
+  color: "#166534",
+  fontSize: "10px",
+  fontWeight: "bold",
 };
