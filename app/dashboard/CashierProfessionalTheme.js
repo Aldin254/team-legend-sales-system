@@ -1553,20 +1553,18 @@ export const summaryValueStyle = {
 // ============================================================
 
 export const lowerGridStyle = {
-  display:
-    "grid",
+  display: "grid",
 
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(340px, 1fr))",
+    "repeat(3, minmax(0, 1fr))",
 
-  gap:
-    "14px",
+  gap: "12px",
 
-  marginTop:
-    "14px",
+  width: "100%",
 
-  alignItems:
-    "start",
+  marginTop: "14px",
+
+  alignItems: "start",
 };
 
 
