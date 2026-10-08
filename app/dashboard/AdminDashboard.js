@@ -14,6 +14,7 @@ import AdminAccountantPanel from "./AdminAccountantPanel";
 import AdminMpesaRatesPanel from "./AdminMpesaRatesPanel";
 import AdminSavingsPanel from "./AdminSavingsPanel";
 import AdminDutyControlPanel from "./AdminDutyControlPanel";
+import AdminLiveFeedPanel from "./AdminLiveFeedPanel";
 export default function AdminDashboard({
   user,
 }) {
@@ -83,6 +84,11 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   id: "DUTY_ROTA",
   label: "Duty / Rota",
   icon: "📅",
+    },
+    {
+  id: "LIVE_FEED",
+  label: "Live Feed",
+  icon: "●",
     },
     {
       id: "SALARY",
@@ -323,6 +329,22 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     />
   </>
 )}
+{/* ====================================================== */}
+{/* LIVE FEED */}
+{/* ====================================================== */}
+
+{activeSection === "LIVE_FEED" && (
+  <>
+    <PageHeading
+      title="Live Feed"
+      subtitle="Post and manage shared announcements shown in the moving cashier Live Feed."
+    />
+
+    <AdminLiveFeedPanel
+      user={user}
+    />
+  </>
+)}
           {/* ===================================== */}
           {/* EMPLOYEE SALARY */}
           {/* ===================================== */}
@@ -472,7 +494,17 @@ function DashboardHome({
             )
           }
         />
-
+         <DashboardCard
+          title="LIVE FEED"
+          description="Post and manage shared messages shown to all cashiers in the moving Live Feed ticker."
+          accent="#111C30"
+          buttonText="Open Live Feed"
+          onClick={() =>
+            setActiveSection(
+             "LIVE_FEED"
+            )
+           }
+         />
         <DashboardCard
           title="EMPLOYEE SALARY"
           description="Manage employee salaries, 4-digit Salary PINs, advances, deductions and salary access."
@@ -537,7 +569,10 @@ function DashboardHome({
             label="Admin Corrections"
             status="ACTIVE"
           />
-
+           <StatusItem
+             label="Shared Live Feed"
+             status="ACTIVE"
+          />
           <StatusItem
             label="Audit History"
             status="ACTIVE"
