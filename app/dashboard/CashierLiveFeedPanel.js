@@ -719,12 +719,9 @@ function cleanText(
 // ==================================================
 
 const panelStyle = {
-  width:
-    "100%",
+  width: "100%",
 
-  minHeight:
-    "52px",
-
+  minHeight: "60px",
   boxSizing:
     "border-box",
 
@@ -756,7 +753,7 @@ const labelStyle = {
     0,
 
   minWidth:
-    "120px",
+    "135px",
 
   display:
     "flex",
@@ -852,7 +849,7 @@ const tickerItemStyle = {
     "center",
 
   gap:
-    "12px",
+    "13px",
 
   paddingRight:
     "42px",
@@ -861,7 +858,7 @@ const tickerItemStyle = {
     "#FFFFFF",
 
   fontSize:
-    "12px",
+    "13px",
 
   fontWeight:
     800,
