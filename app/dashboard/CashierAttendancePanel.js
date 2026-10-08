@@ -94,14 +94,11 @@ function statusStyle(status) {
     };
   }
 
-  return {
-    background:
-      COLORS.amberBg,
-    color:
-      COLORS.amber,
-    border:
-      "#79601B",
-  };
+ return {
+  background: "#0D1115",
+  color: "#FFFFFF",
+  border: "#454E58",
+};
 }
 
 
@@ -175,15 +172,14 @@ function BenefitBox({
   let value =
     "Pending sign-in";
 
-  let background =
-    COLORS.black3;
+ let background =
+  "#0D1115";
 
-  let color =
-    COLORS.amber;
+let color =
+  "#FFFFFF";
 
-  let border =
-    "#46505A";
-
+let border =
+  "#454E58";
   if (signedIn) {
     if (
       eligible &&
@@ -1096,11 +1092,13 @@ export default function CashierAttendancePanel({
                         "8px",
 
                       background:
-                        COLORS.amberBg,
+  "#0D1115",
 
-                      color:
-                        COLORS.amber,
+color:
+  "#FFFFFF",
 
+border:
+  "1px solid #454E58",
                       fontSize:
                         "14px",
 
