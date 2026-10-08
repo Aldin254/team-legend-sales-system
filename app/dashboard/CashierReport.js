@@ -15,6 +15,7 @@ import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
 import CashierAttendancePanel from "./CashierAttendancePanel";
+import CashierLiveFeedPanel from "./CashierLiveFeedPanel";
 import {
   pageStyle,
   loadingStyle,
@@ -1971,15 +1972,21 @@ export default function CashierReport({
           </button>
         </div>
       </header>
+
+<CashierLiveFeedPanel
+  user={user}
+/>
+
 <CashierAttendancePanel
   user={user}
   currentShift={currentShift}
 />
-      <div
-        style={
-          bodyStyle
-        }
-      >
+
+<div
+  style={
+    bodyStyle
+  }
+>
         <aside
           style={
             sidebarStyle
