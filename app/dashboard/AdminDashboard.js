@@ -15,6 +15,7 @@ import AdminMpesaRatesPanel from "./AdminMpesaRatesPanel";
 import AdminSavingsPanel from "./AdminSavingsPanel";
 import AdminDutyControlPanel from "./AdminDutyControlPanel";
 import AdminLiveFeedPanel from "./AdminLiveFeedPanel";
+import AdminAttendanceControlPanel from "./AdminAttendanceControlPanel";
 export default function AdminDashboard({
   user,
 }) {
@@ -345,6 +346,22 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     />
   </>
 )}
+{/* ====================================================== */}
+{/* ATTENDANCE CONTROL */}
+{/* ====================================================== */}
+
+{activeSection === "ATTENDANCE_CONTROL" && (
+  <>
+    <PageHeading
+      title="Attendance Control"
+      subtitle="Monitor employee attendance, 24-hour shop exemptions, and grant or revoke Lunch and Supper."
+    />
+
+    <AdminAttendanceControlPanel
+      user={user}
+    />
+  </>
+)}
           {/* ===================================== */}
           {/* EMPLOYEE SALARY */}
           {/* ===================================== */}
@@ -505,6 +522,17 @@ function DashboardHome({
             )
            }
          />
+         <DashboardCard
+          title="ATTENDANCE CONTROL"
+          description="Monitor employee sign-in, 24-hour exemptions, and grant or revoke Lunch and Supper with a permanent audit trail."
+          accent="#b45309"
+          buttonText="Open Attendance Control"
+          onClick={() =>
+          setActiveSection(
+         "ATTENDANCE_CONTROL"
+           )
+          }
+         />
         <DashboardCard
           title="EMPLOYEE SALARY"
           description="Manage employee salaries, 4-digit Salary PINs, advances, deductions and salary access."
@@ -564,7 +592,10 @@ function DashboardHome({
             label="Shift Override"
             status="ACTIVE"
           />
-
+           <StatusItem
+           label="Attendance / Meal Control"
+           status="ACTIVE"
+          />
           <StatusItem
             label="Admin Corrections"
             status="ACTIVE"
