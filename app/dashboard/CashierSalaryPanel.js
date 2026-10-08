@@ -46,18 +46,12 @@ export default function CashierSalaryPanel({
   // TIMERS
   // ==================================================
 
-  // After successful payment:
-  // private paid details stay visible for 10 seconds.
   const lockTimersRef =
     useRef({});
 
-  // PIN entry box:
-  // closes after 20 seconds of inactivity.
   const pinTimersRef =
     useRef({});
 
-  // Successfully unlocked salary details:
-  // closes after 20 seconds if employee does nothing.
   const unlockedTimersRef =
     useRef({});
 
@@ -422,7 +416,6 @@ export default function CashierSalaryPanel({
       return;
     }
 
-    // Clear other open PIN timers.
     for (
       const employeeId of
       Object.keys(
@@ -457,8 +450,6 @@ export default function CashierSalaryPanel({
       ""
     );
 
-    // PIN box closes after
-    // 20 seconds of inactivity.
     startPinCloseTimer(
       row.employee_id
     );
@@ -507,8 +498,6 @@ export default function CashierSalaryPanel({
     }
 
     try {
-      // Stop PIN inactivity timer
-      // while checking the PIN.
       clearPinTimer(
         row.employee_id
       );
@@ -573,8 +562,6 @@ export default function CashierSalaryPanel({
 
         await loadEmployees();
 
-        // Keep PIN panel open,
-        // but close after 20 seconds.
         startPinCloseTimer(
           row.employee_id
         );
@@ -639,7 +626,6 @@ export default function CashierSalaryPanel({
         return;
       }
 
-      // Correct PIN.
       clearPinTimer(
         row.employee_id
       );
@@ -678,8 +664,6 @@ export default function CashierSalaryPanel({
         "success"
       );
 
-      // Private salary details now
-      // automatically hide after 20 seconds.
       startUnlockedCloseTimer(
         row.employee_id
       );
@@ -707,7 +691,6 @@ export default function CashierSalaryPanel({
       );
     }
   }
-
   // ==================================================
   // PAY SALARY
   // ==================================================
@@ -734,9 +717,6 @@ export default function CashierSalaryPanel({
       return;
     }
 
-    // User has clicked PAY SALARY.
-    // Stop the 20-second unlocked timer
-    // while confirmation/payment is happening.
     clearUnlockedTimer(
       row.employee_id
     );
@@ -775,8 +755,6 @@ export default function CashierSalaryPanel({
     if (
       !confirmed
     ) {
-      // Employee cancelled payment.
-      // Start 20-second privacy timer again.
       startUnlockedCloseTimer(
         row.employee_id
       );
@@ -829,10 +807,6 @@ export default function CashierSalaryPanel({
         );
       }
 
-      // ==================================================
-      // SUCCESSFUL PAYMENT
-      // ==================================================
-
       setRecentPaid(
         (
           previous
@@ -874,7 +848,6 @@ export default function CashierSalaryPanel({
 
       await loadEmployees();
 
-      // Clear old post-payment timer.
       if (
         lockTimersRef.current[
           row.employee_id
@@ -887,8 +860,6 @@ export default function CashierSalaryPanel({
         );
       }
 
-      // Paid private details remain
-      // visible for exactly 10 seconds.
       lockTimersRef.current[
         row.employee_id
       ] =
@@ -973,9 +944,6 @@ export default function CashierSalaryPanel({
         "error"
       );
 
-      // If payment failed, salary is still
-      // unlocked. Protect it again with
-      // the 20-second auto-close timer.
       startUnlockedCloseTimer(
         row.employee_id
       );
@@ -1018,17 +986,20 @@ export default function CashierSalaryPanel({
           style={{
             ...messageStyle,
 
-            backgroundColor:
+            border:
               messageType ===
               "success"
-                ? "#ecfdf5"
-                : "#fef2f2",
+                ? "1px solid #2F6B47"
+                : "1px solid #79363C",
+
+            background:
+              messageType ===
+              "success"
+                ? "#10261A"
+                : "#2C1619",
 
             color:
-              messageType ===
-              "success"
-                ? "#166534"
-                : "#991b1b",
+              "#FFFFFF",
           }}
         >
           {message}
@@ -1199,10 +1170,6 @@ export default function CashierSalaryPanel({
                   </div>
                 </div>
 
-                {/* ================================= */}
-                {/* PIN ENTRY */}
-                {/* ================================= */}
-
                 {pinOpen && (
                   <div
                     style={
@@ -1271,8 +1238,6 @@ export default function CashierSalaryPanel({
                             ""
                           );
 
-                          // Every keypress restarts
-                          // the 20-second inactivity timer.
                           startPinCloseTimer(
                             employeeId
                           );
@@ -1353,10 +1318,6 @@ export default function CashierSalaryPanel({
                     </div>
                   </div>
                 )}
-
-                {/* ================================= */}
-                {/* PRIVATE SALARY DETAILS */}
-                {/* ================================= */}
 
                 {details && (
                   <div
@@ -1773,72 +1734,102 @@ function formatDate(
     date
   );
 }
-
 // ==================================================
-// STYLES
+// PROFESSIONAL MATTE BLACK STYLES
 // ==================================================
 
 const panelStyle = {
-  backgroundColor:
-    "#ffffff",
+  minWidth:
+    0,
+
+  background:
+    "linear-gradient(180deg, #11161C 0%, #0B0F13 100%)",
+
+  color:
+    "#FFFFFF",
+
+  border:
+    "1px solid #303840",
 
   borderRadius:
-    "6px",
+    "14px",
 
   overflow:
     "hidden",
 
   boxShadow:
-    "0 1px 5px rgba(0,0,0,0.12)",
+    "0 10px 28px rgba(0,0,0,0.22)",
 };
+
 
 const titleStyle = {
-  backgroundColor:
-    "#4f46e5",
+  padding:
+    "13px 15px",
+
+  background:
+    "linear-gradient(145deg, rgba(215,179,106,0.15), rgba(17,22,28,0.98))",
 
   color:
-    "#ffffff",
+    "#FFFFFF",
 
-  padding:
-    "9px 12px",
+  borderBottom:
+    "1px solid rgba(215,179,106,0.34)",
+
+  borderLeft:
+    "4px solid #D7B36A",
 
   fontSize:
-    "14px",
+    "15px",
 
   fontWeight:
-    "bold",
+    950,
+
+  letterSpacing:
+    "0.5px",
 };
+
 
 const privacyNoticeStyle = {
   padding:
-    "7px 9px",
+    "9px 12px",
 
   backgroundColor:
-    "#eef2ff",
+    "#0D1115",
 
   color:
-    "#3730a3",
+    "#FFFFFF",
+
+  borderBottom:
+    "1px solid #292F36",
 
   fontSize:
-    "9px",
+    "11px",
 
   textAlign:
     "center",
+
+  lineHeight:
+    1.45,
 };
+
 
 const messageStyle = {
   margin:
-    "7px 8px 0",
+    "8px",
 
   padding:
-    "7px",
+    "9px",
 
   borderRadius:
-    "4px",
+    "7px",
 
   fontSize:
-    "10px",
+    "11px",
+
+  fontWeight:
+    800,
 };
+
 
 const headerStyle = {
   display:
@@ -1851,20 +1842,30 @@ const headerStyle = {
     "5px",
 
   padding:
-    "8px",
+    "9px",
 
   backgroundColor:
-    "#f1f5f9",
+    "#11161C",
+
+  color:
+    "#FFFFFF",
+
+  borderBottom:
+    "1px solid #343C45",
 
   fontSize:
-    "8px",
+    "10px",
 
   fontWeight:
-    "bold",
+    900,
 
   textAlign:
     "center",
+
+  letterSpacing:
+    "0.35px",
 };
+
 
 const salaryRowStyle = {
   display:
@@ -1874,280 +1875,357 @@ const salaryRowStyle = {
     "1.3fr 0.8fr 0.8fr 0.9fr",
 
   gap:
-    "5px",
+    "6px",
 
   padding:
-    "6px 8px",
+    "8px",
 
   alignItems:
     "center",
 
-  borderTop:
-    "1px solid #e2e8f0",
+  backgroundColor:
+    "#0D1115",
+
+  borderBottom:
+    "1px solid #252B31",
+
+  color:
+    "#FFFFFF",
 
   fontSize:
-    "10px",
+    "11px",
 };
+
 
 const employeeNameStyle = {
   fontWeight:
-    "bold",
+    900,
 
   color:
-    "#0f172a",
+    "#FFFFFF",
 };
+
 
 const privateStyle = {
   padding:
-    "5px",
+    "6px",
 
   borderRadius:
-    "4px",
+    "6px",
 
   backgroundColor:
-    "#e2e8f0",
+    "#171C22",
+
+  border:
+    "1px solid #424B55",
 
   color:
-    "#475569",
+    "#FFFFFF",
 
   textAlign:
     "center",
 
   fontWeight:
-    "bold",
+    900,
+
+  fontSize:
+    "9px",
 };
+
+
+// ==================================================
+// STATUS BADGES
+// ==================================================
 
 const pendingStatusStyle = {
   padding:
-    "5px",
+    "6px",
 
   borderRadius:
-    "4px",
+    "6px",
 
   backgroundColor:
-    "#fef3c7",
+    "#171C22",
 
   color:
-    "#92400e",
+    "#FFFFFF",
+
+  border:
+    "1px solid rgba(215,179,106,0.48)",
 
   textAlign:
     "center",
 
   fontWeight:
-    "bold",
+    900,
+
+  fontSize:
+    "9px",
 };
+
 
 const paidStatusStyle = {
   padding:
-    "5px",
+    "6px",
 
   borderRadius:
-    "4px",
+    "6px",
 
   backgroundColor:
-    "#dcfce7",
+    "#10261A",
 
   color:
-    "#166534",
+    "#FFFFFF",
+
+  border:
+    "1px solid #2F6B47",
 
   textAlign:
     "center",
 
   fontWeight:
-    "bold",
+    900,
+
+  fontSize:
+    "9px",
 };
+
 
 const notDueStatusStyle = {
   padding:
-    "5px",
+    "6px",
 
   borderRadius:
-    "4px",
+    "6px",
 
   backgroundColor:
-    "#f1f5f9",
+    "#171C22",
 
   color:
-    "#64748b",
+    "#FFFFFF",
+
+  border:
+    "1px solid #424B55",
 
   textAlign:
     "center",
 
   fontWeight:
-    "bold",
+    900,
+
+  fontSize:
+    "9px",
 };
+
 
 const lockedStatusStyle = {
   padding:
-    "5px",
+    "6px",
 
   borderRadius:
-    "4px",
+    "6px",
 
   backgroundColor:
-    "#fee2e2",
+    "#2C1619",
 
   color:
-    "#991b1b",
+    "#FFFFFF",
+
+  border:
+    "1px solid #79363C",
 
   textAlign:
     "center",
 
   fontWeight:
-    "bold",
+    900,
+
+  fontSize:
+    "9px",
 };
+
+
+// ==================================================
+// ACTION / STATE
+// ==================================================
 
 const viewButtonStyle = {
   width:
     "100%",
 
+  minHeight:
+    "34px",
+
   padding:
-    "6px",
+    "7px",
 
   border:
-    "none",
+    "1px solid rgba(215,179,106,0.45)",
 
   borderRadius:
-    "4px",
+    "7px",
 
-  backgroundColor:
-    "#4f46e5",
+  background:
+    "linear-gradient(145deg, rgba(215,179,106,0.15), #11161C)",
 
   color:
-    "#ffffff",
+    "#FFFFFF",
 
   fontSize:
-    "9px",
+    "10px",
 
   fontWeight:
-    "bold",
+    900,
 
   cursor:
     "pointer",
 };
 
+
 const lockedStyle = {
   padding:
-    "5px",
+    "6px",
 
   borderRadius:
-    "4px",
+    "6px",
 
   backgroundColor:
-    "#fee2e2",
+    "#2C1619",
+
+  border:
+    "1px solid #79363C",
 
   color:
-    "#991b1b",
+    "#FFFFFF",
 
   textAlign:
     "center",
 
   fontSize:
-    "8px",
+    "9px",
 
   fontWeight:
-    "bold",
+    900,
 };
+
 
 const unlockedBadgeStyle = {
   padding:
-    "5px",
+    "6px",
 
   borderRadius:
-    "4px",
+    "6px",
 
   backgroundColor:
-    "#dbeafe",
+    "#171C22",
+
+  border:
+    "1px solid rgba(215,179,106,0.48)",
 
   color:
-    "#1d4ed8",
+    "#FFFFFF",
 
   textAlign:
     "center",
 
   fontSize:
-    "8px",
+    "9px",
 
   fontWeight:
-    "bold",
+    900,
 };
+
 
 const paidPrivateStyle = {
   padding:
-    "5px",
+    "6px",
 
   borderRadius:
-    "4px",
+    "6px",
 
   backgroundColor:
-    "#dcfce7",
+    "#10261A",
+
+  border:
+    "1px solid #2F6B47",
 
   color:
-    "#166534",
+    "#FFFFFF",
 
   textAlign:
     "center",
 
   fontSize:
-    "8px",
+    "9px",
 
   fontWeight:
-    "bold",
+    900,
 };
+
 
 const notDueStyle = {
   padding:
-    "5px",
+    "6px",
 
   borderRadius:
-    "4px",
+    "6px",
 
   backgroundColor:
-    "#f1f5f9",
+    "#171C22",
+
+  border:
+    "1px solid #424B55",
 
   color:
-    "#64748b",
+    "#FFFFFF",
 
   textAlign:
     "center",
 
   fontSize:
-    "8px",
+    "9px",
 
   fontWeight:
-    "bold",
+    900,
 };
+
+
+// ==================================================
+// PIN BOX
+// ==================================================
 
 const pinBoxStyle = {
   margin:
-    "0 8px 8px",
+    "8px",
 
   padding:
-    "9px",
+    "10px",
 
   border:
-    "1px solid #a5b4fc",
+    "1px solid rgba(215,179,106,0.48)",
 
-  backgroundColor:
-    "#eef2ff",
+  background:
+    "linear-gradient(145deg, #151A20, #0C1014)",
 
   borderRadius:
-    "5px",
+    "9px",
 };
+
 
 const pinLabelStyle = {
   marginBottom:
     "7px",
 
   color:
-    "#3730a3",
+    "#FFFFFF",
 
   fontSize:
-    "10px",
+    "11px",
 
   fontWeight:
-    "bold",
+    900,
 };
+
 
 const pinGridStyle = {
   display:
@@ -2157,8 +2235,9 @@ const pinGridStyle = {
     "1fr 100px 80px",
 
   gap:
-    "6px",
+    "7px",
 };
+
 
 const pinInputStyle = {
   width:
@@ -2167,14 +2246,23 @@ const pinInputStyle = {
   boxSizing:
     "border-box",
 
+  minHeight:
+    "38px",
+
   padding:
     "8px",
 
   border:
-    "1px solid #818cf8",
+    "1px solid #4A535D",
 
   borderRadius:
-    "4px",
+    "7px",
+
+  backgroundColor:
+    "#080B0E",
+
+  color:
+    "#FFFFFF",
 
   textAlign:
     "center",
@@ -2182,97 +2270,119 @@ const pinInputStyle = {
   fontSize:
     "15px",
 
+  fontWeight:
+    900,
+
   letterSpacing:
     "5px",
+
+  outline:
+    "none",
 };
+
 
 const pinConfirmButtonStyle = {
   border:
-    "none",
+    "1px solid rgba(215,179,106,0.48)",
 
   borderRadius:
-    "4px",
+    "7px",
 
-  backgroundColor:
-    "#4f46e5",
+  background:
+    "linear-gradient(145deg, rgba(215,179,106,0.15), #11161C)",
 
   color:
-    "#ffffff",
+    "#FFFFFF",
 
   fontSize:
     "9px",
 
   fontWeight:
-    "bold",
+    900,
 
   cursor:
     "pointer",
 };
+
 
 const cancelButtonStyle = {
   border:
-    "none",
+    "1px solid #454E58",
 
   borderRadius:
-    "4px",
+    "7px",
 
   backgroundColor:
-    "#64748b",
+    "#171C22",
 
   color:
-    "#ffffff",
+    "#FFFFFF",
 
   fontSize:
     "9px",
 
   fontWeight:
-    "bold",
+    900,
 
   cursor:
     "pointer",
 };
 
+
 const attemptsStyle = {
   marginTop:
-    "6px",
+    "7px",
 
   color:
-    "#64748b",
+    "#AAB2BC",
 
   fontSize:
-    "8px",
+    "9px",
+
+  lineHeight:
+    1.45,
 };
+
+
+// ==================================================
+// PRIVATE DETAILS
+// ==================================================
 
 const detailsBoxStyle = {
   margin:
-    "0 8px 8px",
+    "8px",
 
   padding:
-    "9px",
+    "10px",
 
   border:
-    "2px solid #4f46e5",
+    "1px solid rgba(215,179,106,0.50)",
 
-  backgroundColor:
-    "#f8fafc",
+  background:
+    "linear-gradient(145deg, #151A20, #0B0F13)",
 
   borderRadius:
-    "6px",
+    "9px",
 };
+
 
 const detailsTitleStyle = {
   marginBottom:
-    "8px",
+    "9px",
 
   color:
-    "#312e81",
+    "#FFFFFF",
 
   fontSize:
-    "10px",
+    "11px",
 
   fontWeight:
-    "bold",
+    950,
+
+  letterSpacing:
+    "0.3px",
 };
+
 
 const detailsGridStyle = {
   display:
@@ -2282,58 +2392,66 @@ const detailsGridStyle = {
     "repeat(4, minmax(0, 1fr))",
 
   gap:
-    "6px",
+    "7px",
 };
+
 
 const detailBoxStyle = {
   padding:
-    "7px",
+    "8px",
 
   border:
-    "1px solid #cbd5e1",
+    "1px solid #39424C",
 
   borderRadius:
-    "4px",
+    "7px",
 
   backgroundColor:
-    "#ffffff",
+    "#080B0E",
 
   textAlign:
     "center",
+
+  color:
+    "#FFFFFF",
 };
+
 
 const strongDetailBoxStyle = {
-  backgroundColor:
-    "#dcfce7",
+  background:
+    "linear-gradient(145deg, rgba(215,179,106,0.13), #0D1115)",
 
   border:
-    "1px solid #86efac",
+    "1px solid rgba(215,179,106,0.52)",
 };
+
 
 const detailTitleStyle = {
   fontSize:
-    "7px",
+    "8px",
 
   color:
-    "#64748b",
+    "#AAB2BC",
 
   fontWeight:
-    "bold",
+    900,
 };
+
 
 const detailValueStyle = {
   marginTop:
     "4px",
 
   fontSize:
-    "10px",
+    "11px",
 
   fontWeight:
-    "bold",
+    950,
 
   color:
-    "#0f172a",
+    "#FFFFFF",
 };
+
 
 const payButtonStyle = {
   width:
@@ -2342,30 +2460,34 @@ const payButtonStyle = {
   marginTop:
     "9px",
 
+  minHeight:
+    "38px",
+
   padding:
     "9px",
 
   border:
-    "none",
+    "1px solid rgba(215,179,106,0.52)",
 
   borderRadius:
-    "5px",
+    "7px",
 
-  backgroundColor:
-    "#15803d",
+  background:
+    "linear-gradient(145deg, rgba(215,179,106,0.17), #11161C)",
 
   color:
-    "#ffffff",
+    "#FFFFFF",
 
   fontSize:
     "10px",
 
   fontWeight:
-    "bold",
+    950,
 
   cursor:
     "pointer",
 };
+
 
 const tenSecondStyle = {
   marginTop:
@@ -2375,13 +2497,16 @@ const tenSecondStyle = {
     "8px",
 
   borderRadius:
-    "4px",
+    "7px",
 
   backgroundColor:
-    "#dcfce7",
+    "#10261A",
+
+  border:
+    "1px solid #2F6B47",
 
   color:
-    "#166534",
+    "#FFFFFF",
 
   textAlign:
     "center",
@@ -2390,65 +2515,80 @@ const tenSecondStyle = {
     "9px",
 
   fontWeight:
-    "bold",
+    900,
 };
+
 
 const unlockedNoticeStyle = {
   marginTop:
-    "6px",
+    "7px",
 
   padding:
-    "6px",
+    "7px",
 
   borderRadius:
-    "4px",
+    "7px",
 
   backgroundColor:
-    "#fff7ed",
+    "#171C22",
+
+  border:
+    "1px solid #424B55",
 
   color:
-    "#9a3412",
+    "#FFFFFF",
 
   textAlign:
     "center",
 
   fontSize:
-    "8px",
+    "9px",
 
   fontWeight:
-    "bold",
+    800,
 };
+
 
 const emptyStyle = {
   padding:
-    "18px",
+    "20px",
+
+  backgroundColor:
+    "#0D1115",
 
   color:
-    "#64748b",
+    "#FFFFFF",
 
   textAlign:
     "center",
 
   fontSize:
-    "10px",
+    "11px",
+
+  fontWeight:
+    750,
 };
+
 
 const footerStyle = {
   padding:
-    "8px",
+    "9px 10px",
 
   borderTop:
-    "1px solid #e2e8f0",
+    "1px solid #292F36",
 
   backgroundColor:
-    "#f8fafc",
+    "#0D1115",
 
   color:
-    "#64748b",
+    "#AAB2BC",
 
   textAlign:
     "center",
 
   fontSize:
-    "8px",
+    "9px",
+
+  lineHeight:
+    1.45,
 };
