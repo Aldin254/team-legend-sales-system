@@ -10,17 +10,23 @@ import {
 export default function CashierAccountsPanel({
   user,
 }) {
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [accounts, setAccounts] =
+    useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
 
   const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
+    process.env
+      .NEXT_PUBLIC_SUPABASE_URL;
 
   const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env
+      .NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const accessToken =
-    user?.access_token || null;
+    user?.access_token ||
+    null;
 
   const shopId =
     user?.shop_id ||
@@ -31,80 +37,94 @@ export default function CashierAccountsPanel({
   // LOAD SHOP ACCOUNTS
   // ================================================
 
-  const loadAccounts = useCallback(
-    async () => {
-      if (
-        !shopId ||
-        !accessToken ||
-        !supabaseUrl ||
-        !supabaseAnonKey
-      ) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/shop_accounts` +
-            `?shop_id=eq.${encodeURIComponent(shopId)}` +
-            `&is_active=eq.true` +
-            `&select=id,account_type,description,account_number,paybill_till,bank,is_active`,
-          {
-            method: "GET",
-
-            headers: {
-              apikey:
-                supabaseAnonKey,
-
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
-            cache: "no-store",
-          }
-        );
-
-        let result = null;
+  const loadAccounts =
+    useCallback(
+      async () => {
+        if (
+          !shopId ||
+          !accessToken ||
+          !supabaseUrl ||
+          !supabaseAnonKey
+        ) {
+          setLoading(false);
+          return;
+        }
 
         try {
-          result =
-            await response.json();
-        } catch {
-          result = null;
-        }
+          const response =
+            await fetch(
+              `${supabaseUrl}/rest/v1/shop_accounts` +
+                `?shop_id=eq.${encodeURIComponent(
+                  shopId
+                )}` +
+                `&is_active=eq.true` +
+                `&select=id,account_type,description,account_number,paybill_till,bank,is_active`,
+              {
+                method:
+                  "GET",
 
-        if (!response.ok) {
-          throw new Error(
-            result?.message ||
-              result?.details ||
-              "Unable to load accounts."
+                headers: {
+                  apikey:
+                    supabaseAnonKey,
+
+                  Authorization:
+                    `Bearer ${accessToken}`,
+
+                  "Content-Type":
+                    "application/json",
+                },
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          let result =
+            null;
+
+          try {
+            result =
+              await response.json();
+          } catch {
+            result =
+              null;
+          }
+
+          if (
+            !response.ok
+          ) {
+            throw new Error(
+              result?.message ||
+                result?.details ||
+                "Unable to load accounts."
+            );
+          }
+
+          setAccounts(
+            Array.isArray(
+              result
+            )
+              ? result
+              : []
+          );
+        } catch (error) {
+          console.error(
+            "ACCOUNTS ERROR:",
+            error
+          );
+        } finally {
+          setLoading(
+            false
           );
         }
-
-        setAccounts(
-          Array.isArray(result)
-            ? result
-            : []
-        );
-      } catch (error) {
-        console.error(
-          "ACCOUNTS ERROR:",
-          error
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      shopId,
-      accessToken,
-      supabaseUrl,
-      supabaseAnonKey,
-    ]
-  );
+      },
+      [
+        shopId,
+        accessToken,
+        supabaseUrl,
+        supabaseAnonKey,
+      ]
+    );
 
   // ================================================
   // AUTO REFRESH
@@ -120,9 +140,13 @@ export default function CashierAccountsPanel({
       );
 
     return () => {
-      clearInterval(timer);
+      clearInterval(
+        timer
+      );
     };
-  }, [loadAccounts]);
+  }, [
+    loadAccounts,
+  ]);
 
   // ================================================
   // ORDER
@@ -137,7 +161,9 @@ export default function CashierAccountsPanel({
         "BANKING",
       ];
 
-      return [...accounts].sort(
+      return [
+        ...accounts,
+      ].sort(
         (a, b) =>
           order.indexOf(
             a.account_type
@@ -146,19 +172,33 @@ export default function CashierAccountsPanel({
             b.account_type
           )
       );
-    }, [accounts]);
+    }, [
+      accounts,
+    ]);
 
   // ================================================
   // DISPLAY
   // ================================================
 
   return (
-    <section style={panelStyle}>
-      <div style={titleStyle}>
+    <section
+      style={
+        panelStyle
+      }
+    >
+      <div
+        style={
+          titleStyle
+        }
+      >
         ACCOUNTS INFORMATION
       </div>
 
-      <div style={headerStyle}>
+      <div
+        style={
+          headerStyle
+        }
+      >
         <div>
           DESCRIPTION
         </div>
@@ -177,37 +217,70 @@ export default function CashierAccountsPanel({
       </div>
 
       {loading ? (
-        <div style={emptyStyle}>
+        <div
+          style={
+            emptyStyle
+          }
+        >
           Loading accounts...
         </div>
-      ) : orderedAccounts.length === 0 ? (
-        <div style={emptyStyle}>
+      ) : orderedAccounts.length ===
+        0 ? (
+        <div
+          style={
+            emptyStyle
+          }
+        >
           No account information available.
         </div>
       ) : (
         orderedAccounts.map(
-          (account) => (
+          (
+            account
+          ) => (
             <div
-              key={account.id}
-              style={rowStyle}
+              key={
+                account.id
+              }
+              style={
+                rowStyle
+              }
             >
-              <div style={typeStyle}>
-                {account.account_type}
+              <div
+                style={
+                  typeStyle
+                }
+              >
+                {
+                  account.account_type
+                }
               </div>
 
-              <div style={valueStyle}>
+              <div
+                style={
+                  valueStyle
+                }
+              >
                 {showValue(
                   account.account_number
                 )}
               </div>
 
-              <div style={valueStyle}>
+              <div
+                style={
+                  valueStyle
+                }
+              >
                 {showValue(
                   account.paybill_till
                 )}
               </div>
 
-              <div style={valueStyle}>
+              <div
+                style={
+                  valueStyle
+                }
+              >
                 {showValue(
                   account.bank
                 )}
@@ -217,7 +290,11 @@ export default function CashierAccountsPanel({
         )
       )}
 
-      <div style={noteStyle}>
+      <div
+        style={
+          noteStyle
+        }
+      >
         Account information is managed by Admin.
       </div>
     </section>
@@ -228,49 +305,75 @@ export default function CashierAccountsPanel({
 // HELPERS
 // ================================================
 
-function showValue(value) {
+function showValue(
+  value
+) {
   const clean =
     String(
-      value ?? ""
+      value ??
+        ""
     ).trim();
 
-  return clean || "-";
+  return (
+    clean ||
+    "-"
+  );
 }
 
 // ================================================
-// STYLES
+// PROFESSIONAL MATTE BLACK STYLES
 // ================================================
 
 const panelStyle = {
-  backgroundColor:
-    "white",
+  minWidth:
+    0,
+
+  background:
+    "linear-gradient(180deg, #11161C 0%, #0B0F13 100%)",
+
+  color:
+    "#FFFFFF",
+
+  border:
+    "1px solid #303840",
 
   borderRadius:
-    "6px",
+    "14px",
 
   overflow:
     "hidden",
 
   boxShadow:
-    "0 1px 5px rgba(0,0,0,0.12)",
+    "0 10px 28px rgba(0,0,0,0.22)",
 };
+
 
 const titleStyle = {
-  backgroundColor:
-    "#0873b9",
+  padding:
+    "13px 15px",
+
+  background:
+    "linear-gradient(145deg, rgba(215,179,106,0.15), rgba(17,22,28,0.98))",
 
   color:
-    "white",
+    "#FFFFFF",
 
-  padding:
-    "9px 12px",
+  borderBottom:
+    "1px solid rgba(215,179,106,0.34)",
+
+  borderLeft:
+    "4px solid #D7B36A",
 
   fontWeight:
-    "bold",
+    950,
 
   fontSize:
-    "14px",
+    "15px",
+
+  letterSpacing:
+    "0.5px",
 };
+
 
 const headerStyle = {
   display:
@@ -280,23 +383,33 @@ const headerStyle = {
     "0.8fr 1.2fr 1.1fr 1fr",
 
   gap:
-    "5px",
+    "6px",
 
   padding:
-    "8px",
+    "9px",
 
   backgroundColor:
-    "#eef4f8",
+    "#11161C",
+
+  color:
+    "#FFFFFF",
+
+  borderBottom:
+    "1px solid #343C45",
 
   fontSize:
-    "8px",
+    "9px",
 
   fontWeight:
-    "bold",
+    900,
 
   textAlign:
     "center",
+
+  letterSpacing:
+    "0.3px",
 };
+
 
 const rowStyle = {
   display:
@@ -306,76 +419,119 @@ const rowStyle = {
     "0.8fr 1.2fr 1.1fr 1fr",
 
   gap:
-    "5px",
+    "6px",
 
   alignItems:
     "center",
 
   padding:
-    "7px 8px",
+    "8px",
 
-  borderTop:
-    "1px solid #e5e7eb",
+  backgroundColor:
+    "#0D1115",
+
+  borderBottom:
+    "1px solid #252B31",
+
+  color:
+    "#FFFFFF",
 
   fontSize:
-    "10px",
+    "11px",
 };
+
 
 const typeStyle = {
   fontWeight:
-    "bold",
+    900,
 
   color:
-    "#0f172a",
+    "#FFFFFF",
+
+  letterSpacing:
+    "0.2px",
 };
 
+
 const valueStyle = {
-  backgroundColor:
-    "#f8fafc",
-
-  border:
-    "1px solid #e2e8f0",
-
-  borderRadius:
-    "3px",
+  minHeight:
+    "20px",
 
   padding:
-    "6px 4px",
+    "7px 6px",
+
+  display:
+    "flex",
+
+  alignItems:
+    "center",
+
+  justifyContent:
+    "center",
+
+  backgroundColor:
+    "#080B0E",
+
+  color:
+    "#FFFFFF",
+
+  border:
+    "1px solid #3D4650",
+
+  borderRadius:
+    "7px",
 
   textAlign:
     "center",
 
-  minHeight:
-    "14px",
+  fontWeight:
+    750,
+
+  wordBreak:
+    "break-word",
 };
+
 
 const noteStyle = {
   padding:
-    "8px",
+    "9px 10px",
 
   borderTop:
-    "1px solid #e5e7eb",
+    "1px solid #292F36",
+
+  backgroundColor:
+    "#0D1115",
 
   color:
-    "#64748b",
+    "#AAB2BC",
 
   fontSize:
     "9px",
 
   textAlign:
     "center",
+
+  lineHeight:
+    1.45,
 };
+
 
 const emptyStyle = {
   padding:
     "20px",
 
+  backgroundColor:
+    "#0D1115",
+
   color:
-    "#64748b",
+    "#FFFFFF",
 
   textAlign:
     "center",
 
   fontSize:
     "11px",
+
+  fontWeight:
+    750,
 };
