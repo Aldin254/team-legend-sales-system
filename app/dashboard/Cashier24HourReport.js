@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
+import CashierAttendancePanel from "./CashierAttendancePanel";
 import CashierLiveFeedPanel from "./CashierLiveFeedPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
@@ -1623,7 +1624,15 @@ crownStyle
             : ""}  
         </span>  
       </div>  
+{/* =========================================
+    TODAY'S DUTY / BENEFITS
+    24-HOUR SIGN-IN EXEMPT
+========================================= */}
 
+<CashierAttendancePanel
+  user={user}
+  currentShift={shift || currentShift}
+/>
       {message && (  
         <div  
           style={{  
