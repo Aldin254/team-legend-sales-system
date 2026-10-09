@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
+import AdminRecoveryReportEditor from "./AdminRecoveryReportEditor";
 const NAIROBI_ZONE = "Africa/Nairobi";
 
 export default function AdminShiftOverridePanel({ user }) {
@@ -451,7 +451,16 @@ async function startRecovery() {
             </button>
           </div>
         )}
+        {/* SHOW THE ACTUAL CASHIER REPORT DURING RECOVERY */}
 
+{activeRecovery && selectedShop && (
+  <AdminRecoveryReportEditor
+    key={activeRecovery.session_id}
+    user={user}
+    recovery={activeRecovery}
+    shop={selectedShop}
+  />
+)}
         <button type="button" disabled={working || loadingStatus}
           onClick={refresh} style={{ ...buttonStyle, marginTop: 10, background: "#334155" }}>
           REFRESH SHIFT STATUS
