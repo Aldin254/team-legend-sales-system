@@ -1,39 +1,34 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
+
+const NAIROBI_TIME_ZONE = "Africa/Nairobi";
+const CLOSING_START = "21:30:00";
 
 export default function CashierCloseShiftButton({
   user,
   currentShift,
+  onShiftClosed,
 }) {
   const [closing, setClosing] = useState(false);
+  const [completed, setCompleted] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("");
   const [now, setNow] = useState(() => new Date());
+  const busyRef = useRef(false);
 
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const accessToken =
-    user?.access_token || null;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const accessToken = user?.access_token || null;
 
   const shopId =
-    user?.shop_id ||
-    user?.shopId ||
-    null;
+    currentShift?.shop_id || user?.shop_id || user?.shopId || null;
 
-  const shiftId =
-    currentShift?.id || null;
+  const shiftId = currentShift?.id || null;
 
-  const shiftStatus =
-    String(
-      currentShift?.status || ""
-    ).toUpperCase();
+  const shiftStatus = String(currentShift?.status || "")
+    .trim()
+    .toUpperCase();
 
   // ==================================================
   // LIVE NAIROBI CLOCK
@@ -42,38 +37,31 @@ export default function CashierCloseShiftButton({
   useEffect(() => {
     setNow(new Date());
 
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 15000);
+    const timer = setInterval(
+      () => setNow(new Date()),
+      15000
+    );
 
-    return () => {
-      clearInterval(timer);
-    };
+    return () => clearInterval(timer);
   }, []);
 
-  const closingWindowOpen =
-    is12HourClosingWindow(now);
+  useEffect(() => {
+    setMessage("");
+    setMessageType("");
+    setCompleted(false);
+  }, [shiftId]);
+
+  const availability = get12HourClosingAvailability(
+    currentShift,
+    now
+  );
 
   // ==================================================
-  // CLOSE SHIFT
+  // CASHIER SHIFT CLOSURE
   // ==================================================
 
   async function closeShift() {
-    // ==============================================
-    // 0. CASHIER TIME WINDOW CHECK
-    // ==============================================
-
-    if (
-      !is12HourClosingWindow(
-        new Date()
-      )
-    ) {
-      setMessage(
-        "Shift change is available only from 9:30 PM to midnight (Nairobi time)."
-      );
-
-      return;
-    }
+    if (busyRef.current || completed) return;
 
     if (
       !shiftId ||
@@ -82,367 +70,231 @@ export default function CashierCloseShiftButton({
       !supabaseUrl ||
       !supabaseAnonKey
     ) {
-      setMessage(
-        "Shift or login information is missing."
-      );
+      setMessage("Shift or login information is missing.");
+      setMessageType("error");
+      return;
+    }
 
+    if (shiftStatus !== "OPEN") {
+      setMessage("This shift is already closed.");
+      setMessageType("error");
       return;
     }
 
     if (
-      String(
-        currentShift?.status || ""
-      ).toUpperCase() !== "OPEN"
+      !get12HourClosingAvailability(
+        currentShift,
+        new Date()
+      ).available
     ) {
       setMessage(
-        "This shift is already closed."
+        "Closing opens at 9:30 PM Nairobi time on this shift's business date."
       );
-
+      setMessageType("error");
       return;
     }
 
-    const confirmed =
-      window.confirm(
-        "Close this shift?\n\n" +
-          "After closing:\n" +
-          "• Cashier entries will be completed\n" +
-          "• Closing Balance will carry to the next shift as Balance B/F\n" +
-          "• TABLE closing will carry to the next TABLE opening"
-      );
+    const confirmed = window.confirm(
+      "CLOSE 12-HOUR SHIFT\n\n" +
+        `Business date: ${currentShift?.business_date || "-"}\n\n` +
+        "All active platforms must have saved closing readings.\n" +
+        "The next cashier shift follows the normal midnight opening rule.\n\n" +
+        "Close this shift?"
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
+
+    busyRef.current = true;
+    setClosing(true);
+    setMessage("");
+    setMessageType("");
 
     try {
-      setClosing(true);
-      setMessage("");
+      const headers = {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      };
 
-      // ==============================================
-      // 1. RECHECK TIME AFTER CONFIRMATION
-      // ==============================================
-
-      if (
-        !is12HourClosingWindow(
-          new Date()
-        )
-      ) {
-        throw new Error(
-          "Shift change is available only from 9:30 PM to midnight (Nairobi time)."
-        );
-      }
-
-      // ==============================================
-      // 2. LOAD ACTIVE PLATFORMS
-      // ==============================================
-
-      const platformResponse =
-        await fetch(
-          `${supabaseUrl}/rest/v1/shop_platforms` +
-            `?shop_id=eq.${encodeURIComponent(
-              shopId
-            )}` +
-            `&is_active=eq.true` +
-            `&select=id,platform_name`,
+      // Recheck database records before closing.
+      const [
+        shiftResponse,
+        platformResponse,
+        readingResponse,
+      ] = await Promise.all([
+        fetch(
+          `${supabaseUrl}/rest/v1/shifts` +
+            `?id=eq.${encodeURIComponent(shiftId)}` +
+            `&select=id,shop_id,status,business_date,closing_balance&limit=1`,
           {
             method: "GET",
-
-            headers: {
-              apikey:
-                supabaseAnonKey,
-
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
+            headers,
             cache: "no-store",
           }
-        );
+        ),
 
-      const platforms =
-        await safeJson(
-          platformResponse
-        );
+        fetch(
+          `${supabaseUrl}/rest/v1/shop_platforms` +
+            `?shop_id=eq.${encodeURIComponent(shopId)}` +
+            `&is_active=eq.true&select=id,platform_name`,
+          {
+            method: "GET",
+            headers,
+            cache: "no-store",
+          }
+        ),
 
-      if (!platformResponse.ok) {
+        fetch(
+          `${supabaseUrl}/rest/v1/platform_readings` +
+            `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+            `&reading_kind=eq.CLOSING` +
+            `&select=id,platform_id,reading_value`,
+          {
+            method: "GET",
+            headers,
+            cache: "no-store",
+          }
+        ),
+      ]);
+
+      const [
+        shiftResult,
+        platformResult,
+        readingResult,
+      ] = await Promise.all([
+        safeJson(shiftResponse),
+        safeJson(platformResponse),
+        safeJson(readingResponse),
+      ]);
+
+      if (
+        !shiftResponse.ok ||
+        !platformResponse.ok ||
+        !readingResponse.ok
+      ) {
         throw new Error(
-          platforms?.message ||
-            platforms?.details ||
-            "Unable to check shop platforms."
+          shiftResult?.message ||
+            platformResult?.message ||
+            readingResult?.message ||
+            "Unable to verify the shift and its closing readings."
         );
       }
 
-      const activePlatforms =
-        Array.isArray(platforms)
-          ? platforms
-          : [];
+      const freshShift = Array.isArray(shiftResult)
+        ? shiftResult[0]
+        : null;
 
       if (
-        activePlatforms.length === 0
+        !freshShift ||
+        String(freshShift.shop_id) !== String(shopId)
       ) {
+        throw new Error(
+          "Shift was not found in the selected shop."
+        );
+      }
+
+      if (
+        String(freshShift.status || "").toUpperCase() !== "OPEN"
+      ) {
+        throw new Error("This shift is no longer OPEN.");
+      }
+
+      if (
+        !get12HourClosingAvailability(
+          freshShift,
+          new Date()
+        ).available
+      ) {
+        throw new Error(
+          "The 9:30 PM closing time for this shift has not arrived."
+        );
+      }
+      // ==================================================
+      // VALIDATE ALL ACTIVE PLATFORM CLOSINGS
+      // ==================================================
+
+      const platforms = Array.isArray(platformResult)
+        ? platformResult
+        : [];
+
+      const readings = Array.isArray(readingResult)
+        ? readingResult
+        : [];
+
+      if (platforms.length === 0) {
         throw new Error(
           "No active shop platforms were found."
         );
       }
 
-      // ==============================================
-      // 3. LOAD CLOSING READINGS
-      // ==============================================
+      const closingByPlatform = new Map();
 
-      const readingResponse =
-        await fetch(
-          `${supabaseUrl}/rest/v1/platform_readings` +
-            `?shift_id=eq.${encodeURIComponent(
-              shiftId
-            )}` +
-            `&reading_kind=eq.CLOSING` +
-            `&select=id,platform_id,reading_value`,
-          {
-            method: "GET",
-
-            headers: {
-              apikey:
-                supabaseAnonKey,
-
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
-            cache: "no-store",
-          }
-        );
-
-      const readings =
-        await safeJson(
-          readingResponse
-        );
-
-      if (!readingResponse.ok) {
-        throw new Error(
-          readings?.message ||
-            readings?.details ||
-            "Unable to check closing readings."
-        );
-      }
-
-      const closingReadings =
-        Array.isArray(readings)
-          ? readings
-          : [];
-
-      // ==============================================
-      // 4. CHECK EVERY PLATFORM HAS A CLOSING READING
-      //
-      // IMPORTANT:
-      // Negative, zero and positive readings are valid.
-      // We check existence by platform_id only.
-      // We do NOT use truthiness on reading_value.
-      // ==============================================
-
-      const closingPlatformIds =
-        new Set(
-          closingReadings.map(
-            (reading) =>
-              reading.platform_id
-          )
-        );
-
-      const missingPlatforms =
-        activePlatforms.filter(
-          (platform) =>
-            !closingPlatformIds.has(
-              platform.id
-            )
-        );
-
-      if (
-        missingPlatforms.length > 0
-      ) {
-        const names =
-          missingPlatforms
-            .map(
-              (platform) =>
-                platform.platform_name
-            )
-            .join(", ");
-
-        throw new Error(
-          `Cannot close shift. Closing reading is missing for: ${names}.`
-        );
-      }
-
-      // ==============================================
-      // 5. VALIDATE CLOSING VALUES
-      //
-      // SIGNED READING RULE:
-      //
-      // Negative = VALID
-      // Zero     = VALID
-      // Positive = VALID
-      //
-      // Only blank/null/undefined/non-finite values
-      // are invalid.
-      // ==============================================
-
-      for (
-        const reading of closingReadings
-      ) {
-        if (
-          reading.reading_value === null ||
-          reading.reading_value === undefined ||
-          reading.reading_value === ""
-        ) {
-          throw new Error(
-            "One or more closing readings are invalid."
-          );
-        }
-
-        const value =
-          Number(
-            reading.reading_value
-          );
-
-        if (
-          !Number.isFinite(value)
-        ) {
-          throw new Error(
-            "One or more closing readings are invalid."
+      for (const reading of readings) {
+        if (reading.platform_id) {
+          closingByPlatform.set(
+            reading.platform_id,
+            reading
           );
         }
       }
 
-      // ==============================================
-      // 6. CHECK SHIFT IS STILL OPEN
-      // ==============================================
+      const missing = platforms.filter(
+        (platform) =>
+          !closingByPlatform.has(platform.id)
+      );
 
-      const shiftResponse =
-        await fetch(
-          `${supabaseUrl}/rest/v1/shifts` +
-            `?id=eq.${encodeURIComponent(
-              shiftId
-            )}` +
-            `&select=id,status,closing_balance` +
-            `&limit=1`,
-          {
-            method: "GET",
-
-            headers: {
-              apikey:
-                supabaseAnonKey,
-
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
-            cache: "no-store",
-          }
-        );
-
-      const shiftResult =
-        await safeJson(
-          shiftResponse
-        );
-
-      if (!shiftResponse.ok) {
+      if (missing.length > 0) {
         throw new Error(
-          shiftResult?.message ||
-            shiftResult?.details ||
-            "Unable to check shift."
+          "Cannot close shift. Missing closing readings for: " +
+            missing
+              .map((platform) => platform.platform_name)
+              .join(", ") +
+            "."
         );
       }
 
-      const latestShift =
-        Array.isArray(
-          shiftResult
-        )
-          ? shiftResult[0]
-          : null;
+      // Preserve existing signed-reading validation:
+      // negative, zero and positive are accepted.
+      // Blanks and non-finite values are rejected.
+      for (const platform of platforms) {
+        const raw =
+          closingByPlatform.get(platform.id)?.reading_value;
 
-      if (!latestShift) {
-        throw new Error(
-          "Shift could not be found."
-        );
+        if (
+          raw === null ||
+          raw === undefined ||
+          raw === "" ||
+          !Number.isFinite(Number(raw))
+        ) {
+          throw new Error(
+            `Invalid closing reading for ${platform.platform_name}.`
+          );
+        }
       }
 
-      if (
-        String(
-          latestShift.status || ""
-        ).toUpperCase() !==
-        "OPEN"
-      ) {
-        throw new Error(
-          "This shift is already closed."
-        );
-      }
+      // ==================================================
+      // CLOSE THE ORIGINAL SHIFT ONLY IF STILL OPEN
+      // ==================================================
 
-      // ==============================================
-      // 7. FINAL TIME CHECK
-      //
-      // This is intentionally immediately before
-      // the PATCH that closes the shift.
-      // ==============================================
+      const closeResponse = await fetch(
+        `${supabaseUrl}/rest/v1/shifts` +
+          `?id=eq.${encodeURIComponent(shiftId)}` +
+          `&shop_id=eq.${encodeURIComponent(shopId)}` +
+          `&status=eq.OPEN`,
+        {
+          method: "PATCH",
+          headers: {
+            ...headers,
+            Prefer: "return=representation",
+          },
+          body: JSON.stringify({
+            status: "CLOSED",
+            closed_at: new Date().toISOString(),
+          }),
+        }
+      );
 
-      if (
-        !is12HourClosingWindow(
-          new Date()
-        )
-      ) {
-        throw new Error(
-          "Shift change is available only from 9:30 PM to midnight (Nairobi time)."
-        );
-      }
-
-      // ==============================================
-      // 8. CLOSE SHIFT
-      // ==============================================
-
-      const closeResponse =
-        await fetch(
-          `${supabaseUrl}/rest/v1/shifts` +
-            `?id=eq.${encodeURIComponent(
-              shiftId
-            )}` +
-            `&status=eq.OPEN`,
-          {
-            method: "PATCH",
-
-            headers: {
-              apikey:
-                supabaseAnonKey,
-
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-
-              Prefer:
-                "return=representation",
-            },
-
-            body: JSON.stringify({
-              status:
-                "CLOSED",
-
-              closed_at:
-                new Date().toISOString(),
-            }),
-          }
-        );
-
-      const closeResult =
-        await safeJson(
-          closeResponse
-        );
+      const closeResult = await safeJson(closeResponse);
 
       if (!closeResponse.ok) {
         throw new Error(
@@ -453,112 +305,92 @@ export default function CashierCloseShiftButton({
         );
       }
 
+      const closedShift = Array.isArray(closeResult)
+        ? closeResult[0]
+        : null;
+
       if (
-        !Array.isArray(
-          closeResult
-        ) ||
-        closeResult.length === 0
+        !closedShift ||
+        String(closedShift.status).toUpperCase() !== "CLOSED"
       ) {
         throw new Error(
-          "Shift was not closed. Please try again."
+          "Shift was not closed. Refresh its status before trying again."
         );
       }
 
-      // ==============================================
-      // 9. SUCCESS
-      // ==============================================
+      setCompleted(true);
+      setMessage("Shift closed successfully.");
+      setMessageType("success");
 
-      setMessage(
-        "Shift closed successfully."
+      if (typeof onShiftClosed === "function") {
+        try {
+          await onShiftClosed(closedShift);
+        } catch (callbackError) {
+          console.error(
+            "CLOSE SHIFT REFRESH ERROR:",
+            callbackError
+          );
+        }
+      }
+
+      // Preserve existing dashboard reload after closing.
+      setTimeout(
+        () => window.location.reload(),
+        1000
       );
-
-      /*
-       * Dashboard reload:
-       *
-       * page.js will then use:
-       *
-       * Previous Closing Balance
-       *          ↓
-       * Next Balance B/F
-       *
-       * Previous TABLE Closing
-       *          ↓
-       * Next TABLE Opening
-       *
-       * IMPORTANT:
-       * TABLE closing can itself be negative,
-       * zero or positive and must carry exactly.
-       *
-       * Other platform openings
-       *          ↓
-       * 0
-       */
-
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
     } catch (error) {
-      console.error(
-        "CLOSE SHIFT ERROR:",
-        error
-      );
+      console.error("CLOSE SHIFT ERROR:", error);
 
       setMessage(
-        error?.message ||
-          "Unable to close shift."
+        error?.message || "Unable to close shift."
       );
+
+      setMessageType("error");
     } finally {
+      busyRef.current = false;
       setClosing(false);
     }
   }
 
   // ==================================================
-  // DO NOT SHOW BUTTON FOR CLOSED SHIFT
+  // DISPLAY
   // ==================================================
 
   if (
-    shiftStatus !== "OPEN"
+    shiftStatus !== "OPEN" ||
+    !shiftId
   ) {
     return null;
   }
 
-  // ==================================================
-  // HIDE COMPLETELY OUTSIDE 9:30 PM - MIDNIGHT
-  // ==================================================
-
-  if (!closingWindowOpen) {
+  // Hide before 9:30 PM on this shift's date.
+  // Remain visible afterward, even days late.
+  if (
+    !availability.available &&
+    availability.validDate
+  ) {
     return null;
   }
-
-  // ==================================================
-  // RENDER
-  // ==================================================
 
   return (
     <div>
       {message && (
         <div
+          role="alert"
           style={{
-            padding: "9px",
-            marginTop: "10px",
-
+            padding: 10,
+            marginTop: 10,
             backgroundColor:
-              message.includes(
-                "successfully"
-              )
+              messageType === "success"
                 ? "#ecfdf5"
                 : "#fef2f2",
-
             color:
-              message.includes(
-                "successfully"
-              )
+              messageType === "success"
                 ? "#166534"
                 : "#991b1b",
-
             textAlign: "center",
             fontWeight: "bold",
-            fontSize: "11px",
+            fontSize: 12,
           }}
         >
           {message}
@@ -568,107 +400,110 @@ export default function CashierCloseShiftButton({
       <button
         type="button"
         onClick={closeShift}
-        disabled={closing}
+        disabled={
+          closing ||
+          completed ||
+          !availability.available
+        }
         style={{
           width: "100%",
           border: "none",
-
           backgroundColor:
-            closing
+            closing ||
+            completed ||
+            !availability.available
               ? "#64748b"
               : "#07912a",
-
           color: "white",
-          padding: "13px",
-          marginTop: "10px",
+          padding: 13,
+          marginTop: 10,
           textAlign: "center",
           fontWeight: "bold",
-          fontSize: "13px",
-
+          fontSize: 13,
           cursor:
-            closing
-              ? "default"
+            closing ||
+            completed ||
+            !availability.available
+              ? "not-allowed"
               : "pointer",
         }}
       >
         {closing
           ? "CLOSING SHIFT..."
+          : completed
+          ? "SHIFT CLOSED ✓"
+          : !availability.validDate
+          ? "CONTACT ADMIN — INVALID SHIFT DATE"
           : "✓ CLOSE SHIFT & HAND OVER"}
       </button>
     </div>
   );
 }
-
 // ==================================================
-// 12-HOUR CASHIER CLOSING WINDOW
+// DATE-AWARE 12-HOUR CLOSING AVAILABILITY
 //
-// Nairobi time:
-// 9:30 PM inclusive
-// Midnight exclusive
+// Opens at 9:30 PM on the ORIGINAL business date.
+// Remains available after midnight and on later days.
 // ==================================================
 
-function is12HourClosingWindow(
+function get12HourClosingAvailability(
+  shift,
   date = new Date()
 ) {
-  const formatter =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone:
-          "Africa/Nairobi",
+  const businessDate = String(
+    shift?.business_date || ""
+  ).slice(0, 10);
 
-        hour:
-          "2-digit",
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(businessDate)
+  ) {
+    return {
+      available: false,
+      validDate: false,
+    };
+  }
 
-        minute:
-          "2-digit",
+  return {
+    available:
+      getNairobiDateTimeKey(date) >=
+      `${businessDate}T${CLOSING_START}`,
 
-        second:
-          "2-digit",
+    validDate: true,
+  };
+}
 
-        hourCycle:
-          "h23",
-      }
-    );
+// ==================================================
+// NAIROBI DATE + TIME
+// ==================================================
 
-  const parts =
-    formatter.formatToParts(
-      date
-    );
+function getNairobiDateTimeKey(
+  date = new Date()
+) {
+  const parts = new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: NAIROBI_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }
+  ).formatToParts(date);
 
-  const values = {};
+  const fields = {};
 
   for (const part of parts) {
-    if (
-      part.type !==
-      "literal"
-    ) {
-      values[
-        part.type
-      ] =
-        part.value;
+    if (part.type !== "literal") {
+      fields[part.type] = part.value;
     }
   }
 
-  const hour =
-    Number(
-      values.hour
-    );
-
-  const minute =
-    Number(
-      values.minute
-    );
-
-  const minutesSinceMidnight =
-    hour * 60 +
-    minute;
-
   return (
-    minutesSinceMidnight >=
-      21 * 60 + 30 &&
-    minutesSinceMidnight <
-      24 * 60
+    `${fields.year}-${fields.month}-${fields.day}` +
+    `T${fields.hour}:${fields.minute}:${fields.second}`
   );
 }
 
@@ -676,9 +511,7 @@ function is12HourClosingWindow(
 // SAFE JSON
 // ==================================================
 
-async function safeJson(
-  response
-) {
+async function safeJson(response) {
   try {
     return await response.json();
   } catch {
