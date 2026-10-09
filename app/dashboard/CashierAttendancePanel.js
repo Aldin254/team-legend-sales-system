@@ -238,7 +238,7 @@ export default function CashierAttendancePanel({ user, currentShift }) {
     setError("");
 
     try {
-      const result = await rpc("tl_cashier_today_duty_snapshot", {});
+      const result = await rpc("tl_cashier_today_duty_with_bonus", {});
       setSnapshot(result || null);
     } catch (err) {
       setError(err?.message || "Unable to load today's duty list.");
