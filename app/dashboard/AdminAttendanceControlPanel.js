@@ -1,5 +1,5 @@
 "use client";
-
+import AdminBonusControlPanel from "./AdminBonusControlPanel";
 import {
   useCallback,
   useEffect,
@@ -1257,7 +1257,14 @@ export default function AdminAttendanceControlPanel({
           The company-wide Lunch or Supper switch still has final control.
         </div>
       </div>
+       {/* =========================================
+    ADMIN BONUS CONTROL
+========================================= */}
 
+<AdminBonusControlPanel
+  user={user}
+  selectedDate={selectedDate}
+/>
       {/* ================================================== */}
       {/* HISTORY */}
       {/* ================================================== */}
