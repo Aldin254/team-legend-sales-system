@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 import AdminAccountsPanel from "./AdminAccountsPanel";
 import AdminShiftOverridePanel from "./AdminShiftOverridePanel";
-import AdminShiftCorrectionsPanel from "./AdminShiftCorrectionsPanel";
 import AdminReportsPanel from "./AdminReportsPanel";
 import AdminUserAccountsPanel from "./AdminUserAccountsPanel";
 import AdminShopManagementPanel from "./AdminShopManagementPanel";
@@ -272,10 +271,6 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
               />
 
               <AdminShiftOverridePanel
-                user={user}
-              />
-
-              <AdminShiftCorrectionsPanel
                 user={user}
               />
             </>
