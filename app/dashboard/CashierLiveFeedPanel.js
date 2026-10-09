@@ -379,7 +379,7 @@ export default function CashierLiveFeedPanel({
             white-space: nowrap;
             animation:
               teamLegendLiveFeedScroll
-              38s
+              50.7s
               linear
               infinite;
             will-change: transform;
