@@ -1,934 +1,399 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
-
-// 12-HOUR CASHIER SHIFT CHANGE WINDOW
-// Opens: 9:30 PM Nairobi time
-// Closes: 12:00 AM Nairobi time
-const HANDOVER_START_MINUTES = 21 * 60 + 30; // 21:30
-const HANDOVER_END_MINUTES = 24 * 60; // 24:00
+const HANDOVER_START = "21:30:00";
 
 export default function CloseShift({
   user,
   currentShift,
   onShiftClosed,
+  refreshKey = 0,
 }) {
+  const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [closing, setClosing] = useState(false);
-
-  const [shiftData, setShiftData] = useState(null);
-
-  const [platformCount, setPlatformCount] = useState(0);
-  const [closingCount, setClosingCount] = useState(0);
-
+  const [reloadIndex, setReloadIndex] = useState(0);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
-
-  // Live clock so the button changes automatically
-  // without needing a browser refresh.
   const [now, setNow] = useState(() => new Date());
+  const closingRef = useRef(false);
 
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const accessToken =
-    user?.access_token || null;
-
-  const shopId =
-    user?.shop_id ||
-    user?.shopId ||
-    null;
-
-  const shiftId =
-    currentShift?.id || null;
-
-  // --------------------------------------------------
-  // LIVE CLOCK
-  // --------------------------------------------------
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const accessToken = user?.access_token || null;
+  const shopId = currentShift?.shop_id || user?.shop_id || user?.shopId || null;
+  const shiftId = currentShift?.id || null;
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 15000);
-
-    return () => {
-      clearInterval(timer);
-    };
+    setNow(new Date());
+    const timer = setInterval(() => setNow(new Date()), 15000);
+    return () => clearInterval(timer);
   }, []);
 
-  // --------------------------------------------------
-  // NAIROBI HANDOVER WINDOW
-  // --------------------------------------------------
+  // Avoid displaying readings from a previously selected shift.
+  const currentSnapshot = snapshot?.shift?.id === shiftId ? snapshot : null;
+  const effectiveShift = currentSnapshot?.shift || currentShift;
+  const status = String(effectiveShift?.status || "").trim().toUpperCase();
+  const availability = useMemo(
+    () => get12HourCloseAvailability(effectiveShift, now),
+    [effectiveShift, now]
+  );
+  const platformCount = currentSnapshot?.platformCount || 0;
+  const closingCount = currentSnapshot?.closingCount || 0;
+  const allClosingsSaved = platformCount > 0 && closingCount === platformCount;
 
-  const nairobiTime = useMemo(() => {
-    return getNairobiTime(now);
-  }, [now]);
-
-  const handoverWindowOpen =
-    nairobiTime.minutesSinceMidnight >=
-      HANDOVER_START_MINUTES &&
-    nairobiTime.minutesSinceMidnight <
-      HANDOVER_END_MINUTES;
-
-  // --------------------------------------------------
-  // LOAD FINAL SHIFT INFORMATION
-  // --------------------------------------------------
-
-  useEffect(() => {
-    if (
-      !shiftId ||
-      !shopId ||
-      !accessToken ||
-      !supabaseUrl ||
-      !supabaseAnonKey
-    ) {
-      setLoading(false);
-      return;
+  const fetchCurrentData = useCallback(async () => {
+    if (!shiftId || !shopId || !accessToken || !supabaseUrl || !supabaseAnonKey) {
+      throw new Error("Shift or login information is missing.");
     }
 
-    let cancelled = false;
-
-    async function loadCloseShiftData() {
-      try {
-        setLoading(true);
-        setMessage("");
-        setMessageType("");
-
-        // --------------------------------------------
-        // GET LATEST SHIFT VALUES
-        // --------------------------------------------
-
-        const shiftResponse = await fetch(
-          `${supabaseUrl}/rest/v1/shifts` +
-            `?id=eq.${encodeURIComponent(shiftId)}` +
-            `&select=*` +
-            `&limit=1`,
-          {
-            method: "GET",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization:
-                `Bearer ${accessToken}`,
-              "Content-Type":
-                "application/json",
-            },
-            cache: "no-store",
-          }
-        );
-
-        let shiftResult = null;
-
-        try {
-          shiftResult =
-            await shiftResponse.json();
-        } catch {
-          shiftResult = null;
-        }
-
-        if (!shiftResponse.ok) {
-          throw new Error(
-            shiftResult?.message ||
-              shiftResult?.details ||
-              "Unable to load shift information."
-          );
-        }
-
-        const latestShift =
-          Array.isArray(shiftResult) &&
-          shiftResult.length > 0
-            ? shiftResult[0]
-            : null;
-
-        if (!latestShift) {
-          throw new Error(
-            "Current shift could not be found."
-          );
-        }
-
-        // --------------------------------------------
-        // GET ACTIVE SHOP PLATFORMS
-        // --------------------------------------------
-
-        const platformResponse = await fetch(
-          `${supabaseUrl}/rest/v1/shop_platforms` +
-            `?shop_id=eq.${encodeURIComponent(shopId)}` +
-            `&is_active=eq.true` +
-            `&select=id`,
-          {
-            method: "GET",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization:
-                `Bearer ${accessToken}`,
-              "Content-Type":
-                "application/json",
-            },
-            cache: "no-store",
-          }
-        );
-
-        let platformResult = null;
-
-        try {
-          platformResult =
-            await platformResponse.json();
-        } catch {
-          platformResult = null;
-        }
-
-        if (!platformResponse.ok) {
-          throw new Error(
-            platformResult?.message ||
-              platformResult?.details ||
-              "Unable to load shop platforms."
-          );
-        }
-
-        const platforms =
-          Array.isArray(platformResult)
-            ? platformResult
-            : [];
-
-        // --------------------------------------------
-        // GET CLOSING READINGS
-        // --------------------------------------------
-
-        const readingsResponse = await fetch(
-          `${supabaseUrl}/rest/v1/platform_readings` +
-            `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-            `&reading_kind=eq.CLOSING` +
-            `&select=id,platform_id,reading_value`,
-          {
-            method: "GET",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization:
-                `Bearer ${accessToken}`,
-              "Content-Type":
-                "application/json",
-            },
-            cache: "no-store",
-          }
-        );
-
-        let readingsResult = null;
-
-        try {
-          readingsResult =
-            await readingsResponse.json();
-        } catch {
-          readingsResult = null;
-        }
-
-        if (!readingsResponse.ok) {
-          throw new Error(
-            readingsResult?.message ||
-              readingsResult?.details ||
-              "Unable to check closing readings."
-          );
-        }
-
-        const closingRows =
-          Array.isArray(readingsResult)
-            ? readingsResult
-            : [];
-
-        const platformIds =
-          new Set(
-            platforms.map(
-              (platform) => platform.id
-            )
-          );
-
-        const savedClosingPlatformIds =
-          new Set();
-
-        for (const row of closingRows) {
-          if (
-            row.platform_id &&
-            platformIds.has(row.platform_id)
-          ) {
-            savedClosingPlatformIds.add(
-              row.platform_id
-            );
-          }
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        setShiftData(latestShift);
-        setPlatformCount(platforms.length);
-        setClosingCount(
-          savedClosingPlatformIds.size
-        );
-      } catch (error) {
-        console.error(
-          "CLOSE SHIFT LOAD ERROR:",
-          error
-        );
-
-        if (!cancelled) {
-          setMessage(
-            error?.message ||
-              "Unable to prepare shift closing."
-          );
-
-          setMessageType("error");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadCloseShiftData();
-
-    return () => {
-      cancelled = true;
+    const headers = {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
     };
-  }, [
-    shiftId,
-    shopId,
-    accessToken,
-    supabaseUrl,
-    supabaseAnonKey,
-  ]);
 
-  // --------------------------------------------------
-  // CLOSE SHIFT
-  // --------------------------------------------------
+    const [shiftResponse, platformResponse, readingsResponse] = await Promise.all([
+      fetch(
+        `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(shiftId)}` +
+          `&select=*&limit=1`,
+        { method: "GET", headers, cache: "no-store" }
+      ),
+      fetch(
+        `${supabaseUrl}/rest/v1/shop_platforms?shop_id=eq.${encodeURIComponent(shopId)}` +
+          `&is_active=eq.true&select=id`,
+        { method: "GET", headers, cache: "no-store" }
+      ),
+      fetch(
+        `${supabaseUrl}/rest/v1/platform_readings?shift_id=eq.${encodeURIComponent(shiftId)}` +
+          `&reading_kind=eq.CLOSING&select=id,platform_id`,
+        { method: "GET", headers, cache: "no-store" }
+      ),
+    ]);
 
+    const [shiftResult, platformResult, readingsResult] = await Promise.all([
+      safeJson(shiftResponse),
+      safeJson(platformResponse),
+      safeJson(readingsResponse),
+    ]);
+
+    if (!shiftResponse.ok) {
+      throw new Error(shiftResult?.message || shiftResult?.details || "Unable to load shift.");
+    }
+    if (!platformResponse.ok) {
+      throw new Error(platformResult?.message || platformResult?.details || "Unable to load platforms.");
+    }
+    if (!readingsResponse.ok) {
+      throw new Error(readingsResult?.message || readingsResult?.details || "Unable to load closing readings.");
+    }
+
+    const shift = Array.isArray(shiftResult) ? shiftResult[0] : null;
+    if (!shift || String(shift.shop_id) !== String(shopId)) {
+      throw new Error("Selected shift was not found in this shop.");
+    }
+
+    const platforms = Array.isArray(platformResult) ? platformResult : [];
+    const readingRows = Array.isArray(readingsResult) ? readingsResult : [];
+    const activeIds = new Set(platforms.map((item) => item.id));
+    const savedIds = new Set(
+      readingRows.filter((row) => activeIds.has(row.platform_id)).map((row) => row.platform_id)
+    );
+
+    return { shift, platformCount: activeIds.size, closingCount: savedIds.size };
+  }, [shiftId, shopId, accessToken, supabaseUrl, supabaseAnonKey]);
+
+  // Refresh on shift change or when the parent reports a reading change.
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError("");
+
+    fetchCurrentData()
+      .then((data) => {
+        if (!cancelled) {
+          setSnapshot(data);
+          setLoadError("");
+        }
+      })
+      .catch((error) => {
+        console.error("12H CLOSE LOAD ERROR:", error);
+        if (!cancelled) setLoadError(error?.message || "Unable to load closing data.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [fetchCurrentData, refreshKey, reloadIndex]);
+
+  const canClose =
+    !closing &&
+    !loading &&
+    !loadError &&
+    Boolean(currentSnapshot) &&
+    status === "OPEN" &&
+    availability.available &&
+    allClosingsSaved;
   async function closeShift() {
-    // --------------------------------------------
-    // RECHECK NAIROBI TIME
-    // --------------------------------------------
-
-    const freshNairobiTime =
-      getNairobiTime(new Date());
-
-    const freshWindowOpen =
-      freshNairobiTime.minutesSinceMidnight >=
-        HANDOVER_START_MINUTES &&
-      freshNairobiTime.minutesSinceMidnight <
-        HANDOVER_END_MINUTES;
-
-    if (!freshWindowOpen) {
-      setMessage(
-        "Shift change is only available from 9:30 PM to 12:00 midnight Nairobi time."
-      );
-      setMessageType("error");
-      return;
-    }
-
-    if (!shiftId) {
-      setMessage(
-        "No open shift was found."
-      );
-      setMessageType("error");
-      return;
-    }
-
-    if (!accessToken) {
-      setMessage(
-        "Authentication is missing. Please log in again."
-      );
-      setMessageType("error");
-      return;
-    }
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    setMessage("");
+    setMessageType("");
 
     try {
-      setClosing(true);
-      setMessage("");
-      setMessageType("");
+      // The original business date sets the opening time, not the current clock day.
+      const fresh = await fetchCurrentData();
+      if (String(fresh.shift.status || "").toUpperCase() !== "OPEN") {
+        throw new Error("This shift is no longer OPEN.");
+      }
 
-      // --------------------------------------------
-      // RECHECK ACTIVE PLATFORMS
-      // --------------------------------------------
+      const freshAvailability = get12HourCloseAvailability(fresh.shift, new Date());
+      if (!freshAvailability.available) {
+        throw new Error(freshAvailability.message);
+      }
 
-      const platformResponse = await fetch(
-        `${supabaseUrl}/rest/v1/shop_platforms` +
-          `?shop_id=eq.${encodeURIComponent(shopId)}` +
-          `&is_active=eq.true` +
-          `&select=id`,
-        {
-          method: "GET",
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization:
-              `Bearer ${accessToken}`,
-            "Content-Type":
-              "application/json",
-          },
-          cache: "no-store",
-        }
-      );
-
-      const platforms =
-        await platformResponse.json();
-
-      if (!platformResponse.ok) {
+      if (fresh.platformCount === 0 || fresh.closingCount !== fresh.platformCount) {
         throw new Error(
-          platforms?.message ||
-            platforms?.details ||
-            "Unable to check active platforms."
+          `All platform closing readings must be saved first. ` +
+          `Saved ${fresh.closingCount} of ${fresh.platformCount}.`
         );
       }
 
-      // --------------------------------------------
-      // RECHECK CLOSING READINGS
-      // --------------------------------------------
+      if (!window.confirm(
+        `CLOSE 12-HOUR SHIFT\n\n` +
+          `Business date: ${fresh.shift.business_date || "-"}\n` +
+          `Closing readings: ${fresh.closingCount}/${fresh.platformCount}\n\n` +
+          `Confirm closing this shift?`
+      )) return;
 
-      const readingsResponse = await fetch(
-        `${supabaseUrl}/rest/v1/platform_readings` +
-          `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-          `&reading_kind=eq.CLOSING` +
-          `&select=id,platform_id`,
-        {
-          method: "GET",
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization:
-              `Bearer ${accessToken}`,
-            "Content-Type":
-              "application/json",
-          },
-          cache: "no-store",
-        }
-      );
-
-      const closingRows =
-        await readingsResponse.json();
-
-      if (!readingsResponse.ok) {
-        throw new Error(
-          closingRows?.message ||
-            closingRows?.details ||
-            "Unable to verify closing readings."
-        );
-      }
-
-      const activePlatformIds =
-        new Set(
-          platforms.map(
-            (platform) => platform.id
-          )
-        );
-
-      const closingPlatformIds =
-        new Set();
-
-      for (const row of closingRows) {
-        if (
-          row.platform_id &&
-          activePlatformIds.has(
-            row.platform_id
-          )
-        ) {
-          closingPlatformIds.add(
-            row.platform_id
-          );
-        }
-      }
-
-      if (
-        closingPlatformIds.size !==
-        activePlatformIds.size
-      ) {
-        setPlatformCount(
-          activePlatformIds.size
-        );
-
-        setClosingCount(
-          closingPlatformIds.size
-        );
-
-        throw new Error(
-          `All platform closing readings must be saved first. Saved ${closingPlatformIds.size} of ${activePlatformIds.size}.`
-        );
-      }
-
-      // --------------------------------------------
-      // GET FRESH SHIFT TOTALS
-      // --------------------------------------------
-
-      const currentResponse = await fetch(
-        `${supabaseUrl}/rest/v1/shifts` +
-          `?id=eq.${encodeURIComponent(shiftId)}` +
-          `&select=*` +
-          `&limit=1`,
-        {
-          method: "GET",
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization:
-              `Bearer ${accessToken}`,
-            "Content-Type":
-              "application/json",
-          },
-          cache: "no-store",
-        }
-      );
-
-      const currentResult =
-        await currentResponse.json();
-
-      if (!currentResponse.ok) {
-        throw new Error(
-          currentResult?.message ||
-            currentResult?.details ||
-            "Unable to verify shift totals."
-        );
-      }
-
-      if (
-        !Array.isArray(currentResult) ||
-        currentResult.length === 0
-      ) {
-        throw new Error(
-          "Current shift was not found."
-        );
-      }
-
-      const freshShift =
-        currentResult[0];
-
-      if (
-        String(
-          freshShift.status || ""
-        ).toUpperCase() !== "OPEN"
-      ) {
-        throw new Error(
-          "This shift is no longer open."
-        );
-      }
-
-      // --------------------------------------------
-      // FINAL TIME CHECK
-      // --------------------------------------------
-
-      const finalNairobiTime =
-        getNairobiTime(new Date());
-
-      const finalWindowOpen =
-        finalNairobiTime.minutesSinceMidnight >=
-          HANDOVER_START_MINUTES &&
-        finalNairobiTime.minutesSinceMidnight <
-          HANDOVER_END_MINUTES;
-
-      if (!finalWindowOpen) {
-        throw new Error(
-          "The 12-hour shift-change window has closed."
-        );
-      }
-
-      // --------------------------------------------
-      // CLOSE SHIFT
-      // --------------------------------------------
-
-      const closedAt =
-        new Date().toISOString();
-
-      const closeResponse = await fetch(
-        `${supabaseUrl}/rest/v1/shifts` +
-          `?id=eq.${encodeURIComponent(shiftId)}`,
+      const closedAt = new Date().toISOString();
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(shiftId)}` +
+          `&status=eq.OPEN`,
         {
           method: "PATCH",
           headers: {
             apikey: supabaseAnonKey,
-            Authorization:
-              `Bearer ${accessToken}`,
-            "Content-Type":
-              "application/json",
-            Prefer:
-              "return=representation",
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            Prefer: "return=representation",
           },
-          body: JSON.stringify({
-            status: "CLOSED",
-            closed_at: closedAt,
-          }),
+          body: JSON.stringify({ status: "CLOSED", closed_at: closedAt }),
         }
       );
 
-      let closeResult = null;
-
-      try {
-        closeResult =
-          await closeResponse.json();
-      } catch {
-        closeResult = null;
+      const result = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(result?.message || result?.details || result?.hint || "Unable to close shift.");
       }
 
-      if (!closeResponse.ok) {
-        console.error(
-          "CLOSE SHIFT UPDATE ERROR:",
-          closeResult
-        );
-
-        throw new Error(
-          closeResult?.message ||
-            closeResult?.details ||
-            closeResult?.hint ||
-            "Unable to close shift."
-        );
+      const closedShift = Array.isArray(result) ? result[0] : null;
+      if (!closedShift || String(closedShift.status || "").toUpperCase() !== "CLOSED") {
+        throw new Error("Shift was not updated. Refresh its status before retrying.");
       }
 
-      const closedShift =
-        Array.isArray(closeResult) &&
-        closeResult.length > 0
-          ? closeResult[0]
-          : {
-              ...freshShift,
-              status: "CLOSED",
-              closed_at: closedAt,
-            };
-
-      setShiftData(closedShift);
-
-      setMessage(
-        "Shift closed successfully."
-      );
-
+      setSnapshot({ ...fresh, shift: closedShift });
+      setMessage("Shift closed successfully. The next cashier shift follows the normal midnight opening rule.");
       setMessageType("success");
 
-      if (
-        typeof onShiftClosed ===
-        "function"
-      ) {
-        await onShiftClosed(closedShift);
+      if (typeof onShiftClosed === "function") {
+        try { await onShiftClosed(closedShift); }
+        catch (error) { console.error("CLOSED SHIFT REFRESH ERROR:", error); }
       }
     } catch (error) {
-      console.error(
-        "CLOSE SHIFT ERROR:",
-        error
-      );
-
-      setMessage(
-        error?.message ||
-          "Unable to close shift."
-      );
-
+      console.error("12H CLOSE ERROR:", error);
+      setMessage(error?.message || "Unable to close shift.");
       setMessageType("error");
+      // Ensure displayed reading counts can be refreshed after a conflict.
+      setReloadIndex((value) => value + 1);
     } finally {
+      closingRef.current = false;
       setClosing(false);
     }
   }
 
-  // --------------------------------------------------
-  // DISPLAY
-  // --------------------------------------------------
+  if (!currentShift) return null;
 
-  if (!currentShift) {
+  // The panel opens at 9:30 PM on the business date and remains available.
+  if (status === "OPEN" && !availability.available && availability.validDate) {
     return null;
   }
 
-  const allClosingsSaved =
-    platformCount > 0 &&
-    closingCount === platformCount;
-
-  const netIncome =
-    Number(
-      shiftData?.net_income ??
-        currentShift?.net_income ??
-        0
-    );
-
-  const closingBalance =
-    Number(
-      shiftData?.closing_balance ??
-        currentShift?.closing_balance ??
-        0
-    );
-
-  const status =
-    String(
-      shiftData?.status ||
-        currentShift?.status ||
-        "OPEN"
-    ).toUpperCase();
-
-  // A completed shift can remain visible.
-  // An OPEN shift does not show its closing panel
-  // until 9:30 PM Nairobi time.
-  if (
-    status !== "CLOSED" &&
-    !handoverWindowOpen
-  ) {
-    return null;
-  }
+  const netIncome = Number(effectiveShift?.net_income || 0);
+  const closingBalance = Number(effectiveShift?.closing_balance || 0);
 
   return (
-    <div
-      style={{
-        marginTop: "24px",
-        backgroundColor: "white",
-        padding: "25px",
-        borderRadius: "12px",
-        boxShadow:
-          "0 2px 10px rgba(0,0,0,0.08)",
-        maxWidth: "700px",
-      }}
-    >
-      <h2
-        style={{
-          marginTop: 0,
-          marginBottom: "7px",
-        }}
-      >
-        Shift Change / Handover
-      </h2>
-
-      <p
-        style={{
-          color: "#64748b",
-          marginTop: 0,
-          marginBottom: "20px",
-        }}
-      >
-        Cashier handover is available from
-        9:30 PM until midnight Nairobi time.
+    <div style={panelStyle}>
+      <h2 style={{ margin: "0 0 7px" }}>Shift Change / Handover</h2>
+      <p style={{ margin: "0 0 15px", color: "#64748b" }}>
+        Business date: {effectiveShift?.business_date || "-"}. The 12-hour handover
+        opens at 9:30 PM Nairobi time and does not expire while the shift remains open.
       </p>
 
-      {loading ? (
-        <div>
-          Checking shift...
+      <div style={noticeStyle(availability.available)}>
+        <strong>{availability.available ? "Handover available ✓" : "Handover unavailable"}</strong>
+        <div style={{ marginTop: 5, fontSize: 13 }}>{availability.message}</div>
+        <div style={{ marginTop: 5, fontSize: 12 }}>
+          Nairobi time: {formatNairobiTime(now)}
         </div>
+      </div>
+
+      <div style={noticeStyle(allClosingsSaved)}>
+        Closing readings: <strong>{closingCount} / {platformCount}</strong>
+        {allClosingsSaved ? " ✓" : " — Complete all readings before closing."}
+      </div>
+
+      <div style={totalsGridStyle}>
+        <TotalCard title="Net Income" value={netIncome} />
+        <TotalCard title="Closing Balance" value={closingBalance} />
+      </div>
+
+      {(loadError || message) && (
+        <div role="alert" style={noticeStyle(!loadError && messageType === "success")}>
+          {loadError || message}
+        </div>
+      )}
+
+      {status === "CLOSED" ? (
+        <div style={noticeStyle(true)}>Shift Closed ✓</div>
       ) : (
         <>
-          {/* CLOSING READINGS STATUS */}
-
-          <div
-            style={{
-              padding: "14px",
-              borderRadius: "8px",
-              marginBottom: "16px",
-              backgroundColor:
-                allClosingsSaved
-                  ? "#ecfdf5"
-                  : "#fff7ed",
-              color:
-                allClosingsSaved
-                  ? "#166534"
-                  : "#9a3412",
-            }}
+          <button
+            type="button"
+            onClick={closeShift}
+            disabled={!canClose}
+            style={{ ...actionStyle, background: canClose ? "#dc2626" : "#94a3b8" }}
           >
-            Closing readings:{" "}
-            <strong>
-              {closingCount} / {platformCount}
-            </strong>
+            {closing ? "Closing Shift..." : loading ? "Checking Readings..." :
+              !allClosingsSaved ? "Save Closing Readings First" :
+              !availability.available ? "Handover Not Yet Available" :
+              "Close Shift & Hand Over"}
+          </button>
 
-            {allClosingsSaved && (
-              <> ✓</>
-            )}
-          </div>
-
-          {/* FINAL TOTALS */}
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(2, minmax(0, 1fr))",
-              gap: "12px",
-              marginBottom: "20px",
-            }}
+          <button
+            type="button"
+            disabled={closing || loading}
+            onClick={() => setReloadIndex((value) => value + 1)}
+            style={{ ...actionStyle, background: "#0e7490", marginTop: 9 }}
           >
-            <div
-              style={{
-                backgroundColor: "#f8fafc",
-                padding: "16px",
-                borderRadius: "9px",
-                border:
-                  "1px solid #e2e8f0",
-              }}
-            >
-              <div
-                style={{
-                  color: "#64748b",
-                  fontSize: "13px",
-                }}
-              >
-                Net Income
-              </div>
-
-              <div
-                style={{
-                  marginTop: "6px",
-                  fontSize: "20px",
-                  fontWeight: "bold",
-                }}
-              >
-                KES{" "}
-                {netIncome.toLocaleString(
-                  "en-KE",
-                  {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  }
-                )}
-              </div>
-            </div>
-
-            <div
-              style={{
-                backgroundColor: "#f8fafc",
-                padding: "16px",
-                borderRadius: "9px",
-                border:
-                  "1px solid #e2e8f0",
-              }}
-            >
-              <div
-                style={{
-                  color: "#64748b",
-                  fontSize: "13px",
-                }}
-              >
-                Closing Balance
-              </div>
-
-              <div
-                style={{
-                  marginTop: "6px",
-                  fontSize: "20px",
-                  fontWeight: "bold",
-                }}
-              >
-                KES{" "}
-                {closingBalance.toLocaleString(
-                  "en-KE",
-                  {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  }
-                )}
-              </div>
-            </div>
-          </div>
-
-          {message && (
-            <div
-              style={{
-                padding: "12px",
-                marginBottom: "16px",
-                borderRadius: "8px",
-                backgroundColor:
-                  messageType === "success"
-                    ? "#ecfdf5"
-                    : "#fef2f2",
-                color:
-                  messageType === "success"
-                    ? "#166534"
-                    : "#991b1b",
-              }}
-            >
-              {message}
-            </div>
-          )}
-
-          {status === "CLOSED" ? (
-            <div
-              style={{
-                padding: "14px",
-                backgroundColor: "#ecfdf5",
-                color: "#166534",
-                borderRadius: "8px",
-                textAlign: "center",
-                fontWeight: "bold",
-              }}
-            >
-              Shift Closed ✓
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={closeShift}
-              disabled={
-                closing ||
-                !allClosingsSaved ||
-                !handoverWindowOpen
-              }
-              style={{
-                width: "100%",
-                padding: "14px",
-                border: "none",
-                borderRadius: "8px",
-                backgroundColor:
-                  closing ||
-                  !allClosingsSaved ||
-                  !handoverWindowOpen
-                    ? "#94a3b8"
-                    : "#dc2626",
-                color: "white",
-                fontWeight: "bold",
-                fontSize: "16px",
-                cursor:
-                  closing ||
-                  !allClosingsSaved ||
-                  !handoverWindowOpen
-                    ? "not-allowed"
-                    : "pointer",
-              }}
-            >
-              {closing
-                ? "Changing Shift..."
-                : "Close Shift & Hand Over"}
-            </button>
-          )}
+            Refresh Closing Readings
+          </button>
         </>
       )}
     </div>
   );
 }
-
-// --------------------------------------------------
-// NAIROBI CLOCK
-// --------------------------------------------------
-
-function getNairobiTime(date) {
-  const parts =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone:
-          NAIROBI_TIME_ZONE,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hourCycle: "h23",
-      }
-    ).formatToParts(date);
-
-  const values = {};
-
-  for (const part of parts) {
-    if (part.type !== "literal") {
-      values[part.type] =
-        part.value;
-    }
+function get12HourCloseAvailability(shift, date = new Date()) {
+  const businessDate = String(shift?.business_date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) {
+    return {
+      available: false,
+      validDate: false,
+      message: "Shift business date is missing or invalid. Contact Admin.",
+    };
   }
 
-  const hour =
-    Number(values.hour || 0);
-
-  const minute =
-    Number(values.minute || 0);
-
-  const second =
-    Number(values.second || 0);
-
+  const unlockAt = `${businessDate}T${HANDOVER_START}`;
+  const available = getNairobiDateTimeKey(date) >= unlockAt;
   return {
-    hour,
-    minute,
-    second,
-    minutesSinceMidnight:
-      hour * 60 + minute,
+    available,
+    validDate: true,
+    message: available
+      ? `Closing became available at 9:30 PM on ${businessDate}. ` +
+        "It remains available if this shift is overdue."
+      : `Closing becomes available at 9:30 PM on ${businessDate} (Nairobi time).`,
+  };
+}
+
+function getNairobiDateTimeKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: NAIROBI_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const result = {};
+  for (const part of parts) {
+    if (part.type !== "literal") result[part.type] = part.value;
+  }
+  return `${result.year}-${result.month}-${result.day}` +
+    `T${result.hour}:${result.minute}:${result.second}`;
+}
+
+function formatNairobiTime(date) {
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: NAIROBI_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
+function TotalCard({ title, value }) {
+  const numeric = Number(value);
+  const safeValue = Number.isFinite(numeric) ? numeric : 0;
+  return (
+    <div style={{ background: "#f8fafc", padding: 16, borderRadius: 9,
+      border: "1px solid #e2e8f0" }}>
+      <div style={{ color: "#64748b", fontSize: 13 }}>{title}</div>
+      <div style={{ marginTop: 6, fontSize: 20, fontWeight: "bold" }}>
+        KES {safeValue.toLocaleString("en-KE", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}
+      </div>
+    </div>
+  );
+}
+
+async function safeJson(response) {
+  try { return await response.json(); }
+  catch { return null; }
+}
+
+const panelStyle = {
+  marginTop: 24,
+  background: "white",
+  padding: 25,
+  borderRadius: 12,
+  boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+  maxWidth: 700,
+};
+
+const totalsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+  gap: 12,
+  marginBottom: 20,
+};
+
+const actionStyle = {
+  width: "100%",
+  padding: 14,
+  border: "none",
+  borderRadius: 8,
+  color: "white",
+  fontWeight: "bold",
+  fontSize: 15,
+  cursor: "pointer",
+};
+
+function noticeStyle(good) {
+  return {
+    padding: 14,
+    borderRadius: 8,
+    marginBottom: 15,
+    backgroundColor: good ? "#ecfdf5" : "#fff7ed",
+    color: good ? "#166534" : "#9a3412",
   };
 }
