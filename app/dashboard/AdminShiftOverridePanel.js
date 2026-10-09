@@ -2,562 +2,556 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AdminRecoveryReportEditor from "./AdminRecoveryReportEditor";
-const NAIROBI_ZONE = "Africa/Nairobi";
+
+const ZONE = "Africa/Nairobi";
 
 export default function AdminShiftOverridePanel({ user }) {
   const [shops, setShops] = useState([]);
-  const [selectedShopId, setSelectedShopId] = useState("");
-  const [businessDate, setBusinessDate] = useState(() => nairobiBusinessDate());
+  const [shopId, setShopId] = useState("");
+  const [businessDate, setBusinessDate] = useState(todayNairobi);
   const [targetShifts, setTargetShifts] = useState([]);
   const [openShifts, setOpenShifts] = useState([]);
-  const [targetShiftId, setTargetShiftId] = useState("");
-  const [returnShiftId, setReturnShiftId] = useState("");
-  const [activeRecovery, setActiveRecovery] = useState(null);
+  const [targetId, setTargetId] = useState("");
+  const [recovery, setRecovery] = useState(null);
   const [reason, setReason] = useState("");
-  const [endNote, setEndNote] = useState("");
-  const [loadingShops, setLoadingShops] = useState(true);
-  const [loadingStatus, setLoadingStatus] = useState(false);
-  const [statusError, setStatusError] = useState("");
-  const [working, setWorking] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
+  const [version, setVersion] = useState(0);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const accessToken = user?.access_token || null;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const token = user?.access_token;
 
-  const headers = useMemo(
-    () => ({
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    }),
-    [supabaseAnonKey, accessToken]
-  );
+  const headers = useMemo(() => ({
+    apikey: key,
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  }), [key, token]);
 
-  const selectedShop = shops.find((shop) => shop.id === selectedShopId);
-  const selectedTarget = targetShifts.find(
-    (shift) => shift.id === targetShiftId
-  );
-  const possibleReturns = openShifts.filter(
-    (shift) => shift.id !== targetShiftId
-  );
-  const selectedReturn = possibleReturns.find(
-    (shift) => shift.id === returnShiftId
-  );
-  const requiresReturn = possibleReturns.length > 0;
+  const shop = shops.find((s) => s.id === shopId);
+  const target = targetShifts.find((s) => s.id === targetId);
 
-  // --------------------------------------------------
-  // Load ALL 12-hour and 24-hour shops (including inactive
-  // shops, if their historical shifts need correcting).
-  // --------------------------------------------------
+  const otherOpen = openShifts.filter((s) => s.id !== targetId);
+  const multipleOpen = otherOpen.length > 1;
+  const returnShift = otherOpen.length === 1 ? otherOpen[0] : null;
+
+  async function request(path, body) {
+    const response = await fetch(`${url}/rest/v1/${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      cache: "no-store",
+    });
+
+    const result = await json(response);
+
+    if (!response.ok) {
+      throw new Error(
+        result?.message ||
+        result?.details ||
+        "Database request failed."
+      );
+    }
+
+    return result;
+  }
+
   useEffect(() => {
-    let cancelled = false;
+    let stopped = false;
+
     async function loadShops() {
-      if (!supabaseUrl || !supabaseAnonKey || !accessToken) {
-        if (!cancelled) {
-          setLoadingShops(false);
-          setMessage("Admin login information is missing.");
-          setMessageType("error");
+      if (!url || !key || !token) {
+        if (!stopped) {
+          setError("Admin login information is missing.");
+          setLoading(false);
         }
         return;
       }
+
       try {
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/shops` +
-            `?shop_type=in.(12_HOUR,24_HOUR)` +
-            `&select=id,shop_name,shop_type,is_active&order=shop_name.asc`,
-          { headers, cache: "no-store" }
+        const result = await request(
+          "shops?shop_type=in.(12_HOUR,24_HOUR)" +
+          "&select=id,shop_name,shop_type,is_active" +
+          "&order=shop_name.asc"
         );
-        const result = await safeJson(response);
-        if (!response.ok) {
-          throw new Error(result?.message || "Unable to load shops.");
-        }
-        if (cancelled) return;
+
+        if (stopped) return;
+
         const list = Array.isArray(result) ? result : [];
         setShops(list);
-        setSelectedShopId((old) =>
-          list.some((shop) => shop.id === old) ? old : list[0]?.id || ""
+        setShopId((old) =>
+          list.some((s) => s.id === old)
+            ? old
+            : list[0]?.id || ""
         );
-      } catch (error) {
-        if (!cancelled) {
-          setMessage(error?.message || "Unable to load shops.");
-          setMessageType("error");
-        }
+      } catch (e) {
+        if (!stopped) setError(e.message);
       } finally {
-        if (!cancelled) setLoadingShops(false);
+        if (!stopped) setLoading(false);
       }
     }
+
     loadShops();
-    return () => { cancelled = true; };
-  }, [supabaseUrl, supabaseAnonKey, accessToken, headers]);
 
-  // --------------------------------------------------
-  // Read exact historical shifts, all OPEN shifts and
-  // current recovery via the ADMIN-ONLY overview RPC.
-  // The recovery tables have no direct browser SELECT.
-  // --------------------------------------------------
+    return () => {
+      stopped = true;
+    };
+  }, [url, key, token]);
+
   useEffect(() => {
-    if (!selectedShopId || !supabaseUrl || !supabaseAnonKey || !accessToken || !businessDate) {
-      setLoadingStatus(false);
-      setStatusError("");
-      setTargetShifts([]);
-      setOpenShifts([]);
-      setActiveRecovery(null);
-      return;
-    }
+    if (!shopId || !businessDate || !token) return;
 
-    let cancelled = false;
+    let stopped = false;
+
     async function loadStatus() {
-      setLoadingStatus(true);
-      setStatusError("");
-      try {
-        const shop = encodeURIComponent(selectedShopId);
-        const date = encodeURIComponent(businessDate);
-        const base = `${supabaseUrl}/rest/v1`;
-        const [targetResponse, openResponse, overviewResponse] =
-          await Promise.all([
-            fetch(
-              `${base}/shifts?shop_id=eq.${shop}` +
-                `&business_date=eq.${date}` +
-                `&select=id,shop_id,shift_name,business_date,status,opened_at,closed_at,cashier_name` +
-                `&order=opened_at.desc`,
-              { headers, cache: "no-store" }
-            ),
-            fetch(
-              `${base}/shifts?shop_id=eq.${shop}&status=eq.OPEN` +
-                `&select=id,shop_id,shift_name,business_date,status,opened_at,closed_at,cashier_name` +
-                `&order=opened_at.desc`,
-              { headers, cache: "no-store" }
-            ),
-            fetch(`${base}/rpc/tl_admin_get_shift_recovery`, {
-              method: "POST",
-              headers,
-              body: JSON.stringify({ p_shop_id: selectedShopId }),
-              cache: "no-store",
-            }),
-          ]);
+      setLoading(true);
+      setError("");
 
-        const [targets, opens, overview] = await Promise.all([
-          safeJson(targetResponse),
-          safeJson(openResponse),
-          safeJson(overviewResponse),
+      try {
+        const sid = encodeURIComponent(shopId);
+        const date = encodeURIComponent(businessDate);
+
+        const [targets, opens, sessions] = await Promise.all([
+          request(
+            `shifts?shop_id=eq.${sid}` +
+            `&business_date=eq.${date}` +
+            "&select=id,shop_id,shift_name,business_date," +
+            "status,opened_at,cashier_name" +
+            "&order=opened_at.desc"
+          ),
+          request(
+            `shifts?shop_id=eq.${sid}&status=eq.OPEN` +
+            "&select=id,shop_id,shift_name,business_date," +
+            "status,opened_at,cashier_name" +
+            "&order=opened_at.desc"
+          ),
+          request("rpc/tl_admin_get_shift_recovery", {
+            p_shop_id: shopId,
+          }),
         ]);
-        if (!targetResponse.ok || !openResponse.ok || !overviewResponse.ok) {
-          throw new Error(
-            targets?.message || opens?.message || overview?.message ||
-              "Unable to load Admin recovery status. Check the overview RPC."
-          );
-        }
-        if (cancelled) return;
-        const targetList = Array.isArray(targets) ? targets : [];
-        const openList = Array.isArray(opens) ? opens : [];
-        setTargetShifts(targetList);
-        setStatusError("");
-        setOpenShifts(openList);
-        setActiveRecovery(Array.isArray(overview) ? overview[0] || null : null);
-        setTargetShiftId((old) =>
-          targetList.some((shift) => shift.id === old) ? old : ""
+
+        if (stopped) return;
+
+        const list = Array.isArray(targets) ? targets : [];
+
+        setTargetShifts(list);
+        setOpenShifts(Array.isArray(opens) ? opens : []);
+        setRecovery(
+          Array.isArray(sessions) ? sessions[0] || null : null
         );
-        setReturnShiftId((old) =>
-          openList.some((shift) => shift.id === old) ? old : ""
+        setTargetId((old) =>
+          list.some((s) => s.id === old) ? old : ""
         );
-      } catch (error) {
-        console.error("ADMIN RECOVERY STATUS ERROR:", error);
-        if (!cancelled) {
-          setStatusError(error?.message || "Unable to load recovery status.");
+      } catch (e) {
+        if (!stopped) {
+          setError(e.message);
           setTargetShifts([]);
           setOpenShifts([]);
-          setActiveRecovery(null);
-          setMessage(error?.message || "Unable to load recovery status.");
-          setMessageType("error");
+          setRecovery(null);
         }
       } finally {
-        if (!cancelled) setLoadingStatus(false);
+        if (!stopped) setLoading(false);
       }
     }
+
     loadStatus();
-    return () => { cancelled = true; };
-  }, [selectedShopId, businessDate, reloadKey, supabaseUrl, supabaseAnonKey, accessToken, headers]);
+
+    return () => {
+      stopped = true;
+    };
+  }, [shopId, businessDate, version, url, key, token]);
 
   function refresh() {
     setMessage("");
-    setMessageType("");
-    setReloadKey((value) => value + 1);
+    setVersion((v) => v + 1);
   }
 
-  // --------------------------------------------------
-  // Start ADMIN recovery session (no shift is inserted,
-  // reopened, or financially modified here).
-  // --------------------------------------------------
-async function startRecovery() {
-    if (working || loadingStatus || statusError || activeRecovery) return;
-    if (!selectedTarget || !selectedShop) {
-      setMessage("Select the exact historical shift first.");
-      setMessageType("error");
+  async function startRecovery() {
+    if (busy || loading || error || recovery) return;
+
+    if (!target || !shop) {
+      setError("Select the historical shift.");
       return;
     }
+
     if (reason.trim().length < 10) {
-      setMessage("Enter a recovery reason of at least 10 characters.");
-      setMessageType("error");
+      setError("Enter a reason of at least 10 characters.");
       return;
     }
-    if (requiresReturn && !selectedReturn) {
-      setMessage("Select the OPEN shift the cashier must return to.");
-      setMessageType("error");
-      return;
-    }
-    if (!window.confirm(
-      `START ADMIN RECOVERY?\n\nShop: ${selectedShop.shop_name}` +
-      `\nTarget: ${describeShift(selectedTarget)}` +
-      `\nReturn: ${selectedReturn ? describeShift(selectedReturn) : "Normal shift selection"}` +
-      `\n\nThis records a recovery assignment; it does not reopen or edit a shift.`
-    )) return;
 
-    setWorking(true);
+    setBusy(true);
+    setError("");
     setMessage("");
+
     try {
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/rpc/tl_admin_start_shift_recovery`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            p_shop_id: selectedShopId,
-            p_target_shift_id: selectedTarget.id,
-            p_return_shift_id: selectedReturn?.id || null,
-            p_reason: reason.trim(),
-          }),
-        }
+      // Never rely only on an earlier OPEN-shift check.
+      const opens = await request(
+        `shifts?shop_id=eq.${encodeURIComponent(shopId)}` +
+        "&status=eq.OPEN" +
+        "&select=id,shift_name,business_date,status,opened_at"
       );
-      const result = await safeJson(response);
-      if (!response.ok) {
-        throw new Error(result?.message || result?.details || "Recovery could not start.");
+
+      const others = opens.filter((s) => s.id !== target.id);
+
+      if (others.length > 1) {
+        throw new Error(
+          "More than one OPEN shift exists. Resolve this first."
+        );
       }
+
+      const automaticReturn = others[0] || null;
+
+      const confirmed = window.confirm(
+        "START ADMIN RECOVERY?\n\n" +
+        `Shop: ${shop.shop_name}\n` +
+        `Target: ${describe(target)}\n` +
+        `Return: ${
+          automaticReturn
+            ? describe(automaticReturn)
+            : "Normal shift selection"
+        }`
+      );
+
+      if (!confirmed) return;
+
+      await request("rpc/tl_admin_start_shift_recovery", {
+        p_shop_id: shopId,
+        p_target_shift_id: target.id,
+        p_return_shift_id: automaticReturn?.id || null,
+        p_reason: reason.trim(),
+      });
+
       setReason("");
-      setMessage("Recovery assignment started and recorded in the Admin audit.");
-      setMessageType("success");
-      setReloadKey((value) => value + 1);
-    } catch (error) {
-      setMessage(error?.message || "Unable to start recovery.");
-      setMessageType("error");
+      setMessage("Recovery started.");
+      refresh();
+    } catch (e) {
+      setError(e.message);
     } finally {
-      setWorking(false);
+      setBusy(false);
     }
   }
 
-  // --------------------------------------------------
-  // End recovery assignment. The return shift ID is
-  // retained in the audit record by the SQL RPC.
-  // --------------------------------------------------
   async function endRecovery() {
-    if (working || !activeRecovery?.session_id) return;
-    if (!window.confirm(
-      `END RECOVERY?\n\nTarget: ${activeRecovery.target_shift_name || "Shift"}` +
-      ` (${activeRecovery.target_business_date || "-"})` +
-      `\n\nThe cashier will return to normal shift selection once the dashboard is connected.`
-    )) return;
+    if (!recovery?.session_id || busy) return;
 
-    setWorking(true);
-    setMessage("");
+    const confirmed = window.confirm(
+      "END RECOVERY?\n\n" +
+      "The cashier will return to normal shift selection."
+    );
+
+    if (!confirmed) return;
+
+    setBusy(true);
+    setError("");
+
     try {
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/rpc/tl_admin_end_shift_recovery`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            p_session_id: activeRecovery.session_id,
-            p_note: endNote.trim() || null,
-          }),
-        }
-      );
-      const result = await safeJson(response);
-      if (!response.ok) {
-        throw new Error(result?.message || result?.details || "Recovery could not end.");
-      }
-      setEndNote("");
-      setMessage("Recovery ended and the audit was recorded.");
-      setMessageType("success");
-      setReloadKey((value) => value + 1);
-    } catch (error) {
-      setMessage(error?.message || "Unable to end recovery.");
-      setMessageType("error");
+      await request("rpc/tl_admin_end_shift_recovery", {
+        p_session_id: recovery.session_id,
+        p_note: null,
+      });
+
+      setMessage("Recovery ended.");
+      refresh();
+    } catch (e) {
+      setError(e.message);
     } finally {
-      setWorking(false);
+      setBusy(false);
     }
   }
 
   return (
-    <section style={panelStyle}>
-      <div style={headingStyle}>ADMIN SHIFT RECOVERY — 12H & 24H</div>
-      <div style={contentStyle}>
-        <p style={mutedStyle}>
-          Select an existing shift by business date and unique shift ID.
-          Recovery sessions do not create duplicate shifts or change balances.
-        </p>
+    <section style={panel}>
+      <div style={heading}>
+        ADMIN SHIFT RECOVERY — 12H & 24H
+      </div>
 
-        <div style={twoColumnStyle}>
+      <div style={{ padding: 14 }}>
+        <div style={grid}>
           <div>
-            <label style={labelStyle}>SHOP</label>
+            <label style={label}>SHOP</label>
             <select
-              value={selectedShopId}
-              disabled={loadingShops || working}
-              style={fieldStyle}
-              onChange={(event) => {
-                setSelectedShopId(event.target.value);
-                setLoadingStatus(true);
-                setStatusError("");
-                setActiveRecovery(null);
-                setTargetShifts([]);
-                setOpenShifts([]);
-                setTargetShiftId("");
-                setReturnShiftId("");
-                setMessage("");
+              style={field}
+              value={shopId}
+              disabled={busy}
+              onChange={(e) => {
+                setShopId(e.target.value);
+                setTargetId("");
+                setRecovery(null);
+                setError("");
               }}
             >
-              {shops.length === 0 && <option value="">No shops found</option>}
-              {shops.map((shop) => (
-                <option key={shop.id} value={shop.id}>
-                  {shop.shop_name} — {shop.shop_type}
-                  {shop.is_active === false ? " (INACTIVE)" : ""}
+              {shops.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.shop_name} — {s.shop_type}
+                  {!s.is_active ? " (INACTIVE)" : ""}
                 </option>
               ))}
             </select>
           </div>
+
           <div>
-            <label style={labelStyle}>HISTORICAL BUSINESS DATE</label>
+            <label style={label}>BUSINESS DATE</label>
             <input
               type="date"
+              style={field}
               value={businessDate}
-              disabled={working}
-              style={fieldStyle}
-              onChange={(event) => {
-                setBusinessDate(event.target.value);
-                setLoadingStatus(true);
-                setStatusError("");
-                setTargetShifts([]);
-                setTargetShiftId("");
-                setMessage("");
+              disabled={busy}
+              onChange={(e) => {
+                setBusinessDate(e.target.value);
+                setTargetId("");
               }}
             />
           </div>
         </div>
 
-        <div style={statsStyle}>
-          <StatusBox title="SHOP" value={selectedShop?.shop_name || "-"} />
-          <StatusBox title="TYPE" value={selectedShop?.shop_type || "-"} />
-          <StatusBox title="OPEN SHIFTS" value={loadingStatus ? "..." : String(openShifts.length)} />
-          <StatusBox title="RECOVERY" value={activeRecovery ? "ACTIVE" : "NONE"} />
+        <div style={stats}>
+          <Info title="SHOP" value={shop?.shop_name || "-"} />
+          <Info title="TYPE" value={shop?.shop_type || "-"} />
+          <Info title="OPEN" value={openShifts.length} />
+          <Info
+            title="RECOVERY"
+            value={recovery ? "ACTIVE" : "NONE"}
+          />
         </div>
 
-        {loadingStatus && <p style={mutedStyle}>Loading shift records...</p>}
-        {message && (
-          <div role="alert" style={noticeStyle(messageType === "success")}>{message}</div>
-        )}
+        {error && <div style={errorBox}>{error}</div>}
+        {message && <div style={successBox}>{message}</div>}
+        {loading && <p>Loading shifts...</p>}
 
-        {activeRecovery ? (
-          <div style={subpanelStyle}>
-            <h3 style={subheadingStyle}>Active recovery session</h3>
-            <div><strong>Target:</strong> {activeRecovery.target_shift_name} — {activeRecovery.target_business_date}</div>
-            <div><strong>Shift ID:</strong> <code style={wrapStyle}>{activeRecovery.target_shift_id}</code></div>
-            <div><strong>Target status:</strong> {activeRecovery.target_status}</div>
-            <div><strong>Return:</strong> {activeRecovery.return_shift_name
-              ? `${activeRecovery.return_shift_name} — ${activeRecovery.return_business_date}`
-              : "Normal shift selection"}</div>
-            <div><strong>Started:</strong> {formatNairobiDateTime(activeRecovery.started_at)}</div>
-            <div><strong>Reason:</strong> {activeRecovery.reason}</div>
-            <label style={{ ...labelStyle, marginTop: 14 }}>END NOTE (OPTIONAL)</label>
-            <textarea
-              rows={2}
-              value={endNote}
-              disabled={working}
-              onChange={(event) => setEndNote(event.target.value)}
-              style={{ ...fieldStyle, resize: "vertical" }}
-              placeholder="What was completed during recovery?"
-            />
-            <button type="button" disabled={working} onClick={endRecovery}
-              style={{ ...buttonStyle, background: working ? "#94a3b8" : "#0f766e" }}>
-              {working ? "Processing..." : "END RECOVERY SESSION"}
+        {recovery ? (
+          <div style={inner}>
+            <strong>
+              {recovery.target_shift_name} —{" "}
+              {recovery.target_business_date}
+            </strong>
+
+            <div>Status: {recovery.target_status}</div>
+            <div>Reason: {recovery.reason}</div>
+
+            <div>
+              Return:{" "}
+              {recovery.return_shift_name
+                ? `${recovery.return_shift_name} | ${recovery.return_business_date}`
+                : "Normal shift selection"}
+            </div>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={endRecovery}
+              style={{ ...button, background: "#0f766e" }}
+            >
+              END RECOVERY SESSION
             </button>
           </div>
         ) : (
-          <div style={subpanelStyle}>
-            <h3 style={subheadingStyle}>Start a historical shift recovery</h3>
-            <label style={labelStyle}>EXACT SHIFT TO RECOVER</label>
+          <div style={inner}>
+            <label style={label}>SHIFT TO RECOVER</label>
+
             <select
-              value={targetShiftId}
-              disabled={working || loadingStatus}
-              style={fieldStyle}
-              onChange={(event) => {
-                setTargetShiftId(event.target.value);
-                setReturnShiftId("");
-              }}
+              style={field}
+              value={targetId}
+              disabled={busy || loading || !!error}
+              onChange={(e) => setTargetId(e.target.value)}
             >
-              <option value="">Select a recorded shift...</option>
-              {targetShifts.map((shift) => (
-                <option key={shift.id} value={shift.id}>{describeShift(shift)}</option>
+              <option value="">Select shift...</option>
+              {targetShifts.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {describe(s)}
+                </option>
               ))}
             </select>
-            {!loadingStatus && targetShifts.length === 0 && (
-              <p style={mutedStyle}>No shifts found for this business date. Choose another date.</p>
-            )}
-            {selectedTarget && (
-              <p style={mutedStyle}>
-                Exact target ID: <code style={wrapStyle}>{selectedTarget.id}</code>
-              </p>
+
+            {!loading && targetShifts.length === 0 && (
+              <small>No shifts found for this date.</small>
             )}
 
-            <label style={labelStyle}>SHIFT TO RETURN TO AFTER RECOVERY</label>
-            <select
-              value={returnShiftId}
-              disabled={working || loadingStatus || !selectedTarget}
-              style={fieldStyle}
-              onChange={(event) => setReturnShiftId(event.target.value)}
-            >
-              <option value="">
-                {requiresReturn ? "Choose an OPEN return shift..." : "No other OPEN shift — normal selection"}
-              </option>
-              {possibleReturns.map((shift) => (
-                <option key={shift.id} value={shift.id}>{describeShift(shift)}</option>
-              ))}
-            </select>
-            {openShifts.length > 1 && (
-              <p style={warningStyle}>
-                Multiple OPEN shifts exist in this shop. Select the correct return shift carefully.
-              </p>
-            )}
+            <div style={{ margin: "10px 0", fontSize: 12 }}>
+              <strong>Automatic return: </strong>
+              {multipleOpen
+                ? "Multiple OPEN shifts — resolve first"
+                : returnShift
+                ? describe(returnShift)
+                : "Normal shift selection"}
+            </div>
 
-            <label style={labelStyle}>ADMIN REASON (MINIMUM 10 CHARACTERS)</label>
+            <label style={label}>REASON (ONE ONLY)</label>
             <textarea
-              rows={3}
+              rows={2}
+              style={field}
               value={reason}
-              disabled={working || loadingStatus}
-              onChange={(event) => setReason(event.target.value)}
-              style={{ ...fieldStyle, resize: "vertical" }}
-              placeholder="Example: Recover missing Shift 2 figures from 2 days ago"
+              disabled={busy}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason for recovering this shift"
             />
-            <button type="button" onClick={startRecovery}
-              disabled={working || loadingStatus || Boolean(statusError) || !selectedTarget || reason.trim().length < 10 || (requiresReturn && !selectedReturn)}
-              style={{
-                ...buttonStyle,
-                background:
-                  working || loadingStatus || Boolean(statusError) || !selectedTarget || reason.trim().length < 10 || (requiresReturn && !selectedReturn)
-                    ? "#94a3b8" : "#7f1d1d",
-              }}
+
+            <button
+              type="button"
+              style={button}
+              onClick={startRecovery}
+              disabled={
+                busy ||
+                loading ||
+                !!error ||
+                !target ||
+                multipleOpen ||
+                reason.trim().length < 10
+              }
             >
-              {working ? "STARTING..." : "START ADMIN RECOVERY SESSION"}
+              START RECOVERY
             </button>
           </div>
         )}
-        {/* SHOW THE ACTUAL CASHIER REPORT DURING RECOVERY */}
 
-{activeRecovery && selectedShop && (
-  <AdminRecoveryReportEditor
-    key={activeRecovery.session_id}
-    user={user}
-    recovery={activeRecovery}
-    shop={selectedShop}
-  />
-)}
-        <button type="button" disabled={working || loadingStatus}
-          onClick={refresh} style={{ ...buttonStyle, marginTop: 10, background: "#334155" }}>
+        {recovery && shop && (
+          <AdminRecoveryReportEditor
+            key={recovery.session_id}
+            user={user}
+            recovery={recovery}
+            shop={shop}
+          />
+        )}
+
+        <button
+          type="button"
+          style={{ ...button, background: "#334155" }}
+          disabled={busy}
+          onClick={refresh}
+        >
           REFRESH SHIFT STATUS
         </button>
-        <p style={mutedStyle}>
-          Recovery assignments alone do not reopen CLOSED shifts, bypass Accountant approvals,
-          or enable historical cashier edits. Those require the next secured backend step.
-        </p>
       </div>
     </section>
   );
 }
-function StatusBox({ title, value }) {
+
+function Info({ title, value }) {
   return (
-    <div style={statusBoxStyle}>
-      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>{title}</div>
-      <div style={{ fontSize: 13, fontWeight: 700, marginTop: 5 }}>{value}</div>
+    <div style={info}>
+      <small>{title}</small>
+      <strong>{value}</strong>
     </div>
   );
 }
 
-function describeShift(shift) {
-  const name = shift?.shift_name || "SHIFT";
-  const date = shift?.business_date || "?";
-  const status = shift?.status || "?";
-  const opened = formatNairobiDateTime(shift?.opened_at);
-  const suffix = String(shift?.id || "").slice(-8);
-  return `${name} | ${date} | ${status} | Opened ${opened} | ID ...${suffix}`;
+function describe(shift) {
+  return (
+    `${shift.shift_name} | ${shift.business_date} | ` +
+    `${shift.status} | ${String(shift.id).slice(-8)}`
+  );
 }
 
-function nairobiBusinessDate(date = new Date()) {
+function todayNairobi() {
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: NAIROBI_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(date);
+    timeZone: ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
   const values = {};
-  for (const part of parts) if (part.type !== "literal") values[part.type] = part.value;
+  for (const p of parts) {
+    if (p.type !== "literal") values[p.type] = p.value;
+  }
+
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function formatNairobiDateTime(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: NAIROBI_ZONE, day: "2-digit", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(date);
+async function json(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
-async function safeJson(response) {
-  try { return await response.json(); } catch { return null; }
-}
+const panel = {
+  background: "#fff",
+  borderRadius: 8,
+  overflow: "hidden",
+  marginTop: 16,
+  border: "1px solid #e2e8f0",
+};
 
-const panelStyle = {
-  background: "white", borderRadius: 9, overflow: "hidden",
-  boxShadow: "0 1px 6px rgba(0,0,0,0.12)", marginTop: 20,
+const heading = {
+  background: "#7f1d1d",
+  color: "#fff",
+  padding: 14,
+  fontWeight: 700,
 };
-const headingStyle = {
-  background: "#7f1d1d", color: "white", padding: "14px 16px",
-  fontWeight: 700, fontSize: 16,
+
+const grid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
+  gap: 12,
 };
-const contentStyle = { padding: 16 };
-const twoColumnStyle = {
-  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12,
+
+const field = {
+  width: "100%",
+  padding: 10,
+  border: "1px solid #94a3b8",
+  borderRadius: 6,
+  boxSizing: "border-box",
+  background: "white",
+  marginTop: 5,
 };
-const statsStyle = {
-  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(115px,1fr))",
-  gap: 9, marginTop: 8, marginBottom: 14,
+
+const label = {
+  fontSize: 11,
+  fontWeight: 700,
+  display: "block",
 };
-const statusBoxStyle = {
-  border: "1px solid #e2e8f0", background: "#f8fafc", borderRadius: 7,
-  padding: 12, textAlign: "center", overflowWrap: "anywhere",
+
+const stats = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4,minmax(0,1fr))",
+  gap: 8,
+  margin: "12px 0",
 };
-const subpanelStyle = {
-  border: "1px solid #e2e8f0", background: "#f8fafc", borderRadius: 9,
-  padding: 15, display: "grid", gap: 8,
+
+const info = {
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  padding: 10,
+  borderRadius: 6,
+  display: "grid",
+  gap: 5,
 };
-const subheadingStyle = { margin: "0 0 7px", fontSize: 15 };
-const labelStyle = {
-  display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, marginTop: 8,
+
+const inner = {
+  background: "#f8fafc",
+  padding: 12,
+  border: "1px solid #e2e8f0",
+  borderRadius: 7,
+  display: "grid",
+  gap: 8,
+  marginBottom: 12,
 };
-const fieldStyle = {
-  display: "block", width: "100%", boxSizing: "border-box",
-  background: "white", border: "1px solid #94a3b8", borderRadius: 6,
-  padding: 10, marginBottom: 7, fontSize: 13,
+
+const button = {
+  width: "100%",
+  border: 0,
+  borderRadius: 6,
+  background: "#7f1d1d",
+  color: "white",
+  padding: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+  marginTop: 10,
 };
-const buttonStyle = {
-  display: "block", width: "100%", padding: 12, borderRadius: 6,
-  border: 0, color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer",
+
+const errorBox = {
+  background: "#fef2f2",
+  color: "#991b1b",
+  padding: 10,
+  margin: "10px 0",
 };
-const mutedStyle = { color: "#64748b", fontSize: 12, lineHeight: 1.6 };
-const warningStyle = { color: "#991b1b", fontSize: 12 };
-const wrapStyle = { overflowWrap: "anywhere" };
-function noticeStyle(success) {
-  return {
-    background: success ? "#ecfdf5" : "#fef2f2",
-    color: success ? "#166534" : "#991b1b", padding: 12,
-    borderRadius: 7, fontSize: 12, marginBottom: 14,
-  };
-}
+
+const successBox = {
+  background: "#ecfdf5",
+  color: "#166534",
+  padding: 10,
+  margin: "10px 0",
+};
