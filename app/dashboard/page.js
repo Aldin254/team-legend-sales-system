@@ -12,7 +12,7 @@ import CashierReport from "./CashierReport";
 import Cashier24HourReport from "./Cashier24HourReport";
 import AdminDashboard from "./AdminDashboard";
 import AccountantDashboard from "./AccountantDashboard";
-
+import CashierRecoveryPreview from "./CashierRecoveryPreview";
 export default function DashboardPage() {
   const router = useRouter();
 
