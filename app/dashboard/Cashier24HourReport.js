@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
+import CashierLiveFeedPanel from "./CashierLiveFeedPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 
@@ -1485,14 +1486,17 @@ crownStyle
       >  
         Logout  
       </button>  
-    </div>  
-  </header>  
+   </div>
+  </header>
 
-  <div  
-    style={  
-      bodyStyle  
-    }  
-  >  
+  {/* SHARED LIVE FEED — ALL 12H & 24H SHOPS */}
+  <CashierLiveFeedPanel user={user} />
+
+  <div
+    style={
+      bodyStyle
+    }
+  >
     <aside  
       style={  
         sidebarStyle  
@@ -2107,10 +2111,9 @@ crownStyle
         </section>  
       </div>
 
-{/* ========================================= /}
-{/ 24-HOUR OPERATIONS LAYOUT /}
-{/ ========================================= */}
-
+{/* =========================================
+    24-HOUR OPERATIONS LAYOUT
+========================================= */}
 <div  
         style={  
           operationsGridStyle  
