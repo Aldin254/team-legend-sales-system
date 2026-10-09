@@ -1,1434 +1,879 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import CashierReport from "./CashierReport";
 import Cashier24HourReport from "./Cashier24HourReport";
+import CashierRecoveryPreview from "./CashierRecoveryPreview";
 import AdminDashboard from "./AdminDashboard";
 import AccountantDashboard from "./AccountantDashboard";
-import CashierRecoveryPreview from "./CashierRecoveryPreview";
+
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const authHeaders = (token) => ({
+  apikey: ANON,
+  Authorization: `Bearer ${token}`,
+  "Content-Type": "application/json",
+});
+
+async function json(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function restGet(path, token) {
+  const response = await fetch(`${URL}/rest/v1/${path}`, {
+    headers: authHeaders(token),
+    cache: "no-store",
+  });
+  const value = await json(response);
+
+  if (!response.ok) {
+    throw new Error(
+      value?.message || value?.details || "Database request failed."
+    );
+  }
+  return value;
+}
+
+async function restPost(path, token, body, returnRepresentation = false) {
+  const response = await fetch(`${URL}/rest/v1/${path}`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(token),
+      ...(returnRepresentation ? { Prefer: "return=representation" } : {}),
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+
+  const value = await json(response);
+  if (!response.ok) {
+    throw new Error(
+      value?.message || value?.details || value?.hint || "Save failed."
+    );
+  }
+  return value;
+}
+
+async function getRecoveryAssignment(token) {
+  const value = await restPost(
+    "rpc/tl_cashier_active_shift_recovery",
+    token,
+    {}
+  );
+
+  if (!Array.isArray(value)) {
+    throw new Error("Unexpected response when checking Admin recovery.");
+  }
+
+  return value[0] || null;
+}
+
+async function getRecoveryTarget(assignment, shopId, token) {
+  if (!assignment?.target_shift_id) {
+    throw new Error("The Admin recovery target is missing.");
+  }
+
+  const rows = await restGet(
+    `shifts?id=eq.${encodeURIComponent(assignment.target_shift_id)}` +
+      `&shop_id=eq.${encodeURIComponent(shopId)}&select=*&limit=1`,
+    token
+  );
+
+  if (!Array.isArray(rows) || !rows[0]) {
+    throw new Error("Recovery target not found in your shop.");
+  }
+
+  return rows[0];
+}
+
+const cashierShop = (u) =>
+  u?.shop_id || u?.shopId || null;
+
+const cashierProfile = (u) =>
+  u?.profile_id || u?.id || u?.user_id || u?.auth_user_id || null;
+
 export default function DashboardPage() {
   const router = useRouter();
 
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-
   const [balanceBF, setBalanceBF] = useState("");
   const [balanceLocked, setBalanceLocked] = useState(false);
-
   const [currentShift, setCurrentShift] = useState(null);
-
+  const [shopType, setShopType] = useState("");
+  const [closedForToday, setClosedForToday] = useState(false);
   const [message, setMessage] = useState("");
   const [startingShift, setStartingShift] = useState(false);
 
-  const [shopType, setShopType] = useState("");
-  const [closedForToday, setClosedForToday] = useState(false);
+  const [recoveryView, setRecoveryView] = useState(null);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
 
-  const refreshPromiseRef =
-    useRef(null);
+  const refreshPromiseRef = useRef(null);
+  const wasRecoveringRef = useRef(false);
+  const recoveryPollRef = useRef(false);
 
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
+  // ==========================================
+  // SAVE USER SESSION
+  // ==========================================
 
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const saveUserSession = useCallback((nextUser) => {
+    if (!nextUser) return;
 
-  // ==================================================
-  // SAVE SESSION
-  // ==================================================
-
-  const saveUserSession =
-    useCallback(
-      (nextUser) => {
-        if (!nextUser) {
-          return;
-        }
-
-        sessionStorage.setItem(
-          "teamLegendUser",
-          JSON.stringify(
-            nextUser
-          )
-        );
-
-        setUser(
-          nextUser
-        );
-      },
-      []
+    sessionStorage.setItem(
+      "teamLegendUser",
+      JSON.stringify(nextUser)
     );
 
-  // ==================================================
-  // REFRESH SUPABASE SESSION
-  // ==================================================
+    setUser(nextUser);
+  }, []);
 
-  const refreshUserSession =
-    useCallback(
-      async (
-        sessionUser,
-        options = {}
-      ) => {
-        const force =
-          options?.force ===
-          true;
+  // ==========================================
+  // EXPIRED SESSION
+  // ==========================================
 
-        if (!sessionUser) {
-          throw makeSessionExpiredError();
+  const expireSession = useCallback(() => {
+    sessionStorage.removeItem("teamLegendUser");
+    setUser(null);
+    setCurrentShift(null);
+    setRecoveryView(null);
+    router.replace("/");
+  }, [router]);
+
+  // ==========================================
+  // REFRESH USER TOKEN
+  // ==========================================
+
+  const refreshUserSession = useCallback(
+    async (u, options = {}) => {
+      if (!u) throw sessionExpired();
+
+      if (
+        !options.force &&
+        u.access_token &&
+        !shouldRefreshToken(u)
+      ) {
+        return u;
+      }
+
+      if (!u.refresh_token) throw sessionExpired();
+
+      if (!URL || !ANON) {
+        throw new Error("Server configuration is incomplete.");
+      }
+
+      if (refreshPromiseRef.current) {
+        return refreshPromiseRef.current;
+      }
+
+      const task = (async () => {
+        const response = await fetch(
+          `${URL}/auth/v1/token?grant_type=refresh_token`,
+          {
+            method: "POST",
+            headers: {
+              apikey: ANON,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              refresh_token: u.refresh_token,
+            }),
+            cache: "no-store",
+          }
+        );
+
+        const result = await json(response);
+
+        if (!response.ok || !result?.access_token) {
+          throw sessionExpired();
         }
 
-        const accessToken =
-          sessionUser?.access_token ||
-          null;
+        const expiresAt =
+          Number(result.expires_at) ||
+          Math.floor(Date.now() / 1000) +
+            Number(result.expires_in || 3600);
 
-        if (
-          !force &&
-          accessToken &&
-          !shouldRefreshToken(
-            sessionUser
-          )
-        ) {
-          return sessionUser;
-        }
+        const next = {
+          ...u,
+          id: result.user?.id || u.id,
+          auth_user_id: result.user?.id || u.auth_user_id,
+          access_token: result.access_token,
+          refresh_token: result.refresh_token || u.refresh_token,
+          expires_at: expiresAt,
+          expires_in: result.expires_in || u.expires_in,
+          token_type:
+            result.token_type || u.token_type || "bearer",
+        };
 
-        const refreshToken =
-          sessionUser?.refresh_token ||
-          null;
+        saveUserSession(next);
+        return next;
+      })();
 
-        if (!refreshToken) {
-          throw makeSessionExpiredError(
-            "Your previous login session has expired. Please log in again."
-          );
-        }
+      refreshPromiseRef.current = task;
 
-        if (
-          !supabaseUrl ||
-          !supabaseAnonKey
-        ) {
-          throw new Error(
-            "Server configuration is incomplete."
-          );
-        }
+      try {
+        return await task;
+      } finally {
+        refreshPromiseRef.current = null;
+      }
+    },
+    [saveUserSession]
+  );
 
-        if (
-          refreshPromiseRef.current
-        ) {
-          return await refreshPromiseRef.current;
-        }
-
-        const refreshPromise =
-          (async () => {
-            const response =
-              await fetch(
-                `${supabaseUrl}/auth/v1/token?grant_type=refresh_token`,
-                {
-                  method:
-                    "POST",
-
-                  headers: {
-                    apikey:
-                      supabaseAnonKey,
-
-                    "Content-Type":
-                      "application/json",
-                  },
-
-                  body:
-                    JSON.stringify({
-                      refresh_token:
-                        refreshToken,
-                    }),
-
-                  cache:
-                    "no-store",
-                }
-              );
-
-            const result =
-              await safeJson(
-                response
-              );
-
-            if (
-              !response.ok ||
-              !result?.access_token
-            ) {
-              console.error(
-                "TOKEN REFRESH ERROR:",
-                result
-              );
-
-              throw makeSessionExpiredError(
-                "Your login session has expired. Please log in again."
-              );
-            }
-
-            const expiresInRaw =
-              Number(
-                result?.expires_in
-              );
-
-            const expiresIn =
-              Number.isFinite(
-                expiresInRaw
-              ) &&
-              expiresInRaw > 0
-                ? expiresInRaw
-                : null;
-
-            const directExpiresAt =
-              Number(
-                result?.expires_at
-              );
-
-            let expiresAt =
-              null;
-
-            if (
-              Number.isFinite(
-                directExpiresAt
-              ) &&
-              directExpiresAt > 0
-            ) {
-              expiresAt =
-                Math.floor(
-                  directExpiresAt
-                );
-            } else if (
-              expiresIn
-            ) {
-              expiresAt =
-                Math.floor(
-                  Date.now() /
-                    1000
-                ) +
-                expiresIn;
-            } else {
-              expiresAt =
-                getJwtExpirySeconds(
-                  result?.access_token
-                );
-            }
-
-            const nextUser = {
-              ...sessionUser,
-
-              id:
-                result?.user?.id ||
-                sessionUser?.id,
-
-              auth_user_id:
-                result?.user?.id ||
-                sessionUser?.auth_user_id,
-
-              access_token:
-                result.access_token,
-
-              refresh_token:
-                result?.refresh_token ||
-                refreshToken,
-
-              expires_in:
-                expiresIn,
-
-              expires_at:
-                expiresAt,
-
-              token_type:
-                result?.token_type ||
-                sessionUser?.token_type ||
-                "bearer",
-            };
-
-            sessionStorage.setItem(
-              "teamLegendUser",
-              JSON.stringify(
-                nextUser
-              )
-            );
-
-            setUser(
-              nextUser
-            );
-
-            return nextUser;
-          })();
-
-        refreshPromiseRef.current =
-          refreshPromise;
-
-        try {
-          return await refreshPromise;
-        } finally {
-          refreshPromiseRef.current =
-            null;
-        }
-      },
-      [
-        supabaseUrl,
-        supabaseAnonKey,
-      ]
-    );
-
-  // ==================================================
-  // EXPIRED SESSION HANDLER
-  // ==================================================
-
-  const expireSession =
-    useCallback(() => {
-      sessionStorage.removeItem(
-        "teamLegendUser"
-      );
-
-      setUser(null);
-      setCurrentShift(null);
-
-      router.replace("/");
-    }, [router]);
-
-  // ==================================================
-  // INITIAL LOAD
-  // ==================================================
+  // ==========================================
+  // INITIAL DASHBOARD LOAD
+  // CHECK RECOVERY BEFORE NORMAL SHIFT
+  // ==========================================
 
   useEffect(() => {
-    let cancelled =
-      false;
+    let cancelled = false;
 
-    async function initialise() {
+    async function initialize() {
+      setLoading(true);
+      setMessage("");
+      setRecoveryReady(false);
+
       try {
-        setLoading(true);
-        setMessage("");
+        const raw = sessionStorage.getItem("teamLegendUser");
 
-        const stored =
-          sessionStorage.getItem(
-            "teamLegendUser"
-          );
-
-        if (!stored) {
+        if (!raw) {
           router.replace("/");
           return;
         }
 
-        let parsedUser;
+        let stored;
 
         try {
-          parsedUser =
-            JSON.parse(
-              stored
-            );
+          stored = JSON.parse(raw);
         } catch {
-          sessionStorage.removeItem(
-            "teamLegendUser"
-          );
-
-          router.replace("/");
+          expireSession();
           return;
         }
 
-        const activeUser =
-          await refreshUserSession(
-            parsedUser
-          );
+        const active = await refreshUserSession(stored);
+        if (cancelled) return;
 
-        if (cancelled) {
+        saveUserSession(active);
+
+        const role = String(active.role || "")
+          .trim()
+          .toUpperCase();
+
+        if (role === "ADMIN" || role === "ACCOUNTANT") {
           return;
         }
 
-        saveUserSession(
-          activeUser
-        );
-
-        const role =
-          String(
-            activeUser?.role ||
-              ""
-          )
-            .trim()
-            .toUpperCase();
-
-        // ------------------------------------------
-        // ADMIN
-        // ------------------------------------------
-
-        if (
-          role ===
-          "ADMIN"
-        ) {
-          setLoading(false);
-          return;
+        if (role !== "CASHIER") {
+          throw new Error("Account does not have system access.");
         }
 
-        // ------------------------------------------
-        // ACCOUNTANT
-        // ------------------------------------------
+        const shopId = cashierShop(active);
+        const cashierId = cashierProfile(active);
+        const token = active.access_token;
 
-        if (
-          role ===
-          "ACCOUNTANT"
-        ) {
-          setLoading(false);
-          return;
+        if (!shopId || !cashierId || !token) {
+          throw new Error("Cashier login information is incomplete.");
         }
 
-        // ------------------------------------------
-        // CASHIER
-        // ------------------------------------------
+        const type = await getShopType(shopId, token);
+        if (cancelled) return;
 
-        if (
-          role !==
-          "CASHIER"
-        ) {
-          throw new Error(
-            "This account does not have system access."
-          );
-        }
+        setShopType(type);
 
-        const shopId =
-          activeUser?.shop_id ||
-          activeUser?.shopId ||
-          null;
+        // ADMIN RECOVERY TAKES PRIORITY
 
-        const cashierId =
-          activeUser?.profile_id ||
-          activeUser?.id ||
-          activeUser?.user_id ||
-          activeUser?.auth_user_id ||
-          null;
+        const recovery = await getRecoveryAssignment(token);
+        if (cancelled) return;
 
-        const accessToken =
-          activeUser?.access_token ||
-          null;
-
-        if (
-          !shopId ||
-          !cashierId ||
-          !accessToken
-        ) {
-          throw new Error(
-            "Cashier login information is incomplete."
-          );
-        }
-
-        // ------------------------------------------
-        // SHOP TYPE
-        // ------------------------------------------
-
-        const loadedShopType =
-          await getShopType({
+        if (recovery) {
+          const target = await getRecoveryTarget(
+            recovery,
             shopId,
-            accessToken,
-            supabaseUrl,
-            supabaseAnonKey,
+            token
+          );
+
+          if (cancelled) return;
+
+          wasRecoveringRef.current = true;
+
+          setRecoveryView({
+            assignment: recovery,
+            shift: target,
           });
 
-        if (cancelled) {
+          setCurrentShift(null);
+          setClosedForToday(false);
+          setRecoveryError("");
+          setRecoveryReady(true);
           return;
         }
 
-        setShopType(
-          loadedShopType
+        setRecoveryReady(true);
+        setRecoveryView(null);
+        setRecoveryError("");
+
+        // NORMAL OPEN SHIFT FOR THIS CASHIER
+
+        const mine = await restGet(
+          `shifts?shop_id=eq.${encodeURIComponent(shopId)}` +
+            `&cashier_id=eq.${encodeURIComponent(cashierId)}` +
+            `&status=eq.OPEN&select=*&order=opened_at.desc&limit=1`,
+          token
         );
 
-        // ------------------------------------------
-        // CURRENT OPEN SHIFT FOR THIS CASHIER
-        // ------------------------------------------
+        if (cancelled) return;
 
-        const openShiftResponse =
-          await fetch(
-            `${supabaseUrl}/rest/v1/shifts` +
-              `?shop_id=eq.${encodeURIComponent(
-                shopId
-              )}` +
-              `&cashier_id=eq.${encodeURIComponent(
-                cashierId
-              )}` +
-              `&status=eq.OPEN` +
-              `&select=*` +
-              `&order=opened_at.desc` +
-              `&limit=1`,
-            {
-              method:
-                "GET",
+        const open = mine?.[0];
 
-              headers:
-                authHeaders(
-                  supabaseAnonKey,
-                  accessToken
-                ),
+        if (open) {
+          if (type === "12_HOUR") {
+            // Recheck before automatically repairing readings.
 
-              cache:
-                "no-store",
-            }
-          );
+            const newlyActive = await getRecoveryAssignment(token);
 
-        const openShiftResult =
-          await safeJson(
-            openShiftResponse
-          );
+            if (newlyActive) {
+              const target = await getRecoveryTarget(
+                newlyActive,
+                shopId,
+                token
+              );
 
-        if (
-          !openShiftResponse.ok
-        ) {
-          throw new Error(
-            openShiftResult?.message ||
-              openShiftResult?.details ||
-              "Unable to check current shift."
-          );
-        }
+              if (!cancelled) {
+                wasRecoveringRef.current = true;
 
-        const openShift =
-          Array.isArray(
-            openShiftResult
-          ) &&
-          openShiftResult.length >
-            0
-            ? openShiftResult[0]
-            : null;
-
-        // ==========================================
-        // EXISTING OPEN SHIFT
-        // ==========================================
-
-        if (openShift) {
-          if (cancelled) {
-            return;
-          }
-
-          if (
-            loadedShopType ===
-            "12_HOUR"
-          ) {
-            await ensure12HourOpeningReadings({
-              shopId,
-
-              shiftId:
-                openShift.id,
-
-              cashierId,
-
-              accessToken,
-              supabaseUrl,
-              supabaseAnonKey,
-            });
-          }
-
-          if (cancelled) {
-            return;
-          }
-
-          setCurrentShift(
-            openShift
-          );
-
-          setBalanceBF(
-            String(
-              openShift.opening_balance ??
-                0
-            )
-          );
-
-          setBalanceLocked(
-            true
-          );
-
-          setClosedForToday(
-            false
-          );
-
-          setLoading(
-            false
-          );
-
-          return;
-        }
-
-        // ------------------------------------------
-        // 12-HOUR SHOP:
-        // ONLY ONE COMPLETED SHIFT PER BUSINESS DATE
-        // ------------------------------------------
-
-        const businessDate =
-          getNairobiBusinessDate();
-
-        if (
-          loadedShopType ===
-          "12_HOUR"
-        ) {
-          const todayClosed =
-            await getClosedShiftForDate({
-              shopId,
-              businessDate,
-              accessToken,
-              supabaseUrl,
-              supabaseAnonKey,
-            });
-
-          if (todayClosed) {
-            if (cancelled) {
+                setRecoveryView({
+                  assignment: newlyActive,
+                  shift: target,
+                });
+              }
               return;
             }
 
-            setClosedForToday(
-              true
+            await ensure12HourOpeningReadings(
+              shopId,
+              open.id,
+              cashierId,
+              token
             );
+          }
 
+          if (cancelled) return;
+
+          setCurrentShift(open);
+          setBalanceBF(String(open.opening_balance ?? 0));
+          setBalanceLocked(true);
+          setClosedForToday(false);
+          return;
+        }
+
+        // 12-HOUR SHOP ALREADY CLOSED TODAY
+
+        if (type === "12_HOUR") {
+          const completed = await getClosedShiftForDate(
+            shopId,
+            nairobiDate(),
+            token
+          );
+
+          if (cancelled) return;
+
+          if (completed) {
+            setClosedForToday(true);
             setBalanceBF(
-              String(
-                todayClosed.closing_balance ??
-                  0
-              )
+              String(completed.closing_balance ?? 0)
             );
-
-            setBalanceLocked(
-              true
-            );
-
-            setLoading(
-              false
-            );
-
+            setBalanceLocked(true);
             return;
           }
         }
 
-        // ------------------------------------------
-        // PREVIOUS CLOSED SHIFT
-        // ------------------------------------------
+        // LAST CLOSED SHIFT
 
-        const previousShift =
-          await getLatestClosedShift({
-            shopId,
-            accessToken,
-            supabaseUrl,
-            supabaseAnonKey,
-          });
-
-        if (cancelled) {
-          return;
-        }
-
-        if (previousShift) {
-          setBalanceBF(
-            String(
-              previousShift.closing_balance ??
-                0
-            )
-          );
-
-          setBalanceLocked(
-            true
-          );
-        } else {
-          setBalanceBF("");
-          setBalanceLocked(
-            false
-          );
-        }
-
-        setClosedForToday(
-          false
-        );
-      } catch (error) {
-        console.error(
-          "DASHBOARD INITIALISE ERROR:",
-          error
+        const previous = await getLatestClosedShift(
+          shopId,
+          token
         );
 
-        if (
-          isSessionExpiredError(
-            error
-          )
-        ) {
-          if (!cancelled) {
-            expireSession();
-          }
+        if (cancelled) return;
 
+        setBalanceBF(
+          previous
+            ? String(previous.closing_balance ?? 0)
+            : ""
+        );
+
+        setBalanceLocked(Boolean(previous));
+        setClosedForToday(false);
+      } catch (e) {
+        if (e?.name === "SessionExpiredError") {
+          if (!cancelled) expireSession();
           return;
         }
 
         if (!cancelled) {
           setMessage(
-            error?.message ||
-              "Unable to load dashboard."
+            e?.message || "Unable to load dashboard."
           );
+
+          setRecoveryError(
+            e?.message || "Recovery verification failed."
+          );
+
+          setRecoveryReady(true);
         }
       } finally {
-        if (!cancelled) {
-          setLoading(
-            false
-          );
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
-    initialise();
+    initialize();
 
     return () => {
       cancelled = true;
     };
   }, [
     router,
-    supabaseUrl,
-    supabaseAnonKey,
     refreshUserSession,
     saveUserSession,
     expireSession,
   ]);
-
-  // ==================================================
-  // AUTOMATIC JWT REFRESH
-  // ==================================================
+  // ==========================================
+  // LIVE RECOVERY CHECK — EVERY 8 SECONDS
+  // ==========================================
 
   useEffect(() => {
     if (
-      !user?.access_token
+      String(user?.role || "").toUpperCase() !== "CASHIER"
     ) {
       return;
     }
 
-    let cancelled =
-      false;
+    if (!user.access_token || !cashierShop(user)) {
+      return;
+    }
 
-    async function checkSession() {
+    let cancelled = false;
+
+    async function poll() {
+      if (recoveryPollRef.current) return;
+      recoveryPollRef.current = true;
+
       try {
-        const refreshedUser =
-          await refreshUserSession(
-            user
-          );
-
-        if (
-          cancelled
-        ) {
-          return;
-        }
-
-        if (
-          refreshedUser?.access_token !==
-            user?.access_token ||
-          refreshedUser?.refresh_token !==
-            user?.refresh_token
-        ) {
-          saveUserSession(
-            refreshedUser
-          );
-        }
-      } catch (error) {
-        console.error(
-          "AUTO SESSION REFRESH ERROR:",
-          error
+        const active = await getRecoveryAssignment(
+          user.access_token
         );
 
+        if (cancelled) return;
+
+        if (active) {
+          const target = await getRecoveryTarget(
+            active,
+            cashierShop(user),
+            user.access_token
+          );
+
+          if (cancelled) return;
+
+          wasRecoveringRef.current = true;
+
+          setRecoveryView({
+            assignment: active,
+            shift: target,
+          });
+
+          setRecoveryError("");
+          setRecoveryReady(true);
+        } else if (wasRecoveringRef.current) {
+          // Admin ended recovery.
+          // Reload to select the normal OPEN shift.
+
+          window.location.reload();
+        } else {
+          setRecoveryView(null);
+          setRecoveryError("");
+          setRecoveryReady(true);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setRecoveryError(
+            e?.message ||
+              "Unable to verify Admin recovery."
+          );
+
+          setRecoveryReady(true);
+        }
+      } finally {
+        recoveryPollRef.current = false;
+      }
+    }
+
+    const timer = setInterval(poll, 8000);
+
+    const onFocus = () => {
+      void poll();
+    };
+
+    window.addEventListener("focus", onFocus);
+    void poll();
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [
+    user?.access_token,
+    user?.role,
+    user?.shop_id,
+    user?.shopId,
+  ]);
+
+  // ==========================================
+  // AUTOMATIC TOKEN REFRESH
+  // ==========================================
+
+  useEffect(() => {
+    if (!user?.access_token) return;
+
+    let cancelled = false;
+
+    async function refresh() {
+      try {
+        await refreshUserSession(user);
+      } catch (e) {
         if (
           !cancelled &&
-          isSessionExpiredError(
-            error
-          )
+          e?.name === "SessionExpiredError"
         ) {
           expireSession();
         }
       }
     }
 
-    const timer =
-      setInterval(
-        checkSession,
-        60 * 1000
-      );
+    const timer = setInterval(refresh, 60000);
 
-    function handleFocus() {
-      checkSession();
-    }
+    const onFocus = () => {
+      void refresh();
+    };
 
-    function handleVisibilityChange() {
-      if (
-        document.visibilityState ===
-        "visible"
-      ) {
-        checkSession();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
       }
-    }
+    };
 
-    window.addEventListener(
-      "focus",
-      handleFocus
-    );
-
+    window.addEventListener("focus", onFocus);
     document.addEventListener(
       "visibilitychange",
-      handleVisibilityChange
+      onVisibility
     );
 
     return () => {
       cancelled = true;
-
-      clearInterval(
-        timer
-      );
-
-      window.removeEventListener(
-        "focus",
-        handleFocus
-      );
-
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
       document.removeEventListener(
         "visibilitychange",
-        handleVisibilityChange
+        onVisibility
       );
     };
-  }, [
-    user,
-    refreshUserSession,
-    saveUserSession,
-    expireSession,
-  ]);
+  }, [user, refreshUserSession, expireSession]);
 
-  // ==================================================
+  // ==========================================
   // LOGOUT
-  // ==================================================
+  // ==========================================
 
   function logout() {
-    sessionStorage.removeItem(
-      "teamLegendUser"
-    );
-
-    setUser(null);
-    setCurrentShift(null);
-
-    router.replace("/");
+    expireSession();
   }
 
-  // ==================================================
-  // START SHIFT
-  // ==================================================
+  // ==========================================
+  // START NORMAL SHIFT
+  // ==========================================
 
   async function startShift() {
-    if (
-      !user ||
-      startingShift
-    ) {
-      return;
-    }
+    if (!user || startingShift) return;
 
-    if (closedForToday) {
-      setMessage(
-        "This 12-hour shop has already completed today's shift."
-      );
-
-      return;
-    }
+    setStartingShift(true);
+    setMessage("");
 
     try {
-      setStartingShift(
-        true
-      );
-
-      setMessage("");
-
-      const activeUser =
-        await refreshUserSession(
-          user
+      if (
+        !recoveryReady ||
+        recoveryView ||
+        recoveryError
+      ) {
+        throw new Error(
+          "Admin recovery is active or cannot be verified."
         );
+      }
 
-      saveUserSession(
-        activeUser
-      );
+      if (closedForToday) {
+        throw new Error(
+          "This 12-hour shop has already closed today."
+        );
+      }
 
-      const shopId =
-        activeUser?.shop_id ||
-        activeUser?.shopId ||
-        null;
+      const active = await refreshUserSession(user);
 
-      const cashierId =
-        activeUser?.profile_id ||
-        activeUser?.id ||
-        activeUser?.user_id ||
-        activeUser?.auth_user_id ||
-        null;
+      const shopId = cashierShop(active);
+      const cashierId = cashierProfile(active);
 
       const cashierName =
-        activeUser?.full_name ||
-        activeUser?.name ||
-        activeUser?.username ||
+        active.full_name ||
+        active.name ||
+        active.username ||
         "Cashier";
 
-      const accessToken =
-        activeUser?.access_token ||
-        null;
+      const token = active.access_token;
 
-      if (
-        !shopId ||
-        !cashierId ||
-        !accessToken
-      ) {
+      if (!shopId || !cashierId || !token) {
+        throw new Error("Incomplete cashier login.");
+      }
+
+      // FRESH RECOVERY CHECK BEFORE OPENING
+
+      if (await getRecoveryAssignment(token)) {
         throw new Error(
-          "Cashier login information is incomplete."
+          "Admin Recovery is ACTIVE. Wait until it ends."
         );
       }
 
-      // ------------------------------------------
-      // FRESH SHOP TYPE
-      // ------------------------------------------
+      const type = await getShopType(shopId, token);
+      setShopType(type);
 
-      const loadedShopType =
-        await getShopType({
+      // 12-HOUR SAME-DAY LOCK
+
+      if (type === "12_HOUR") {
+        const closed = await getClosedShiftForDate(
           shopId,
-          accessToken,
-          supabaseUrl,
-          supabaseAnonKey,
-        });
+          nairobiDate(),
+          token
+        );
 
-      setShopType(
-        loadedShopType
+        if (closed) {
+          setClosedForToday(true);
+          setBalanceBF(
+            String(closed.closing_balance ?? 0)
+          );
+          setBalanceLocked(true);
+
+          throw new Error(
+            "This 12-hour shop already completed today's shift."
+          );
+        }
+      }
+
+      // SHOP-WIDE OPEN SHIFT CHECK
+
+      const open = await restGet(
+        `shifts?shop_id=eq.${encodeURIComponent(shopId)}` +
+          `&status=eq.OPEN&select=*&order=opened_at.desc&limit=1`,
+        token
       );
 
-      // ------------------------------------------
-      // 12-HOUR SAME-DAY LOCK
-      // ------------------------------------------
-
-      const today =
-        getNairobiBusinessDate();
-
-      if (
-        loadedShopType ===
-        "12_HOUR"
-      ) {
-        const todayClosed =
-          await getClosedShiftForDate({
-            shopId,
-
-            businessDate:
-              today,
-
-            accessToken,
-            supabaseUrl,
-            supabaseAnonKey,
-          });
-
-        if (todayClosed) {
-          setClosedForToday(
-            true
-          );
-
-          setBalanceBF(
-            String(
-              todayClosed.closing_balance ??
-                0
-            )
-          );
-
-          setBalanceLocked(
-            true
-          );
-
-          throw new Error(
-            "This 12-hour shop has already completed today's shift."
-          );
-        }
-      }
-
-      // ------------------------------------------
-      // SHOP-WIDE OPEN SHIFT CHECK
-      // ------------------------------------------
-
-      const openResponse =
-        await fetch(
-          `${supabaseUrl}/rest/v1/shifts` +
-            `?shop_id=eq.${encodeURIComponent(
-              shopId
-            )}` +
-            `&status=eq.OPEN` +
-            `&select=*` +
-            `&order=opened_at.desc` +
-            `&limit=1`,
-          {
-            method:
-              "GET",
-
-            headers:
-              authHeaders(
-                supabaseAnonKey,
-                accessToken
-              ),
-
-            cache:
-              "no-store",
-          }
-        );
-
-      const openResult =
-        await safeJson(
-          openResponse
-        );
-
-      if (
-        !openResponse.ok
-      ) {
-        throw new Error(
-          openResult?.message ||
-            openResult?.details ||
-            "Unable to check open shifts."
-        );
-      }
-
-      if (
-        Array.isArray(
-          openResult
-        ) &&
-        openResult.length >
-          0
-      ) {
-        const existingOpen =
-          openResult[0];
-
-        const existingCashier =
-          String(
-            existingOpen.cashier_id ||
-              ""
-          );
+      if (open?.length) {
+        const existing = open[0];
 
         if (
-          existingCashier ===
-          String(
-            cashierId
-          )
+          String(existing.cashier_id) !== String(cashierId)
         ) {
-          if (
-            loadedShopType ===
-            "12_HOUR"
-          ) {
-            await ensure12HourOpeningReadings({
-              shopId,
+          throw new Error(
+            "Another cashier already has an OPEN shift for this shop."
+          );
+        }
 
-              shiftId:
-                existingOpen.id,
-
-              cashierId,
-
-              accessToken,
-              supabaseUrl,
-              supabaseAnonKey,
-            });
+        if (type === "12_HOUR") {
+          if (await getRecoveryAssignment(token)) {
+            throw new Error("Admin recovery started.");
           }
 
-          setCurrentShift(
-            existingOpen
-          );
-
-          setBalanceBF(
-            String(
-              existingOpen.opening_balance ??
-                0
-            )
-          );
-
-          setBalanceLocked(
-            true
-          );
-
-          return;
-        }
-
-        throw new Error(
-          "This shop already has an open shift. It must be closed before another shift can start."
-        );
-      }
-
-      // ------------------------------------------
-      // PREVIOUS CLOSED SHIFT
-      // ------------------------------------------
-
-      const previousShift =
-        await getLatestClosedShift({
-          shopId,
-          accessToken,
-          supabaseUrl,
-          supabaseAnonKey,
-        });
-
-      let openingBalance;
-
-      if (previousShift) {
-        openingBalance =
-          Number(
-            previousShift.closing_balance ??
-              0
-          );
-      } else {
-        if (
-          balanceBF === "" ||
-          balanceBF ===
-            null ||
-          balanceBF ===
-            undefined
-        ) {
-          throw new Error(
-            "Enter the opening Balance B/F."
-          );
-        }
-
-        openingBalance =
-          Number(
-            balanceBF
-          );
-
-        if (
-          Number.isNaN(
-            openingBalance
-          ) ||
-          openingBalance <
-            0
-        ) {
-          throw new Error(
-            "Enter a valid Balance B/F."
-          );
-        }
-      }
-
-      // ==========================================
-      // 12-HOUR SHIFT
-      // ==========================================
-
-      if (
-        loadedShopType ===
-        "12_HOUR"
-      ) {
-        const now =
-          new Date();
-
-        const end =
-          new Date(
-            now.getTime() +
-              12 *
-                60 *
-                60 *
-                1000
-          );
-
-        const businessDate =
-          getNairobiBusinessDate();
-
-        const openingReadings =
-          await get12HourOpeningReadings({
+          await ensure12HourOpeningReadings(
             shopId,
-            previousShift,
-            accessToken,
-            supabaseUrl,
-            supabaseAnonKey,
-          });
+            existing.id,
+            cashierId,
+            token
+          );
+        }
 
-        const newShift =
-          await createShift({
-            shift: {
-              shop_id:
-                shopId,
-
-              cashier_id:
-                cashierId,
-
-              cashier_name:
-                cashierName,
-
-              shift_name:
-                "DAY",
-
-              business_date:
-                businessDate,
-
-              scheduled_start:
-                formatNairobiTime(
-                  now
-                ),
-
-              scheduled_end:
-                formatNairobiTime(
-                  end
-                ),
-
-              opened_at:
-                now.toISOString(),
-
-              closed_at:
-                null,
-
-              status:
-                "OPEN",
-
-              opening_balance:
-                roundMoney(
-                  openingBalance
-                ),
-
-              total_added_float:
-                0,
-
-              total_output:
-                0,
-
-              total_expenses:
-                0,
-
-              net_income:
-                roundMoney(
-                  openingBalance
-                ),
-
-              closing_balance:
-                roundMoney(
-                  openingBalance
-                ),
-
-              notes:
-                null,
-            },
-
-            accessToken,
-            supabaseUrl,
-            supabaseAnonKey,
-          });
-
-        await insert12HourOpeningReadings({
-          shiftId:
-            newShift.id,
-
-          readings:
-            openingReadings,
-
-          cashierId,
-          accessToken,
-          supabaseUrl,
-          supabaseAnonKey,
-        });
-
-        setCurrentShift(
-          newShift
-        );
-
+        setCurrentShift(existing);
         setBalanceBF(
-          String(
-            newShift.opening_balance ??
-              0
-          )
+          String(existing.opening_balance ?? 0)
         );
-
-        setBalanceLocked(
-          true
-        );
-
-        setClosedForToday(
-          false
-        );
-
-        setMessage("");
-
+        setBalanceLocked(true);
         return;
       }
 
-      // ==========================================
-      // 24-HOUR SHIFT
-      // ==========================================
+      // PREVIOUS CLOSED SHIFT
 
-      if (
-        loadedShopType ===
-        "24_HOUR"
-      ) {
-        const nextShiftName =
-          determineNext24HourShift(
-            previousShift
-          );
+      const previous = await getLatestClosedShift(
+        shopId,
+        token
+      );
 
-        const businessDate =
-          get24HourBusinessDate(
-            nextShiftName
-          );
+      let bf;
 
-        const schedule =
-          nextShiftName ===
-          "SHIFT 1"
-            ? {
-                start:
-                  "09:00:00",
-
-                end:
-                  "21:00:00",
-              }
-            : {
-                start:
-                  "21:00:00",
-
-                end:
-                  "09:00:00",
-              };
-
-        let carryForwardReadings =
-          [];
-
+      if (previous) {
+        bf = Number(previous.closing_balance ?? 0);
+      } else {
         if (
-          previousShift &&
-          isProper24HourShift(
-            previousShift.shift_name
-          )
+          balanceBF === "" ||
+          !Number.isFinite(Number(balanceBF)) ||
+          Number(balanceBF) < 0
         ) {
-          carryForwardReadings =
-            await get24HourCarryForwardReadings({
-              shopId,
-              previousShift,
-              accessToken,
-              supabaseUrl,
-              supabaseAnonKey,
-            });
+          throw new Error(
+            "Enter a valid opening Balance B/F."
+          );
         }
 
-        const now =
-          new Date();
+        bf = Number(balanceBF);
+      }
 
-        const newShift =
-          await createShift({
-            shift: {
-              shop_id:
-                shopId,
+      const now = new Date();
 
-              cashier_id:
-                cashierId,
+      const base = {
+        shop_id: shopId,
+        cashier_id: cashierId,
+        cashier_name: cashierName,
+        opened_at: now.toISOString(),
+        closed_at: null,
+        status: "OPEN",
+        opening_balance: roundMoney(bf),
+        total_added_float: 0,
+        total_output: 0,
+        total_expenses: 0,
+        net_income: roundMoney(bf),
+        closing_balance: roundMoney(bf),
+        notes: null,
+      };
 
-              cashier_name:
-                "NOT ASSIGNED",
+      // ======================================
+      // 12-HOUR SHIFT
+      // ======================================
 
-              shift_name:
-                nextShiftName,
-
-              business_date:
-                businessDate,
-
-              scheduled_start:
-                schedule.start,
-
-              scheduled_end:
-                schedule.end,
-
-              opened_at:
-                now.toISOString(),
-
-              closed_at:
-                null,
-
-              status:
-                "OPEN",
-
-              opening_balance:
-                roundMoney(
-                  openingBalance
-                ),
-
-              total_added_float:
-                0,
-
-              total_output:
-                0,
-
-              total_expenses:
-                0,
-
-              net_income:
-                roundMoney(
-                  openingBalance
-                ),
-
-              closing_balance:
-                roundMoney(
-                  openingBalance
-                ),
-
-              notes:
-                null,
-            },
-
-            accessToken,
-            supabaseUrl,
-            supabaseAnonKey,
-          });
-
-        if (
-          carryForwardReadings.length >
-          0
-        ) {
-          await insert24HourOpeningReadings({
-            shiftId:
-              newShift.id,
-
-            readings:
-              carryForwardReadings,
-
-            cashierId,
-            accessToken,
-            supabaseUrl,
-            supabaseAnonKey,
-          });
-        }
-
-        setCurrentShift(
-          newShift
+      if (type === "12_HOUR") {
+        const readings = await get12HourOpeningReadings(
+          shopId,
+          previous,
+          token
         );
 
+        if (await getRecoveryAssignment(token)) {
+          throw new Error("Admin recovery started.");
+        }
+
+        const end = new Date(
+          now.getTime() + 12 * 3600000
+        );
+
+        const newShift = await createShift(
+          {
+            ...base,
+            shift_name: "DAY",
+            business_date: nairobiDate(),
+            scheduled_start: nairobiTime(now),
+            scheduled_end: nairobiTime(end),
+          },
+          token
+        );
+
+        await insertOpeningReadings(
+          newShift.id,
+          readings,
+          cashierId,
+          token
+        );
+
+        setCurrentShift(newShift);
         setBalanceBF(
-          String(
-            newShift.opening_balance ??
-              0
-          )
+          String(newShift.opening_balance ?? 0)
+        );
+        setBalanceLocked(true);
+        setClosedForToday(false);
+        return;
+      }
+
+      // ======================================
+      // 24-HOUR SHIFT
+      // ======================================
+
+      if (type === "24_HOUR") {
+        const shiftName =
+          determineNext24HourShift(previous);
+
+        const readings =
+          previous && proper24h(previous.shift_name)
+            ? await get24HourCarryForwardReadings(
+                shopId,
+                previous,
+                token
+              )
+            : [];
+
+        if (await getRecoveryAssignment(token)) {
+          throw new Error("Admin recovery started.");
+        }
+
+        const newShift = await createShift(
+          {
+            ...base,
+            cashier_name: "NOT ASSIGNED",
+            shift_name: shiftName,
+            business_date:
+              get24HourBusinessDate(shiftName),
+            scheduled_start:
+              shiftName === "SHIFT 1"
+                ? "09:00:00"
+                : "21:00:00",
+            scheduled_end:
+              shiftName === "SHIFT 1"
+                ? "21:00:00"
+                : "09:00:00",
+          },
+          token
         );
 
-        setBalanceLocked(
-          true
+        await insertOpeningReadings(
+          newShift.id,
+          readings,
+          cashierId,
+          token
         );
 
-        setClosedForToday(
-          false
+        setCurrentShift(newShift);
+        setBalanceBF(
+          String(newShift.opening_balance ?? 0)
         );
-
-        setMessage("");
-
+        setBalanceLocked(true);
+        setClosedForToday(false);
         return;
       }
 
       throw new Error(
-        `Unsupported shop type: ${
-          loadedShopType ||
-          "UNKNOWN"
-        }`
+        `Unsupported shop type: ${type || "UNKNOWN"}`
       );
-    } catch (error) {
-      console.error(
-        "START SHIFT ERROR:",
-        error
-      );
-
-      if (
-        isSessionExpiredError(
-          error
-        )
-      ) {
+    } catch (e) {
+      if (e?.name === "SessionExpiredError") {
         expireSession();
-        return;
+      } else {
+        setMessage(
+          e?.message || "Unable to start shift."
+        );
       }
-
-      setMessage(
-        error?.message ||
-          "Unable to start shift."
-      );
     } finally {
-      setStartingShift(
-        false
-      );
+      setStartingShift(false);
     }
   }
 
-  // ==================================================
-  // LOADING
-  // ==================================================
+  // ==========================================
+  // DISPLAY
+  // ==========================================
 
   if (loading) {
     return (
@@ -1438,121 +883,43 @@ export default function DashboardPage() {
     );
   }
 
-  if (!user) {
-    return null;
+  if (!user) return null;
+
+  const role = String(user.role || "")
+    .trim()
+    .toUpperCase();
+
+  if (role === "ADMIN") {
+    return <AdminDashboard user={user} />;
   }
 
-  const userRole =
-    String(
-      user?.role ||
-        ""
-    )
-      .trim()
-      .toUpperCase();
+  if (role === "ACCOUNTANT") {
+    return <AccountantDashboard user={user} />;
+  }
 
-  // ==================================================
-  // ADMIN
-  //
-  // IMPORTANT:
-  // No function prop is passed into AdminDashboard.
-  // AdminDashboard handles its own logout.
-  // ==================================================
-
-  if (
-    userRole ===
-    "ADMIN"
-  ) {
+  if (!recoveryReady) {
     return (
-      <AdminDashboard
-        user={user}
-      />
+      <div style={loadingStyle}>
+        Checking Admin recovery...
+      </div>
     );
   }
 
- // ==================================================
-// ACCOUNTANT
-// ==================================================
+  // IF RECOVERY CHECK FAILS, DO NOT DISPLAY
+  // EDITABLE CASHIER FINANCIAL CONTROLS
 
-if (
-  userRole ===
-  "ACCOUNTANT"
-) {
-  return (
-    <AccountantDashboard
-      user={user}
-    />
-  );
-}
-  // ==================================================
-  // OPEN SHIFT
-  // ==================================================
-
-  if (currentShift) {
-    if (
-      shopType ===
-      "24_HOUR"
-    ) {
-      return (
-        <Cashier24HourReport
-          user={user}
-          currentShift={
-            currentShift
-          }
-        />
-      );
-    }
-
-    return (
-      <CashierReport
-        user={user}
-        currentShift={
-          currentShift
-        }
-      />
-    );
-  }
-
-  // ==================================================
-  // 12-HOUR SHOP ALREADY CLOSED TODAY
-  // ==================================================
-
-  if (
-    shopType ===
-      "12_HOUR" &&
-    closedForToday
-  ) {
+  if (recoveryError) {
     return (
       <div style={startPageStyle}>
         <div style={startCardStyle}>
-          <h1 style={titleStyle}>
-            TEAM LEGEND
-          </h1>
-
-          <h2>
-            Shift Completed
-          </h2>
-
-          <div style={shopBadgeStyle}>
-            12-HOUR SHOP
-          </div>
-
+          <h2>Recovery verification unavailable</h2>
+          <p style={errorStyle}>{recoveryError}</p>
           <p style={mutedStyle}>
-            This shop has already completed today's shift.
+            The website will automatically retry.
           </p>
-
-          <div style={balancePreviewStyle}>
-            Closing Balance: KES{" "}
-            {money(
-              balanceBF
-            )}
-          </div>
-
           <button
-            type="button"
+            style={logoutButton}
             onClick={logout}
-            style={
-              logoutStartButtonStyle
-            }
           >
             Logout
           </button>
@@ -1561,67 +928,95 @@ if (
     );
   }
 
-  // ==================================================
+  // HISTORICAL SHIFT — READ ONLY
+
+  if (recoveryView) {
+    return (
+      <CashierRecoveryPreview
+        user={user}
+        recoveryAssignment={recoveryView.assignment}
+        recoveryShift={recoveryView.shift}
+        onLogout={logout}
+      />
+    );
+  }
+
+  // NORMAL 24-HOUR OR 12-HOUR REPORT
+
+  if (currentShift) {
+    return shopType === "24_HOUR" ? (
+      <Cashier24HourReport
+        user={user}
+        currentShift={currentShift}
+      />
+    ) : (
+      <CashierReport
+        user={user}
+        currentShift={currentShift}
+      />
+    );
+  }
+
+  // 12-HOUR SHOP CLOSED TODAY
+
+  if (shopType === "12_HOUR" && closedForToday) {
+    return (
+      <div style={startPageStyle}>
+        <div style={startCardStyle}>
+          <h1 style={titleStyle}>TEAM LEGEND</h1>
+          <h2>Shift Completed</h2>
+          <p style={mutedStyle}>
+            This shop already completed today's shift.
+          </p>
+          <div style={balancePreviewStyle}>
+            Closing Balance: KES {money(balanceBF)}
+          </div>
+          <button
+            style={logoutButton}
+            onClick={logout}
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // START SHIFT SCREEN
-  // ==================================================
 
   return (
     <div style={startPageStyle}>
       <div style={startCardStyle}>
-        <h1 style={titleStyle}>
-          TEAM LEGEND
-        </h1>
-
+        <h1 style={titleStyle}>TEAM LEGEND</h1>
         <div style={subtitleStyle}>
           Start Cashier Shift
         </div>
-
         <div style={shopBadgeStyle}>
-          {shopType ===
-          "24_HOUR"
-            ? "24-HOUR SHOP"
-            : shopType ===
-              "12_HOUR"
-            ? "12-HOUR SHOP"
-            : "SHOP"}
+          {shopType || "SHOP"}
         </div>
 
         <div style={detailsStyle}>
           <div>
-            <strong>
-              Cashier:
-            </strong>{" "}
-            {user?.full_name ||
-              user?.name ||
-              user?.username ||
+            <strong>Cashier:</strong>{" "}
+            {user.full_name ||
+              user.name ||
+              user.username ||
               "Cashier"}
           </div>
-
           <div>
-            <strong>
-              Shop:
-            </strong>{" "}
-            {user?.shop ||
-              user?.shop_name ||
-              user?.shopName ||
+            <strong>Shop:</strong>{" "}
+            {user.shop ||
+              user.shop_name ||
+              user.shopName ||
               "Shop"}
           </div>
         </div>
 
-        {shopType ===
-          "24_HOUR" && (
+        {shopType === "24_HOUR" && (
           <div style={infoStyle}>
-            <strong>
-              24-Hour Shift System
-            </strong>
-
-            <div>
-              Shift 1: 9:00 AM – 9:00 PM
-            </div>
-
-            <div>
-              Shift 2: 9:00 PM – 9:00 AM
-            </div>
+            <strong>24-Hour Shift System</strong>
+            <div>Shift 1: 9:00 AM – 9:00 PM</div>
+            <div>Shift 2: 9:00 PM – 9:00 AM</div>
           </div>
         )}
 
@@ -1631,65 +1026,38 @@ if (
 
         <input
           type="number"
-          min="0"
           step="0.01"
-          value={
-            balanceBF
-          }
-          disabled={
-            balanceLocked
-          }
-          onChange={(
-            event
-          ) =>
-            setBalanceBF(
-              event.target
-                .value
-            )
-          }
+          min="0"
+          value={balanceBF}
+          disabled={balanceLocked}
+          onChange={(e) => setBalanceBF(e.target.value)}
           style={{
             ...inputStyle,
-
-            backgroundColor:
-              balanceLocked
-                ? "#f1f5f9"
-                : "white",
+            backgroundColor: balanceLocked
+              ? "#f1f5f9"
+              : "white",
           }}
         />
 
         {balanceLocked && (
-          <div style={lockedTextStyle}>
-            Balance B/F carried forward from the previous closed shift.
-          </div>
+          <p style={lockedTextStyle}>
+            Carried forward from previous closed shift.
+          </p>
         )}
 
         {message && (
-          <div style={errorStyle}>
-            {message}
-          </div>
+          <div style={errorStyle}>{message}</div>
         )}
 
         <button
-          type="button"
-          onClick={
-            startShift
-          }
-          disabled={
-            startingShift
-          }
           style={{
             ...startButtonStyle,
-
-            backgroundColor:
-              startingShift
-                ? "#94a3b8"
-                : "#07912a",
-
-            cursor:
-              startingShift
-                ? "not-allowed"
-                : "pointer",
+            background: startingShift
+              ? "#94a3b8"
+              : "#07912a",
           }}
+          disabled={startingShift}
+          onClick={startShift}
         >
           {startingShift
             ? "Starting Shift..."
@@ -1697,13 +1065,8 @@ if (
         </button>
 
         <button
-          type="button"
-          onClick={
-            logout
-          }
-          style={
-            logoutStartButtonStyle
-          }
+          style={logoutButton}
+          onClick={logout}
         >
           Logout
         </button>
@@ -1711,1104 +1074,267 @@ if (
     </div>
   );
 }
+// ==========================================
+// SHOP AND SHIFT HELPERS
+// ==========================================
 
-// ==================================================
-// GET SHOP TYPE
-// ==================================================
+async function getShopType(shopId, token) {
+  const result = await restGet(
+    `shops?id=eq.${encodeURIComponent(shopId)}` +
+      "&select=id,shop_name,shop_type,is_active&limit=1",
+    token
+  );
 
-async function getShopType({
-  shopId,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  const response =
-    await fetch(
-      `${supabaseUrl}/rest/v1/shops` +
-        `?id=eq.${encodeURIComponent(
-          shopId
-        )}` +
-        `&select=id,shop_name,shop_type,is_active` +
-        `&limit=1`,
-      {
-        method:
-          "GET",
+  const shop = result?.[0];
 
-        headers:
-          authHeaders(
-            supabaseAnonKey,
-            accessToken
-          ),
+  if (!shop) throw new Error("Shop was not found.");
 
-        cache:
-          "no-store",
-      }
-    );
-
-  const result =
-    await safeJson(
-      response
-    );
-
-  if (!response.ok) {
-    throw new Error(
-      result?.message ||
-        result?.details ||
-        "Unable to load shop type."
-    );
+  if (shop.is_active === false) {
+    throw new Error("This shop is inactive.");
   }
 
-  if (
-    !Array.isArray(
-      result
-    ) ||
-    result.length ===
-      0
-  ) {
-    throw new Error(
-      "Shop was not found."
-    );
-  }
-
-  if (
-    result[0]?.is_active ===
-    false
-  ) {
-    throw new Error(
-      "This shop is inactive."
-    );
-  }
-
-  return String(
-    result[0]?.shop_type ||
-      ""
-  )
+  return String(shop.shop_type || "")
     .trim()
     .toUpperCase();
 }
 
-// ==================================================
-// GET CLOSED SHIFT FOR BUSINESS DATE
-// ==================================================
-
-async function getClosedShiftForDate({
+async function getClosedShiftForDate(
   shopId,
   businessDate,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  const response =
-    await fetch(
-      `${supabaseUrl}/rest/v1/shifts` +
-        `?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
-        `&business_date=eq.${encodeURIComponent(
-          businessDate
-        )}` +
-        `&status=eq.CLOSED` +
-        `&select=*` +
-        `&order=closed_at.desc` +
-        `&limit=1`,
-      {
-        method:
-          "GET",
+  token
+) {
+  const rows = await restGet(
+    `shifts?shop_id=eq.${encodeURIComponent(shopId)}` +
+      `&business_date=eq.${encodeURIComponent(businessDate)}` +
+      "&status=eq.CLOSED&select=*&order=closed_at.desc&limit=1",
+    token
+  );
 
-        headers:
-          authHeaders(
-            supabaseAnonKey,
-            accessToken
-          ),
+  return rows?.[0] || null;
+}
 
-        cache:
-          "no-store",
-      }
-    );
+async function getLatestClosedShift(shopId, token) {
+  const rows = await restGet(
+    `shifts?shop_id=eq.${encodeURIComponent(shopId)}` +
+      "&status=eq.CLOSED&select=*&order=closed_at.desc&limit=1",
+    token
+  );
 
-  const result =
-    await safeJson(
-      response
-    );
+  return rows?.[0] || null;
+}
 
-  if (!response.ok) {
+async function getPlatforms(shopId, token) {
+  const rows = await restGet(
+    `shop_platforms?shop_id=eq.${encodeURIComponent(shopId)}` +
+      "&is_active=eq.true&select=id,platform_name,display_order" +
+      "&order=display_order.asc",
+    token
+  );
+
+  if (!rows?.length) {
     throw new Error(
-      result?.message ||
-        result?.details ||
-        "Unable to check completed shifts."
+      "No active platforms found for this shop."
     );
   }
 
-  return (
-    Array.isArray(
-      result
-    ) &&
-    result.length >
-      0
-  )
-    ? result[0]
-    : null;
+  return rows;
 }
 
-// ==================================================
-// GET LATEST CLOSED SHIFT
-// ==================================================
+async function getReading(
+  shiftId,
+  platformId,
+  kind,
+  token
+) {
+  const rows = await restGet(
+    `platform_readings?shift_id=eq.${encodeURIComponent(shiftId)}` +
+      `&platform_id=eq.${encodeURIComponent(platformId)}` +
+      `&reading_kind=eq.${encodeURIComponent(kind)}` +
+      "&select=reading_value&order=recorded_at.desc&limit=1",
+    token
+  );
 
-async function getLatestClosedShift({
+  const raw = rows?.[0]?.reading_value;
+
+  if (
+    raw === "" ||
+    raw == null ||
+    !Number.isFinite(Number(raw))
+  ) {
+    throw new Error(
+      `Previous shift ${kind} reading is missing or invalid.`
+    );
+  }
+
+  return roundMoney(Number(raw));
+}
+
+// ==========================================
+// 12-HOUR OPENING READINGS
+// ==========================================
+
+async function get12HourOpeningReadings(
   shopId,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  const response =
-    await fetch(
-      `${supabaseUrl}/rest/v1/shifts` +
-        `?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
-        `&status=eq.CLOSED` +
-        `&select=*` +
-        `&order=closed_at.desc` +
-        `&limit=1`,
-      {
-        method:
-          "GET",
+  previous,
+  token
+) {
+  const platforms = await getPlatforms(shopId, token);
 
-        headers:
-          authHeaders(
-            supabaseAnonKey,
-            accessToken
-          ),
+  const table = platforms.find((p) =>
+    isTable(p.platform_name)
+  );
 
-        cache:
-          "no-store",
-      }
-    );
+  let tableBF = 0;
 
-  const result =
-    await safeJson(
-      response
-    );
-
-  if (!response.ok) {
-    throw new Error(
-      result?.message ||
-        result?.details ||
-        "Unable to load previous shift."
+  if (table && previous?.id) {
+    tableBF = await getReading(
+      previous.id,
+      table.id,
+      "CLOSING",
+      token
     );
   }
 
-  return (
-    Array.isArray(
-      result
-    ) &&
-    result.length >
-      0
-  )
-    ? result[0]
-    : null;
+  return platforms.map((p) => ({
+    platformId: p.id,
+    value: isTable(p.platform_name) ? tableBF : 0,
+  }));
 }
 
-// ==================================================
-// REPAIR EXISTING 12-HOUR OPEN SHIFT OPENINGS
-// ==================================================
+// ==========================================
+// REPAIR EXISTING 12-HOUR OPENING READINGS
+// ==========================================
 
-async function ensure12HourOpeningReadings({
+async function ensure12HourOpeningReadings(
   shopId,
   shiftId,
   cashierId,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  if (
-    !shopId ||
-    !shiftId ||
-    !cashierId
-  ) {
-    throw new Error(
-      "Unable to prepare automatic opening readings."
-    );
-  }
+  token
+) {
+  const platforms = await getPlatforms(shopId, token);
 
-  const platformResponse =
-    await fetch(
-      `${supabaseUrl}/rest/v1/shop_platforms` +
-        `?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
-        `&is_active=eq.true` +
-        `&select=id,platform_name,display_order` +
-        `&order=display_order.asc`,
-      {
-        method:
-          "GET",
+  const existing = await restGet(
+    `platform_readings?shift_id=eq.${encodeURIComponent(shiftId)}` +
+      "&reading_kind=eq.OPENING&select=platform_id",
+    token
+  );
 
-        headers:
-          authHeaders(
-            supabaseAnonKey,
-            accessToken
-          ),
+  const recorded = new Set(
+    (existing || []).map((r) => r.platform_id)
+  );
 
-        cache:
-          "no-store",
-      }
+  const missing = platforms.filter(
+    (p) => !recorded.has(p.id)
+  );
+
+  if (!missing.length) return;
+
+  const tableMissing = missing.find((p) =>
+    isTable(p.platform_name)
+  );
+
+  let tableBF = 0;
+
+  if (tableMissing) {
+    const previous = await getLatestClosedShift(
+      shopId,
+      token
     );
 
-  const platformResult =
-    await safeJson(
-      platformResponse
-    );
-
-  if (
-    !platformResponse.ok
-  ) {
-    throw new Error(
-      platformResult?.message ||
-        platformResult?.details ||
-        "Unable to load shop platforms."
-    );
-  }
-
-  const platforms =
-    Array.isArray(
-      platformResult
-    )
-      ? platformResult
-      : [];
-
-  if (
-    platforms.length ===
-    0
-  ) {
-    throw new Error(
-      "No active platforms were found for this shop."
-    );
-  }
-
-  const existingResponse =
-    await fetch(
-      `${supabaseUrl}/rest/v1/platform_readings` +
-        `?shift_id=eq.${encodeURIComponent(
-          shiftId
-        )}` +
-        `&reading_kind=eq.OPENING` +
-        `&select=id,platform_id,reading_value,recorded_at`,
-      {
-        method:
-          "GET",
-
-        headers:
-          authHeaders(
-            supabaseAnonKey,
-            accessToken
-          ),
-
-        cache:
-          "no-store",
-      }
-    );
-
-  const existingResult =
-    await safeJson(
-      existingResponse
-    );
-
-  if (
-    !existingResponse.ok
-  ) {
-    throw new Error(
-      existingResult?.message ||
-        existingResult?.details ||
-        "Unable to check automatic opening readings."
-    );
-  }
-
-  const existingReadings =
-    Array.isArray(
-      existingResult
-    )
-      ? existingResult
-      : [];
-
-  const existingPlatformIds =
-    new Set(
-      existingReadings.map(
-        (reading) =>
-          reading.platform_id
-      )
-    );
-
-  const missingPlatforms =
-    platforms.filter(
-      (platform) =>
-        !existingPlatformIds.has(
-          platform.id
-        )
-    );
-
-  if (
-    missingPlatforms.length ===
-    0
-  ) {
-    return;
-  }
-
-  const missingTable =
-    missingPlatforms.find(
-      (platform) =>
-        isTablePlatform(
-          platform.platform_name
-        )
-    ) || null;
-
-  let tableOpening =
-    0;
-
-  if (missingTable) {
-    const previousShift =
-      await getLatestClosedShift({
-        shopId,
-        accessToken,
-        supabaseUrl,
-        supabaseAnonKey,
-      });
-
-    if (
-      previousShift?.id
-    ) {
-      const tableResponse =
-        await fetch(
-          `${supabaseUrl}/rest/v1/platform_readings` +
-            `?shift_id=eq.${encodeURIComponent(
-              previousShift.id
-            )}` +
-            `&platform_id=eq.${encodeURIComponent(
-              missingTable.id
-            )}` +
-            `&reading_kind=eq.CLOSING` +
-            `&select=id,platform_id,reading_value,recorded_at` +
-            `&order=recorded_at.desc` +
-            `&limit=1`,
-          {
-            method:
-              "GET",
-
-            headers:
-              authHeaders(
-                supabaseAnonKey,
-                accessToken
-              ),
-
-            cache:
-              "no-store",
-          }
-        );
-
-      const tableResult =
-        await safeJson(
-          tableResponse
-        );
-
-      if (
-        !tableResponse.ok
-      ) {
-        throw new Error(
-          tableResult?.message ||
-            tableResult?.details ||
-            "Unable to load previous TABLE closing."
-        );
-      }
-
-      if (
-        !Array.isArray(
-          tableResult
-        ) ||
-        tableResult.length ===
-          0
-      ) {
-        throw new Error(
-          "Previous shift TABLE closing is missing. Contact Admin."
-        );
-      }
-
-      const rawValue =
-        tableResult[0]
-          ?.reading_value;
-
-      if (
-        rawValue ===
-          null ||
-        rawValue ===
-          undefined ||
-        rawValue ===
-          ""
-      ) {
-        throw new Error(
-          "Previous shift TABLE closing is missing. Contact Admin."
-        );
-      }
-
-      const numericValue =
-        Number(
-          rawValue
-        );
-
-      if (
-        !Number.isFinite(
-          numericValue
-        )
-      ) {
-        throw new Error(
-          "Previous shift TABLE closing is invalid. Contact Admin."
-        );
-      }
-
-      tableOpening =
-        roundMoney(
-          numericValue
-        );
-    } else {
-      tableOpening =
-        0;
-    }
-  }
-
-  const recordedAt =
-    new Date().toISOString();
-
-  const payload =
-    missingPlatforms.map(
-      (platform) => ({
-        shift_id:
-          shiftId,
-
-        platform_id:
-          platform.id,
-
-        reading_kind:
-          "OPENING",
-
-        reading_value:
-          isTablePlatform(
-            platform.platform_name
-          )
-            ? tableOpening
-            : 0,
-
-        recorded_at:
-          recordedAt,
-
-        recorded_by:
-          cashierId,
-      })
-    );
-
-  const insertResponse =
-    await fetch(
-      `${supabaseUrl}/rest/v1/platform_readings`,
-      {
-        method:
-          "POST",
-
-        headers: {
-          apikey:
-            supabaseAnonKey,
-
-          Authorization:
-            `Bearer ${accessToken}`,
-
-          "Content-Type":
-            "application/json",
-
-          Prefer:
-            "return=minimal",
-        },
-
-        body:
-          JSON.stringify(
-            payload
-          ),
-      }
-    );
-
-  if (
-    !insertResponse.ok
-  ) {
-    const insertResult =
-      await safeJson(
-        insertResponse
-      );
-
-    throw new Error(
-      insertResult?.message ||
-        insertResult?.details ||
-        insertResult?.hint ||
-        "Unable to create missing automatic opening readings."
-    );
-  }
-}
-
-// ==================================================
-// 12-HOUR AUTOMATIC PLATFORM OPENINGS
-// ==================================================
-
-async function get12HourOpeningReadings({
-  shopId,
-  previousShift,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  const platformResponse =
-    await fetch(
-      `${supabaseUrl}/rest/v1/shop_platforms` +
-        `?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
-        `&is_active=eq.true` +
-        `&select=id,platform_name,display_order` +
-        `&order=display_order.asc`,
-      {
-        method:
-          "GET",
-
-        headers:
-          authHeaders(
-            supabaseAnonKey,
-            accessToken
-          ),
-
-        cache:
-          "no-store",
-      }
-    );
-
-  const platformResult =
-    await safeJson(
-      platformResponse
-    );
-
-  if (
-    !platformResponse.ok
-  ) {
-    throw new Error(
-      platformResult?.message ||
-        platformResult?.details ||
-        "Unable to load 12-hour shop platforms."
-    );
-  }
-
-  const platforms =
-    Array.isArray(
-      platformResult
-    )
-      ? platformResult
-      : [];
-
-  if (
-    platforms.length ===
-    0
-  ) {
-    throw new Error(
-      "No active platforms were found for this shop."
-    );
-  }
-
-  const tablePlatform =
-    platforms.find(
-      (platform) =>
-        isTablePlatform(
-          platform.platform_name
-        )
-    ) || null;
-
-  let tableOpening =
-    0;
-
-  if (
-    tablePlatform &&
-    previousShift?.id
-  ) {
-    const readingResponse =
-      await fetch(
-        `${supabaseUrl}/rest/v1/platform_readings` +
-          `?shift_id=eq.${encodeURIComponent(
-            previousShift.id
-          )}` +
-          `&platform_id=eq.${encodeURIComponent(
-            tablePlatform.id
-          )}` +
-          `&reading_kind=eq.CLOSING` +
-          `&select=id,platform_id,reading_value,recorded_at` +
-          `&order=recorded_at.desc` +
-          `&limit=1`,
-        {
-          method:
-            "GET",
-
-          headers:
-            authHeaders(
-              supabaseAnonKey,
-              accessToken
-            ),
-
-          cache:
-            "no-store",
-        }
-      );
-
-    const readingResult =
-      await safeJson(
-        readingResponse
-      );
-
-    if (
-      !readingResponse.ok
-    ) {
-      throw new Error(
-        readingResult?.message ||
-          readingResult?.details ||
-          "Unable to load previous TABLE closing."
+    if (previous?.id) {
+      tableBF = await getReading(
+        previous.id,
+        tableMissing.id,
+        "CLOSING",
+        token
       );
     }
-
-    if (
-      !Array.isArray(
-        readingResult
-      ) ||
-      readingResult.length ===
-        0
-    ) {
-      throw new Error(
-        "Previous shift TABLE closing is missing. Contact Admin."
-      );
-    }
-
-    const rawValue =
-      readingResult[0]
-        ?.reading_value;
-
-    if (
-      rawValue === null ||
-      rawValue === undefined ||
-      rawValue === ""
-    ) {
-      throw new Error(
-        "Previous shift TABLE closing is missing. Contact Admin."
-      );
-    }
-
-    const numericValue =
-      Number(
-        rawValue
-      );
-
-    if (
-      !Number.isFinite(
-        numericValue
-      )
-    ) {
-      throw new Error(
-        "Previous shift TABLE closing is invalid. Contact Admin."
-      );
-    }
-
-    tableOpening =
-      roundMoney(
-        numericValue
-      );
   }
 
-  return platforms.map(
-    (platform) => ({
-      platformId:
-        platform.id,
+  const readings = missing.map((p) => ({
+    platformId: p.id,
+    value: isTable(p.platform_name) ? tableBF : 0,
+  }));
 
-      platformName:
-        platform.platform_name,
-
-      value:
-        isTablePlatform(
-          platform.platform_name
-        )
-          ? tableOpening
-          : 0,
-    })
+  await insertOpeningReadings(
+    shiftId,
+    readings,
+    cashierId,
+    token
   );
 }
 
-// ==================================================
-// INSERT ALL 12-HOUR OPENING READINGS
-// ==================================================
-
-async function insert12HourOpeningReadings({
-  shiftId,
-  readings,
-  cashierId,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  if (
-    !Array.isArray(
-      readings
-    ) ||
-    readings.length ===
-      0
-  ) {
-    return;
-  }
-
-  const recordedAt =
-    new Date().toISOString();
-
-  const payload =
-    readings.map(
-      (reading) => ({
-        shift_id:
-          shiftId,
-
-        platform_id:
-          reading.platformId,
-
-        reading_kind:
-          "OPENING",
-
-        reading_value:
-          roundMoney(
-            reading.value
-          ),
-
-        recorded_at:
-          recordedAt,
-
-        recorded_by:
-          cashierId,
-      })
-    );
-
-  const response =
-    await fetch(
-      `${supabaseUrl}/rest/v1/platform_readings`,
-      {
-        method:
-          "POST",
-
-        headers: {
-          apikey:
-            supabaseAnonKey,
-
-          Authorization:
-            `Bearer ${accessToken}`,
-
-          "Content-Type":
-            "application/json",
-
-          Prefer:
-            "return=minimal",
-        },
-
-        body:
-          JSON.stringify(
-            payload
-          ),
-      }
-    );
-
-  if (!response.ok) {
-    const result =
-      await safeJson(
-        response
-      );
-
-    throw new Error(
-      result?.message ||
-        result?.details ||
-        result?.hint ||
-        "Shift was created, but automatic 12-hour opening readings could not be saved."
-    );
-  }
-}
-
-// ==================================================
+// ==========================================
 // 24-HOUR PLATFORM CARRY FORWARD
-// ==================================================
+// ==========================================
 
-async function get24HourCarryForwardReadings({
+async function get24HourCarryForwardReadings(
   shopId,
-  previousShift,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  const previousName =
-    normaliseShiftName(
-      previousShift?.shift_name
-    );
-
-  let requiredKind;
-
-  if (
-    previousName ===
-    "SHIFT 1"
-  ) {
-    requiredKind =
-      "HANDOVER_9PM";
-  } else if (
-    previousName ===
-    "SHIFT 2"
-  ) {
-    requiredKind =
-      "CLOSING_9AM";
-  } else {
-    return [];
-  }
-
-  const platformResponse =
-    await fetch(
-      `${supabaseUrl}/rest/v1/shop_platforms` +
-        `?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
-        `&is_active=eq.true` +
-        `&select=id,platform_name,display_order` +
-        `&order=display_order.asc`,
-      {
-        method:
-          "GET",
-
-        headers:
-          authHeaders(
-            supabaseAnonKey,
-            accessToken
-          ),
-
-        cache:
-          "no-store",
-      }
-    );
-
-  const platformResult =
-    await safeJson(
-      platformResponse
-    );
-
-  if (
-    !platformResponse.ok
-  ) {
-    throw new Error(
-      platformResult?.message ||
-        platformResult?.details ||
-        "Unable to load platforms for handover."
-    );
-  }
-
-  const platforms =
-    Array.isArray(
-      platformResult
-    )
-      ? platformResult
-      : [];
-
-  if (
-    platforms.length ===
-    0
-  ) {
-    return [];
-  }
-
-  const readingResponse =
-    await fetch(
-      `${supabaseUrl}/rest/v1/platform_readings` +
-        `?shift_id=eq.${encodeURIComponent(
-          previousShift.id
-        )}` +
-        `&reading_kind=eq.${encodeURIComponent(
-          requiredKind
-        )}` +
-        `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
-      {
-        method:
-          "GET",
-
-        headers:
-          authHeaders(
-            supabaseAnonKey,
-            accessToken
-          ),
-
-        cache:
-          "no-store",
-      }
-    );
-
-  const readingResult =
-    await safeJson(
-      readingResponse
-    );
-
-  if (
-    !readingResponse.ok
-  ) {
-    throw new Error(
-      readingResult?.message ||
-        readingResult?.details ||
-        "Unable to load previous handover readings."
-    );
-  }
-
-  const readings =
-    Array.isArray(
-      readingResult
-    )
-      ? readingResult
-      : [];
-
-  const readingMap =
-    new Map();
-
-  for (
-    const reading of readings
-  ) {
-    readingMap.set(
-      reading.platform_id,
-      reading
-    );
-  }
-
-  const missing =
-    platforms.filter(
-      (platform) =>
-        !readingMap.has(
-          platform.id
-        )
-    );
-
-  if (
-    missing.length >
-    0
-  ) {
-    throw new Error(
-      `Previous ${previousName} is missing ${requiredKind} reading(s) for: ${missing
-        .map(
-          (platform) =>
-            platform.platform_name
-        )
-        .join(", ")}.`
-    );
-  }
-
-  return platforms.map(
-    (platform) => {
-      const reading =
-        readingMap.get(
-          platform.id
-        );
-
-      const rawValue =
-        reading?.reading_value;
-
-      if (
-        rawValue === null ||
-        rawValue === undefined ||
-        rawValue === ""
-      ) {
-        throw new Error(
-          `Previous ${previousName} has an invalid ${requiredKind} reading for ${platform.platform_name}.`
-        );
-      }
-
-      const numericValue =
-        Number(
-          rawValue
-        );
-
-      if (
-        !Number.isFinite(
-          numericValue
-        )
-      ) {
-        throw new Error(
-          `Previous ${previousName} has an invalid ${requiredKind} reading for ${platform.platform_name}.`
-        );
-      }
-
-      return {
-        platformId:
-          platform.id,
-
-        platformName:
-          platform.platform_name,
-
-        value:
-          roundMoney(
-            numericValue
-          ),
-      };
-    }
+  previous,
+  token
+) {
+  const previousName = normaliseShiftName(
+    previous?.shift_name
   );
+
+  const kind =
+    previousName === "SHIFT 1"
+      ? "HANDOVER_9PM"
+      : previousName === "SHIFT 2"
+      ? "CLOSING_9AM"
+      : null;
+
+  if (!kind) return [];
+
+  const platforms = await getPlatforms(shopId, token);
+
+  const rows = await restGet(
+    `platform_readings?shift_id=eq.${encodeURIComponent(previous.id)}` +
+      `&reading_kind=eq.${kind}` +
+      "&select=platform_id,reading_value",
+    token
+  );
+
+  const byPlatform = new Map(
+    (rows || []).map((r) => [
+      r.platform_id,
+      r.reading_value,
+    ])
+  );
+
+  return platforms.map((p) => {
+    const raw = byPlatform.get(p.id);
+
+    if (
+      raw === "" ||
+      raw == null ||
+      !Number.isFinite(Number(raw))
+    ) {
+      throw new Error(
+        `Previous ${previousName} is missing ${kind} for ${p.platform_name}.`
+      );
+    }
+
+    return {
+      platformId: p.id,
+      value: roundMoney(Number(raw)),
+    };
+  });
 }
 
-// ==================================================
+// ==========================================
 // CREATE SHIFT
-// ==================================================
+// ==========================================
 
-async function createShift({
-  shift,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  const response =
-    await fetch(
-      `${supabaseUrl}/rest/v1/shifts`,
-      {
-        method:
-          "POST",
+async function createShift(shift, token) {
+  const result = await restPost(
+    "shifts",
+    token,
+    shift,
+    true
+  );
 
-        headers: {
-          apikey:
-            supabaseAnonKey,
-
-          Authorization:
-            `Bearer ${accessToken}`,
-
-          "Content-Type":
-            "application/json",
-
-          Prefer:
-            "return=representation",
-        },
-
-        body:
-          JSON.stringify(
-            shift
-          ),
-      }
-    );
-
-  const result =
-    await safeJson(
-      response
-    );
-
-  if (!response.ok) {
-    throw new Error(
-      result?.message ||
-        result?.details ||
-        result?.hint ||
-        "Unable to create shift."
-    );
-  }
-
-  if (
-    !Array.isArray(
-      result
-    ) ||
-    result.length ===
-      0
-  ) {
+  if (!Array.isArray(result) || !result[0]) {
     throw new Error(
       "Shift was created but could not be loaded."
     );
@@ -2817,1056 +1343,363 @@ async function createShift({
   return result[0];
 }
 
-// ==================================================
-// INSERT ALL 24-HOUR OPENING READINGS
-// ==================================================
+// ==========================================
+// INSERT OPENING READINGS
+// ==========================================
 
-async function insert24HourOpeningReadings({
+async function insertOpeningReadings(
   shiftId,
   readings,
   cashierId,
-  accessToken,
-  supabaseUrl,
-  supabaseAnonKey,
-}) {
-  if (
-    !Array.isArray(
-      readings
-    ) ||
-    readings.length ===
-      0
-  ) {
-    return;
-  }
-
-  const recordedAt =
-    new Date().toISOString();
-
-  const payload =
-    readings.map(
-      (reading) => ({
-        shift_id:
-          shiftId,
-
-        platform_id:
-          reading.platformId,
-
-        reading_kind:
-          "OPENING",
-
-        reading_value:
-          roundMoney(
-            reading.value
-          ),
-
-        recorded_at:
-          recordedAt,
-
-        recorded_by:
-          cashierId,
-      })
-    );
-
-  const response =
-    await fetch(
-      `${supabaseUrl}/rest/v1/platform_readings`,
-      {
-        method:
-          "POST",
-
-        headers: {
-          apikey:
-            supabaseAnonKey,
-
-          Authorization:
-            `Bearer ${accessToken}`,
-
-          "Content-Type":
-            "application/json",
-
-          Prefer:
-            "return=minimal",
-        },
-
-        body:
-          JSON.stringify(
-            payload
-          ),
-      }
-    );
-
-  if (!response.ok) {
-    const result =
-      await safeJson(
-        response
-      );
-
-    throw new Error(
-      result?.message ||
-        result?.details ||
-        result?.hint ||
-        "New shift was created, but platform handover readings could not be copied."
-    );
-  }
-}
-
-// ==================================================
-// DETERMINE NEXT 24-HOUR SHIFT
-// ==================================================
-
-function determineNext24HourShift(
-  previousShift
+  token
 ) {
-  const previousName =
-    normaliseShiftName(
-      previousShift?.shift_name
-    );
+  if (!readings?.length) return;
 
-  if (
-    previousName ===
-    "SHIFT 1"
-  ) {
-    return "SHIFT 2";
-  }
+  const at = new Date().toISOString();
 
-  if (
-    previousName ===
-    "SHIFT 2"
-  ) {
-    return "SHIFT 1";
-  }
-
-  const parts =
-    getNairobiDateParts();
-
-  const minutes =
-    parts.hour *
-      60 +
-    parts.minute;
-
-  if (
-    minutes >=
-      9 * 60 &&
-    minutes <
-      21 * 60
-  ) {
-    return "SHIFT 1";
-  }
-
-  if (
-    minutes >=
-    21 * 60
-  ) {
-    return "SHIFT 2";
-  }
-
-  return "SHIFT 2";
-}
-
-// ==================================================
-// 24-HOUR BUSINESS DATE
-// ==================================================
-
-function get24HourBusinessDate(
-  shiftName
-) {
-  const parts =
-    getNairobiDateParts();
-
-  const today =
-    datePartsToString(
-      parts.year,
-      parts.month,
-      parts.day
-    );
-
-  if (
-    shiftName !==
-    "SHIFT 2"
-  ) {
-    return today;
-  }
-
-  if (
-    parts.hour <
-    9
-  ) {
-    return addDaysToDateString(
-      today,
-      -1
-    );
-  }
-
-  return today;
-}
-
-// ==================================================
-// IS PROPER 24-HOUR SHIFT
-// ==================================================
-
-function isProper24HourShift(
-  value
-) {
-  const name =
-    normaliseShiftName(
-      value
-    );
-
-  return (
-    name ===
-      "SHIFT 1" ||
-    name ===
-      "SHIFT 2"
+  await restPost(
+    "platform_readings",
+    token,
+    readings.map((r) => ({
+      shift_id: shiftId,
+      platform_id: r.platformId,
+      reading_kind: "OPENING",
+      reading_value: roundMoney(r.value),
+      recorded_at: at,
+      recorded_by: cashierId,
+    }))
   );
 }
 
-// ==================================================
-// NAIROBI DATE
-// ==================================================
+// ==========================================
+// 24-HOUR SHIFT HELPERS
+// ==========================================
 
-function getNairobiBusinessDate() {
-  const parts =
-    getNairobiDateParts();
+function normaliseShiftName(value) {
+  const text = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
 
-  return datePartsToString(
-    parts.year,
-    parts.month,
-    parts.day
-  );
-}
-
-function getNairobiDateParts() {
-  const formatter =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone:
-          "Africa/Nairobi",
-
-        year:
-          "numeric",
-
-        month:
-          "2-digit",
-
-        day:
-          "2-digit",
-
-        hour:
-          "2-digit",
-
-        minute:
-          "2-digit",
-
-        second:
-          "2-digit",
-
-        hourCycle:
-          "h23",
-      }
-    );
-
-  const parts =
-    formatter.formatToParts(
-      new Date()
-    );
-
-  const map = {};
-
-  for (
-    const part of parts
-  ) {
-    if (
-      part.type !==
-      "literal"
-    ) {
-      map[
-        part.type
-      ] =
-        part.value;
-    }
-  }
-
-  return {
-    year:
-      Number(
-        map.year
-      ),
-
-    month:
-      Number(
-        map.month
-      ),
-
-    day:
-      Number(
-        map.day
-      ),
-
-    hour:
-      Number(
-        map.hour
-      ),
-
-    minute:
-      Number(
-        map.minute
-      ),
-
-    second:
-      Number(
-        map.second
-      ),
-  };
-}
-
-function datePartsToString(
-  year,
-  month,
-  day
-) {
-  return `${String(
-    year
-  ).padStart(
-    4,
-    "0"
-  )}-${String(
-    month
-  ).padStart(
-    2,
-    "0"
-  )}-${String(
-    day
-  ).padStart(
-    2,
-    "0"
-  )}`;
-}
-
-function addDaysToDateString(
-  dateString,
-  days
-) {
-  const [
-    year,
-    month,
-    day,
-  ] =
-    String(
-      dateString
-    )
-      .split("-")
-      .map(
-        Number
-      );
-
-  const date =
-    new Date(
-      Date.UTC(
-        year,
-        month - 1,
-        day
-      )
-    );
-
-  date.setUTCDate(
-    date.getUTCDate() +
-      days
-  );
-
-  return `${date.getUTCFullYear()}-${String(
-    date.getUTCMonth() +
-      1
-  ).padStart(
-    2,
-    "0"
-  )}-${String(
-    date.getUTCDate()
-  ).padStart(
-    2,
-    "0"
-  )}`;
-}
-
-// ==================================================
-// NAIROBI TIME
-// ==================================================
-
-function formatNairobiTime(
-  date
-) {
-  const formatter =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone:
-          "Africa/Nairobi",
-
-        hour:
-          "2-digit",
-
-        minute:
-          "2-digit",
-
-        second:
-          "2-digit",
-
-        hourCycle:
-          "h23",
-      }
-    );
-
-  const parts =
-    formatter.formatToParts(
-      date
-    );
-
-  const map = {};
-
-  for (
-    const part of parts
-  ) {
-    if (
-      part.type !==
-      "literal"
-    ) {
-      map[
-        part.type
-      ] =
-        part.value;
-    }
-  }
-
-  return `${map.hour}:${map.minute}:${map.second}`;
-}
-
-// ==================================================
-// SESSION HELPERS
-// ==================================================
-
-function shouldRefreshToken(
-  sessionUser
-) {
-  if (
-    !sessionUser?.access_token
-  ) {
-    return true;
-  }
-
-  const expirySeconds =
-    getStoredExpirySeconds(
-      sessionUser
-    );
-
-  if (
-    !expirySeconds
-  ) {
-    return false;
-  }
-
-  const nowSeconds =
-    Math.floor(
-      Date.now() /
-        1000
-    );
-
-  const refreshBuffer =
-    5 * 60;
-
-  return (
-    expirySeconds -
-      nowSeconds <=
-    refreshBuffer
-  );
-}
-
-function getStoredExpirySeconds(
-  sessionUser
-) {
-  const storedExpiry =
-    Number(
-      sessionUser?.expires_at
-    );
-
-  if (
-    Number.isFinite(
-      storedExpiry
-    ) &&
-    storedExpiry > 0
-  ) {
-    return Math.floor(
-      storedExpiry
-    );
-  }
-
-  return getJwtExpirySeconds(
-    sessionUser?.access_token
-  );
-}
-
-function getJwtExpirySeconds(
-  accessToken
-) {
-  try {
-    const token =
-      String(
-        accessToken ||
-          ""
-      );
-
-    const parts =
-      token.split(
-        "."
-      );
-
-    if (
-      parts.length <
-      2
-    ) {
-      return null;
-    }
-
-    let payload =
-      parts[1]
-        .replace(
-          /-/g,
-          "+"
-        )
-        .replace(
-          /_/g,
-          "/"
-        );
-
-    while (
-      payload.length %
-        4 !==
-      0
-    ) {
-      payload +=
-        "=";
-    }
-
-    const decoded =
-      JSON.parse(
-        atob(
-          payload
-        )
-      );
-
-    const exp =
-      Number(
-        decoded?.exp
-      );
-
-    return (
-      Number.isFinite(
-        exp
-      ) &&
-      exp > 0
-    )
-      ? Math.floor(
-          exp
-        )
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function makeSessionExpiredError(
-  message =
-    "Your login session has expired. Please log in again."
-) {
-  const error =
-    new Error(
-      message
-    );
-
-  error.name =
-    "SessionExpiredError";
-
-  return error;
-}
-
-function isSessionExpiredError(
-  error
-) {
-  return (
-    error?.name ===
-    "SessionExpiredError"
-  );
-}
-
-// ==================================================
-// GENERAL HELPERS
-// ==================================================
-
-function isTablePlatform(
-  value
-) {
-  return (
-    String(
-      value ||
-        ""
-    )
-      .trim()
-      .toUpperCase() ===
-    "TABLE"
-  );
-}
-
-function normaliseShiftName(
-  value
-) {
-  const text =
-    String(
-      value ||
-        ""
-    )
-      .trim()
-      .toUpperCase()
-      .replace(
-        /[_-]+/g,
-        " "
-      )
-      .replace(
-        /\s+/g,
-        " "
-      );
-
-  if (
-    text ===
-      "SHIFT 1" ||
-    text ===
-      "SHIFT1"
-  ) {
-    return "SHIFT 1";
-  }
-
-  if (
-    text ===
-      "SHIFT 2" ||
-    text ===
-      "SHIFT2"
-  ) {
-    return "SHIFT 2";
-  }
+  if (text === "SHIFT1") return "SHIFT 1";
+  if (text === "SHIFT2") return "SHIFT 2";
 
   return text;
 }
 
-function authHeaders(
-  anonKey,
-  accessToken
-) {
+const proper24h = (name) =>
+  ["SHIFT 1", "SHIFT 2"].includes(
+    normaliseShiftName(name)
+  );
+
+const isTable = (name) =>
+  String(name || "").trim().toUpperCase() === "TABLE";
+
+function determineNext24HourShift(previous) {
+  const name = normaliseShiftName(
+    previous?.shift_name
+  );
+
+  if (name === "SHIFT 1") return "SHIFT 2";
+  if (name === "SHIFT 2") return "SHIFT 1";
+
+  const { hour } = nairobiParts();
+
+  return hour >= 9 && hour < 21
+    ? "SHIFT 1"
+    : "SHIFT 2";
+}
+
+function get24HourBusinessDate(name) {
+  const today = nairobiDate();
+
+  return name === "SHIFT 2" &&
+    nairobiParts().hour < 9
+    ? datePlusDays(today, -1)
+    : today;
+}
+
+function datePlusDays(dateString, days) {
+  const [y, m, d] = dateString
+    .split("-")
+    .map(Number);
+
+  const date = new Date(
+    Date.UTC(y, m - 1, d)
+  );
+
+  date.setUTCDate(
+    date.getUTCDate() + days
+  );
+
+  return `${date.getUTCFullYear()}-${String(
+    date.getUTCMonth() + 1
+  ).padStart(2, "0")}-${String(
+    date.getUTCDate()
+  ).padStart(2, "0")}`;
+}
+
+// ==========================================
+// NAIROBI TIME
+// ==========================================
+
+function nairobiParts(date = new Date()) {
+  const fields = new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "Africa/Nairobi",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }
+  ).formatToParts(date);
+
+  const out = {};
+
+  for (const p of fields) {
+    if (p.type !== "literal") {
+      out[p.type] = p.value;
+    }
+  }
+
   return {
-    apikey:
-      anonKey,
-
-    Authorization:
-      `Bearer ${accessToken}`,
-
-    "Content-Type":
-      "application/json",
+    year: +out.year,
+    month: +out.month,
+    day: +out.day,
+    hour: +out.hour,
+    minute: +out.minute,
+    second: +out.second,
   };
 }
 
-async function safeJson(
-  response
-) {
+function nairobiDate() {
+  const p = nairobiParts();
+
+  return `${p.year}-${String(
+    p.month
+  ).padStart(2, "0")}-${String(
+    p.day
+  ).padStart(2, "0")}`;
+}
+
+function nairobiTime(date) {
+  const p = nairobiParts(date);
+
+  return `${String(p.hour).padStart(2, "0")}:${String(
+    p.minute
+  ).padStart(2, "0")}:${String(
+    p.second
+  ).padStart(2, "0")}`;
+}
+
+// ==========================================
+// TOKEN HELPERS
+// ==========================================
+
+function shouldRefreshToken(u) {
+  if (!u.access_token) return true;
+
+  const stored = Number(u.expires_at);
+
+  const exp =
+    Number.isFinite(stored) && stored > 0
+      ? stored
+      : jwtExpiry(u.access_token);
+
+  return exp
+    ? exp - Math.floor(Date.now() / 1000) <= 300
+    : false;
+}
+
+function jwtExpiry(token) {
   try {
-    return await response.json();
+    let payload = String(token)
+      .split(".")[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    while (payload.length % 4) {
+      payload += "=";
+    }
+
+    return (
+      Number(JSON.parse(atob(payload)).exp) ||
+      null
+    );
   } catch {
     return null;
   }
 }
 
-function roundMoney(
-  value
-) {
-  return (
-    Math.round(
-      (
-        Number(
-          value
-        ) +
-        Number.EPSILON
-      ) *
-        100
-    ) /
-    100
+function sessionExpired() {
+  const e = new Error(
+    "Your login session expired. Please log in again."
   );
+
+  e.name = "SessionExpiredError";
+  return e;
 }
 
-function money(
-  value
-) {
-  return Number(
-    value ||
-      0
-  ).toLocaleString(
+// ==========================================
+// GENERAL HELPERS
+// ==========================================
+
+const roundMoney = (value) =>
+  Math.round(
+    (Number(value) + Number.EPSILON) * 100
+  ) / 100;
+
+const money = (value) =>
+  Number(value || 0).toLocaleString(
     "en-KE",
     {
-      minimumFractionDigits:
-        2,
-
-      maximumFractionDigits:
-        2,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }
   );
-}
 
-// ==================================================
+// ==========================================
 // STYLES
-// ==================================================
+// ==========================================
 
 const loadingStyle = {
-  minHeight:
-    "100vh",
-
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  justifyContent:
-    "center",
-
-  backgroundColor:
-    "#edf2f7",
-
-  fontFamily:
-    "Arial, sans-serif",
+  minHeight: "100vh",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  backgroundColor: "#edf2f7",
+  fontFamily: "Arial, sans-serif",
 };
 
 const startPageStyle = {
-  minHeight:
-    "100vh",
-
-  backgroundColor:
-    "#edf2f7",
-
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  justifyContent:
-    "center",
-
-  padding:
-    "20px",
-
-  fontFamily:
-    "Arial, sans-serif",
+  minHeight: "100vh",
+  backgroundColor: "#edf2f7",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+  fontFamily: "Arial, sans-serif",
 };
 
 const startCardStyle = {
-  width:
-    "100%",
-
-  maxWidth:
-    "470px",
-
-  backgroundColor:
-    "white",
-
-  borderRadius:
-    "12px",
-
-  padding:
-    "28px",
-
-  boxShadow:
-    "0 4px 20px rgba(0,0,0,0.10)",
+  width: "100%",
+  maxWidth: 470,
+  backgroundColor: "white",
+  borderRadius: 12,
+  padding: 28,
+  boxShadow: "0 4px 20px rgba(0,0,0,0.10)",
 };
 
 const titleStyle = {
-  margin:
-    "0 0 6px 0",
-
-  color:
-    "#063c63",
-
-  textAlign:
-    "center",
+  margin: "0 0 6px",
+  color: "#063c63",
+  textAlign: "center",
 };
 
 const subtitleStyle = {
-  textAlign:
-    "center",
-
-  color:
-    "#64748b",
-
-  marginBottom:
-    "16px",
+  textAlign: "center",
+  color: "#64748b",
+  marginBottom: 16,
 };
 
 const shopBadgeStyle = {
-  backgroundColor:
-    "#063c63",
-
-  color:
-    "white",
-
-  padding:
-    "9px 12px",
-
-  borderRadius:
-    "6px",
-
-  textAlign:
-    "center",
-
-  fontWeight:
-    "bold",
-
-  marginBottom:
-    "18px",
-};
-
-const accountantBadgeStyle = {
-  backgroundColor:
-    "#0f766e",
-
-  color:
-    "white",
-
-  padding:
-    "9px 12px",
-
-  borderRadius:
-    "6px",
-
-  textAlign:
-    "center",
-
-  fontWeight:
-    "bold",
-
-  marginBottom:
-    "18px",
-};
-
-const accountantInfoStyle = {
-  backgroundColor:
-    "#ecfdf5",
-
-  border:
-    "1px solid #86efac",
-
-  color:
-    "#166534",
-
-  padding:
-    "12px",
-
-  borderRadius:
-    "7px",
-
-  lineHeight:
-    "1.6",
-
-  fontSize:
-    "13px",
-
-  textAlign:
-    "center",
+  backgroundColor: "#063c63",
+  color: "white",
+  padding: "9px 12px",
+  borderRadius: 6,
+  textAlign: "center",
+  fontWeight: "bold",
+  marginBottom: 18,
 };
 
 const detailsStyle = {
-  display:
-    "grid",
-
-  gap:
-    "7px",
-
-  padding:
-    "12px",
-
-  backgroundColor:
-    "#f8fafc",
-
-  borderRadius:
-    "7px",
-
-  marginBottom:
-    "15px",
+  display: "grid",
+  gap: 7,
+  padding: 12,
+  backgroundColor: "#f8fafc",
+  borderRadius: 7,
+  marginBottom: 15,
 };
 
 const infoStyle = {
-  display:
-    "grid",
-
-  gap:
-    "5px",
-
-  backgroundColor:
-    "#ecfdf5",
-
-  color:
-    "#166534",
-
-  border:
-    "1px solid #86efac",
-
-  borderRadius:
-    "7px",
-
-  padding:
-    "12px",
-
-  marginBottom:
-    "15px",
+  display: "grid",
+  gap: 5,
+  backgroundColor: "#ecfdf5",
+  color: "#166534",
+  border: "1px solid #86efac",
+  borderRadius: 7,
+  padding: 12,
+  marginBottom: 15,
 };
 
 const labelStyle = {
-  display:
-    "block",
-
-  fontWeight:
-    "bold",
-
-  marginBottom:
-    "6px",
+  display: "block",
+  fontWeight: "bold",
+  marginBottom: 6,
 };
 
 const inputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "11px",
-
-  border:
-    "1px solid #94a3b8",
-
-  borderRadius:
-    "6px",
-
-  fontSize:
-    "16px",
+  width: "100%",
+  boxSizing: "border-box",
+  padding: 11,
+  border: "1px solid #94a3b8",
+  borderRadius: 6,
+  fontSize: 16,
 };
 
 const lockedTextStyle = {
-  color:
-    "#64748b",
-
-  fontSize:
-    "12px",
-
-  marginTop:
-    "6px",
+  color: "#64748b",
+  fontSize: 12,
+  marginTop: 6,
 };
 
 const errorStyle = {
-  backgroundColor:
-    "#fef2f2",
-
-  color:
-    "#991b1b",
-
-  padding:
-    "10px",
-
-  borderRadius:
-    "6px",
-
-  marginTop:
-    "12px",
+  backgroundColor: "#fef2f2",
+  color: "#991b1b",
+  padding: 10,
+  marginTop: 12,
 };
 
 const startButtonStyle = {
-  width:
-    "100%",
-
-  marginTop:
-    "18px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "6px",
-
-  padding:
-    "12px",
-
-  color:
-    "white",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "15px",
+  width: "100%",
+  marginTop: 18,
+  border: "none",
+  borderRadius: 6,
+  padding: 12,
+  color: "white",
+  fontWeight: "bold",
+  fontSize: 15,
 };
 
-const logoutStartButtonStyle = {
-  width:
-    "100%",
-
-  marginTop:
-    "10px",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "6px",
-
-  padding:
-    "11px",
-
-  backgroundColor:
-    "white",
-
-  color:
-    "#334155",
-
-  fontWeight:
-    "bold",
-
-  cursor:
-    "pointer",
+const logoutButton = {
+  width: "100%",
+  marginTop: 10,
+  border: "1px solid #cbd5e1",
+  borderRadius: 6,
+  padding: 11,
+  backgroundColor: "white",
+  color: "#334155",
+  fontWeight: "bold",
+  cursor: "pointer",
 };
 
 const mutedStyle = {
-  color:
-    "#64748b",
-
-  textAlign:
-    "center",
-
-  lineHeight:
-    "1.6",
+  color: "#64748b",
+  textAlign: "center",
+  lineHeight: 1.6,
 };
 
 const balancePreviewStyle = {
-  backgroundColor:
-    "#ecfdf5",
-
-  color:
-    "#166534",
-
-  padding:
-    "12px",
-
-  borderRadius:
-    "7px",
-
-  textAlign:
-    "center",
-
-  fontWeight:
-    "bold",
-
-  marginTop:
-    "15px",
+  backgroundColor: "#ecfdf5",
+  color: "#166534",
+  padding: 12,
+  borderRadius: 7,
+  textAlign: "center",
+  fontWeight: "bold",
+  marginTop: 15,
 };
