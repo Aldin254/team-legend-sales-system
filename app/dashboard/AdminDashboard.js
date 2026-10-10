@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AdminAccountsPanel from "./AdminAccountsPanel";
@@ -22,31 +16,34 @@ import AdminDutyControlPanel from "./AdminDutyControlPanel";
 import AdminLiveFeedPanel from "./AdminLiveFeedPanel";
 import AdminAttendanceControlPanel from "./AdminAttendanceControlPanel";
 
-// ==================================================
-// TEAM LEGEND / NYIKA
-// ADMIN DASHBOARD
-//
-// ADDED:
-// - MASTER EMPLOYEE LIST MENU
-// - MASTER EMPLOYEE LIST HOMEPAGE CARD
-// - MASTER EMPLOYEE LIST VIEW
-//
-// EXISTING MODULES PRESERVED.
-// ==================================================
+// TEAM LEGEND / NYIKA — Admin Dashboard
+// Provides the agreed editable Master Employee List using the existing
+// Master Employee database and admin-only Supabase RPCs.
+// The existing Duty/Rota, Live Feed and all other panels remain untouched.
+
+const menuItems = [
+  { id: "DASHBOARD", label: "Dashboard", icon: "▦" },
+  { id: "REPORTS", label: "View Reports", icon: "▤" },
+  { id: "CORRECTIONS", label: "Shift Corrections", icon: "✎" },
+  { id: "ACCOUNTS", label: "Accounts", icon: "₿" },
+  { id: "SAVINGS_BANKING", label: "Savings / Banking", icon: "▣" },
+  { id: "DUTY_ROTA", label: "Duty / Rota", icon: "📅" },
+  { id: "MASTER_EMPLOYEES", label: "Master Employee List", icon: "👥" },
+  { id: "LIVE_FEED", label: "Live Feed", icon: "●" },
+  { id: "ATTENDANCE_CONTROL", label: "Attendance Control", icon: "✓" },
+  { id: "SALARY", label: "Employee Salary", icon: "💰" },
+  { id: "ACCOUNTANT", label: "Accountant Control", icon: "₭" },
+  { id: "MPESA_RATES", label: "M-Pesa Rates", icon: "M" },
+  { id: "SETTINGS", label: "Settings", icon: "⚙" },
+];
 
 export default function AdminDashboard({ user }) {
-  const router = useRouter();
-
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const accessToken = user?.access_token || null;
 
-  const [activeSection, setActiveSection] =
-    useState("DASHBOARD");
+  const router = useRouter();
+  const [activeSection, setActiveSection] = useState("DASHBOARD");
 
   const adminName =
     user?.full_name ||
@@ -54,101 +51,13 @@ export default function AdminDashboard({ user }) {
     user?.username ||
     "Team Legend Admin";
 
-  // ==================================================
-  // LOGOUT
-  // ==================================================
-
   function logout() {
     sessionStorage.removeItem("teamLegendUser");
     router.replace("/");
   }
 
-  // ==================================================
-  // ADMIN MENU
-  // ==================================================
-
-  const menuItems = [
-    {
-      id: "DASHBOARD",
-      label: "Dashboard",
-      icon: "▦",
-    },
-    {
-      id: "REPORTS",
-      label: "View Reports",
-      icon: "▤",
-    },
-    {
-      id: "CORRECTIONS",
-      label: "Shift Corrections",
-      icon: "✎",
-    },
-    {
-      id: "ACCOUNTS",
-      label: "Accounts",
-      icon: "₿",
-    },
-    {
-      id: "SAVINGS_BANKING",
-      label: "Savings / Banking",
-      icon: "▣",
-    },
-    {
-      id: "DUTY_ROTA",
-      label: "Duty / Rota",
-      icon: "📅",
-    },
-
-    // NEW MASTER EMPLOYEE LIST
-    {
-      id: "MASTER_EMPLOYEES",
-      label: "Master Employee List",
-      icon: "👥",
-    },
-
-    {
-      id: "LIVE_FEED",
-      label: "Live Feed",
-      icon: "●",
-    },
-    {
-      id: "ATTENDANCE_CONTROL",
-      label: "Attendance Control",
-      icon: "✓",
-    },
-    {
-      id: "SALARY",
-      label: "Employee Salary",
-      icon: "💰",
-    },
-    {
-      id: "ACCOUNTANT",
-      label: "Accountant Control",
-      icon: "₭",
-    },
-    {
-      id: "MPESA_RATES",
-      label: "M-Pesa Rates",
-      icon: "M",
-    },
-    {
-      id: "SETTINGS",
-      label: "Settings",
-      icon: "⚙",
-    },
-  ];
-
-  // ==================================================
-  // MAIN DASHBOARD
-  // ==================================================
-
   return (
     <main style={pageStyle}>
-
-      {/* ========================================= */}
-      {/* TOP HEADER */}
-      {/* ========================================= */}
-
       <header style={headerStyle}>
         <div>
           <div style={brandStyle}>
@@ -176,47 +85,32 @@ export default function AdminDashboard({ user }) {
         </div>
       </header>
 
-      {/* ========================================= */}
-      {/* BODY */}
-      {/* ========================================= */}
-
       <div style={bodyLayoutStyle}>
-
-        {/* ======================================= */}
-        {/* LEFT NAVIGATION */}
-        {/* ======================================= */}
-
         <aside style={sidebarStyle}>
           <div style={menuTitleStyle}>
             ADMIN MENU
           </div>
 
-          {menuItems.map((item) => {
-            const active =
-              activeSection === item.id;
-
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() =>
-                  setActiveSection(item.id)
-                }
-                style={{
-                  ...menuButtonStyle,
-                  ...(active
-                    ? activeMenuButtonStyle
-                    : {}),
-                }}
-              >
-                <span style={menuIconStyle}>
-                  {item.icon}
-                </span>
-
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() =>
+                setActiveSection(item.id)
+              }
+              style={{
+                ...menuButtonStyle,
+                ...(activeSection === item.id
+                  ? activeMenuButtonStyle
+                  : {}),
+              }}
+            >
+              <span style={menuIconStyle}>
+                {item.icon}
+              </span>
+              <span>{item.label}</span>
+            </button>
+          ))}
 
           <div style={sidebarFooterStyle}>
             <div>Signed in as</div>
@@ -224,16 +118,7 @@ export default function AdminDashboard({ user }) {
           </div>
         </aside>
 
-        {/* ======================================= */}
-        {/* MAIN CONTENT */}
-        {/* ======================================= */}
-
         <section style={contentStyle}>
-
-          {/* ===================================== */}
-          {/* DASHBOARD HOME */}
-          {/* ===================================== */}
-
           {activeSection === "DASHBOARD" && (
             <DashboardHome
               adminName={adminName}
@@ -241,24 +126,15 @@ export default function AdminDashboard({ user }) {
             />
           )}
 
-          {/* ===================================== */}
-          {/* VIEW REPORTS */}
-          {/* ===================================== */}
-
           {activeSection === "REPORTS" && (
             <>
               <PageHeading
                 title="View Reports"
                 subtitle="View current and historical shop sales reports."
               />
-
               <AdminReportsPanel user={user} />
             </>
           )}
-
-          {/* ===================================== */}
-          {/* SHIFT CORRECTIONS */}
-          {/* ===================================== */}
 
           {activeSection === "CORRECTIONS" && (
             <>
@@ -266,16 +142,9 @@ export default function AdminDashboard({ user }) {
                 title="Shift Corrections"
                 subtitle="Admin control of shop shifts, platform readings, expenses, savings, overrides and audit history."
               />
-
-              <AdminShiftOverridePanel
-                user={user}
-              />
+              <AdminShiftOverridePanel user={user} />
             </>
           )}
-
-          {/* ===================================== */}
-          {/* ACCOUNTS */}
-          {/* ===================================== */}
 
           {activeSection === "ACCOUNTS" && (
             <>
@@ -283,14 +152,9 @@ export default function AdminDashboard({ user }) {
                 title="Accounts"
                 subtitle="Manage shop payment and account information."
               />
-
               <AdminAccountsPanel user={user} />
             </>
           )}
-
-          {/* ===================================== */}
-          {/* SAVINGS / BANKING */}
-          {/* ===================================== */}
 
           {activeSection === "SAVINGS_BANKING" && (
             <>
@@ -298,14 +162,9 @@ export default function AdminDashboard({ user }) {
                 title="Savings / Banking"
                 subtitle="Live Savings balances, payment activity, Accountant confirmations and permanent ledger audit."
               />
-
               <AdminSavingsPanel user={user} />
             </>
           )}
-
-          {/* ===================================== */}
-          {/* DUTY / ROTA */}
-          {/* ===================================== */}
 
           {activeSection === "DUTY_ROTA" && (
             <>
@@ -322,28 +181,15 @@ export default function AdminDashboard({ user }) {
             </>
           )}
 
-          {/* ===================================== */}
-          {/* NEW MASTER EMPLOYEE LIST */}
-          {/* ===================================== */}
+          {/* MASTER EMPLOYEE MANAGEMENT — EDITABLE */}
 
           {activeSection === "MASTER_EMPLOYEES" && (
-            <>
-              <PageHeading
-                title="Master Employee List"
-                subtitle="Central register of Team Legend employees, permanent shops, assignment types, employment status and 24-hour groups."
-              />
-
-              <AdminMasterEmployeeList
-                supabaseUrl={supabaseUrl}
-                supabaseAnonKey={supabaseAnonKey}
-                accessToken={accessToken}
-              />
-            </>
+            <AdminMasterEmployeeList
+              supabaseUrl={supabaseUrl}
+              supabaseAnonKey={supabaseAnonKey}
+              accessToken={accessToken}
+            />
           )}
-
-          {/* ===================================== */}
-          {/* LIVE FEED - UNCHANGED */}
-          {/* ===================================== */}
 
           {activeSection === "LIVE_FEED" && (
             <>
@@ -351,14 +197,9 @@ export default function AdminDashboard({ user }) {
                 title="Live Feed"
                 subtitle="Post and manage shared announcements shown in the moving cashier Live Feed."
               />
-
               <AdminLiveFeedPanel user={user} />
             </>
           )}
-
-          {/* ===================================== */}
-          {/* ATTENDANCE CONTROL */}
-          {/* ===================================== */}
 
           {activeSection === "ATTENDANCE_CONTROL" && (
             <>
@@ -366,16 +207,9 @@ export default function AdminDashboard({ user }) {
                 title="Attendance Control"
                 subtitle="Monitor employee attendance, 24-hour shop exemptions, and grant or revoke Lunch and Supper."
               />
-
-              <AdminAttendanceControlPanel
-                user={user}
-              />
+              <AdminAttendanceControlPanel user={user} />
             </>
           )}
-
-          {/* ===================================== */}
-          {/* EMPLOYEE SALARY */}
-          {/* ===================================== */}
 
           {activeSection === "SALARY" && (
             <>
@@ -383,16 +217,9 @@ export default function AdminDashboard({ user }) {
                 title="Employee Salary"
                 subtitle="Manage weekly salaries, private Salary PINs, advances, deductions and employee salary access."
               />
-
-              <AdminSalaryManagementPanel
-                user={user}
-              />
+              <AdminSalaryManagementPanel user={user} />
             </>
           )}
-
-          {/* ===================================== */}
-          {/* ACCOUNTANT CONTROL */}
-          {/* ===================================== */}
 
           {activeSection === "ACCOUNTANT" && (
             <>
@@ -400,16 +227,9 @@ export default function AdminDashboard({ user }) {
                 title="Accountant Control"
                 subtitle="Monitor Legend Accounts daily balances, accountant expenses, cashier returns, float transfers and transaction history."
               />
-
-              <AdminAccountantPanel
-                user={user}
-              />
+              <AdminAccountantPanel user={user} />
             </>
           )}
-
-          {/* ===================================== */}
-          {/* M-PESA RATES */}
-          {/* ===================================== */}
 
           {activeSection === "MPESA_RATES" && (
             <>
@@ -417,16 +237,9 @@ export default function AdminDashboard({ user }) {
                 title="M-Pesa Rates"
                 subtitle="Admin control of Safaricom transaction-fee bands used by the Team Legend system."
               />
-
-              <AdminMpesaRatesPanel
-                user={user}
-              />
+              <AdminMpesaRatesPanel user={user} />
             </>
           )}
-
-          {/* ===================================== */}
-          {/* SETTINGS */}
-          {/* ===================================== */}
 
           {activeSection === "SETTINGS" && (
             <SettingsPanel user={user} />
@@ -438,16 +251,80 @@ export default function AdminDashboard({ user }) {
 }
 
 // ==================================================
-// NEW MASTER EMPLOYEE LIST
+// MASTER EMPLOYEES - AGREED EDITABLE LIST
 //
-// Uses existing Supabase RPC:
+// Employee name
+// Shop or category
+// Weekly salary
+// Unique ID
+// Add Employee
+// One Reason for Edit at bottom.
+//
+// Backend:
 // tl_admin_master_employee_list
-//
-// READ ONLY
-// NO NEW SQL TABLES
-// NO SALARY RECORD CHANGES
-// NO ROTA MODIFICATIONS
+// tl_admin_master_employee_shops_v1
+// tl_admin_master_employee_save_v1
 // ==================================================
+
+function masterCategory(employee) {
+  if (
+    employee.assignment_type === "FIXED" &&
+    employee.shop_id
+  ) {
+    return `SHOP:${employee.shop_id}`;
+  }
+
+  if (employee.job_title === "TEAM_LEADER") {
+    return "TEAM_LEADER";
+  }
+
+  if (employee.job_title === "ACCOUNTANT") {
+    return "ACCOUNTANT";
+  }
+
+  return "RELIEVER";
+}
+
+function toMasterDraft(employee) {
+  return {
+    key: employee.employee_id,
+    employee_id: employee.employee_id,
+    full_name: employee.full_name ?? "",
+    shop_choice: masterCategory(employee),
+
+    weekly_salary:
+      employee.weekly_salary === null ||
+      employee.weekly_salary === undefined
+        ? ""
+        : String(employee.weekly_salary),
+
+    employment_status: employee.employment_status,
+  };
+}
+
+function sameSalary(a, b) {
+  if (
+    String(a).trim() === "" ||
+    String(b).trim() === ""
+  ) {
+    return String(a).trim() === String(b).trim();
+  }
+
+  return Number(a) === Number(b);
+}
+
+function masterRowChanged(current, original) {
+  if (!original) return true;
+
+  return (
+    current.full_name !== original.full_name ||
+    current.shop_choice !== original.shop_choice ||
+    !sameSalary(
+      current.weekly_salary,
+      original.weekly_salary
+    )
+  );
+}
 
 function AdminMasterEmployeeList({
   supabaseUrl,
@@ -455,546 +332,671 @@ function AdminMasterEmployeeList({
   accessToken,
 }) {
   const [employees, setEmployees] = useState([]);
+  const [drafts, setDrafts] = useState([]);
+  const [shops, setShops] = useState([]);
+
+  const [reason, setReason] = useState("");
+
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState("ALL");
+  const [reload, setReload] = useState(0);
 
-  const [assignmentFilter, setAssignmentFilter] =
-    useState("ALL");
-
-  const apiBase = useMemo(
+  const baseUrl = useMemo(
     () => String(supabaseUrl || "").replace(/\/+$/, ""),
     [supabaseUrl]
   );
 
   // ==================================================
-  // LOAD MASTER EMPLOYEES
+  // SUPABASE RPC
   // ==================================================
 
-  const loadEmployees = useCallback(
-    async (signal) => {
-      if (!apiBase || !supabaseAnonKey || !accessToken) {
-        setEmployees([]);
-        setError(
+  const rpc = useCallback(
+    async (functionName, payload = {}, signal) => {
+      if (
+        !baseUrl ||
+        !supabaseAnonKey ||
+        !accessToken
+      ) {
+        throw new Error(
           "Admin login or Supabase connection is missing."
         );
-        setLoading(false);
-        return;
       }
 
-      try {
-        setError("");
+      const response = await fetch(
+        `${baseUrl}/rest/v1/rpc/${functionName}`,
+        {
+          method: "POST",
 
-        const response = await fetch(
-          `${apiBase}/rest/v1/rpc/tl_admin_master_employee_list`,
-          {
-            method: "POST",
+          headers: {
+            apikey: supabaseAnonKey,
 
-            headers: {
-              apikey: supabaseAnonKey,
+            Authorization:
+              `Bearer ${accessToken}`,
 
-              Authorization:
-                `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
 
-              "Content-Type": "application/json",
-            },
+          body: JSON.stringify(payload),
+          cache: "no-store",
 
-            body: JSON.stringify({}),
+          ...(signal ? { signal } : {}),
+        }
+      );
 
-            cache: "no-store",
+      const body = await response
+        .json()
+        .catch(() => null);
 
-            ...(signal ? { signal } : {}),
-          }
+      if (!response.ok) {
+        throw new Error(
+          body?.message ||
+          body?.details ||
+          body?.hint ||
+          `${functionName} failed (${response.status}).`
         );
-
-        const result = await response
-          .json()
-          .catch(() => null);
-
-        if (!response.ok) {
-          throw new Error(
-            result?.message ||
-              result?.details ||
-              result?.hint ||
-              `Unable to load Master Employees (${response.status}).`
-          );
-        }
-
-        if (!Array.isArray(result)) {
-          throw new Error(
-            "Master Employee List returned an unexpected response."
-          );
-        }
-
-        if (signal?.aborted) return;
-
-        setEmployees(result);
-      } catch (err) {
-        if (err?.name === "AbortError" || signal?.aborted) {
-          return;
-        }
-
-        setError(
-          err?.message ||
-            "Unable to load Master Employee List."
-        );
-      } finally {
-        if (!signal?.aborted) {
-          setLoading(false);
-          setRefreshing(false);
-        }
       }
+
+      return body;
     },
-    [apiBase, supabaseAnonKey, accessToken]
+    [
+      baseUrl,
+      supabaseAnonKey,
+      accessToken,
+    ]
   );
+
+  // ==================================================
+  // LOAD MASTER EMPLOYEES AND SHOPS
+  // ==================================================
 
   useEffect(() => {
     const controller = new AbortController();
+    let mounted = true;
 
-    setLoading(true);
-    loadEmployees(controller.signal);
+    async function load() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const [people, shopOptions] =
+          await Promise.all([
+            rpc(
+              "tl_admin_master_employee_list",
+              {},
+              controller.signal
+            ),
+
+            rpc(
+              "tl_admin_master_employee_shops_v1",
+              {},
+              controller.signal
+            ),
+          ]);
+
+        if (!mounted) return;
+
+        if (
+          !Array.isArray(people) ||
+          !Array.isArray(shopOptions)
+        ) {
+          throw new Error(
+            "Unexpected Master Employee database response."
+          );
+        }
+
+        const current = people.map(toMasterDraft);
+
+        setEmployees(current);
+        setDrafts(current);
+        setShops(shopOptions);
+
+      } catch (err) {
+        if (
+          mounted &&
+          err?.name !== "AbortError"
+        ) {
+          setError(
+            err?.message ||
+            "Unable to load Master Employees."
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    load();
 
     return () => {
+      mounted = false;
       controller.abort();
     };
-  }, [loadEmployees]);
+  }, [rpc, reload]);
 
   // ==================================================
-  // REFRESH
+  // ORIGINAL EMPLOYEE VALUES
   // ==================================================
 
-  async function refreshList() {
-    if (refreshing) return;
+  const originals = useMemo(
+    () =>
+      new Map(
+        employees.map((e) => [
+          e.employee_id,
+          e,
+        ])
+      ),
+    [employees]
+  );
 
-    setRefreshing(true);
-    await loadEmployees();
+  // ==================================================
+  // CHANGED EMPLOYEES ONLY
+  // ==================================================
+
+  const pending = useMemo(
+    () =>
+      drafts.filter((e) =>
+        masterRowChanged(
+          e,
+          originals.get(e.employee_id)
+        )
+      ),
+    [drafts, originals]
+  );
+
+  const hasPending = pending.length > 0;
+
+  // ==================================================
+  // EDIT EMPLOYEE FIELD
+  // ==================================================
+
+  const updateDraft = (key, field, value) => {
+    setDrafts((current) =>
+      current.map((row) =>
+        row.key === key
+          ? { ...row, [field]: value }
+          : row
+      )
+    );
+
+    setError("");
+    setNotice("");
+  };
+
+  // ==================================================
+  // ADD NEW EMPLOYEE
+  // ==================================================
+
+  function addEmployee() {
+    setDrafts((current) => [
+      ...current,
+      {
+        key: `new-${Date.now()}-${Math.random()}`,
+        employee_id: null,
+        full_name: "",
+        shop_choice: "",
+        weekly_salary: "",
+        employment_status: "ACTIVE",
+      },
+    ]);
+
+    setNotice("");
+    setError("");
   }
 
   // ==================================================
-  // FILTER EMPLOYEES
+  // CANCEL UNSAVED NEW EMPLOYEE
   // ==================================================
 
-  const filteredEmployees = useMemo(() => {
-    const query = search.trim().toLowerCase();
+  function discardNew(key) {
+    setDrafts((current) =>
+      current.filter((row) => row.key !== key)
+    );
 
-    return employees
-      .filter((employee) => {
-        const employmentStatus = String(
-          employee.employment_status || ""
-        ).toUpperCase();
+    setNotice("");
+  }
 
-        const assignmentType = String(
-          employee.assignment_type || ""
-        ).toUpperCase();
+  // ==================================================
+  // SAVE CHANGES
+  // ==================================================
 
-        if (
-          statusFilter !== "ALL" &&
-          employmentStatus !== statusFilter
-        ) {
-          return false;
-        }
+  async function saveChanges() {
+    if (
+      !pending.length ||
+      loading ||
+      saving
+    ) {
+      return;
+    }
 
-        if (
-          assignmentFilter !== "ALL" &&
-          assignmentType !== assignmentFilter
-        ) {
-          return false;
-        }
+    const sharedReason = reason.trim();
 
-        if (!query) return true;
-
-        const searchableText = [
-          employee.full_name,
-          employee.shop_name,
-          employee.assignment_type,
-          employee.employment_status,
-          employee.job_title,
-          employee.group_number,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return searchableText.includes(query);
-      })
-      .sort((a, b) =>
-        String(a.full_name || "").localeCompare(
-          String(b.full_name || "")
-        )
+    if (sharedReason.length < 3) {
+      setError(
+        "Enter one reason for the changes at the bottom before saving."
       );
-  }, [
-    employees,
-    search,
-    statusFilter,
-    assignmentFilter,
-  ]);
+
+      return;
+    }
+
+    // ----------------------------------------------
+    // VALIDATE ALL CHANGES BEFORE SAVING
+    // ----------------------------------------------
+
+    for (const entry of pending) {
+      if (
+        entry.employment_status !== "ACTIVE"
+      ) {
+        setError(
+          "Inactive employees cannot be edited with this Save function."
+        );
+
+        return;
+      }
+
+      if (
+        entry.full_name.trim().length < 2
+      ) {
+        setError(
+          "Every employee must have a name of at least 2 characters."
+        );
+
+        return;
+      }
+
+      if (!entry.shop_choice) {
+        setError(
+          `Choose a Shop / Category for ${
+            entry.full_name || "the new employee"
+          }.`
+        );
+
+        return;
+      }
+
+      const amount = String(
+        entry.weekly_salary
+      ).trim();
+
+      if (
+        !/^\d+(\.\d{1,2})?$/.test(amount) ||
+        Number(amount) > 1000000000
+      ) {
+        setError(
+          `Enter a valid weekly salary (KES) for ${entry.full_name}.`
+        );
+
+        return;
+      }
+    }
+
+    // ----------------------------------------------
+    // SAVE TO SUPABASE
+    // ----------------------------------------------
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await rpc(
+        "tl_admin_master_employee_save_v1",
+        {
+          p_reason: sharedReason,
+
+          p_changes: pending.map((row) => ({
+            employee_id: row.employee_id,
+            full_name: row.full_name,
+            shop_choice: row.shop_choice,
+            weekly_salary: Number(
+              row.weekly_salary
+            ),
+          })),
+        }
+      );
+
+      if (result?.success !== true) {
+        throw new Error(
+          "The database did not confirm the Save operation."
+        );
+      }
+
+      setReason("");
+
+      setNotice(
+        `${result.added || 0} employee(s) added, ` +
+        `${result.edited || 0} employee(s) edited. Changes saved.`
+      );
+
+      setReload((x) => x + 1);
+
+    } catch (err) {
+      setError(
+        err?.message ||
+        "Unable to save employee changes."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // ==================================================
-  // SUMMARY
-  // ==================================================
-
-  const totalEmployees = employees.length;
-
-  const activeCount = employees.filter(
-    (employee) =>
-      String(
-        employee.employment_status || ""
-      ).toUpperCase() === "ACTIVE"
-  ).length;
-
-  const fixedCount = employees.filter(
-    (employee) =>
-      String(
-        employee.assignment_type || ""
-      ).toUpperCase() === "FIXED"
-  ).length;
-
-  const notFixedCount = employees.filter(
-    (employee) =>
-      String(
-        employee.assignment_type || ""
-      ).toUpperCase() === "NOT_FIXED"
-  ).length;
-
-  // ==================================================
-  // DISPLAY
+  // MASTER EMPLOYEE INTERFACE
   // ==================================================
 
   return (
-    <div style={masterContainerStyle}>
+    <section style={masterPanelStyle}>
 
-      {/* ======================================= */}
-      {/* MASTER HEADER */}
-      {/* ======================================= */}
+      {/* ========================================= */}
+      {/* HEADER AND TOTAL ONLY */}
+      {/* ========================================= */}
 
-      <div style={masterHeaderStyle}>
-        <div>
-          <div style={masterTitleStyle}>
-            👥 MASTER EMPLOYEE DATABASE
-          </div>
-
-          <div style={masterSubtitleStyle}>
-            Central employee register for all Team
-            Legend shops.
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={refreshList}
-          disabled={refreshing || loading}
-          style={masterRefreshButtonStyle}
+      <div style={masterPanelHeaderStyle}>
+        <strong
+          style={{
+            fontSize: 17,
+            fontWeight: 900,
+          }}
         >
-          {refreshing ? "REFRESHING..." : "↻ REFRESH"}
-        </button>
+          MASTER EMPLOYEES
+        </strong>
+
+        <strong style={{ fontSize: 12 }}>
+          Total Employees: {employees.length}
+        </strong>
       </div>
 
-      {/* ======================================= */}
-      {/* SUMMARY CARDS */}
-      {/* ======================================= */}
-
-      <div style={masterSummaryGridStyle}>
-        <MasterSummary
-          title="TOTAL EMPLOYEES"
-          value={totalEmployees}
-          color="#0f172a"
-        />
-
-        <MasterSummary
-          title="ACTIVE"
-          value={activeCount}
-          color="#15803d"
-        />
-
-        <MasterSummary
-          title="FIXED"
-          value={fixedCount}
-          color="#0369a1"
-        />
-
-        <MasterSummary
-          title="NOT FIXED"
-          value={notFixedCount}
-          color="#b45309"
-        />
-      </div>
-
-      {/* ======================================= */}
-      {/* FILTERS */}
-      {/* ======================================= */}
-
-      <div style={masterFiltersStyle}>
-        <div style={masterFilterFieldStyle}>
-          <label style={masterFilterLabelStyle}>
-            SEARCH EMPLOYEE / SHOP
-          </label>
-
-          <input
-            type="text"
-            value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
-            placeholder="Search employee or shop..."
-            style={masterInputStyle}
-          />
-        </div>
-
-        <div style={masterFilterFieldStyle}>
-          <label style={masterFilterLabelStyle}>
-            EMPLOYMENT
-          </label>
-
-          <select
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value)
-            }
-            style={masterInputStyle}
-          >
-            <option value="ALL">All employees</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
-        </div>
-
-        <div style={masterFilterFieldStyle}>
-          <label style={masterFilterLabelStyle}>
-            ASSIGNMENT
-          </label>
-
-          <select
-            value={assignmentFilter}
-            onChange={(event) =>
-              setAssignmentFilter(event.target.value)
-            }
-            style={masterInputStyle}
-          >
-            <option value="ALL">All assignments</option>
-            <option value="FIXED">Fixed</option>
-            <option value="NOT_FIXED">Not Fixed</option>
-          </select>
-        </div>
-      </div>
-
-      {/* ======================================= */}
-      {/* ERRORS */}
-      {/* ======================================= */}
+      {/* ========================================= */}
+      {/* ERROR / SUCCESS MESSAGES */}
+      {/* ========================================= */}
 
       {error && (
-        <div style={masterErrorStyle}>
+        <div
+          role="alert"
+          style={masterErrorStyle}
+        >
           {error}
         </div>
       )}
 
-      {/* ======================================= */}
-      {/* EMPLOYEE TABLE */}
-      {/* ======================================= */}
-
-      <div style={masterTableHeaderStyle}>
-        <strong>MASTER EMPLOYEES</strong>
-
-        <span>
-          {filteredEmployees.length} employee(s)
-        </span>
-      </div>
-
-      {loading ? (
-        <div style={masterEmptyStyle}>
-          Loading Master Employee List...
-        </div>
-      ) : error && employees.length === 0 ? (
-        <div style={masterEmptyStyle}>
-          Employee records could not be loaded.
-        </div>
-      ) : filteredEmployees.length === 0 ? (
-        <div style={masterEmptyStyle}>
-          No employees match the selected filters.
-        </div>
-      ) : (
-        <div style={masterTableScrollStyle}>
-          <table style={masterTableStyle}>
-            <thead>
-              <tr>
-                <th style={masterThStyle}>
-                  NO.
-                </th>
-
-                <th style={masterThStyle}>
-                  EMPLOYEE NAME
-                </th>
-
-                <th style={masterThStyle}>
-                  PERMANENT SHOP
-                </th>
-
-                <th style={masterThStyle}>
-                  ASSIGNMENT
-                </th>
-
-                <th style={masterThStyle}>
-                  24-HOUR GROUP
-                </th>
-
-                <th style={masterThStyle}>
-                  EMPLOYMENT
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredEmployees.map(
-                (employee, index) => {
-                  const isActive =
-                    String(
-                      employee.employment_status ||
-                        ""
-                    ).toUpperCase() === "ACTIVE";
-
-                  const isFixed =
-                    String(
-                      employee.assignment_type || ""
-                    ).toUpperCase() === "FIXED";
-
-                  const groupNumber =
-                    employee.group_number;
-
-                  const hasGroup =
-                    groupNumber !== null &&
-                    groupNumber !== undefined &&
-                    groupNumber !== "";
-
-                  return (
-                    <tr
-                      key={
-                        employee.employee_id ||
-                        employee.id ||
-                        index
-                      }
-                    >
-                      <td style={masterTdStyle}>
-                        {index + 1}
-                      </td>
-
-                      <td style={masterTdStyle}>
-                        <div style={masterNameStyle}>
-                          {employee.full_name ||
-                            "Unnamed Employee"}
-                        </div>
-
-                        {employee.job_title && (
-                          <div
-                            style={masterJobTitleStyle}
-                          >
-                            {String(
-                              employee.job_title
-                            ).replace(/_/g, " ")}
-                          </div>
-                        )}
-                      </td>
-
-                      <td style={masterTdStyle}>
-                        {isFixed
-                          ? employee.shop_name ||
-                            "Not Assigned"
-                          : employee.shop_name ||
-                            "Not Fixed"}
-                      </td>
-
-                      <td style={masterTdStyle}>
-                        <span
-                          style={{
-                            ...masterBadgeStyle,
-
-                            ...(isFixed
-                              ? masterFixedBadgeStyle
-                              : masterNotFixedBadgeStyle),
-                          }}
-                        >
-                          {isFixed
-                            ? "FIXED"
-                            : String(
-                                employee.assignment_type ||
-                                  "NOT FIXED"
-                              ).replace(/_/g, " ")}
-                        </span>
-                      </td>
-
-                      <td style={masterTdStyle}>
-                        {hasGroup
-                          ? `GROUP ${groupNumber}`
-                          : "—"}
-                      </td>
-
-                      <td style={masterTdStyle}>
-                        <span
-                          style={{
-                            ...masterBadgeStyle,
-
-                            ...(isActive
-                              ? masterActiveBadgeStyle
-                              : masterInactiveBadgeStyle),
-                          }}
-                        >
-                          {String(
-                            employee.employment_status ||
-                              "UNKNOWN"
-                          ).replace(/_/g, " ")}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                }
-              )}
-            </tbody>
-          </table>
+      {notice && (
+        <div
+          role="status"
+          style={masterSuccessStyle}
+        >
+          {notice}
         </div>
       )}
 
-      {/* ======================================= */}
-      {/* FOOTER */}
-      {/* ======================================= */}
+      {loading ? (
+        <div style={masterEmptyStyle}>
+          Loading Master Employees...
+        </div>
+      ) : (
+        <div style={masterPanelBodyStyle}>
 
-      <div style={masterFooterStyle}>
-        This list reads employee information from
-        the Master Employee database.
-        Duty assignments are managed separately
-        under Duty / Rota.
-        Salary PINs, salary amounts, advances and
-        payment records are not exposed here.
-      </div>
-    </div>
-  );
-}
+          {/* ===================================== */}
+          {/* EMPLOYEE TABLE */}
+          {/* ===================================== */}
 
-// ==================================================
-// MASTER SUMMARY CARD
-// ==================================================
+          <div style={masterTableContainerStyle}>
+            <table style={masterTableStyle}>
+              <thead>
+                <tr>
+                  {[
+                    "EMPLOYEE NAME",
+                    "SHOP / CATEGORY",
+                    "SALARY AMOUNT (KES / WEEK)",
+                    "UNIQUE EMPLOYEE ID",
+                  ].map((title) => (
+                    <th
+                      key={title}
+                      style={masterThStyle}
+                    >
+                      {title}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
 
-function MasterSummary({
-  title,
-  value,
-  color,
-}) {
-  return (
-    <div style={masterSummaryCardStyle}>
-      <div style={masterSummaryLabelStyle}>
-        {title}
-      </div>
+              <tbody>
+                {drafts.map((row) => {
+                  const isNew = !row.employee_id;
 
-      <div
-        style={{
-          ...masterSummaryValueStyle,
-          color,
-        }}
-      >
-        {value}
-      </div>
-    </div>
+                  const original =
+                    originals.get(
+                      row.employee_id
+                    );
+
+                  const changed =
+                    masterRowChanged(
+                      row,
+                      original
+                    );
+
+                  const readOnly =
+                    saving ||
+                    row.employment_status !== "ACTIVE";
+
+                  return (
+                    <tr
+                      key={row.key}
+                      style={{
+                        background: changed
+                          ? "#f0f9ff"
+                          : "white",
+                      }}
+                    >
+
+                      {/* EMPLOYEE NAME */}
+
+                      <td style={masterTdStyle}>
+                        <input
+                          type="text"
+                          aria-label="Employee name"
+                          style={masterInputStyle}
+                          value={row.full_name}
+                          onChange={(e) =>
+                            updateDraft(
+                              row.key,
+                              "full_name",
+                              e.target.value
+                            )
+                          }
+                          disabled={readOnly}
+                          placeholder="Employee full name"
+                        />
+                      </td>
+
+                      {/* SHOP / CATEGORY */}
+
+                      <td style={masterTdStyle}>
+                        <select
+                          aria-label="Shop or category"
+                          style={masterInputStyle}
+                          value={row.shop_choice}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            updateDraft(
+                              row.key,
+                              "shop_choice",
+                              e.target.value
+                            )
+                          }
+                        >
+                          <option value="">
+                            Select shop / category
+                          </option>
+
+                          {shops.map((shop) => (
+                            <option
+                              key={shop.id}
+                              value={`SHOP:${shop.id}`}
+                            >
+                              {shop.name}
+                            </option>
+                          ))}
+
+                          <option value="RELIEVER">
+                            Reliever
+                          </option>
+
+                          <option value="TEAM_LEADER">
+                            Team Leader
+                          </option>
+
+                          <option value="ACCOUNTANT">
+                            Accountant
+                          </option>
+                        </select>
+                      </td>
+
+                      {/* WEEKLY SALARY */}
+
+                      <td style={masterTdStyle}>
+                        <input
+                          type="number"
+                          aria-label="Weekly salary in Kenya shillings"
+                          style={masterInputStyle}
+                          min="0"
+                          max="1000000000"
+                          step="0.01"
+                          value={row.weekly_salary}
+                          onChange={(e) =>
+                            updateDraft(
+                              row.key,
+                              "weekly_salary",
+                              e.target.value
+                            )
+                          }
+                          disabled={readOnly}
+                          placeholder="KES"
+                        />
+                      </td>
+
+                      {/* PERMANENT UNIQUE EMPLOYEE ID */}
+
+                      <td style={masterTdStyle}>
+                        {isNew ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              alignItems: "center",
+                            }}
+                          >
+                            <span
+                              style={{
+                                color: "#64748b",
+                                fontSize: 11,
+                              }}
+                            >
+                              Generated on Save
+                            </span>
+
+                            <button
+                              type="button"
+                              style={masterRemoveStyle}
+                              disabled={saving}
+                              onClick={() =>
+                                discardNew(row.key)
+                              }
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <input
+                            aria-label="Permanent employee ID"
+                            type="text"
+                            style={{
+                              ...masterInputStyle,
+                              background: "#f1f5f9",
+                              fontSize: 10,
+                            }}
+                            value={row.employee_id}
+                            title={row.employee_id}
+                            readOnly
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ===================================== */}
+          {/* ADD NEW EMPLOYEE */}
+          {/* ===================================== */}
+
+          <button
+            type="button"
+            style={masterAddButtonStyle}
+            onClick={addEmployee}
+            disabled={saving}
+          >
+            + Add Employee
+          </button>
+
+          {/* ===================================== */}
+          {/* ONE REASON FOR EDIT AT BOTTOM */}
+          {/* ===================================== */}
+
+          <div style={masterBottomStyle}>
+            <label
+              htmlFor="master-edit-reason"
+              style={{
+                fontWeight: 800,
+                fontSize: 12,
+              }}
+            >
+              Reason for Edit
+            </label>
+
+            <textarea
+              id="master-edit-reason"
+              style={{
+                ...masterInputStyle,
+                minHeight: 76,
+                resize: "vertical",
+              }}
+              placeholder="One reason for all employee changes in this Save operation"
+              value={reason}
+              disabled={saving}
+              onChange={(e) => {
+                setReason(e.target.value);
+                setError("");
+              }}
+            />
+
+            <button
+              type="button"
+              style={{
+                ...masterSaveButtonStyle,
+
+                opacity:
+                  !hasPending || saving
+                    ? 0.5
+                    : 1,
+              }}
+              onClick={saveChanges}
+              disabled={!hasPending || saving}
+            >
+              {saving
+                ? "Saving..."
+                : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1006,6 +1008,113 @@ function DashboardHome({
   adminName,
   setActiveSection,
 }) {
+  const cards = [
+    [
+      "VIEW REPORTS",
+      "View OPEN and CLOSED sales reports by shop, date and shift.",
+      "#0891b2",
+      "Open Reports",
+      "REPORTS",
+    ],
+    [
+      "SHIFT CORRECTIONS",
+      "Correct Balance B/F, platform readings, expenses, savings and protected shift figures.",
+      "#7c3aed",
+      "Open Corrections",
+      "CORRECTIONS",
+    ],
+    [
+      "ACCOUNTS",
+      "Manage Rent, WIFI, DSTV, Electricity and Banking payment information for each shop.",
+      "#15803d",
+      "Manage Accounts",
+      "ACCOUNTS",
+    ],
+    [
+      "SAVINGS / BANKING",
+      "Monitor live Savings, Banking balances, pending payments, confirmed payments, rejected requests and ledger history.",
+      "#0f766e",
+      "Open Savings Control",
+      "SAVINGS_BANKING",
+    ],
+    [
+      "DUTY / ROTA",
+      "Manage the Master Duty Rota, OFF days, relief duties and working-shop assignments.",
+      "#6366f1",
+      "Open Duty / Rota",
+      "DUTY_ROTA",
+    ],
+    [
+      "MASTER EMPLOYEE LIST",
+      "Add employees and edit names, shop/category and weekly salary; retain permanent IDs.",
+      "#0e7490",
+      "View Master Employees",
+      "MASTER_EMPLOYEES",
+    ],
+    [
+      "LIVE FEED",
+      "Post and manage shared messages shown to all cashiers in the moving Live Feed ticker.",
+      "#111C30",
+      "Open Live Feed",
+      "LIVE_FEED",
+    ],
+    [
+      "ATTENDANCE CONTROL",
+      "Monitor employee sign-in, 24-hour exemptions, and grant or revoke Lunch and Supper with a permanent audit trail.",
+      "#b45309",
+      "Open Attendance Control",
+      "ATTENDANCE_CONTROL",
+    ],
+    [
+      "EMPLOYEE SALARY",
+      "Manage employee salaries, 4-digit Salary PINs, advances, deductions and salary access.",
+      "#4f46e5",
+      "Manage Salaries",
+      "SALARY",
+    ],
+    [
+      "ACCOUNTANT CONTROL",
+      "View Legend Accounts daily report, accountant expenses, cashier returns, float transfers and transaction records.",
+      "#0f766e",
+      "Open Accountant",
+      "ACCOUNTANT",
+    ],
+    [
+      "M-PESA RATES",
+      "Manage Safaricom transaction-fee bands and test fees when tariffs change.",
+      "#059669",
+      "Manage M-Pesa Rates",
+      "MPESA_RATES",
+    ],
+    [
+      "SETTINGS",
+      "Manage shops, user accounts and system configuration.",
+      "#475569",
+      "Open Settings",
+      "SETTINGS",
+    ],
+  ];
+
+  const statuses = [
+    "Shift Override",
+    "Attendance / Meal Control",
+    "Admin Corrections",
+    "Shared Live Feed",
+    "Master Employee List",
+    "Audit History",
+    "Carry-Forward Protection",
+    "View Reports",
+    "Accounts Management",
+    "Savings / Banking Monitoring",
+    "Savings Ledger Audit",
+    "Salary Management",
+    "Salary PIN Protection",
+    "Accountant Monitoring",
+    "Cashier Return Tracking",
+    "M-Pesa Rate Control",
+    "M-Pesa Fee Testing",
+  ];
+
   return (
     <>
       <PageHeading
@@ -1030,120 +1139,26 @@ function DashboardHome({
       </div>
 
       <div style={dashboardGridStyle}>
-
-        <DashboardCard
-          title="VIEW REPORTS"
-          description="View OPEN and CLOSED sales reports by shop, date and shift."
-          accent="#0891b2"
-          buttonText="Open Reports"
-          onClick={() =>
-            setActiveSection("REPORTS")
-          }
-        />
-
-        <DashboardCard
-          title="SHIFT CORRECTIONS"
-          description="Correct Balance B/F, platform readings, expenses, savings and protected shift figures."
-          accent="#7c3aed"
-          buttonText="Open Corrections"
-          onClick={() =>
-            setActiveSection("CORRECTIONS")
-          }
-        />
-
-        <DashboardCard
-          title="ACCOUNTS"
-          description="Manage Rent, WIFI, DSTV, Electricity and Banking payment information for each shop."
-          accent="#15803d"
-          buttonText="Manage Accounts"
-          onClick={() =>
-            setActiveSection("ACCOUNTS")
-          }
-        />
-
-        <DashboardCard
-          title="SAVINGS / BANKING"
-          description="Monitor live shop Savings, Banking balances, pending payments, confirmed payments, rejected requests and ledger history."
-          accent="#0f766e"
-          buttonText="Open Savings Control"
-          onClick={() =>
-            setActiveSection("SAVINGS_BANKING")
-          }
-        />
-
-        {/* =================================== */}
-        {/* NEW MASTER EMPLOYEES CARD */}
-        {/* =================================== */}
-
-        <DashboardCard
-          title="MASTER EMPLOYEE LIST"
-          description="View the central employee register, permanent shops, Fixed and Not Fixed assignments, employment status and 24-hour groups."
-          accent="#2563eb"
-          buttonText="Open Master Employees"
-          onClick={() =>
-            setActiveSection("MASTER_EMPLOYEES")
-          }
-        />
-
-        <DashboardCard
-          title="LIVE FEED"
-          description="Post and manage shared messages shown to all cashiers in the moving Live Feed ticker."
-          accent="#111C30"
-          buttonText="Open Live Feed"
-          onClick={() =>
-            setActiveSection("LIVE_FEED")
-          }
-        />
-
-        <DashboardCard
-          title="ATTENDANCE CONTROL"
-          description="Monitor employee sign-in, 24-hour exemptions, and grant or revoke Lunch and Supper with a permanent audit trail."
-          accent="#b45309"
-          buttonText="Open Attendance Control"
-          onClick={() =>
-            setActiveSection("ATTENDANCE_CONTROL")
-          }
-        />
-
-        <DashboardCard
-          title="EMPLOYEE SALARY"
-          description="Manage employee salaries, 4-digit Salary PINs, advances, deductions and salary access."
-          accent="#4f46e5"
-          buttonText="Manage Salaries"
-          onClick={() =>
-            setActiveSection("SALARY")
-          }
-        />
-
-        <DashboardCard
-          title="ACCOUNTANT CONTROL"
-          description="View Legend Accounts daily report, accountant expenses, cashier returns, float transfers and transaction records."
-          accent="#0f766e"
-          buttonText="Open Accountant"
-          onClick={() =>
-            setActiveSection("ACCOUNTANT")
-          }
-        />
-
-        <DashboardCard
-          title="M-PESA RATES"
-          description="Manage Safaricom transaction-fee bands and test fees when tariffs change."
-          accent="#059669"
-          buttonText="Manage M-Pesa Rates"
-          onClick={() =>
-            setActiveSection("MPESA_RATES")
-          }
-        />
-
-        <DashboardCard
-          title="SETTINGS"
-          description="Manage shops, user accounts and system configuration."
-          accent="#475569"
-          buttonText="Open Settings"
-          onClick={() =>
-            setActiveSection("SETTINGS")
-          }
-        />
+        {cards.map(
+          ([
+            title,
+            description,
+            accent,
+            buttonText,
+            id,
+          ]) => (
+            <DashboardCard
+              key={id}
+              title={title}
+              description={description}
+              accent={accent}
+              buttonText={buttonText}
+              onClick={() =>
+                setActiveSection(id)
+              }
+            />
+          )
+        )}
       </div>
 
       <div style={systemStatusStyle}>
@@ -1152,85 +1167,13 @@ function DashboardHome({
         </div>
 
         <div style={statusGridStyle}>
-          <StatusItem
-            label="Shift Override"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Attendance / Meal Control"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Admin Corrections"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Shared Live Feed"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Audit History"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Carry-Forward Protection"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="View Reports"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Accounts Management"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Savings / Banking Monitoring"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Savings Ledger Audit"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Salary Management"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Salary PIN Protection"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Accountant Monitoring"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="Cashier Return Tracking"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="M-Pesa Rate Control"
-            status="ACTIVE"
-          />
-
-          <StatusItem
-            label="M-Pesa Fee Testing"
-            status="ACTIVE"
-          />
+          {statuses.map((label) => (
+            <StatusItem
+              key={label}
+              label={label}
+              status="ACTIVE"
+            />
+          ))}
         </div>
       </div>
 
@@ -1375,10 +1318,11 @@ function SettingsPanel({ user }) {
         />
 
         <div style={settingsNoticeStyle}>
-          Additional settings will be connected here
-          as the system expands. Existing sales,
-          Accountant, Savings, Banking, M-Pesa rate
-          and correction functions are unaffected.
+          Additional settings will be connected
+          here as the system expands. Existing
+          sales, Accountant, Savings, Banking,
+          M-Pesa rate and correction functions
+          are unaffected.
         </div>
       </div>
 
@@ -1406,7 +1350,7 @@ function SettingRow({
 }
 
 // ==================================================
-// ORIGINAL ADMIN STYLES
+// EXISTING ADMIN STYLES
 // ==================================================
 
 const pageStyle = {
@@ -1419,8 +1363,7 @@ const pageStyle = {
 const headerStyle = {
   minHeight: "68px",
   padding: "10px 22px",
-  background:
-    "linear-gradient(90deg,#052d4b,#064b6b)",
+  background: "linear-gradient(90deg,#052d4b,#064b6b)",
   color: "white",
   display: "flex",
   justifyContent: "space-between",
@@ -1577,7 +1520,8 @@ const welcomeSubtitleStyle = {
 
 const adminBadgeStyle = {
   padding: "8px 14px",
-  border: "1px solid rgba(255,255,255,0.5)",
+  border:
+    "1px solid rgba(255,255,255,0.5)",
   borderRadius: "20px",
   fontSize: "10px",
   fontWeight: "bold",
@@ -1709,228 +1653,142 @@ const settingsNoticeStyle = {
 };
 
 // ==================================================
-// NEW MASTER EMPLOYEE LIST STYLES
+// MASTER EMPLOYEE EDITABLE LIST STYLES
 // ==================================================
 
-const masterContainerStyle = {
-  backgroundColor: "#ffffff",
+const masterPanelStyle = {
+  background: "#fff",
   border: "1px solid #cbd5e1",
-  borderRadius: "10px",
+  borderRadius: 10,
   overflow: "hidden",
   boxShadow:
-    "0 2px 8px rgba(15,23,42,0.06)",
+    "0 2px 8px rgba(15,23,42,.04)",
 };
 
-const masterHeaderStyle = {
-  padding: "16px",
+const masterPanelHeaderStyle = {
   background:
     "linear-gradient(90deg,#052d4b,#064b6b)",
-  color: "#ffffff",
+  padding: 17,
+  color: "white",
   display: "flex",
-  justifyContent: "space-between",
   alignItems: "center",
-  flexWrap: "wrap",
-  gap: "12px",
-};
-
-const masterTitleStyle = {
-  fontSize: "15px",
-  fontWeight: 950,
-  letterSpacing: "0.4px",
-};
-
-const masterSubtitleStyle = {
-  marginTop: "5px",
-  fontSize: "11px",
-  color: "#cbd5e1",
-};
-
-const masterRefreshButtonStyle = {
-  padding: "9px 14px",
-  backgroundColor: "#ffffff",
-  color: "#052d4b",
-  border: "1px solid #ffffff",
-  borderRadius: "6px",
-  fontSize: "10px",
-  fontWeight: 900,
-  cursor: "pointer",
-};
-
-const masterSummaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(130px,1fr))",
-  gap: "10px",
-  padding: "14px",
-  backgroundColor: "#f8fafc",
-  borderBottom: "1px solid #e2e8f0",
-};
-
-const masterSummaryCardStyle = {
-  padding: "12px",
-  backgroundColor: "#ffffff",
-  border: "1px solid #e2e8f0",
-  borderRadius: "8px",
-};
-
-const masterSummaryLabelStyle = {
-  fontSize: "9px",
-  fontWeight: 900,
-  color: "#64748b",
-};
-
-const masterSummaryValueStyle = {
-  marginTop: "5px",
-  fontSize: "23px",
-  fontWeight: 950,
-};
-
-const masterFiltersStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(160px,1fr))",
-  gap: "10px",
-  padding: "14px",
-  borderBottom: "1px solid #e2e8f0",
-};
-
-const masterFilterFieldStyle = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "6px",
-};
-
-const masterFilterLabelStyle = {
-  fontSize: "9px",
-  fontWeight: 900,
-  color: "#475569",
-};
-
-const masterInputStyle = {
-  width: "100%",
-  minHeight: "38px",
-  padding: "8px 10px",
-  border: "1px solid #cbd5e1",
-  borderRadius: "6px",
-  backgroundColor: "#ffffff",
-  color: "#0f172a",
-  fontSize: "12px",
-  boxSizing: "border-box",
-};
-
-const masterTableHeaderStyle = {
-  padding: "12px 14px",
-  display: "flex",
   justifyContent: "space-between",
-  alignItems: "center",
   flexWrap: "wrap",
-  gap: "8px",
-  fontSize: "11px",
-  color: "#0f172a",
-  backgroundColor: "#f8fafc",
-  borderBottom: "1px solid #e2e8f0",
+  gap: 10,
 };
 
-const masterTableScrollStyle = {
-  width: "100%",
+const masterPanelBodyStyle = {
+  display: "grid",
+  gap: 16,
+  padding: 14,
+};
+
+const masterTableContainerStyle = {
   overflowX: "auto",
+  maxHeight: "70vh",
+  overflowY: "auto",
 };
 
 const masterTableStyle = {
   width: "100%",
-  minWidth: "700px",
+  minWidth: 840,
   borderCollapse: "collapse",
-  backgroundColor: "#ffffff",
 };
 
 const masterThStyle = {
-  padding: "12px 10px",
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
   textAlign: "left",
-  backgroundColor: "#073b5c",
-  color: "#ffffff",
-  fontSize: "10px",
-  fontWeight: 900,
+  background: "#073b5c",
+  color: "white",
+  fontSize: 10,
+  letterSpacing: ".2px",
+  padding: "12px 10px",
   whiteSpace: "nowrap",
 };
 
 const masterTdStyle = {
-  padding: "12px 10px",
-  borderBottom: "1px solid #e2e8f0",
+  padding: "7px 9px",
+  borderBottom:
+    "1px solid #e2e8f0",
+};
+
+const masterInputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "9px 10px",
+  background: "white",
   color: "#0f172a",
-  fontSize: "11px",
-  verticalAlign: "middle",
+  border: "1px solid #cbd5e1",
+  borderRadius: 6,
+  fontSize: 12,
+  fontFamily: "inherit",
 };
 
-const masterNameStyle = {
-  fontWeight: 900,
-  fontSize: "12px",
-  color: "#0f172a",
+const masterAddButtonStyle = {
+  width: "fit-content",
+  background: "white",
+  color: "#073b5c",
+  border: "1px solid #073b5c",
+  borderRadius: 7,
+  fontSize: 12,
+  fontWeight: 850,
+  padding: "10px 14px",
+  cursor: "pointer",
 };
 
-const masterJobTitleStyle = {
-  marginTop: "4px",
-  fontWeight: 800,
-  fontSize: "9px",
-  color: "#0369a1",
+const masterBottomStyle = {
+  display: "grid",
+  gap: 9,
+  borderTop: "1px solid #e2e8f0",
+  paddingTop: 14,
 };
 
-const masterBadgeStyle = {
-  display: "inline-block",
-  padding: "5px 8px",
-  borderRadius: "6px",
-  fontSize: "9px",
-  fontWeight: 900,
-  whiteSpace: "nowrap",
+const masterSaveButtonStyle = {
+  width: "fit-content",
+  background: "#073b5c",
+  color: "white",
+  border: "none",
+  borderRadius: 7,
+  fontWeight: 850,
+  fontSize: 12,
+  padding: "11px 20px",
+  cursor: "pointer",
 };
 
-const masterFixedBadgeStyle = {
-  color: "#075985",
-  backgroundColor: "#e0f2fe",
-  border: "1px solid #bae6fd",
-};
-
-const masterNotFixedBadgeStyle = {
-  color: "#92400e",
-  backgroundColor: "#fef3c7",
-  border: "1px solid #fde68a",
-};
-
-const masterActiveBadgeStyle = {
-  color: "#166534",
-  backgroundColor: "#dcfce7",
-  border: "1px solid #bbf7d0",
-};
-
-const masterInactiveBadgeStyle = {
-  color: "#991b1b",
-  backgroundColor: "#fee2e2",
-  border: "1px solid #fecaca",
+const masterRemoveStyle = {
+  background: "transparent",
+  color: "#b91c1c",
+  border: "none",
+  textDecoration: "underline",
+  fontSize: 11,
+  cursor: "pointer",
 };
 
 const masterErrorStyle = {
-  margin: "12px",
-  padding: "12px",
-  backgroundColor: "#fef2f2",
+  background: "#fef2f2",
   border: "1px solid #fecaca",
-  borderRadius: "6px",
   color: "#991b1b",
-  fontSize: "11px",
-  fontWeight: 800,
+  borderRadius: 7,
+  margin: 12,
+  padding: 11,
+  fontSize: 12,
+};
+
+const masterSuccessStyle = {
+  background: "#f0fdf4",
+  border: "1px solid #bbf7d0",
+  color: "#166534",
+  borderRadius: 7,
+  margin: 12,
+  padding: 11,
+  fontSize: 12,
 };
 
 const masterEmptyStyle = {
-  padding: "30px 15px",
   textAlign: "center",
+  padding: 24,
   color: "#64748b",
-  fontSize: "12px",
-};
-
-const masterFooterStyle = {
-  padding: "12px",
-  backgroundColor: "#f8fafc",
-  borderTop: "1px solid #e2e8f0",
-  color: "#64748b",
-  fontSize: "10px",
-  lineHeight: 1.6,
-  textAlign: "center",
+  fontSize: 12,
 };
