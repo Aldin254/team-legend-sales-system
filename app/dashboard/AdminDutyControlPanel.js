@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
 const navy = "#073b5c";
 
 const field = {
@@ -55,9 +64,11 @@ function isMonday(value) {
 
   const date = new Date(`${value}T12:00:00Z`);
 
-  return !Number.isNaN(date.getTime()) &&
+  return (
+    !Number.isNaN(date.getTime()) &&
     date.getUTCDay() === 1 &&
-    date.toISOString().slice(0, 10) === value;
+    date.toISOString().slice(0, 10) === value
+  );
 }
 
 function cycleDay(dateString, anchor) {
@@ -104,19 +115,23 @@ export default function AdminDutyControlPanel({
   const [mode, setMode] = useState("MOVE");
   const [fromDate, setFromDate] = useState(todayNairobi);
   const [toDate, setToDate] = useState(todayNairobi);
+
   const [personA, setPersonA] = useState("");
   const [target, setTarget] = useState("");
 
   const [halfShop, setHalfShop] = useState("");
   const [handover, setHandover] = useState("");
+
   const [openTime, setOpenTime] = useState("09:00");
   const [handoverTime, setHandoverTime] = useState("15:00");
   const [closeTime, setCloseTime] = useState("22:00");
 
   const [reason, setReason] = useState("");
   const [preview, setPreview] = useState(null);
+
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -125,78 +140,99 @@ export default function AdminDutyControlPanel({
     [supabaseUrl]
   );
 
-  const rpc = useCallback(async (name, args = {}, signal) => {
-    if (!baseUrl || !supabaseAnonKey || !accessToken) {
-      throw new Error("Admin login required.");
-    }
-
-    const response = await fetch(
-      `${baseUrl}/rest/v1/rpc/${name}`,
-      {
-        method: "POST",
-        cache: "no-store",
-        headers: {
-          apikey: supabaseAnonKey,
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(args),
-        ...(signal ? { signal } : {}),
+  const rpc = useCallback(
+    async (name, args = {}, signal) => {
+      if (!baseUrl || !supabaseAnonKey || !accessToken) {
+        throw new Error("Admin login required.");
       }
-    );
 
-    const body = await response.json().catch(() => null);
-
-    if (!response.ok) {
-      throw new Error(
-        body?.message ||
-        body?.details ||
-        `${name} failed (${response.status})`
-      );
-    }
-
-    return body;
-  }, [baseUrl, supabaseAnonKey, accessToken]);
-
-  const load = useCallback(async (signal) => {
-    const [rota, extras, master, shopOptions] =
-      await Promise.all([
-        rpc("tl_rota_relief_get", {}, signal),
-        rpc(
-          "tl_rota_extra_get",
-          {
-            p_start_date: todayNairobi(),
-            p_days: 62,
+      const response = await fetch(
+        `${baseUrl}/rest/v1/rpc/${name}`,
+        {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
           },
-          signal
-        ),
-        rpc("tl_admin_master_employee_list", {}, signal),
-        rpc("tl_admin_master_employee_shops_v1", {}, signal),
-      ]);
+          body: JSON.stringify(args),
+          ...(signal ? { signal } : {}),
+        }
+      );
 
-    if (
-      !rota ||
-      !Array.isArray(rota.pairs) ||
-      !extras ||
-      !Array.isArray(extras.offs) ||
-      !Array.isArray(extras.half_days) ||
-      !Array.isArray(master) ||
-      !Array.isArray(shopOptions)
-    ) {
-      throw new Error("Master rota data unavailable.");
-    }
+      const body = await response.json().catch(() => null);
 
-    if (signal?.aborted) return;
+      if (!response.ok) {
+        throw new Error(
+          body?.message ||
+          body?.details ||
+          `${name} failed (${response.status})`
+        );
+      }
 
-    setRules(rota.pairs);
-    setOffs(extras.offs);
-    setHalfDays(extras.half_days);
-    setVersion(Number(rota.version));
-    setAnchor(rota.anchor_monday);
-    setSavedAnchor(rota.anchor_monday);
-    setPeople(master);
-    setShops(shopOptions);
-  }, [rpc]);
+      return body;
+    },
+    [baseUrl, supabaseAnonKey, accessToken]
+  );
+
+  // LOAD MASTER LIST AND SAVED ROTA
+
+  const load = useCallback(
+    async (signal) => {
+      const [rota, extras, master, shopOptions] =
+        await Promise.all([
+          rpc("tl_rota_relief_get", {}, signal),
+
+          rpc(
+            "tl_rota_extra_get",
+            {
+              p_start_date: todayNairobi(),
+              p_days: 62,
+            },
+            signal
+          ),
+
+          rpc(
+            "tl_admin_master_employee_list",
+            {},
+            signal
+          ),
+
+          rpc(
+            "tl_admin_master_employee_shops_v1",
+            {},
+            signal
+          ),
+        ]);
+
+      if (
+        !rota ||
+        !Array.isArray(rota.pairs) ||
+        !extras ||
+        !Array.isArray(extras.offs) ||
+        !Array.isArray(extras.half_days) ||
+        !Array.isArray(master) ||
+        !Array.isArray(shopOptions)
+      ) {
+        throw new Error("Master rota data unavailable.");
+      }
+
+      if (signal?.aborted) return;
+
+      setRules(rota.pairs);
+      setOffs(extras.offs);
+      setHalfDays(extras.half_days);
+
+      setVersion(Number(rota.version));
+      setAnchor(rota.anchor_monday);
+      setSavedAnchor(rota.anchor_monday);
+
+      setPeople(master);
+      setShops(shopOptions);
+    },
+    [rpc]
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -223,7 +259,8 @@ export default function AdminDutyControlPanel({
     return () => controller.abort();
   }, [baseUrl, supabaseAnonKey, accessToken, load]);
 
-  // Refresh employee names from the Master List.
+  // AUTOMATICALLY READ NEW MASTER EMPLOYEES
+
   useEffect(() => {
     if (!baseUrl || !supabaseAnonKey || !accessToken) {
       return;
@@ -243,27 +280,30 @@ export default function AdminDutyControlPanel({
   }, [baseUrl, supabaseAnonKey, accessToken, rpc]);
 
   const active = useMemo(
-    () => people
-      .filter((p) => p.employment_status === "ACTIVE")
-      .sort((a, b) =>
-        String(a.full_name).localeCompare(
-          String(b.full_name)
-        )
-      ),
+    () =>
+      people
+        .filter((p) => p.employment_status === "ACTIVE")
+        .sort((a, b) =>
+          String(a.full_name).localeCompare(
+            String(b.full_name)
+          )
+        ),
     [people]
   );
 
   const peopleById = useMemo(
-    () => new Map(
-      people.map((p) => [p.employee_id, p])
-    ),
+    () =>
+      new Map(
+        people.map((p) => [p.employee_id, p])
+      ),
     [people]
   );
 
   const shopById = useMemo(
-    () => new Map(
-      shops.map((s) => [s.id, s.name])
-    ),
+    () =>
+      new Map(
+        shops.map((s) => [s.id, s.name])
+      ),
     [shops]
   );
 
@@ -302,7 +342,10 @@ export default function AdminDutyControlPanel({
   const byDay = useMemo(() => {
     const days = Array.from(
       { length: 7 },
-      () => ({ pairs: [], offs: [] })
+      () => ({
+        pairs: [],
+        offs: [],
+      })
     );
 
     for (const pair of rules) {
@@ -325,6 +368,8 @@ export default function AdminDutyControlPanel({
 
     return days;
   }, [rules, offs, week]);
+
+  // WEEKLY RELIEF / OFF EDITOR
 
   function beginEdit(day, kind, pair = null) {
     setEditor({
@@ -357,7 +402,9 @@ export default function AdminDutyControlPanel({
   }
 
   async function save(functionName, args, successMessage) {
-    if (busy || !reasonOK()) return false;
+    if (busy || !reasonOK()) {
+      return false;
+    }
 
     setBusy(true);
     setError("");
@@ -386,7 +433,8 @@ export default function AdminDutyControlPanel({
       return true;
     } catch (e) {
       setError(
-        e?.message || "Save failed. Refresh and retry."
+        e?.message ||
+        "Save failed. Refresh and retry."
       );
 
       return false;
@@ -500,7 +548,9 @@ export default function AdminDutyControlPanel({
       return;
     }
 
-    if (anchor === savedAnchor) return;
+    if (anchor === savedAnchor) {
+      return;
+    }
 
     await save(
       "tl_rota_relief_anchor_set",
@@ -508,6 +558,8 @@ export default function AdminDutyControlPanel({
       "Start saved."
     );
   }
+
+  // TEMPORARY MOVE / SWAP / HALF-DAY
 
   async function applyTemporary() {
     if (
@@ -610,72 +662,166 @@ export default function AdminDutyControlPanel({
     }
   }
 
+  // STAGE 10: VIEW SAVED TEMPORARY CHANGES
+
+  async function fetchDatePreview(date) {
+    const [duty, extra, changes] = await Promise.all([
+      rpc(
+        "tl_rota_relief_preview",
+        {
+          p_start_date: date,
+          p_days: 1,
+        }
+      ),
+
+      rpc(
+        "tl_rota_extra_get",
+        {
+          p_start_date: date,
+          p_days: 1,
+        }
+      ),
+
+      rpc(
+        "tl_rota_temp_changes_get",
+        {
+          p_start_date: date,
+          p_days: 1,
+        }
+      ),
+    ]);
+
+    if (!Array.isArray(changes)) {
+      throw new Error(
+        "Temporary changes could not be loaded."
+      );
+    }
+
+    setPreview({
+      date,
+
+      duties:
+        Array.isArray(duty) ? duty : [],
+
+      offs: (extra.offs || []).filter(
+        (o) =>
+          Number(o.cycle_day) ===
+          cycleDay(date, savedAnchor)
+      ),
+
+      changes,
+    });
+  }
+
   async function viewDate() {
     if (!fromDate) {
       setError("Choose date.");
       return;
     }
 
+    if (busy) return;
+
     setBusy(true);
     setError("");
 
     try {
-      const [duty, extra] = await Promise.all([
-        rpc(
-          "tl_rota_relief_preview",
-          {
-            p_start_date: fromDate,
-            p_days: 1,
-          }
-        ),
-        rpc(
-          "tl_rota_extra_get",
-          {
-            p_start_date: fromDate,
-            p_days: 1,
-          }
-        ),
-      ]);
-
-      setPreview({
-        date: fromDate,
-        duties: Array.isArray(duty) ? duty : [],
-        offs: (extra.offs || []).filter(
-          (o) =>
-            Number(o.cycle_day) ===
-            cycleDay(fromDate, savedAnchor)
-        ),
-        halfDays: extra.half_days || [],
-      });
+      await fetchDatePreview(fromDate);
     } catch (e) {
-      setError(e?.message || "Preview failed.");
+      setError(
+        e?.message || "Preview failed."
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  async function cancelHalfDay(changeId) {
+  // STAGE 10: CANCEL A SAVED TEMPORARY CHANGE
+
+  async function cancelTemporary(changeId) {
+    if (
+      busy ||
+      !changeId ||
+      !reasonOK()
+    ) {
+      return;
+    }
+
     if (
       !window.confirm(
-        "Cancel remaining days of this Half-Day assignment?"
+        "Cancel this temporary change for today and all remaining future dates?"
       )
     ) {
       return;
     }
 
-    await save(
-      "tl_rota_halfday_cancel",
-      { p_change_id: changeId },
-      "Half-Day cancelled."
-    );
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await rpc(
+        "tl_rota_temp_cancel",
+        {
+          p_change_id: changeId,
+          p_reason: reason.trim(),
+          p_expected_version: version,
+        }
+      );
+
+      if (result?.success !== true) {
+        throw new Error("Cancel not confirmed.");
+      }
+
+      await load();
+
+      // Refresh selected date immediately.
+      await fetchDatePreview(fromDate);
+
+      setReason("");
+      setNotice(
+        "Temporary change canceled. Original rota restored."
+      );
+
+      onChanged?.();
+    } catch (e) {
+      setError(
+        e?.message ||
+        "Cancel failed. Refresh and retry."
+      );
+    } finally {
+      setBusy(false);
+    }
   }
+
+  function temporaryLine(entry, kind) {
+    if (kind === "HALF_DAY") {
+      return (
+        `${name(entry.reliever_employee_id)} → ` +
+        `${shopById.get(entry.shop_id) || "Shop"}` +
+        ` · ${readableTime(entry.open_time)}` +
+        `–${readableTime(entry.handover_time)}` +
+        ` → ${name(entry.handover_employee_id)}` +
+        ` (until ${readableTime(entry.close_time)})`
+      );
+    }
+
+    return entry.reliever_employee_id
+      ? `${name(entry.reliever_employee_id)} relieves ${name(entry.covered_employee_id)}`
+      : `${name(entry.covered_employee_id)} · relief removed for this date`;
+  }
+
+  // MAIN PANEL
 
   if (
     !baseUrl ||
     !supabaseAnonKey ||
     !accessToken
   ) {
-    return <div role="alert">Admin login required.</div>;
+    return (
+      <div role="alert">
+        Admin login required.
+      </div>
+    );
   }
 
   if (loading) {
@@ -692,6 +838,8 @@ export default function AdminDutyControlPanel({
         color: "#0f172a",
       }}
     >
+      {/* HEADER */}
+
       <div
         style={{
           padding: 14,
@@ -714,7 +862,9 @@ export default function AdminDutyControlPanel({
             style={{
               ...secondary,
               background:
-                week === w ? "#a5f3fc" : "white",
+                week === w
+                  ? "#a5f3fc"
+                  : "white",
             }}
             onClick={() => {
               setWeek(w);
@@ -739,7 +889,10 @@ export default function AdminDutyControlPanel({
           <input
             type="date"
             aria-label="Cycle start Monday"
-            style={{ ...field, width: 150 }}
+            style={{
+              ...field,
+              width: 150,
+            }}
             value={anchor}
             disabled={
               busy ||
@@ -784,7 +937,7 @@ export default function AdminDutyControlPanel({
         </div>
       </div>
 
-      {/* SAME COMPACT WEEKLY ROTA */}
+      {/* EXISTING COMPACT MONDAY-SUNDAY ROTA */}
 
       <div
         style={{
@@ -860,6 +1013,8 @@ export default function AdminDutyControlPanel({
                 </span>
               )}
 
+            {/* RELIEF ENTRIES */}
+
             {byDay[day].pairs.map((pair) => (
               <div
                 key={`relief-${pair.covered_employee_id}`}
@@ -925,7 +1080,7 @@ export default function AdminDutyControlPanel({
               </div>
             ))}
 
-            {/* INDIVIDUAL OFF DAYS */}
+            {/* PERMANENT INDIVIDUAL OFF */}
 
             {byDay[day].offs.map((off) => (
               <div
@@ -945,7 +1100,11 @@ export default function AdminDutyControlPanel({
                   }}
                 >
                   <b>{name(off.employee_id)}</b>{" "}
-                  <b style={{ color: "#b91c1c" }}>
+                  <b
+                    style={{
+                      color: "#b91c1c",
+                    }}
+                  >
                     — OFF
                   </b>
                 </span>
@@ -966,7 +1125,7 @@ export default function AdminDutyControlPanel({
               </div>
             ))}
 
-            {/* RELIEF / OFF EDITOR */}
+            {/* ADD / EDIT */}
 
             {editor?.day === day && (
               <div
@@ -1338,7 +1497,7 @@ export default function AdminDutyControlPanel({
           </button>
         </div>
 
-        {/* DAILY PREVIEW */}
+        {/* STAGE 10: PREVIEW WITH CANCEL */}
 
         {preview && (
           <div
@@ -1347,7 +1506,7 @@ export default function AdminDutyControlPanel({
               padding: 10,
               borderRadius: 8,
               display: "grid",
-              gap: 5,
+              gap: 7,
               fontSize: 12,
             }}
           >
@@ -1358,6 +1517,7 @@ export default function AdminDutyControlPanel({
                 {name(p.reliever_employee_id)}{" "}
                 relieves{" "}
                 {name(p.covered_employee_id)}
+
                 {p.temporary
                   ? " · Temporary"
                   : ""}
@@ -1370,53 +1530,89 @@ export default function AdminDutyControlPanel({
               </div>
             ))}
 
-            {preview.halfDays.map((h) => (
+            {preview.changes.length > 0 ? (
               <div
-                key={`h-${h.change_id}-${h.shop_id}`}
                 style={{
-                  display: "flex",
+                  borderTop: "1px solid #cbd5e1",
+                  paddingTop: 9,
+                  display: "grid",
                   gap: 8,
-                  alignItems: "center",
-                  flexWrap: "wrap",
                 }}
               >
-                <span>
-                  {name(h.reliever_employee_id)}
-                  {" → "}
-                  {shopById.get(h.shop_id) || "Shop"}
-                  {" · "}
-                  {readableTime(h.open_time)}
-                  {"–"}
-                  {readableTime(h.handover_time)}
-                  {" → "}
-                  {name(h.handover_employee_id)}
-                  {" · "}
-                  {readableTime(h.close_time)}
-                </span>
+                <strong>
+                  Saved temporary changes
+                </strong>
 
-                <button
-                  type="button"
-                  style={{
-                    ...secondary,
-                    padding: "3px 8px",
-                  }}
-                  disabled={
-                    busy ||
-                    h.duty_date < todayNairobi()
-                  }
-                  onClick={() =>
-                    cancelHalfDay(h.change_id)
-                  }
-                >
-                  Cancel remaining
-                </button>
+                {preview.changes.map((change) => (
+                  <div
+                    key={`${change.kind}-${change.change_id}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      border: "1px solid #e2e8f0",
+                      background: "white",
+                      padding: 8,
+                      borderRadius: 7,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 3,
+                        flex: 1,
+                      }}
+                    >
+                      <b>
+                        {change.kind === "HALF_DAY"
+                          ? "Half-Day"
+                          : "Move / Swap"}
+                      </b>
+
+                      {(change.entries || []).map(
+                        (entry, index) => (
+                          <span key={index}>
+                            {temporaryLine(
+                              entry,
+                              change.kind
+                            )}
+                          </span>
+                        )
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      style={{
+                        ...secondary,
+                        padding: "5px 10px",
+                      }}
+                      disabled={
+                        busy ||
+                        preview.date < todayNairobi()
+                      }
+                      onClick={() =>
+                        cancelTemporary(
+                          change.change_id
+                        )
+                      }
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-
-            {!preview.duties.length &&
-              !preview.offs.length &&
-              !preview.halfDays.length &&
-              "—"}
+            ) : (
+              <span
+                style={{
+                  color: "#64748b",
+                }}
+              >
+                No temporary changes for this date.
+              </span>
+            )}
           </div>
         )}
 
