@@ -1,983 +1,1520 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import AdminDutyControlPanelLegacy from "./AdminDutyControlPanelLegacy";
 
-const ROTATION_SHOPS = ["3T", "ARUSHA", "KINGS", "NYIKA02"];
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const navy = "#073b5c";
 
-const fieldStyle = {
-  width: "100%",
+const field = {
   boxSizing: "border-box",
-  padding: "10px",
-  borderRadius: 9,
+  width: "100%",
+  minWidth: 0,
+  padding: "7px 8px",
   border: "1px solid #cbd5e1",
-  color: "#111827",
-  background: "white",
-  fontSize: 13,
-};
-
-const cardStyle = {
-  display: "grid",
-  gap: 12,
-  padding: 16,
-  background: "white",
-  borderRadius: 14,
-  border: "1px solid #e5e7eb",
-};
-
-const buttonStyle = {
-  border: 0,
-  borderRadius: 9,
-  padding: "10px 14px",
+  borderRadius: 6,
+  color: "#0f172a",
+  background: "#fff",
   fontSize: 12,
-  fontWeight: 800,
-  background: "#111827",
-  color: "white",
+  fontFamily: "inherit",
+};
+
+const button = {
+  background: navy,
+  color: "#fff",
+  border: "1px solid #073b5c",
+  borderRadius: 6,
+  padding: "8px 12px",
+  fontSize: 12,
+  fontWeight: 750,
   cursor: "pointer",
 };
 
-function todayKenya() {
-  const parts = new Intl.DateTimeFormat("en-GB", {
+const paleButton = {
+  ...button,
+  background: "#fff",
+  color: navy,
+};
+
+function todayNairobi() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Nairobi",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(new Date());
 
-  const obj = Object.fromEntries(
-    parts.map((p) => [p.type, p.value])
+  const p = Object.fromEntries(
+    parts.map((x) => [x.type, x.value])
   );
 
-  return `${obj.year}-${obj.month}-${obj.day}`;
+  return `${p.year}-${p.month}-${p.day}`;
 }
 
-function Field({ label, children }) {
-  return (
-    <label
-      style={{
-        display: "grid",
-        gap: 5,
-        color: "#374151",
-        fontSize: 12,
-        fontWeight: 800,
-      }}
-    >
-      {label}
-      {children}
-    </label>
-  );
+function rotaKey(day, shopId, slot) {
+  return `${day}|${shopId}|${slot}`;
 }
 
-function dateIsMonday(date) {
-  return (
-    /^\d{4}-\d{2}-\d{2}$/.test(date) &&
-    new Date(`${date}T12:00:00Z`).getUTCDay() === 1
-  );
+function positionKey(shopId, slot) {
+  return `${shopId}|${slot}`;
 }
 
-function statusText(duty) {
-  if (!duty) return "Not available";
-
-  const status = duty.effective_status;
-  const shift = duty.shift_period;
-
-  if (status === "OFF_DUTY") return "OFF";
-  if (status === "UNASSIGNED") return "NO SHOP ASSIGNED";
-
-  if (status === "NEEDS_CONFIRMATION") {
-    return "NEEDS CONFIRMATION";
-  }
-
-  if (shift === "DAY") return "DAY";
-  if (shift === "NIGHT") return "NIGHT";
-  if (shift === "DAY_RELIEF") return "DAY RELIEF";
-
-  if (status === "ON_DUTY") {
-    return "WORKING (SHIFT NOT SPECIFIED)";
-  }
-
-  return status || "UNKNOWN";
+function monday(dateString) {
+  const dt = new Date(`${dateString}T12:00:00Z`);
+  const days = (dt.getUTCDay() + 6) % 7;
+  dt.setUTCDate(dt.getUTCDate() - days);
+  return dt.toISOString().slice(0, 10);
 }
 
-function MasterDutySection({
+function readErr(error) {
+  return String(
+    error?.message || "Could not save."
+  ).replaceAll("_", " ");
+}
+
+export default function AdminDutyControlPanel({
   supabaseUrl,
   supabaseAnonKey,
   accessToken,
   onChanged,
 }) {
-  const [date, setDate] = useState(todayKenya);
+  const [people, setPeople] = useState([]);
+  const [shops, setShops] = useState([]);
+  const [slots, setSlots] = useState([]);
 
-  const [employees, setEmployees] = useState([]);
-  const [plan, setPlan] = useState([]);
-  const [preview, setPreview] = useState([]);
+  const [baseAssignments, setBaseAssignments] = useState({});
+  const [draft, setDraft] = useState({});
+
+  const [anchor, setAnchor] = useState("");
+  const [savedAnchor, setSavedAnchor] = useState("");
+  const [version, setVersion] = useState(null);
+
+  const [week, setWeek] = useState(1);
+  const [reason, setReason] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
   const [notice, setNotice] = useState("");
-  const [failed, setFailed] = useState(false);
+  const [error, setError] = useState("");
 
-  const [employeeId, setEmployeeId] = useState("");
-  const [status, setStatus] = useState("OFF_DUTY");
-  const [dutyShop, setDutyShop] = useState("");
+  const [dateFrom, setDateFrom] = useState(todayNairobi);
+  const [dateTo, setDateTo] = useState(todayNairobi);
 
-  const base = String(supabaseUrl || "").replace(/\/+$/, "");
+  const [swapMode, setSwapMode] = useState("EMPLOYEES");
+  const [personA, setPersonA] = useState("");
+  const [personB, setPersonB] = useState("");
+  const [positionB, setPositionB] = useState("");
+
+  const [preview, setPreview] = useState([]);
+  const [previewError, setPreviewError] = useState("");
+
+  const base = useMemo(
+    () => String(supabaseUrl || "").replace(/\/+$/, ""),
+    [supabaseUrl]
+  );
 
   const rpc = useCallback(
-    async (name, args = {}) => {
+    async (functionName, payload = {}, signal) => {
       if (!base || !supabaseAnonKey || !accessToken) {
-        throw new Error("Supabase connection details are missing.");
+        throw new Error("Admin login required.");
       }
 
       const response = await fetch(
-        `${base}/rest/v1/rpc/${name}`,
+        `${base}/rest/v1/rpc/${functionName}`,
         {
           method: "POST",
+          cache: "no-store",
           headers: {
             apikey: supabaseAnonKey,
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(args),
+          body: JSON.stringify(payload),
+          ...(signal ? { signal } : {}),
         }
       );
 
-      const result = await response.json().catch(() => null);
+      const body = await response.json().catch(() => null);
 
       if (!response.ok) {
         throw new Error(
-          result?.message ||
-            result?.details ||
-            `${name} failed (${response.status})`
+          body?.message ||
+          body?.details ||
+          `${functionName} failed.`
         );
       }
 
-      return result;
+      return body;
     },
     [base, supabaseAnonKey, accessToken]
   );
 
-  const load = useCallback(async () => {
-    if (!base || !supabaseAnonKey || !accessToken) {
-      setLoading(false);
-      setFailed(true);
-      setNotice("Supabase connection details are missing.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const [people, daily, effective] = await Promise.all([
-        rpc("tl_admin_master_employee_list"),
-
-        rpc("tl_admin_master_duty_plan_for_date", {
-          p_duty_date: date,
-        }),
-
-        rpc("tl_admin_master_duty_preview_v3", {
-          p_duty_date: date,
-        }),
+  const load = useCallback(
+    async (signal) => {
+      const [rota, employees, shopOptions] = await Promise.all([
+        rpc("tl_rota_v2_get", {}, signal),
+        rpc("tl_admin_master_employee_list", {}, signal),
+        rpc("tl_admin_master_employee_shops_v1", {}, signal),
       ]);
 
       if (
-        !Array.isArray(people) ||
-        !Array.isArray(daily) ||
-        !Array.isArray(effective)
+        !rota ||
+        !Array.isArray(rota.slots) ||
+        !Array.isArray(rota.baseline) ||
+        !Array.isArray(employees) ||
+        !Array.isArray(shopOptions)
       ) {
-        throw new Error(
-          "The Master Duty server returned an unexpected result."
-        );
+        throw new Error("Unexpected Master Rota data.");
       }
 
-      setEmployees(people);
-      setPlan(daily);
-      setPreview(effective);
+      const parsed = {};
 
-      setFailed(false);
-      setNotice("");
-    } catch (error) {
-      setFailed(true);
+      for (const item of rota.baseline) {
+        parsed[
+          rotaKey(
+            Number(item.cycle_day),
+            item.shop_id,
+            Number(item.slot_no)
+          )
+        ] = item.employee_id;
+      }
 
-      setNotice(
-        error?.message || "Unable to load Master Duty Rota."
+      setBaseAssignments(parsed);
+      setDraft({ ...parsed });
+      setPeople(employees);
+
+      const seen = new Set(
+        shopOptions.map((s) => s.id)
       );
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    base,
-    supabaseAnonKey,
-    accessToken,
-    rpc,
-    date,
-  ]);
+
+      const mergedShops = [...shopOptions];
+
+      for (const slot of rota.slots) {
+        if (!seen.has(slot.shop_id)) {
+          mergedShops.push({
+            id: slot.shop_id,
+            name: slot.shop_name || "Shop",
+          });
+
+          seen.add(slot.shop_id);
+        }
+      }
+
+      setShops(mergedShops);
+      setSlots(rota.slots);
+
+      setAnchor(rota.anchor_monday || "");
+      setSavedAnchor(rota.anchor_monday || "");
+      setVersion(Number(rota.version));
+    },
+    [rpc]
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!base || !supabaseAnonKey || !accessToken) {
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setLoading(true);
+
+    load(controller.signal)
+      .catch((e) => {
+        if (e?.name !== "AbortError") {
+          setError(readErr(e));
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [base, supabaseAnonKey, accessToken, load]);
+
+  // Refresh Master Employees without discarding rota edits.
+  useEffect(() => {
+    if (!base || !accessToken) return;
+
+    const timer = setInterval(() => {
+      rpc("tl_admin_master_employee_list")
+        .then((next) => {
+          if (Array.isArray(next)) {
+            setPeople(next);
+          }
+        })
+        .catch(() => {});
+    }, 60000);
+
+    return () => clearInterval(timer);
+  }, [base, accessToken, rpc]);
 
   const active = useMemo(
     () =>
-      employees.filter(
-        (employee) => employee.employment_status === "ACTIVE"
-      ),
-    [employees]
+      people
+        .filter((p) => p.employment_status === "ACTIVE")
+        .sort((a, b) =>
+          String(a.full_name).localeCompare(
+            String(b.full_name)
+          )
+        ),
+    [people]
   );
 
-  const shops = useMemo(() => {
-    const byId = new Map();
+  const byId = useMemo(
+    () => new Map(
+      people.map((p) => [p.employee_id, p])
+    ),
+    [people]
+  );
 
-    active.forEach((employee) => {
-      if (employee.shop_id) {
-        byId.set(
-          employee.shop_id,
-          employee.shop_name || employee.shop_id
+  const shopById = useMemo(
+    () => new Map(
+      shops.map((s) => [s.id, s.name])
+    ),
+    [shops]
+  );
+
+  const sortedShops = useMemo(
+    () =>
+      [...shops].sort((a, b) =>
+        String(a.name).localeCompare(String(b.name))
+      ),
+    [shops]
+  );
+
+  const slotsByShop = useMemo(() => {
+    const map = new Map();
+
+    for (const p of slots) {
+      const key = p.shop_id;
+
+      map.set(
+        key,
+        [...(map.get(key) || []), Number(p.slot_no)]
+          .sort((a, b) => a - b)
+      );
+    }
+
+    return map;
+  }, [slots]);
+
+  const orderedPositions = useMemo(
+    () =>
+      sortedShops.flatMap((s) =>
+        (slotsByShop.get(s.id) || []).map((slot) => ({
+          shop_id: s.id,
+          slot_no: slot,
+          shop_name: s.name,
+        }))
+      ),
+    [sortedShops, slotsByShop]
+  );
+
+  const weekChanged = (which) => {
+    const first = (which - 1) * 7;
+
+    return orderedPositions.some((pos) =>
+      DAYS.some((_, i) => {
+        const key = rotaKey(
+          first + i,
+          pos.shop_id,
+          pos.slot_no
         );
+
+        return (
+          (draft[key] || "") !==
+          (baseAssignments[key] || "")
+        );
+      })
+    );
+  };
+
+  const anyDirty =
+    weekChanged(1) || weekChanged(2);
+
+  const categorise = (person) => {
+    if (person.shop_id) {
+      return shopById.get(person.shop_id) || "Shop";
+    }
+
+    if (person.job_title === "TEAM_LEADER") {
+      return "Team Leader";
+    }
+
+    if (person.job_title === "ACCOUNTANT") {
+      return "Accountant";
+    }
+
+    return "Reliever";
+  };
+
+  const rosteredIds = useMemo(
+    () =>
+      new Set(
+        [
+          ...Object.values(baseAssignments),
+          ...Object.values(draft),
+        ].filter(Boolean)
+      ),
+    [baseAssignments, draft]
+  );
+
+  const offOnDay = (index) => {
+    const scheduled = new Set(
+      orderedPositions
+        .map((p) =>
+          draft[
+            rotaKey(index, p.shop_id, p.slot_no)
+          ]
+        )
+        .filter(Boolean)
+    );
+
+    return active.filter(
+      (p) =>
+        rosteredIds.has(p.employee_id) &&
+        !scheduled.has(p.employee_id)
+    );
+  };
+
+  // Selecting someone already assigned on a day swaps cells.
+  const setCell = (day, shopId, slot, employeeId) => {
+    setDraft((old) => {
+      const key = rotaKey(day, shopId, slot);
+      const previous = old[key] || "";
+
+      const updated = {
+        ...old,
+        [key]: employeeId,
+      };
+
+      if (employeeId) {
+        for (const p of orderedPositions) {
+          const other = rotaKey(
+            day,
+            p.shop_id,
+            p.slot_no
+          );
+
+          if (
+            other !== key &&
+            updated[other] === employeeId
+          ) {
+            updated[other] = previous;
+            break;
+          }
+        }
       }
+
+      return updated;
     });
 
-    return [...byId]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [active]);
+    setNotice("");
+    setError("");
+  };
 
-  const byEmployeeId = useMemo(
-    () =>
-      new Map(
-        active.map((employee) => [
-          employee.employee_id,
-          employee,
-        ])
-      ),
-    [active]
+  const getReason = () => {
+    if (reason.trim().length < 3) {
+      setError("Reason required.");
+      return null;
+    }
+
+    return reason.trim();
+  };
+
+  const afterSave = (result, message) => {
+    if (result?.success !== true) {
+      throw new Error("Save not confirmed.");
+    }
+
+    setVersion(Number(result.version));
+    setReason("");
+    setNotice(message);
+    setError("");
+
+    onChanged?.();
+  };
+
+  const refresh = async () => {
+    if (
+      anyDirty &&
+      !window.confirm("Discard unsaved rota changes?")
+    ) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      await load();
+      setNotice("Refreshed.");
+    } catch (e) {
+      setError(readErr(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveWeek = async () => {
+    if (
+      saving ||
+      loading ||
+      !weekChanged(week)
+    ) {
+      return;
+    }
+
+    if (anchor !== savedAnchor) {
+      setError("Set start Monday first.");
+      return;
+    }
+
+    const why = getReason();
+    if (!why) return;
+
+    const first = (week - 1) * 7;
+    const p_entries = [];
+
+    for (const pos of orderedPositions) {
+      for (let day = 0; day < 7; day++) {
+        p_entries.push({
+          day_index: day,
+          shop_id: pos.shop_id,
+          slot_no: pos.slot_no,
+          employee_id:
+            draft[
+              rotaKey(
+                first + day,
+                pos.shop_id,
+                pos.slot_no
+              )
+            ] || null,
+        });
+      }
+    }
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await rpc(
+        "tl_rota_v2_week_save",
+        {
+          p_week: week,
+          p_entries,
+          p_reason: why,
+          p_expected_version: version,
+        }
+      );
+
+      if (result?.success !== true) {
+        throw new Error("Save not confirmed.");
+      }
+
+      setBaseAssignments((prev) => {
+        const next = { ...prev };
+
+        for (const pos of orderedPositions) {
+          for (let day = 0; day < 7; day++) {
+            const key = rotaKey(
+              first + day,
+              pos.shop_id,
+              pos.slot_no
+            );
+
+            if (draft[key]) {
+              next[key] = draft[key];
+            } else {
+              delete next[key];
+            }
+          }
+        }
+
+        return next;
+      });
+
+      afterSave(
+        result,
+        `Week ${week} saved.`
+      );
+    } catch (e) {
+      setError(readErr(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateAnchor = async () => {
+    if (saving || loading) return;
+
+    if (anyDirty) {
+      setError("Save week changes first.");
+      return;
+    }
+
+    const why = getReason();
+    if (!why) return;
+
+    if (!anchor || monday(anchor) !== anchor) {
+      setError("Choose a Monday.");
+      return;
+    }
+
+    if (!window.confirm("Set 14-day cycle start?")) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const result = await rpc(
+        "tl_rota_v2_anchor_set",
+        {
+          p_anchor_monday: anchor,
+          p_reason: why,
+          p_expected_version: version,
+        }
+      );
+
+      afterSave(
+        result,
+        "Start date saved."
+      );
+
+      setSavedAnchor(anchor);
+    } catch (e) {
+      setError(readErr(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changeSlotCount = async (
+    shopId,
+    delta
+  ) => {
+    if (saving || loading) return;
+
+    if (anyDirty) {
+      setError("Save week changes first.");
+      return;
+    }
+
+    const why = getReason();
+    if (!why) return;
+
+    const current =
+      slotsByShop.get(shopId)?.length || 0;
+
+    if (
+      current + delta < 1 ||
+      current + delta > 4
+    ) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const result = await rpc(
+        "tl_rota_v2_slots_set",
+        {
+          p_shop_id: shopId,
+          p_slot_count: current + delta,
+          p_reason: why,
+          p_expected_version: version,
+        }
+      );
+
+      if (result?.success !== true) {
+        throw new Error("Save not confirmed.");
+      }
+
+      await load();
+
+      setReason("");
+      setNotice("Position updated.");
+      onChanged?.();
+    } catch (e) {
+      setError(readErr(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const loadPreview = useCallback(
+    async (date, signal) => {
+      if (
+        !date ||
+        !base ||
+        !accessToken ||
+        version === null
+      ) {
+        return;
+      }
+
+      try {
+        const result = await rpc(
+          "tl_rota_v2_preview",
+          {
+            p_start_date: date,
+            p_days: 1,
+          },
+          signal
+        );
+
+        if (!signal?.aborted) {
+          setPreview(
+            Array.isArray(result) ? result : []
+          );
+
+          setPreviewError("");
+        }
+      } catch (e) {
+        if (
+          e?.name !== "AbortError" &&
+          !signal?.aborted
+        ) {
+          setPreviewError(readErr(e));
+        }
+      }
+    },
+    [rpc, base, accessToken, version]
   );
 
-  const previewByEmployeeId = useMemo(
+  useEffect(() => {
+    const controller = new AbortController();
+
+    loadPreview(
+      dateFrom,
+      controller.signal
+    );
+
+    return () => controller.abort();
+  }, [dateFrom, loadPreview]);
+
+  const previewMap = useMemo(
     () =>
       new Map(
-        preview.map((duty) => [
-          duty.employee_id,
-          duty,
+        preview.map((p) => [
+          positionKey(
+            p.shop_id,
+            Number(p.slot_no)
+          ),
+          p,
         ])
       ),
     [preview]
   );
 
-  const selected = byEmployeeId.get(employeeId);
-
-  const monday = dateIsMonday(date);
-
-  const cycleRow = preview.find(
-    (duty) => duty.rotation_normal_off_week != null
-  );
-
-  const cycleLabel = cycleRow
-    ? `WEEK ${cycleRow.rotation_normal_off_week}`
-    : "";
-
-  function chooseEmployee(id) {
-    setEmployeeId(id);
-
-    const employee = byEmployeeId.get(id);
-
-    const existing = plan.find(
-      (duty) => duty.employee_id === id
+  const previewLabel = (position) => {
+    const current = previewMap.get(
+      positionKey(
+        position.shop_id,
+        position.slot_no
+      )
     );
 
-    const resolved = previewByEmployeeId.get(id);
+    const who = current?.employee_id
+      ? byId.get(current.employee_id)?.full_name ||
+        "Unknown"
+      : "—";
 
-    const nextStatus =
-      existing?.confirmed_status ||
-      ([
-        "ON_DUTY",
-        "OFF_DUTY",
-        "UNASSIGNED",
-      ].includes(resolved?.effective_status)
-        ? resolved.effective_status
-        : employee?.assignment_type === "NOT_FIXED"
-          ? "UNASSIGNED"
-          : "ON_DUTY");
-
-    setStatus(nextStatus);
-
-    setDutyShop(
-      nextStatus === "ON_DUTY"
-        ? existing?.confirmed_shop_id ||
-            resolved?.effective_shop_id ||
-            employee?.shop_id ||
-            ""
-        : ""
+    return (
+      `${position.shop_name} · ` +
+      `${position.slot_no} · ${who}`
     );
-  }
+  };
 
-  async function confirmDaily(event) {
-    event.preventDefault();
+  const applySwap = async () => {
+    if (saving || loading) return;
 
-    if (!selected || saving) return;
-
-    if (status === "ON_DUTY" && !dutyShop) {
-      setFailed(true);
-      setNotice("Choose a working shop.");
+    if (anyDirty) {
+      setError("Save week changes first.");
       return;
     }
+
+    if (anchor !== savedAnchor) {
+      setError("Set start Monday first.");
+      return;
+    }
+
+    const why = getReason();
+    if (!why) return;
 
     if (
-      status === "UNASSIGNED" &&
-      selected.assignment_type !== "NOT_FIXED"
+      !dateFrom ||
+      !dateTo ||
+      dateFrom > dateTo
     ) {
-      setFailed(true);
-      setNotice(
-        "NO SHOP ASSIGNED is only for Not Fixed employees."
-      );
+      setError("Check swap dates.");
       return;
     }
 
-    const label =
-      status === "ON_DUTY"
-        ? `WORKING at ${
-            shops.find((shop) => shop.id === dutyShop)?.name ||
-            "selected shop"
-          }`
-        : status === "OFF_DUTY"
-          ? "OFF"
-          : "NO SHOP ASSIGNED";
+    let fn;
+    let args;
+
+    if (swapMode === "EMPLOYEES") {
+      if (
+        !personA ||
+        !personB ||
+        personA === personB
+      ) {
+        setError("Choose two employees.");
+        return;
+      }
+
+      fn = "tl_rota_v2_employee_swap";
+
+      args = {
+        p_employee_a: personA,
+        p_employee_b: personB,
+      };
+    } else {
+      if (!personA || !positionB) {
+        setError("Choose employee and destination.");
+        return;
+      }
+
+      const target = orderedPositions.find(
+        (p) =>
+          positionKey(
+            p.shop_id,
+            p.slot_no
+          ) === positionB
+      );
+
+      if (!target) {
+        setError("Invalid position.");
+        return;
+      }
+
+      fn = "tl_rota_v2_employee_move";
+
+      args = {
+        p_employee_id: personA,
+        p_to_shop: target.shop_id,
+        p_to_slot: target.slot_no,
+      };
+    }
+
+    const action =
+      swapMode === "EMPLOYEES"
+        ? "employee swap"
+        : "employee move";
 
     if (
       !window.confirm(
-        `Confirm ${selected.full_name}: ${label} on ${date}? ` +
-          "This overrides the automatic rota for this date."
+        `Apply ${action} ${dateFrom} → ${dateTo}?`
       )
     ) {
       return;
     }
 
     setSaving(true);
+    setError("");
+    setNotice("");
 
     try {
-      await rpc("tl_admin_master_duty_set", {
-        p_employee_id: employeeId,
-        p_duty_date: date,
-        p_status: status,
-        p_shop_id:
-          status === "ON_DUTY" ? dutyShop : null,
+      const result = await rpc(fn, {
+        ...args,
+        p_start_date: dateFrom,
+        p_end_date: dateTo,
+        p_reason: why,
+        p_expected_version: version,
       });
 
-      await load();
-
-      setFailed(false);
-      setNotice(
-        "Daily duty confirmed. This date now has an Admin override."
+      afterSave(
+        result,
+        "Temporary change saved."
       );
 
-      onChanged?.();
-    } catch (error) {
-      setFailed(true);
-
-      setNotice(
-        error?.message || "Daily duty confirmation failed."
-      );
+      await loadPreview(dateFrom);
+    } catch (e) {
+      setError(readErr(e));
     } finally {
       setSaving(false);
     }
+  };
+
+  if (
+    !base ||
+    !supabaseAnonKey ||
+    !accessToken
+  ) {
+    return (
+      <div style={{ color: "#b91c1c", padding: 12 }}>
+        Admin login required.
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ padding: 16 }}>
+        Loading rota...
+      </div>
+    );
   }
 
   return (
     <section
       style={{
-        display: "grid",
-        gap: 14,
-        minWidth: 0,
-        color: "#111827",
+        background: "#fff",
+        border: "1px solid #cbd5e1",
+        borderRadius: 10,
+        overflow: "hidden",
+        color: "#0f172a",
       }}
     >
       <div
         style={{
+          background:
+            "linear-gradient(90deg,#052d4b,#064b6b)",
+          color: "#fff",
+          padding: "13px 16px",
           display: "flex",
-          justifyContent: "space-between",
+          alignItems: "center",
           gap: 12,
           flexWrap: "wrap",
         }}
       >
-        <div>
-          <strong
-            style={{
-              fontSize: 18,
-              color: "#e2e8f0",
-            }}
-          >
-            Master Employee Duty Rota
-          </strong>
-
-          <div
-            style={{
-              fontSize: 12,
-              color: "#94a3b8",
-              marginTop: 3,
-            }}
-          >
-            All employees · daily confirmations · automatic
-            24-hour rotation
-          </div>
-        </div>
+        <strong style={{ fontSize: 16 }}>
+          DUTY / ROTA
+        </strong>
 
         <button
           type="button"
-          style={buttonStyle}
-          disabled={loading || saving}
-          onClick={load}
+          style={{
+            ...paleButton,
+            background:
+              week === 1 ? "#67e8f9" : "#fff",
+          }}
+          onClick={() => setWeek(1)}
         >
-          {loading ? "Loading..." : "Refresh"}
+          Week 1
         </button>
-      </div>
-
-      {notice && (
-        <div
-          style={{
-            padding: 11,
-            borderRadius: 9,
-            fontSize: 12,
-            fontWeight: 750,
-            background: failed
-              ? "#fef2f2"
-              : "#f0fdf4",
-            color: failed
-              ? "#991b1b"
-              : "#166534",
-          }}
-        >
-          {notice}
-        </div>
-      )}
-
-      <form
-        onSubmit={confirmDaily}
-        style={cardStyle}
-      >
-        <strong>
-          1. Confirm an employee's duty for a date
-        </strong>
-
-        <Field label="Date (Kenya)">
-          <input
-            type="date"
-            style={fieldStyle}
-            min={todayKenya()}
-            value={date}
-            onChange={(event) => {
-              setDate(event.target.value);
-              setEmployeeId("");
-            }}
-            required
-          />
-        </Field>
-
-        <Field label="Master Employee">
-          <select
-            style={fieldStyle}
-            value={employeeId}
-            onChange={(event) =>
-              chooseEmployee(event.target.value)
-            }
-            required
-          >
-            <option value="">
-              Select employee
-            </option>
-
-            {active.map((employee) => (
-              <option
-                key={employee.employee_id}
-                value={employee.employee_id}
-              >
-                {employee.full_name} —{" "}
-                {employee.assignment_type === "NOT_FIXED"
-                  ? "Not Fixed"
-                  : employee.shop_name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Duty status">
-          <select
-            style={fieldStyle}
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-
-              if (event.target.value !== "ON_DUTY") {
-                setDutyShop("");
-              } else {
-                setDutyShop(selected?.shop_id || "");
-              }
-            }}
-          >
-            <option value="ON_DUTY">
-              WORKING — at selected shop
-            </option>
-
-            <option value="OFF_DUTY">
-              OFF — no duty
-            </option>
-
-            {selected?.assignment_type === "NOT_FIXED" && (
-              <option value="UNASSIGNED">
-                NO SHOP ASSIGNED — available relief
-              </option>
-            )}
-          </select>
-        </Field>
-
-        {status === "ON_DUTY" && (
-          <Field label="Working shop">
-            <select
-              style={fieldStyle}
-              value={dutyShop}
-              onChange={(event) =>
-                setDutyShop(event.target.value)
-              }
-              required
-            >
-              <option value="">
-                Select shop
-              </option>
-
-              {shops.map((shop) => (
-                <option
-                  key={shop.id}
-                  value={shop.id}
-                >
-                  {shop.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
-
-        <div
-          style={{
-            fontSize: 12,
-            color: "#64748b",
-          }}
-        >
-          A confirmed daily duty overrides the automatic
-          rota for that employee and date. This form
-          does not assign a DAY or NIGHT shift period.
-        </div>
 
         <button
-          type="submit"
-          style={buttonStyle}
-          disabled={
-            saving ||
-            loading ||
-            !employeeId
-          }
+          type="button"
+          style={{
+            ...paleButton,
+            background:
+              week === 2 ? "#67e8f9" : "#fff",
+          }}
+          onClick={() => setWeek(2)}
         >
-          {saving
-            ? "Saving..."
-            : "Confirm daily duty"}
+          Week 2
         </button>
-      </form>
 
-      <div style={cardStyle}>
-        <strong>
-          2. Automatic 24-hour DAY / NIGHT rotation
-        </strong>
-
-        <div
+        <span
           style={{
-            color: "#64748b",
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
             fontSize: 12,
           }}
         >
-          {date}
-          {cycleLabel
-            ? ` · Normal OFF rota ${cycleLabel}`
-            : ""}
-          {monday
-            ? " · Monday changeover"
-            : ""}
-        </div>
+          Start
 
-        <div
+          <input
+            aria-label="Cycle start Monday"
+            type="date"
+            value={anchor}
+            style={{
+              ...field,
+              width: 145,
+            }}
+            onChange={(e) =>
+              setAnchor(e.target.value)
+            }
+            disabled={saving}
+          />
+
+          <button
+            type="button"
+            style={paleButton}
+            onClick={updateAnchor}
+            disabled={saving}
+          >
+            Set
+          </button>
+
+          <button
+            type="button"
+            style={paleButton}
+            onClick={refresh}
+            disabled={saving}
+          >
+            ↻
+          </button>
+        </span>
+      </div>
+
+      <div
+        style={{
+          overflowX: "auto",
+          padding: 10,
+        }}
+      >
+        <table
           style={{
-            fontSize: 12,
-            color: "#475569",
+            width: "100%",
+            minWidth: 970,
+            borderCollapse: "separate",
+            borderSpacing: 0,
+            fontSize: 11,
           }}
         >
-          Only 3T, ARUSHA, KINGS and NYIKA02
-          rotate weekly. The previous NIGHT employee
-          takes the new Monday OFF and returns DAY
-          on Tuesday. Manual repeating Group OFF
-          controls have been removed from this
-          Master section.
+          <thead>
+            <tr>
+              <th
+                style={{
+                  width: 165,
+                  background: navy,
+                  color: "#fff",
+                  padding: 9,
+                  textAlign: "left",
+                }}
+              >
+                Shop / Position
+              </th>
+
+              {DAYS.map((day) => (
+                <th
+                  key={day}
+                  style={{
+                    background: navy,
+                    color: "#fff",
+                    minWidth: 115,
+                    padding: 9,
+                  }}
+                >
+                  {day}
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {orderedPositions.map(
+              (pos, rowIndex) => {
+                const shopSlots =
+                  slotsByShop.get(pos.shop_id) || [];
+
+                const firstSlot =
+                  pos.slot_no === 1;
+
+                const lastSlot =
+                  pos.slot_no ===
+                  shopSlots[shopSlots.length - 1];
+
+                return (
+                  <tr
+                    key={positionKey(
+                      pos.shop_id,
+                      pos.slot_no
+                    )}
+                    style={{
+                      background:
+                        rowIndex % 2
+                          ? "#f8fafc"
+                          : "#fff",
+                    }}
+                  >
+                    <th
+                      scope="row"
+                      style={{
+                        textAlign: "left",
+                        padding: "7px 5px",
+                        borderBottom:
+                          "1px solid #e2e8f0",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span>
+                        {pos.shop_name} · {pos.slot_no}
+                      </span>
+
+                      {firstSlot &&
+                        shopSlots.length < 4 && (
+                          <button
+                            aria-label={
+                              `Add position at ${pos.shop_name}`
+                            }
+                            type="button"
+                            disabled={saving}
+                            onClick={() =>
+                              changeSlotCount(
+                                pos.shop_id,
+                                1
+                              )
+                            }
+                            style={{
+                              ...paleButton,
+                              padding: "2px 5px",
+                              marginLeft: 5,
+                            }}
+                          >
+                            +
+                          </button>
+                        )}
+
+                      {lastSlot &&
+                        shopSlots.length > 1 && (
+                          <button
+                            aria-label={
+                              `Remove last position at ${pos.shop_name}`
+                            }
+                            type="button"
+                            disabled={saving}
+                            onClick={() =>
+                              changeSlotCount(
+                                pos.shop_id,
+                                -1
+                              )
+                            }
+                            style={{
+                              ...paleButton,
+                              padding: "2px 5px",
+                              marginLeft: 3,
+                            }}
+                          >
+                            −
+                          </button>
+                        )}
+                    </th>
+
+                    {DAYS.map((day, dayIndex) => {
+                      const cycleDay =
+                        (week - 1) * 7 + dayIndex;
+
+                      const selected =
+                        draft[
+                          rotaKey(
+                            cycleDay,
+                            pos.shop_id,
+                            pos.slot_no
+                          )
+                        ] || "";
+
+                      return (
+                        <td
+                          key={day}
+                          style={{
+                            padding: 4,
+                            borderBottom:
+                              "1px solid #e2e8f0",
+                          }}
+                        >
+                          <select
+                            aria-label={
+                              `${pos.shop_name} ` +
+                              `position ${pos.slot_no} ` +
+                              `${day} week ${week}`
+                            }
+                            value={selected}
+                            style={{
+                              ...field,
+                              fontSize: 11,
+                              padding: "7px 3px",
+                            }}
+                            disabled={saving}
+                            onChange={(e) =>
+                              setCell(
+                                cycleDay,
+                                pos.shop_id,
+                                pos.slot_no,
+                                e.target.value
+                              )
+                            }
+                          >
+                            <option value="">—</option>
+
+                            {selected &&
+                              !active.some(
+                                (p) =>
+                                  p.employee_id ===
+                                  selected
+                              ) && (
+                                <option value={selected}>
+                                  {byId.get(selected)
+                                    ?.full_name ||
+                                    "Unavailable"}{" "}
+                                  · Inactive
+                                </option>
+                              )}
+
+                            {active.map((p) => (
+                              <option
+                                key={p.employee_id}
+                                value={p.employee_id}
+                              >
+                                {p.full_name} ·{" "}
+                                {categorise(p)}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              }
+            )}
+
+            <tr>
+              <th
+                scope="row"
+                style={{
+                  padding: 9,
+                  textAlign: "left",
+                  background: "#e0f2fe",
+                }}
+              >
+                OFF
+              </th>
+
+              {DAYS.map((day, i) => {
+                const off = offOnDay(
+                  (week - 1) * 7 + i
+                );
+
+                return (
+                  <td
+                    key={day}
+                    style={{
+                      textAlign: "center",
+                      padding: 5,
+                      background: "#eff6ff",
+                    }}
+                  >
+                    <details>
+                      <summary
+                        style={{
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {off.length} OFF
+                      </summary>
+
+                      <div
+                        style={{
+                          maxHeight: 150,
+                          overflowY: "auto",
+                          textAlign: "left",
+                          minWidth: 130,
+                        }}
+                      >
+                        {off.map((p) => (
+                          <div
+                            key={p.employee_id}
+                            style={{
+                              padding: "2px 0",
+                            }}
+                          >
+                            {p.full_name}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  </td>
+                );
+              })}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div
+        style={{
+          borderTop: "1px solid #e2e8f0",
+          padding: 13,
+          display: "grid",
+          gap: 9,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <strong style={{ fontSize: 13 }}>
+            Temporary
+          </strong>
+
+          <button
+            type="button"
+            style={{
+              ...paleButton,
+              background:
+                swapMode === "EMPLOYEES"
+                  ? "#e0f2fe"
+                  : "#fff",
+            }}
+            onClick={() =>
+              setSwapMode("EMPLOYEES")
+            }
+          >
+            Swap
+          </button>
+
+          <button
+            type="button"
+            style={{
+              ...paleButton,
+              background:
+                swapMode === "MOVE"
+                  ? "#e0f2fe"
+                  : "#fff",
+            }}
+            onClick={() =>
+              setSwapMode("MOVE")
+            }
+          >
+            Move
+          </button>
         </div>
 
         <div
           style={{
             display: "grid",
             gridTemplateColumns:
-              "repeat(auto-fit, minmax(min(100%, 270px), 1fr))",
-            gap: 10,
+              "repeat(auto-fit,minmax(160px,1fr))",
+            gap: 8,
           }}
         >
-          {ROTATION_SHOPS.map((shopName) => {
-            const shopEmployees = active.filter(
-              (employee) =>
-                employee.shop_name === shopName &&
-                employee.shop_type === "24_HOUR" &&
-                employee.assignment_type === "FIXED"
-            );
+          <label style={{ fontSize: 11 }}>
+            From
+            <input
+              type="date"
+              style={field}
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
 
-            const first = shopEmployees.find(
-              (employee) =>
-                Number(employee.group_number) === 1
-            );
+                if (e.target.value > dateTo) {
+                  setDateTo(e.target.value);
+                }
+              }}
+              disabled={saving}
+            />
+          </label>
 
-            const second = shopEmployees.find(
-              (employee) =>
-                Number(employee.group_number) === 2
-            );
+          <label style={{ fontSize: 11 }}>
+            To
+            <input
+              type="date"
+              style={field}
+              value={dateTo}
+              min={dateFrom}
+              onChange={(e) =>
+                setDateTo(e.target.value)
+              }
+              disabled={saving}
+            />
+          </label>
 
-            const firstDuty =
-              first &&
-              previewByEmployeeId.get(
-                first.employee_id
-              );
+          <label style={{ fontSize: 11 }}>
+            {swapMode === "EMPLOYEES"
+              ? "Employee 1"
+              : "Employee"}
 
-            const secondDuty =
-              second &&
-              previewByEmployeeId.get(
-                second.employee_id
-              );
+            <select
+              style={field}
+              value={personA}
+              onChange={(e) =>
+                setPersonA(e.target.value)
+              }
+              disabled={saving}
+            >
+              <option value="">Select</option>
 
-            const reference =
-              firstDuty || secondDuty;
-
-            const reliefPerson =
-              byEmployeeId.get(
-                reference?.rotation_monday_relief_employee_id
-              );
-
-            const shopId =
-              first?.shop_id || second?.shop_id;
-
-            const dailyRelief = monday
-              ? active.filter(
-                  (employee) =>
-                    employee.assignment_type ===
-                      "NOT_FIXED" &&
-                    plan.some(
-                      (planned) =>
-                        planned.employee_id ===
-                          employee.employee_id &&
-                        planned.confirmed_status ===
-                          "ON_DUTY" &&
-                        planned.confirmed_shop_id ===
-                          shopId
-                    )
-                )
-              : [];
-
-            const missingRelief =
-              monday &&
-              reference?.rotation_monday_relief_unassigned ===
-                true;
-
-            const reliefDuty =
-              reliefPerson &&
-              previewByEmployeeId.get(
-                reliefPerson.employee_id
-              );
-
-            const reliefConflict =
-              monday &&
-              reliefPerson &&
-              (reliefDuty?.effective_status !==
-                "ON_DUTY" ||
-                reliefDuty?.effective_shop_id !==
-                  shopId);
-
-            const anyConflict = [
-              firstDuty,
-              secondDuty,
-            ].some(
-              (duty) =>
-                duty?.rotation_conflict === true
-            );
-
-            return (
-              <div
-                key={shopName}
-                style={{
-                  border: "1px solid #dbe4ed",
-                  borderRadius: 11,
-                  padding: 12,
-                  display: "grid",
-                  gap: 8,
-                  background: "#f8fafc",
-                }}
-              >
-                <strong
-                  style={{
-                    fontSize: 14,
-                  }}
+              {active.map((p) => (
+                <option
+                  value={p.employee_id}
+                  key={p.employee_id}
                 >
-                  {shopName}
-                </strong>
+                  {p.full_name} · {categorise(p)}
+                </option>
+              ))}
+            </select>
+          </label>
 
-                {[
-                  [first, firstDuty, 1],
-                  [second, secondDuty, 2],
-                ].map(
-                  ([employee, duty, group]) => (
-                    <div
-                      key={group}
-                      style={{
-                        display: "flex",
-                        justifyContent:
-                          "space-between",
-                        gap: 8,
-                        fontSize: 12,
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      <div
-                        style={{
-                          minWidth: 0,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontWeight: 750,
-                          }}
-                        >
-                          {employee?.full_name ||
-                            `Group ${group} not assigned`}
-                        </div>
+          {swapMode === "EMPLOYEES" ? (
+            <label style={{ fontSize: 11 }}>
+              Employee 2
+              <select
+                style={field}
+                value={personB}
+                onChange={(e) =>
+                  setPersonB(e.target.value)
+                }
+                disabled={saving}
+              >
+                <option value="">Select</option>
 
-                        <div
-                          style={{
-                            color: "#64748b",
-                            fontSize: 11,
-                          }}
-                        >
-                          Group {group}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          fontWeight: 850,
-                          textAlign: "right",
-                          color:
-                            duty?.rotation_conflict
-                              ? "#b45309"
-                              : duty?.effective_status ===
-                                  "OFF_DUTY"
-                                ? "#b91c1c"
-                                : "#166534",
-                        }}
-                      >
-                        {statusText(duty)}
-
-                        {duty?.duty_source ===
-                          "MASTER_DAILY_CONFIRMED" && (
-                          <div
-                            style={{
-                              fontWeight: 500,
-                              fontSize: 10,
-                            }}
-                          >
-                            Admin override
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                )}
-
-                {monday && (
-                  <div
-                    style={{
-                      borderTop:
-                        "1px solid #e2e8f0",
-                      paddingTop: 8,
-                      fontSize: 12,
-                      color:
-                        (missingRelief &&
-                          !dailyRelief.length) ||
-                        reliefConflict
-                          ? "#b91c1c"
-                          : "#334155",
-                    }}
+                {active.map((p) => (
+                  <option
+                    value={p.employee_id}
+                    key={p.employee_id}
                   >
-                    <strong>
-                      Monday DAY relief:
-                    </strong>{" "}
+                    {p.full_name} · {categorise(p)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label style={{ fontSize: 11 }}>
+              To position
+              <select
+                style={field}
+                value={positionB}
+                onChange={(e) =>
+                  setPositionB(e.target.value)
+                }
+                disabled={saving}
+              >
+                <option value="">Select</option>
 
-                    {dailyRelief.length
-                      ? `${dailyRelief
-                          .map(
-                            (person) =>
-                              person.full_name
-                          )
-                          .join(", ")} — working confirmed, DAY period not set`
-                      : missingRelief
-                        ? "NEEDS ADMIN ASSIGNMENT"
-                        : reliefConflict
-                          ? `${reliefPerson.full_name} — CHECK ASSIGNMENT`
-                          : reliefPerson?.full_name ||
-                            "Not configured"}
-                  </div>
-                )}
-
-                {anyConflict && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "#b45309",
-                      fontWeight: 750,
-                    }}
+                {orderedPositions.map((p) => (
+                  <option
+                    value={positionKey(
+                      p.shop_id,
+                      p.slot_no
+                    )}
+                    key={positionKey(
+                      p.shop_id,
+                      p.slot_no
+                    )}
                   >
-                    Existing assignment conflicts
-                    with rotation — Admin review
-                    required.
-                  </div>
-                )}
-
-                {!firstDuty &&
-                  !secondDuty && (
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#b91c1c",
-                      }}
-                    >
-                      No V3 preview returned
-                      for this shop.
-                    </div>
-                  )}
-              </div>
-            );
-          })}
+                    {previewLabel(p)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
-        <div
-          style={{
-            color: "#64748b",
-            fontSize: 12,
-          }}
-        >
-          NYIKA02 has no designated Monday
-          relief employee. Admin must confirm
-          coverage. A permanent Group 1 /
-          Group 2 swap needs a separate
-          rotation-anchor review.
-        </div>
+        {previewError ? (
+          <span
+            role="alert"
+            style={{
+              color: "#b91c1c",
+              fontSize: 11,
+            }}
+          >
+            {previewError}
+          </span>
+        ) : null}
       </div>
 
-      <div style={cardStyle}>
-        <strong>
-          3. Effective Duty Preview — {date}
-        </strong>
-
-        <div
+      <div
+        style={{
+          padding: 13,
+          display: "grid",
+          gap: 8,
+          borderTop: "1px solid #e2e8f0",
+        }}
+      >
+        <label
+          htmlFor="rota-v2-reason"
           style={{
-            color: "#64748b",
             fontSize: 12,
+            fontWeight: 800,
           }}
         >
-          V3 preview. Salary Panels are NOT connected
-          to Master Duty yet. A confirmed daily
-          override may show WORKING without a
-          DAY/NIGHT shift period.
-        </div>
+          Reason
+        </label>
+
+        <textarea
+          id="rota-v2-reason"
+          rows={2}
+          placeholder="Reason"
+          value={reason}
+          onChange={(e) =>
+            setReason(e.target.value)
+          }
+          disabled={saving}
+          style={{
+            ...field,
+            resize: "vertical",
+          }}
+        />
 
         <div
           style={{
-            display: "grid",
-            gap: 6,
-            maxHeight: 350,
-            overflowY: "auto",
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
           }}
         >
-          {preview.map((duty) => (
-            <div
-              key={duty.employee_id}
+          <button
+            type="button"
+            style={button}
+            onClick={saveWeek}
+            disabled={
+              saving || !weekChanged(week)
+            }
+          >
+            {saving
+              ? "Saving..."
+              : `Save Week ${week}${
+                  weekChanged(week) ? " *" : ""
+                }`}
+          </button>
+
+          <button
+            type="button"
+            style={paleButton}
+            onClick={applySwap}
+            disabled={saving}
+          >
+            Apply{" "}
+            {swapMode === "EMPLOYEES"
+              ? "Swap"
+              : "Move"}
+          </button>
+
+          {notice ? (
+            <span
+              role="status"
               style={{
-                display: "flex",
-                justifyContent:
-                  "space-between",
-                gap: 8,
-                flexWrap: "wrap",
-                border:
-                  "1px solid #e5e7eb",
-                borderRadius: 8,
-                padding: 9,
+                color: "#15803d",
                 fontSize: 12,
               }}
             >
-              <strong>
-                {duty.employee_name ||
-                  byEmployeeId.get(
-                    duty.employee_id
-                  )?.full_name ||
-                  "Unknown employee"}
-              </strong>
+              {notice}
+            </span>
+          ) : null}
 
-              <span
-                style={{
-                  color:
-                    duty.rotation_conflict
-                      ? "#b45309"
-                      : "#334155",
-                }}
-              >
-                {statusText(duty)}
-
-                {duty.effective_shop_name
-                  ? ` — ${duty.effective_shop_name}`
-                  : ""}
-
-                {duty.rotation_conflict
-                  ? " · REVIEW"
-                  : ""}
-              </span>
-            </div>
-          ))}
-
-          {!loading &&
-            preview.length === 0 && (
-              <span
-                style={{
-                  fontSize: 12,
-                }}
-              >
-                No duty preview available.
-              </span>
-            )}
+          {error ? (
+            <span
+              role="alert"
+              style={{
+                color: "#b91c1c",
+                fontSize: 12,
+              }}
+            >
+              {error}
+            </span>
+          ) : null}
         </div>
       </div>
     </section>
-  );
-}
-
-export default function AdminDutyControlPanel(props) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gap: 18,
-        width: "100%",
-        minWidth: 0,
-      }}
-    >
-      <MasterDutySection {...props} />
-
-      <AdminDutyControlPanelLegacy {...props} />
-    </div>
   );
 }
