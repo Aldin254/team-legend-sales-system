@@ -10,7 +10,7 @@ const OFF_REASONS = [
   ["MANAGEMENT_APPROVED", "Management Approved"],
   ["OTHER", "Other"],
 ];
-
+  
 const ENTRY_TYPES = [
   ["RELIEF_COVER", "Relief Cover"],
   ["EMPLOYEE_OFF", "Employee Off"],
