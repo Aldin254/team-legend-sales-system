@@ -17,9 +17,11 @@ import AdminLiveFeedPanel from "./AdminLiveFeedPanel";
 import AdminAttendanceControlPanel from "./AdminAttendanceControlPanel";
 
 // TEAM LEGEND / NYIKA — Admin Dashboard
-// Provides the agreed editable Master Employee List using the existing
-// Master Employee database and admin-only Supabase RPCs.
-// The existing Duty/Rota, Live Feed and all other panels remain untouched.
+// Editable Master Employee List with circular total
+// and circular row numbering on the left.
+//
+// Existing Duty/Rota, Live Feed, Salary, Attendance,
+// and other Admin panels remain unchanged.
 
 const menuItems = [
   { id: "DASHBOARD", label: "Dashboard", icon: "▦" },
@@ -43,6 +45,7 @@ export default function AdminDashboard({ user }) {
   const accessToken = user?.access_token || null;
 
   const router = useRouter();
+
   const [activeSection, setActiveSection] = useState("DASHBOARD");
 
   const adminName =
@@ -60,13 +63,8 @@ export default function AdminDashboard({ user }) {
     <main style={pageStyle}>
       <header style={headerStyle}>
         <div>
-          <div style={brandStyle}>
-            ♛ TEAM LEGEND ADMIN
-          </div>
-
-          <div style={sloganStyle}>
-            DISCIPLINE • FOCUS • RESULTS
-          </div>
+          <div style={brandStyle}>♛ TEAM LEGEND ADMIN</div>
+          <div style={sloganStyle}>DISCIPLINE • FOCUS • RESULTS</div>
         </div>
 
         <div style={headerRightStyle}>
@@ -87,17 +85,13 @@ export default function AdminDashboard({ user }) {
 
       <div style={bodyLayoutStyle}>
         <aside style={sidebarStyle}>
-          <div style={menuTitleStyle}>
-            ADMIN MENU
-          </div>
+          <div style={menuTitleStyle}>ADMIN MENU</div>
 
           {menuItems.map((item) => (
             <button
               key={item.id}
               type="button"
-              onClick={() =>
-                setActiveSection(item.id)
-              }
+              onClick={() => setActiveSection(item.id)}
               style={{
                 ...menuButtonStyle,
                 ...(activeSection === item.id
@@ -105,9 +99,7 @@ export default function AdminDashboard({ user }) {
                   : {}),
               }}
             >
-              <span style={menuIconStyle}>
-                {item.icon}
-              </span>
+              <span style={menuIconStyle}>{item.icon}</span>
               <span>{item.label}</span>
             </button>
           ))}
@@ -181,8 +173,6 @@ export default function AdminDashboard({ user }) {
             </>
           )}
 
-          {/* MASTER EMPLOYEE MANAGEMENT — EDITABLE */}
-
           {activeSection === "MASTER_EMPLOYEES" && (
             <AdminMasterEmployeeList
               supabaseUrl={supabaseUrl}
@@ -251,16 +241,20 @@ export default function AdminDashboard({ user }) {
 }
 
 // ==================================================
-// MASTER EMPLOYEES - AGREED EDITABLE LIST
+// MASTER EMPLOYEES
 //
-// Employee name
-// Shop or category
-// Weekly salary
-// Unique ID
+// Employee Name
+// Shop / Category
+// Weekly Salary
+// Unique Employee ID
 // Add Employee
-// One Reason for Edit at bottom.
+// One Reason for Edit at bottom
 //
-// Backend:
+// New layout:
+// - Total employees in large circle on LEFT
+// - Row numbering in circles on LEFT
+//
+// Existing Supabase functions:
 // tl_admin_master_employee_list
 // tl_admin_master_employee_shops_v1
 // tl_admin_master_employee_save_v1
@@ -336,13 +330,11 @@ function AdminMasterEmployeeList({
   const [shops, setShops] = useState([]);
 
   const [reason, setReason] = useState("");
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-
   const [reload, setReload] = useState(0);
 
   const baseUrl = useMemo(
@@ -373,10 +365,7 @@ function AdminMasterEmployeeList({
 
           headers: {
             apikey: supabaseAnonKey,
-
-            Authorization:
-              `Bearer ${accessToken}`,
-
+            Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
 
@@ -410,7 +399,7 @@ function AdminMasterEmployeeList({
   );
 
   // ==================================================
-  // LOAD MASTER EMPLOYEES AND SHOPS
+  // LOAD EMPLOYEES AND SHOPS
   // ==================================================
 
   useEffect(() => {
@@ -480,7 +469,7 @@ function AdminMasterEmployeeList({
   }, [rpc, reload]);
 
   // ==================================================
-  // ORIGINAL EMPLOYEE VALUES
+  // ORIGINAL VALUES
   // ==================================================
 
   const originals = useMemo(
@@ -509,17 +498,18 @@ function AdminMasterEmployeeList({
     [drafts, originals]
   );
 
-  const hasPending = pending.length > 0;
-
   // ==================================================
-  // EDIT EMPLOYEE FIELD
+  // UPDATE EMPLOYEE DRAFT
   // ==================================================
 
   const updateDraft = (key, field, value) => {
     setDrafts((current) =>
       current.map((row) =>
         row.key === key
-          ? { ...row, [field]: value }
+          ? {
+              ...row,
+              [field]: value,
+            }
           : row
       )
     );
@@ -584,9 +574,7 @@ function AdminMasterEmployeeList({
       return;
     }
 
-    // ----------------------------------------------
-    // VALIDATE ALL CHANGES BEFORE SAVING
-    // ----------------------------------------------
+    // Validate all changes before saving.
 
     for (const entry of pending) {
       if (
@@ -635,10 +623,6 @@ function AdminMasterEmployeeList({
       }
     }
 
-    // ----------------------------------------------
-    // SAVE TO SUPABASE
-    // ----------------------------------------------
-
     setSaving(true);
     setError("");
     setNotice("");
@@ -685,6 +669,8 @@ function AdminMasterEmployeeList({
     }
   }
 
+  const hasPending = pending.length > 0;
+
   // ==================================================
   // MASTER EMPLOYEE INTERFACE
   // ==================================================
@@ -693,7 +679,7 @@ function AdminMasterEmployeeList({
     <section style={masterPanelStyle}>
 
       {/* ========================================= */}
-      {/* HEADER AND TOTAL ONLY */}
+      {/* HEADER / TOTAL EMPLOYEES ON LEFT */}
       {/* ========================================= */}
 
       <div style={masterPanelHeaderStyle}>
@@ -706,9 +692,15 @@ function AdminMasterEmployeeList({
           MASTER EMPLOYEES
         </strong>
 
-        <strong style={{ fontSize: 12 }}>
-          Total Employees: {employees.length}
-        </strong>
+        <div style={masterTotalWrapStyle}>
+          <span style={masterTotalCountStyle}>
+            {employees.length}
+          </span>
+
+          <strong style={masterTotalLabelStyle}>
+            TOTAL EMPLOYEES
+          </strong>
+        </div>
       </div>
 
       {/* ========================================= */}
@@ -748,6 +740,19 @@ function AdminMasterEmployeeList({
             <table style={masterTableStyle}>
               <thead>
                 <tr>
+
+                  {/* NUMBER COLUMN ON FAR LEFT */}
+
+                  <th
+                    style={{
+                      ...masterThStyle,
+                      width: 68,
+                      textAlign: "center",
+                    }}
+                  >
+                    NO.
+                  </th>
+
                   {[
                     "EMPLOYEE NAME",
                     "SHOP / CATEGORY",
@@ -765,7 +770,7 @@ function AdminMasterEmployeeList({
               </thead>
 
               <tbody>
-                {drafts.map((row) => {
+                {drafts.map((row, index) => {
                   const isNew = !row.employee_id;
 
                   const original =
@@ -792,6 +797,20 @@ function AdminMasterEmployeeList({
                           : "white",
                       }}
                     >
+
+                      {/* CIRCULAR EMPLOYEE NUMBER */}
+
+                      <td
+                        style={{
+                          ...masterTdStyle,
+                          width: 68,
+                          textAlign: "center",
+                        }}
+                      >
+                        <span style={masterNumberBadgeStyle}>
+                          {index + 1}
+                        </span>
+                      </td>
 
                       {/* EMPLOYEE NAME */}
 
@@ -946,7 +965,7 @@ function AdminMasterEmployeeList({
           </button>
 
           {/* ===================================== */}
-          {/* ONE REASON FOR EDIT AT BOTTOM */}
+          {/* REASON FOR EDIT AT BOTTOM */}
           {/* ===================================== */}
 
           <div style={masterBottomStyle}>
@@ -1318,16 +1337,14 @@ function SettingsPanel({ user }) {
         />
 
         <div style={settingsNoticeStyle}>
-          Additional settings will be connected
-          here as the system expands. Existing
-          sales, Accountant, Savings, Banking,
-          M-Pesa rate and correction functions
-          are unaffected.
+          Additional settings will be connected here
+          as the system expands. Existing sales,
+          Accountant, Savings, Banking, M-Pesa rate
+          and correction functions are unaffected.
         </div>
       </div>
 
       <AdminShopManagementPanel user={user} />
-
       <AdminUserAccountsPanel user={user} />
     </>
   );
@@ -1462,8 +1479,7 @@ const menuIconStyle = {
 const sidebarFooterStyle = {
   marginTop: "auto",
   padding: "12px 10px",
-  borderTop:
-    "1px solid rgba(255,255,255,0.15)",
+  borderTop: "1px solid rgba(255,255,255,0.15)",
   color: "#cbd5e1",
   fontSize: "9px",
   display: "flex",
@@ -1499,8 +1515,7 @@ const welcomeBannerStyle = {
   padding: "20px",
   marginBottom: "18px",
   borderRadius: "8px",
-  background:
-    "linear-gradient(90deg,#0e7490,#0369a1)",
+  background: "linear-gradient(90deg,#0e7490,#0369a1)",
   color: "white",
   display: "flex",
   justifyContent: "space-between",
@@ -1520,8 +1535,7 @@ const welcomeSubtitleStyle = {
 
 const adminBadgeStyle = {
   padding: "8px 14px",
-  border:
-    "1px solid rgba(255,255,255,0.5)",
+  border: "1px solid rgba(255,255,255,0.5)",
   borderRadius: "20px",
   fontSize: "10px",
   fontWeight: "bold",
@@ -1529,8 +1543,7 @@ const adminBadgeStyle = {
 
 const dashboardGridStyle = {
   display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(220px,1fr))",
+  gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
   gap: "14px",
   marginBottom: "18px",
 };
@@ -1541,8 +1554,7 @@ const dashboardCardStyle = {
   backgroundColor: "white",
   border: "1px solid #cbd5e1",
   borderRadius: "7px",
-  boxShadow:
-    "0 2px 8px rgba(15,23,42,0.06)",
+  boxShadow: "0 2px 8px rgba(15,23,42,0.06)",
   display: "flex",
   flexDirection: "column",
   justifyContent: "space-between",
@@ -1588,8 +1600,7 @@ const systemStatusTitleStyle = {
 
 const statusGridStyle = {
   display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(220px,1fr))",
+  gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
   gap: "8px",
 };
 
@@ -1653,7 +1664,7 @@ const settingsNoticeStyle = {
 };
 
 // ==================================================
-// MASTER EMPLOYEE EDITABLE LIST STYLES
+// MASTER EMPLOYEE STYLES
 // ==================================================
 
 const masterPanelStyle = {
@@ -1661,20 +1672,69 @@ const masterPanelStyle = {
   border: "1px solid #cbd5e1",
   borderRadius: 10,
   overflow: "hidden",
-  boxShadow:
-    "0 2px 8px rgba(15,23,42,.04)",
+  boxShadow: "0 2px 8px rgba(15,23,42,.04)",
 };
 
+// Header aligned to LEFT.
+
 const masterPanelHeaderStyle = {
-  background:
-    "linear-gradient(90deg,#052d4b,#064b6b)",
+  background: "linear-gradient(90deg,#052d4b,#064b6b)",
   padding: 17,
   color: "white",
   display: "flex",
   alignItems: "center",
-  justifyContent: "space-between",
+  justifyContent: "flex-start",
   flexWrap: "wrap",
+  gap: 20,
+};
+
+// Total employees circle.
+
+const masterTotalWrapStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-start",
   gap: 10,
+};
+
+const masterTotalCountStyle = {
+  width: 60,
+  height: 60,
+  borderRadius: "50%",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  background: "#ffffff",
+  color: "#073b5c",
+  fontSize: 23,
+  fontWeight: 950,
+  border: "3px solid #67e8f9",
+  boxShadow: "0 2px 10px rgba(0,0,0,.15)",
+};
+
+const masterTotalLabelStyle = {
+  fontSize: 12,
+  fontWeight: 900,
+  letterSpacing: ".4px",
+  color: "#ffffff",
+};
+
+// Employee numbering circle on far-left column.
+
+const masterNumberBadgeStyle = {
+  width: 34,
+  height: 34,
+  borderRadius: "50%",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  background: "#073b5c",
+  border: "2px solid #06b6d4",
+  color: "#ffffff",
+  fontWeight: 900,
+  fontSize: 13,
 };
 
 const masterPanelBodyStyle = {
@@ -1710,8 +1770,7 @@ const masterThStyle = {
 
 const masterTdStyle = {
   padding: "7px 9px",
-  borderBottom:
-    "1px solid #e2e8f0",
+  borderBottom: "1px solid #e2e8f0",
 };
 
 const masterInputStyle = {
