@@ -3,13 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
+  "Monday", "Tuesday", "Wednesday", "Thursday",
+  "Friday", "Saturday", "Sunday",
 ];
 
 const navy = "#073b5c";
@@ -82,7 +77,6 @@ function cycleDay(dateString, anchor) {
   }
 
   const diff = Math.round((one - two) / 86400000);
-
   return ((diff % 14) + 14) % 14;
 }
 
@@ -115,13 +109,11 @@ export default function AdminDutyControlPanel({
   const [mode, setMode] = useState("MOVE");
   const [fromDate, setFromDate] = useState(todayNairobi);
   const [toDate, setToDate] = useState(todayNairobi);
-
   const [personA, setPersonA] = useState("");
   const [target, setTarget] = useState("");
 
   const [halfShop, setHalfShop] = useState("");
   const [handover, setHandover] = useState("");
-
   const [openTime, setOpenTime] = useState("09:00");
   const [handoverTime, setHandoverTime] = useState("15:00");
   const [closeTime, setCloseTime] = useState("22:00");
@@ -131,7 +123,6 @@ export default function AdminDutyControlPanel({
 
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -176,7 +167,7 @@ export default function AdminDutyControlPanel({
     [baseUrl, supabaseAnonKey, accessToken]
   );
 
-  // LOAD MASTER LIST AND SAVED ROTA
+  // LOAD MASTER EMPLOYEES AND SAVED ROTA
 
   const load = useCallback(
     async (signal) => {
@@ -259,7 +250,7 @@ export default function AdminDutyControlPanel({
     return () => controller.abort();
   }, [baseUrl, supabaseAnonKey, accessToken, load]);
 
-  // AUTOMATICALLY READ NEW MASTER EMPLOYEES
+  // NEW MASTER EMPLOYEES APPEAR AUTOMATICALLY
 
   useEffect(() => {
     if (!baseUrl || !supabaseAnonKey || !accessToken) {
@@ -309,7 +300,6 @@ export default function AdminDutyControlPanel({
 
   const category = (id) => {
     const p = peopleById.get(id);
-
     if (!p) return "";
 
     if (p.shop_id) {
@@ -369,7 +359,7 @@ export default function AdminDutyControlPanel({
     return days;
   }, [rules, offs, week]);
 
-  // WEEKLY RELIEF / OFF EDITOR
+  // RELIEF AND OFF CONTROLS
 
   function beginEdit(day, kind, pair = null) {
     setEditor({
@@ -379,15 +369,10 @@ export default function AdminDutyControlPanel({
         pair?.covered_employee_id || null,
     });
 
-    setReliever(
-      pair?.reliever_employee_id || ""
-    );
-
-    setCovered(
-      pair?.covered_employee_id || ""
-    );
-
+    setReliever(pair?.reliever_employee_id || "");
+    setCovered(pair?.covered_employee_id || "");
     setOffEmployee("");
+
     setError("");
     setNotice("");
   }
@@ -402,9 +387,7 @@ export default function AdminDutyControlPanel({
   }
 
   async function save(functionName, args, successMessage) {
-    if (busy || !reasonOK()) {
-      return false;
-    }
+    if (busy || !reasonOK()) return false;
 
     setBusy(true);
     setError("");
@@ -433,8 +416,7 @@ export default function AdminDutyControlPanel({
       return true;
     } catch (e) {
       setError(
-        e?.message ||
-        "Save failed. Refresh and retry."
+        e?.message || "Save failed. Refresh and retry."
       );
 
       return false;
@@ -548,18 +530,18 @@ export default function AdminDutyControlPanel({
       return;
     }
 
-    if (anchor === savedAnchor) {
-      return;
-    }
+    if (anchor === savedAnchor) return;
 
     await save(
       "tl_rota_relief_anchor_set",
-      { p_anchor_monday: anchor },
+      {
+        p_anchor_monday: anchor,
+      },
       "Start saved."
     );
   }
 
-  // TEMPORARY MOVE / SWAP / HALF-DAY
+  // TEMPORARY MOVE / SHOP SWAP / HALF-DAY
 
   async function applyTemporary() {
     if (
@@ -622,50 +604,61 @@ export default function AdminDutyControlPanel({
         },
         "Half-Day saved."
       );
+
+      return;
+    }
+
+    if (!target || personA === target) {
+      setError("Choose two different employees.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Apply ${mode} ${fromDate} to ${toDate}?`
+      )
+    ) {
+      return;
+    }
+
+    if (mode === "MOVE") {
+      await save(
+        "tl_rota_relief_move",
+        {
+          p_start_date: fromDate,
+          p_end_date: toDate,
+          p_reliever_id: personA,
+          p_to_covered_employee_id: target,
+        },
+        "Move saved."
+      );
     } else {
-      if (!target || personA === target) {
-        setError("Choose two different employees.");
-        return;
-      }
+      // STAGE 14: ORDINARY EMPLOYEE SHOP SWAP
+      // Uses the Master List home shops.
+      // Does not modify permanent assignments.
 
-      if (
-        !window.confirm(
-          `Apply ${mode} ${fromDate} to ${toDate}?`
-        )
-      ) {
-        return;
-      }
-
-      if (mode === "MOVE") {
-        await save(
-          "tl_rota_relief_move",
-          {
-            p_start_date: fromDate,
-            p_end_date: toDate,
-            p_reliever_id: personA,
-            p_to_covered_employee_id: target,
-          },
-          "Move saved."
-        );
-      } else {
-        await save(
-          "tl_rota_relief_swap",
-          {
-            p_start_date: fromDate,
-            p_end_date: toDate,
-            p_reliever_a: personA,
-            p_reliever_b: target,
-          },
-          "Swap saved."
-        );
-      }
+      await save(
+        "tl_rota_shop_swap_set",
+        {
+          p_start_date: fromDate,
+          p_end_date: toDate,
+          p_employee_a: personA,
+          p_employee_b: target,
+        },
+        "Shop swap saved."
+      );
     }
   }
 
-  // STAGE 10: VIEW SAVED TEMPORARY CHANGES
+  // VIEW DATE INCLUDING SHOP SWAPS
 
   async function fetchDatePreview(date) {
-    const [duty, extra, changes] = await Promise.all([
+    const [
+      duty,
+      extra,
+      changes,
+      shopSwaps,
+    ] = await Promise.all([
       rpc(
         "tl_rota_relief_preview",
         {
@@ -689,12 +682,42 @@ export default function AdminDutyControlPanel({
           p_days: 1,
         }
       ),
+
+      rpc(
+        "tl_rota_shop_swap_get",
+        {
+          p_start_date: date,
+          p_days: 1,
+        }
+      ),
     ]);
 
-    if (!Array.isArray(changes)) {
+    if (
+      !Array.isArray(changes) ||
+      !Array.isArray(shopSwaps)
+    ) {
       throw new Error(
         "Temporary changes could not be loaded."
       );
+    }
+
+    // Group saved shop swaps by change ID
+    // for one cancel button per assignment.
+
+    const swapGroups = new Map();
+
+    for (const swap of shopSwaps) {
+      if (!swapGroups.has(swap.change_id)) {
+        swapGroups.set(swap.change_id, {
+          kind: "SHOP_SWAP",
+          change_id: swap.change_id,
+          entries: [],
+        });
+      }
+
+      swapGroups
+        .get(swap.change_id)
+        .entries.push(swap);
     }
 
     setPreview({
@@ -709,7 +732,10 @@ export default function AdminDutyControlPanel({
           cycleDay(date, savedAnchor)
       ),
 
-      changes,
+      changes: [
+        ...changes,
+        ...swapGroups.values(),
+      ],
     });
   }
 
@@ -735,9 +761,9 @@ export default function AdminDutyControlPanel({
     }
   }
 
-  // STAGE 10: CANCEL A SAVED TEMPORARY CHANGE
+  // CANCEL MOVE / HALF-DAY / SHOP SWAP
 
-  async function cancelTemporary(changeId) {
+  async function cancelTemporary(changeId, kind) {
     if (
       busy ||
       !changeId ||
@@ -748,7 +774,7 @@ export default function AdminDutyControlPanel({
 
     if (
       !window.confirm(
-        "Cancel this temporary change for today and all remaining future dates?"
+        "Cancel this change for all remaining future dates?"
       )
     ) {
       return;
@@ -759,22 +785,22 @@ export default function AdminDutyControlPanel({
     setNotice("");
 
     try {
-      const result = await rpc(
-        "tl_rota_temp_cancel",
-        {
-          p_change_id: changeId,
-          p_reason: reason.trim(),
-          p_expected_version: version,
-        }
-      );
+      const cancelRpc =
+        kind === "SHOP_SWAP"
+          ? "tl_rota_shop_swap_cancel"
+          : "tl_rota_temp_cancel";
+
+      const result = await rpc(cancelRpc, {
+        p_change_id: changeId,
+        p_reason: reason.trim(),
+        p_expected_version: version,
+      });
 
       if (result?.success !== true) {
         throw new Error("Cancel not confirmed.");
       }
 
       await load();
-
-      // Refresh selected date immediately.
       await fetchDatePreview(fromDate);
 
       setReason("");
@@ -794,6 +820,23 @@ export default function AdminDutyControlPanel({
   }
 
   function temporaryLine(entry, kind) {
+    if (kind === "SHOP_SWAP") {
+      const shopA =
+        shopById.get(
+          entry.employee_a_destination_shop
+        ) || "Shop";
+
+      const shopB =
+        shopById.get(
+          entry.employee_b_destination_shop
+        ) || "Shop";
+
+      return (
+        `${name(entry.employee_a_id)} → ${shopA}` +
+        ` · ${name(entry.employee_b_id)} → ${shopB}`
+      );
+    }
+
     if (kind === "HALF_DAY") {
       return (
         `${name(entry.reliever_employee_id)} → ` +
@@ -809,8 +852,6 @@ export default function AdminDutyControlPanel({
       ? `${name(entry.reliever_employee_id)} relieves ${name(entry.covered_employee_id)}`
       : `${name(entry.covered_employee_id)} · relief removed for this date`;
   }
-
-  // MAIN PANEL
 
   if (
     !baseUrl ||
@@ -838,7 +879,7 @@ export default function AdminDutyControlPanel({
         color: "#0f172a",
       }}
     >
-      {/* HEADER */}
+      {/* ROTA HEADER */}
 
       <div
         style={{
@@ -937,7 +978,7 @@ export default function AdminDutyControlPanel({
         </div>
       </div>
 
-      {/* EXISTING COMPACT MONDAY-SUNDAY ROTA */}
+      {/* EXISTING COMPACT ROTA */}
 
       <div
         style={{
@@ -1013,7 +1054,7 @@ export default function AdminDutyControlPanel({
                 </span>
               )}
 
-            {/* RELIEF ENTRIES */}
+            {/* RELIEF PAIRS */}
 
             {byDay[day].pairs.map((pair) => (
               <div
@@ -1080,7 +1121,7 @@ export default function AdminDutyControlPanel({
               </div>
             ))}
 
-            {/* PERMANENT INDIVIDUAL OFF */}
+            {/* PERMANENT OFF ENTRIES */}
 
             {byDay[day].offs.map((off) => (
               <div
@@ -1100,11 +1141,7 @@ export default function AdminDutyControlPanel({
                   }}
                 >
                   <b>{name(off.employee_id)}</b>{" "}
-                  <b
-                    style={{
-                      color: "#b91c1c",
-                    }}
-                  >
+                  <b style={{ color: "#b91c1c" }}>
                     — OFF
                   </b>
                 </span>
@@ -1125,7 +1162,7 @@ export default function AdminDutyControlPanel({
               </div>
             ))}
 
-            {/* ADD / EDIT */}
+            {/* RELIEF / OFF EDITOR */}
 
             {editor?.day === day && (
               <div
@@ -1238,7 +1275,7 @@ export default function AdminDutyControlPanel({
         ))}
       </div>
 
-      {/* TEMPORARY MOVE / SWAP / HALF-DAY */}
+      {/* TEMPORARY CONTROLS */}
 
       <div
         style={{
@@ -1411,8 +1448,6 @@ export default function AdminDutyControlPanel({
           )}
         </div>
 
-        {/* HALF-DAY TIMES */}
-
         {mode === "HALF" && (
           <div
             style={{
@@ -1497,7 +1532,7 @@ export default function AdminDutyControlPanel({
           </button>
         </div>
 
-        {/* STAGE 10: PREVIEW WITH CANCEL */}
+        {/* DATE PREVIEW AND CANCEL BUTTONS */}
 
         {preview && (
           <div
@@ -1568,7 +1603,9 @@ export default function AdminDutyControlPanel({
                       <b>
                         {change.kind === "HALF_DAY"
                           ? "Half-Day"
-                          : "Move / Swap"}
+                          : change.kind === "SHOP_SWAP"
+                            ? "Shop Swap"
+                            : "Move / Swap"}
                       </b>
 
                       {(change.entries || []).map(
@@ -1595,7 +1632,8 @@ export default function AdminDutyControlPanel({
                       }
                       onClick={() =>
                         cancelTemporary(
-                          change.change_id
+                          change.change_id,
+                          change.kind
                         )
                       }
                     >
@@ -1628,7 +1666,7 @@ export default function AdminDutyControlPanel({
         )}
       </div>
 
-      {/* ONE SHARED REASON FIELD */}
+      {/* ONE REASON FIELD */}
 
       <div
         style={{
