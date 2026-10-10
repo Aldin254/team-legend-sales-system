@@ -1,23 +1,9 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminDutyControlPanelLegacy from "./AdminDutyControlPanelLegacy";
 
-const DAYS = [
-  [1, "Monday"],
-  [2, "Tuesday"],
-  [3, "Wednesday"],
-  [4, "Thursday"],
-  [5, "Friday"],
-  [6, "Saturday"],
-  [7, "Sunday"],
-];
+const ROTATION_SHOPS = ["3T", "ARUSHA", "KINGS", "NYIKA02"];
 
 const fieldStyle = {
   width: "100%",
@@ -82,6 +68,37 @@ function Field({ label, children }) {
   );
 }
 
+function dateIsMonday(date) {
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+    new Date(`${date}T12:00:00Z`).getUTCDay() === 1
+  );
+}
+
+function statusText(duty) {
+  if (!duty) return "Not available";
+
+  const status = duty.effective_status;
+  const shift = duty.shift_period;
+
+  if (status === "OFF_DUTY") return "OFF";
+  if (status === "UNASSIGNED") return "NO SHOP ASSIGNED";
+
+  if (status === "NEEDS_CONFIRMATION") {
+    return "NEEDS CONFIRMATION";
+  }
+
+  if (shift === "DAY") return "DAY";
+  if (shift === "NIGHT") return "NIGHT";
+  if (shift === "DAY_RELIEF") return "DAY RELIEF";
+
+  if (status === "ON_DUTY") {
+    return "WORKING (SHIFT NOT SPECIFIED)";
+  }
+
+  return status || "UNKNOWN";
+}
+
 function MasterDutySection({
   supabaseUrl,
   supabaseAnonKey,
@@ -93,10 +110,10 @@ function MasterDutySection({
   const [employees, setEmployees] = useState([]);
   const [plan, setPlan] = useState([]);
   const [preview, setPreview] = useState([]);
-  const [weeklyRules, setWeeklyRules] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [notice, setNotice] = useState("");
   const [failed, setFailed] = useState(false);
 
@@ -104,27 +121,12 @@ function MasterDutySection({
   const [status, setStatus] = useState("OFF_DUTY");
   const [dutyShop, setDutyShop] = useState("");
 
-  const [weeklyShop, setWeeklyShop] = useState("");
-  const [cycleWeek, setCycleWeek] = useState("1");
-  const [weekday, setWeekday] = useState("1");
-  const [offGroup, setOffGroup] = useState("1");
-  const [reliefId, setReliefId] = useState("");
-
-  const base = String(supabaseUrl || "").replace(
-    /\/+$/,
-    ""
-  );
-
-  // ================================================
-  // SUPABASE RPC
-  // ================================================
+  const base = String(supabaseUrl || "").replace(/\/+$/, "");
 
   const rpc = useCallback(
     async (name, args = {}) => {
       if (!base || !supabaseAnonKey || !accessToken) {
-        throw new Error(
-          "Supabase connection details are missing."
-        );
+        throw new Error("Supabase connection details are missing.");
       }
 
       const response = await fetch(
@@ -140,9 +142,7 @@ function MasterDutySection({
         }
       );
 
-      const result = await response
-        .json()
-        .catch(() => null);
+      const result = await response.json().catch(() => null);
 
       if (!response.ok) {
         throw new Error(
@@ -157,60 +157,50 @@ function MasterDutySection({
     [base, supabaseAnonKey, accessToken]
   );
 
-  // ================================================
-  // LOAD MASTER EMPLOYEES AND DUTY
-  // ================================================
-
   const load = useCallback(async () => {
     if (!base || !supabaseAnonKey || !accessToken) {
       setLoading(false);
+      setFailed(true);
+      setNotice("Supabase connection details are missing.");
       return;
     }
 
     setLoading(true);
 
     try {
-      const [
-        people,
-        daily,
-        effective,
-        weekly,
-      ] = await Promise.all([
+      const [people, daily, effective] = await Promise.all([
         rpc("tl_admin_master_employee_list"),
 
         rpc("tl_admin_master_duty_plan_for_date", {
           p_duty_date: date,
         }),
 
-        rpc("tl_admin_master_duty_preview_v2", {
+        rpc("tl_admin_master_duty_preview_v3", {
           p_duty_date: date,
         }),
-
-        rpc("tl_admin_master_24h_weekly_list"),
       ]);
 
-      setEmployees(
-        Array.isArray(people) ? people : []
-      );
+      if (
+        !Array.isArray(people) ||
+        !Array.isArray(daily) ||
+        !Array.isArray(effective)
+      ) {
+        throw new Error(
+          "The Master Duty server returned an unexpected result."
+        );
+      }
 
-      setPlan(
-        Array.isArray(daily) ? daily : []
-      );
-
-      setPreview(
-        Array.isArray(effective) ? effective : []
-      );
-
-      setWeeklyRules(
-        Array.isArray(weekly) ? weekly : []
-      );
+      setEmployees(people);
+      setPlan(daily);
+      setPreview(effective);
 
       setFailed(false);
-    } catch (e) {
+      setNotice("");
+    } catch (error) {
       setFailed(true);
 
       setNotice(
-        e?.message || "Unable to load Master Duty Rota."
+        error?.message || "Unable to load Master Duty Rota."
       );
     } finally {
       setLoading(false);
@@ -227,139 +217,75 @@ function MasterDutySection({
     load();
   }, [load]);
 
-  // ================================================
-  // MASTER EMPLOYEES
-  // ================================================
-
   const active = useMemo(
     () =>
       employees.filter(
-        (e) => e.employment_status === "ACTIVE"
+        (employee) => employee.employment_status === "ACTIVE"
       ),
     [employees]
   );
 
-  const relief = useMemo(
+  const shops = useMemo(() => {
+    const byId = new Map();
+
+    active.forEach((employee) => {
+      if (employee.shop_id) {
+        byId.set(
+          employee.shop_id,
+          employee.shop_name || employee.shop_id
+        );
+      }
+    });
+
+    return [...byId]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [active]);
+
+  const byEmployeeId = useMemo(
     () =>
-      active.filter(
-        (e) => e.assignment_type === "NOT_FIXED"
+      new Map(
+        active.map((employee) => [
+          employee.employee_id,
+          employee,
+        ])
       ),
     [active]
   );
 
-  // ================================================
-  // SHOPS
-  // ================================================
-
-  const shops = useMemo(() => {
-    const byId = new Map();
-
-    active.forEach((e) => {
-      if (e.shop_id) {
-        byId.set(
-          e.shop_id,
-          e.shop_name || e.shop_id
-        );
-      }
-    });
-
-    return [...byId]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
-  }, [active]);
-
-  const shops24 = useMemo(() => {
-    const byId = new Map();
-
-    active.forEach((e) => {
-      if (
-        e.shop_type === "24_HOUR" &&
-        e.shop_id
-      ) {
-        byId.set(
-          e.shop_id,
-          e.shop_name || e.shop_id
-        );
-      }
-    });
-
-    return [...byId]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
-  }, [active]);
-
-  useEffect(() => {
-    if (!weeklyShop && shops24.length) {
-      setWeeklyShop(shops24[0].id);
-    }
-  }, [shops24, weeklyShop]);
-
-  // ================================================
-  // LOAD EXISTING WEEKLY RULE
-  // ================================================
-
-  useEffect(() => {
-    const rule = weeklyRules.find(
-      (r) =>
-        r.shop_id === weeklyShop &&
-        Number(r.cycle_week) ===
-          Number(cycleWeek) &&
-        Number(r.weekday_iso) ===
-          Number(weekday)
-    );
-
-    setOffGroup(
-      String(rule?.off_group_number ?? 1)
-    );
-
-    setReliefId(
-      rule?.relief_employee_id || ""
-    );
-  }, [
-    weeklyRules,
-    weeklyShop,
-    cycleWeek,
-    weekday,
-  ]);
-
-  const selected = active.find(
-    (e) => e.employee_id === employeeId
+  const previewByEmployeeId = useMemo(
+    () =>
+      new Map(
+        preview.map((duty) => [
+          duty.employee_id,
+          duty,
+        ])
+      ),
+    [preview]
   );
 
-  const group1 = active.find(
-    (e) =>
-      e.shop_id === weeklyShop &&
-      Number(e.group_number) === 1
+  const selected = byEmployeeId.get(employeeId);
+
+  const monday = dateIsMonday(date);
+
+  const cycleRow = preview.find(
+    (duty) => duty.rotation_normal_off_week != null
   );
 
-  const group2 = active.find(
-    (e) =>
-      e.shop_id === weeklyShop &&
-      Number(e.group_number) === 2
-  );
-
-  // ================================================
-  // SELECT EMPLOYEE
-  // ================================================
+  const cycleLabel = cycleRow
+    ? `WEEK ${cycleRow.rotation_normal_off_week}`
+    : "";
 
   function chooseEmployee(id) {
     setEmployeeId(id);
 
-    const person = active.find(
-      (e) => e.employee_id === id
-    );
+    const employee = byEmployeeId.get(id);
 
     const existing = plan.find(
-      (p) => p.employee_id === id
+      (duty) => duty.employee_id === id
     );
 
-    const resolved = preview.find(
-      (p) => p.employee_id === id
-    );
+    const resolved = previewByEmployeeId.get(id);
 
     const nextStatus =
       existing?.confirmed_status ||
@@ -369,9 +295,9 @@ function MasterDutySection({
         "UNASSIGNED",
       ].includes(resolved?.effective_status)
         ? resolved.effective_status
-        : person?.assignment_type === "NOT_FIXED"
-        ? "UNASSIGNED"
-        : "ON_DUTY");
+        : employee?.assignment_type === "NOT_FIXED"
+          ? "UNASSIGNED"
+          : "ON_DUTY");
 
     setStatus(nextStatus);
 
@@ -379,25 +305,18 @@ function MasterDutySection({
       nextStatus === "ON_DUTY"
         ? existing?.confirmed_shop_id ||
             resolved?.effective_shop_id ||
-            person?.shop_id ||
+            employee?.shop_id ||
             ""
         : ""
     );
   }
 
-  // ================================================
-  // CONFIRM DAILY DUTY
-  // ================================================
-
   async function confirmDaily(event) {
     event.preventDefault();
 
-    if (!selected) return;
+    if (!selected || saving) return;
 
-    if (
-      status === "ON_DUTY" &&
-      !dutyShop
-    ) {
+    if (status === "ON_DUTY" && !dutyShop) {
       setFailed(true);
       setNotice("Choose a working shop.");
       return;
@@ -414,9 +333,20 @@ function MasterDutySection({
       return;
     }
 
+    const label =
+      status === "ON_DUTY"
+        ? `WORKING at ${
+            shops.find((shop) => shop.id === dutyShop)?.name ||
+            "selected shop"
+          }`
+        : status === "OFF_DUTY"
+          ? "OFF"
+          : "NO SHOP ASSIGNED";
+
     if (
       !window.confirm(
-        `Confirm ${selected.full_name}: ${status} on ${date}?`
+        `Confirm ${selected.full_name}: ${label} on ${date}? ` +
+          "This overrides the automatic rota for this date."
       )
     ) {
       return;
@@ -430,129 +360,27 @@ function MasterDutySection({
         p_duty_date: date,
         p_status: status,
         p_shop_id:
-          status === "ON_DUTY"
-            ? dutyShop
-            : null,
+          status === "ON_DUTY" ? dutyShop : null,
       });
 
       await load();
 
       setFailed(false);
-      setNotice("Daily duty confirmed.");
+      setNotice(
+        "Daily duty confirmed. This date now has an Admin override."
+      );
 
       onChanged?.();
-    } catch (e) {
+    } catch (error) {
       setFailed(true);
 
       setNotice(
-        e?.message ||
-          "Daily duty confirmation failed."
+        error?.message || "Daily duty confirmation failed."
       );
     } finally {
       setSaving(false);
     }
   }
-
-  // ================================================
-  // CONFIRM WEEKLY GROUP OFF / RELIEF
-  // ================================================
-
-  async function confirmWeekly(event) {
-    event.preventDefault();
-
-    if (!weeklyShop) return;
-
-    if (
-      !window.confirm(
-        "Save repeating 24-hour Group OFF / relief rule?"
-      )
-    ) {
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      await rpc(
-        "tl_admin_master_24h_weekly_set",
-        {
-          p_shop_id: weeklyShop,
-          p_cycle_week: Number(cycleWeek),
-          p_weekday_iso: Number(weekday),
-          p_off_group: Number(offGroup),
-          p_relief_employee_id:
-            reliefId || null,
-        }
-      );
-
-      await load();
-
-      setFailed(false);
-
-      setNotice(
-        "Weekly group and relief rule saved."
-      );
-
-      onChanged?.();
-    } catch (e) {
-      setFailed(true);
-
-      setNotice(
-        e?.message || "Weekly rule failed."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ================================================
-  // SWAP GROUPS
-  // ================================================
-
-  async function swapGroups() {
-    if (!group1 || !group2) return;
-
-    if (
-      !window.confirm(
-        `Permanently swap ${group1.full_name} and ${group2.full_name} between Groups 1 and 2?`
-      )
-    ) {
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      await rpc("tl_admin_set_24h_groups", {
-        p_shop_id: weeklyShop,
-
-        p_group1_employee_id:
-          group2.employee_id,
-
-        p_group2_employee_id:
-          group1.employee_id,
-      });
-
-      await load();
-
-      setFailed(false);
-      setNotice("Group positions swapped.");
-
-      onChanged?.();
-    } catch (e) {
-      setFailed(true);
-
-      setNotice(
-        e?.message || "Could not swap groups."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ================================================
-  // RENDER MASTER ROTA
-  // ================================================
 
   return (
     <section
@@ -572,19 +400,24 @@ function MasterDutySection({
         }}
       >
         <div>
-          <strong style={{ fontSize: 18 }}>
+          <strong
+            style={{
+              fontSize: 18,
+              color: "#e2e8f0",
+            }}
+          >
             Master Employee Duty Rota
           </strong>
 
           <div
             style={{
               fontSize: 12,
-              color: "#64748b",
+              color: "#94a3b8",
               marginTop: 3,
             }}
           >
-            Employee list · future planning ·
-            relief · 24-hour groups
+            All employees · daily confirmations · automatic
+            24-hour rotation
           </div>
         </div>
 
@@ -605,11 +438,9 @@ function MasterDutySection({
             borderRadius: 9,
             fontSize: 12,
             fontWeight: 750,
-
             background: failed
               ? "#fef2f2"
               : "#f0fdf4",
-
             color: failed
               ? "#991b1b"
               : "#166534",
@@ -618,8 +449,6 @@ function MasterDutySection({
           {notice}
         </div>
       )}
-
-      {/* DAILY DUTY */}
 
       <form
         onSubmit={confirmDaily}
@@ -635,8 +464,8 @@ function MasterDutySection({
             style={fieldStyle}
             min={todayKenya()}
             value={date}
-            onChange={(e) => {
-              setDate(e.target.value);
+            onChange={(event) => {
+              setDate(event.target.value);
               setEmployeeId("");
             }}
             required
@@ -647,8 +476,8 @@ function MasterDutySection({
           <select
             style={fieldStyle}
             value={employeeId}
-            onChange={(e) =>
-              chooseEmployee(e.target.value)
+            onChange={(event) =>
+              chooseEmployee(event.target.value)
             }
             required
           >
@@ -656,15 +485,15 @@ function MasterDutySection({
               Select employee
             </option>
 
-            {active.map((e) => (
+            {active.map((employee) => (
               <option
-                key={e.employee_id}
-                value={e.employee_id}
+                key={employee.employee_id}
+                value={employee.employee_id}
               >
-                {e.full_name} —{" "}
-                {e.assignment_type === "NOT_FIXED"
+                {employee.full_name} —{" "}
+                {employee.assignment_type === "NOT_FIXED"
                   ? "Not Fixed"
-                  : e.shop_name}
+                  : employee.shop_name}
               </option>
             ))}
           </select>
@@ -674,17 +503,13 @@ function MasterDutySection({
           <select
             style={fieldStyle}
             value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
+            onChange={(event) => {
+              setStatus(event.target.value);
 
-              if (
-                e.target.value !== "ON_DUTY"
-              ) {
+              if (event.target.value !== "ON_DUTY") {
                 setDutyShop("");
               } else {
-                setDutyShop(
-                  selected?.shop_id || ""
-                );
+                setDutyShop(selected?.shop_id || "");
               }
             }}
           >
@@ -693,11 +518,10 @@ function MasterDutySection({
             </option>
 
             <option value="OFF_DUTY">
-              OFF — no salary panel
+              OFF — no duty
             </option>
 
-            {selected?.assignment_type ===
-              "NOT_FIXED" && (
+            {selected?.assignment_type === "NOT_FIXED" && (
               <option value="UNASSIGNED">
                 NO SHOP ASSIGNED — available relief
               </option>
@@ -710,8 +534,8 @@ function MasterDutySection({
             <select
               style={fieldStyle}
               value={dutyShop}
-              onChange={(e) =>
-                setDutyShop(e.target.value)
+              onChange={(event) =>
+                setDutyShop(event.target.value)
               }
               required
             >
@@ -719,17 +543,28 @@ function MasterDutySection({
                 Select shop
               </option>
 
-              {shops.map((s) => (
+              {shops.map((shop) => (
                 <option
-                  key={s.id}
-                  value={s.id}
+                  key={shop.id}
+                  value={shop.id}
                 >
-                  {s.name}
+                  {shop.name}
                 </option>
               ))}
             </select>
           </Field>
         )}
+
+        <div
+          style={{
+            fontSize: 12,
+            color: "#64748b",
+          }}
+        >
+          A confirmed daily duty overrides the automatic
+          rota for that employee and date. This form
+          does not assign a DAY or NIGHT shift period.
+        </div>
 
         <button
           type="submit"
@@ -746,172 +581,303 @@ function MasterDutySection({
         </button>
       </form>
 
-      {/* 24-HOUR WEEKLY ROTA */}
-
-      <form
-        onSubmit={confirmWeekly}
-        style={cardStyle}
-      >
+      <div style={cardStyle}>
         <strong>
-          2. Confirm 24-hour Group OFF / relief
+          2. Automatic 24-hour DAY / NIGHT rotation
         </strong>
-
-        <Field label="24-hour shop">
-          <select
-            style={fieldStyle}
-            value={weeklyShop}
-            onChange={(e) =>
-              setWeeklyShop(e.target.value)
-            }
-            required
-          >
-            <option value="">
-              Select shop
-            </option>
-
-            {shops24.map((s) => (
-              <option
-                key={s.id}
-                value={s.id}
-              >
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </Field>
 
         <div
           style={{
-            padding: 10,
-            background: "#f8fafc",
-            borderRadius: 9,
+            color: "#64748b",
             fontSize: 12,
           }}
         >
-          <div>
-            <strong>Group 1:</strong>{" "}
-            {group1?.full_name ||
-              "Not assigned"}
-          </div>
-
-          <div>
-            <strong>Group 2:</strong>{" "}
-            {group2?.full_name ||
-              "Not assigned"}
-          </div>
-
-          <button
-            type="button"
-            style={{
-              ...buttonStyle,
-              marginTop: 9,
-              background: "#475569",
-            }}
-            onClick={swapGroups}
-            disabled={
-              saving ||
-              !group1 ||
-              !group2
-            }
-          >
-            Swap Group 1 / Group 2 permanently
-          </button>
+          {date}
+          {cycleLabel
+            ? ` · Normal OFF rota ${cycleLabel}`
+            : ""}
+          {monday
+            ? " · Monday changeover"
+            : ""}
         </div>
 
-        <Field label="Two-week cycle">
-          <select
-            style={fieldStyle}
-            value={cycleWeek}
-            onChange={(e) =>
-              setCycleWeek(e.target.value)
-            }
-          >
-            <option value="1">
-              Week 1
-            </option>
-
-            <option value="2">
-              Week 2
-            </option>
-          </select>
-        </Field>
-
-        <Field label="Day">
-          <select
-            style={fieldStyle}
-            value={weekday}
-            onChange={(e) =>
-              setWeekday(e.target.value)
-            }
-          >
-            {DAYS.map(([n, day]) => (
-              <option
-                key={n}
-                value={n}
-              >
-                {day}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Group OFF">
-          <select
-            style={fieldStyle}
-            value={offGroup}
-            onChange={(e) =>
-              setOffGroup(e.target.value)
-            }
-          >
-            <option value="1">
-              Group 1 OFF
-            </option>
-
-            <option value="2">
-              Group 2 OFF
-            </option>
-          </select>
-        </Field>
-
-        <Field label="Relief employee (optional)">
-          <select
-            style={fieldStyle}
-            value={reliefId}
-            onChange={(e) =>
-              setReliefId(e.target.value)
-            }
-          >
-            <option value="">
-              No relief assigned
-            </option>
-
-            {relief.map((e) => (
-              <option
-                key={e.employee_id}
-                value={e.employee_id}
-              >
-                {e.full_name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <button
-          type="submit"
-          style={buttonStyle}
-          disabled={
-            saving ||
-            loading ||
-            !weeklyShop
-          }
+        <div
+          style={{
+            fontSize: 12,
+            color: "#475569",
+          }}
         >
-          {saving
-            ? "Saving..."
-            : "Confirm repeating weekly rule"}
-        </button>
-      </form>
+          Only 3T, ARUSHA, KINGS and NYIKA02
+          rotate weekly. The previous NIGHT employee
+          takes the new Monday OFF and returns DAY
+          on Tuesday. Manual repeating Group OFF
+          controls have been removed from this
+          Master section.
+        </div>
 
-      {/* DUTY PREVIEW */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(min(100%, 270px), 1fr))",
+            gap: 10,
+          }}
+        >
+          {ROTATION_SHOPS.map((shopName) => {
+            const shopEmployees = active.filter(
+              (employee) =>
+                employee.shop_name === shopName &&
+                employee.shop_type === "24_HOUR" &&
+                employee.assignment_type === "FIXED"
+            );
+
+            const first = shopEmployees.find(
+              (employee) =>
+                Number(employee.group_number) === 1
+            );
+
+            const second = shopEmployees.find(
+              (employee) =>
+                Number(employee.group_number) === 2
+            );
+
+            const firstDuty =
+              first &&
+              previewByEmployeeId.get(
+                first.employee_id
+              );
+
+            const secondDuty =
+              second &&
+              previewByEmployeeId.get(
+                second.employee_id
+              );
+
+            const reference =
+              firstDuty || secondDuty;
+
+            const reliefPerson =
+              byEmployeeId.get(
+                reference?.rotation_monday_relief_employee_id
+              );
+
+            const shopId =
+              first?.shop_id || second?.shop_id;
+
+            const dailyRelief = monday
+              ? active.filter(
+                  (employee) =>
+                    employee.assignment_type ===
+                      "NOT_FIXED" &&
+                    plan.some(
+                      (planned) =>
+                        planned.employee_id ===
+                          employee.employee_id &&
+                        planned.confirmed_status ===
+                          "ON_DUTY" &&
+                        planned.confirmed_shop_id ===
+                          shopId
+                    )
+                )
+              : [];
+
+            const missingRelief =
+              monday &&
+              reference?.rotation_monday_relief_unassigned ===
+                true;
+
+            const reliefDuty =
+              reliefPerson &&
+              previewByEmployeeId.get(
+                reliefPerson.employee_id
+              );
+
+            const reliefConflict =
+              monday &&
+              reliefPerson &&
+              (reliefDuty?.effective_status !==
+                "ON_DUTY" ||
+                reliefDuty?.effective_shop_id !==
+                  shopId);
+
+            const anyConflict = [
+              firstDuty,
+              secondDuty,
+            ].some(
+              (duty) =>
+                duty?.rotation_conflict === true
+            );
+
+            return (
+              <div
+                key={shopName}
+                style={{
+                  border: "1px solid #dbe4ed",
+                  borderRadius: 11,
+                  padding: 12,
+                  display: "grid",
+                  gap: 8,
+                  background: "#f8fafc",
+                }}
+              >
+                <strong
+                  style={{
+                    fontSize: 14,
+                  }}
+                >
+                  {shopName}
+                </strong>
+
+                {[
+                  [first, firstDuty, 1],
+                  [second, secondDuty, 2],
+                ].map(
+                  ([employee, duty, group]) => (
+                    <div
+                      key={group}
+                      style={{
+                        display: "flex",
+                        justifyContent:
+                          "space-between",
+                        gap: 8,
+                        fontSize: 12,
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div
+                        style={{
+                          minWidth: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 750,
+                          }}
+                        >
+                          {employee?.full_name ||
+                            `Group ${group} not assigned`}
+                        </div>
+
+                        <div
+                          style={{
+                            color: "#64748b",
+                            fontSize: 11,
+                          }}
+                        >
+                          Group {group}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          fontWeight: 850,
+                          textAlign: "right",
+                          color:
+                            duty?.rotation_conflict
+                              ? "#b45309"
+                              : duty?.effective_status ===
+                                  "OFF_DUTY"
+                                ? "#b91c1c"
+                                : "#166534",
+                        }}
+                      >
+                        {statusText(duty)}
+
+                        {duty?.duty_source ===
+                          "MASTER_DAILY_CONFIRMED" && (
+                          <div
+                            style={{
+                              fontWeight: 500,
+                              fontSize: 10,
+                            }}
+                          >
+                            Admin override
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {monday && (
+                  <div
+                    style={{
+                      borderTop:
+                        "1px solid #e2e8f0",
+                      paddingTop: 8,
+                      fontSize: 12,
+                      color:
+                        (missingRelief &&
+                          !dailyRelief.length) ||
+                        reliefConflict
+                          ? "#b91c1c"
+                          : "#334155",
+                    }}
+                  >
+                    <strong>
+                      Monday DAY relief:
+                    </strong>{" "}
+
+                    {dailyRelief.length
+                      ? `${dailyRelief
+                          .map(
+                            (person) =>
+                              person.full_name
+                          )
+                          .join(", ")} — working confirmed, DAY period not set`
+                      : missingRelief
+                        ? "NEEDS ADMIN ASSIGNMENT"
+                        : reliefConflict
+                          ? `${reliefPerson.full_name} — CHECK ASSIGNMENT`
+                          : reliefPerson?.full_name ||
+                            "Not configured"}
+                  </div>
+                )}
+
+                {anyConflict && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#b45309",
+                      fontWeight: 750,
+                    }}
+                  >
+                    Existing assignment conflicts
+                    with rotation — Admin review
+                    required.
+                  </div>
+                )}
+
+                {!firstDuty &&
+                  !secondDuty && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#b91c1c",
+                      }}
+                    >
+                      No V3 preview returned
+                      for this shop.
+                    </div>
+                  )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            color: "#64748b",
+            fontSize: 12,
+          }}
+        >
+          NYIKA02 has no designated Monday
+          relief employee. Admin must confirm
+          coverage. A permanent Group 1 /
+          Group 2 swap needs a separate
+          rotation-anchor review.
+        </div>
+      </div>
 
       <div style={cardStyle}>
         <strong>
@@ -924,21 +890,23 @@ function MasterDutySection({
             fontSize: 12,
           }}
         >
-          Live Salary Panels are not connected
-          yet. Unconfirmed employees may need review.
+          V3 preview. Salary Panels are NOT connected
+          to Master Duty yet. A confirmed daily
+          override may show WORKING without a
+          DAY/NIGHT shift period.
         </div>
 
         <div
           style={{
             display: "grid",
             gap: 6,
-            maxHeight: 300,
+            maxHeight: 350,
             overflowY: "auto",
           }}
         >
-          {preview.map((p) => (
+          {preview.map((duty) => (
             <div
-              key={p.employee_id}
+              key={duty.employee_id}
               style={{
                 display: "flex",
                 justifyContent:
@@ -953,14 +921,29 @@ function MasterDutySection({
               }}
             >
               <strong>
-                {p.employee_name}
+                {duty.employee_name ||
+                  byEmployeeId.get(
+                    duty.employee_id
+                  )?.full_name ||
+                  "Unknown employee"}
               </strong>
 
-              <span>
-                {p.effective_status}
+              <span
+                style={{
+                  color:
+                    duty.rotation_conflict
+                      ? "#b45309"
+                      : "#334155",
+                }}
+              >
+                {statusText(duty)}
 
-                {p.effective_shop_name
-                  ? ` — ${p.effective_shop_name}`
+                {duty.effective_shop_name
+                  ? ` — ${duty.effective_shop_name}`
+                  : ""}
+
+                {duty.rotation_conflict
+                  ? " · REVIEW"
                   : ""}
               </span>
             </div>
@@ -968,7 +951,11 @@ function MasterDutySection({
 
           {!loading &&
             preview.length === 0 && (
-              <span style={{ fontSize: 12 }}>
+              <span
+                style={{
+                  fontSize: 12,
+                }}
+              >
                 No duty preview available.
               </span>
             )}
@@ -977,11 +964,6 @@ function MasterDutySection({
     </section>
   );
 }
-
-// =====================================================
-// MAIN DUTY CONTROL
-// MASTER ROTA + ORIGINAL DUTY CONTROL
-// =====================================================
 
 export default function AdminDutyControlPanel(props) {
   return (
