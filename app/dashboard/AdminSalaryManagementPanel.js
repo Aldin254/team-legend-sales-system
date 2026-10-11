@@ -8,18 +8,25 @@ import {
   useState,
 } from "react";
 
+// ==================================================
 // TEAM LEGEND / NYIKA
-// MASTER EMPLOYEE SALARY MANAGEMENT
+// ADMIN SALARY MANAGEMENT - MASTER EMPLOYEE V3
 //
-// One Master Employee = One Salary Card
-// No Salary Slots
-// No separate employee creation
-// Names and salaries from Master Employees
-// Existing advances and PINs preserved
+// One salary card per active Master Employee.
+// Weekly salary and name are read-only.
+// All existing advances and PINs are preserved.
 //
-// Cashier salary payments are handled separately.
+// NEW:
+// Manual Salary Payment Shop
+// AUTO = follow Duty/Rota
+// MANUAL = selected shop overrides Duty/Rota
+// Override applies to salary payment only.
+// Every manual shop change requires a reason.
+//
+// No legacy salary slots or separate registration.
+// ==================================================
 
-const blankDraft = () => ({
+const emptyDraft = () => ({
   employeeId: "",
   deduction: "0",
   pin: "",
@@ -27,74 +34,72 @@ const blankDraft = () => ({
   advanceNote: "",
   correctedBalance: "0",
   correctionReason: "",
+  manualShopId: "",
+  routingReason: "",
 });
 
-// ============================================
-// MONEY HELPERS
-// ============================================
+function makeDraft(employee) {
+  return {
+    ...emptyDraft(),
+    employeeId: employee.employee_id,
+    deduction: String(
+      employee.weekly_advance_deduction ?? 0
+    ),
+    correctedBalance: String(
+      employee.advance_balance ?? 0
+    ),
+    manualShopId:
+      employee.manual_salary_shop_id || "",
+  };
+}
 
-const money = (value) =>
-  (
-    Number.isFinite(Number(value))
-      ? Number(value)
-      : 0
+function money(value) {
+  const n = Number(value ?? 0);
+
+  return (
+    Number.isFinite(n) ? n : 0
   ).toLocaleString("en-KE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
 
 function parseMoney(value, allowZero = true) {
-  const raw = String(value ?? "").trim();
+  const text = String(value ?? "").trim();
 
-  if (!/^\d+(?:\.\d{1,2})?$/.test(raw)) {
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) {
     return null;
   }
 
-  const number = Number(raw);
+  const n = Number(text);
 
   if (
-    !Number.isFinite(number) ||
-    number > 1000000000 ||
-    (!allowZero && number <= 0)
+    !Number.isFinite(n) ||
+    n > 1000000000 ||
+    (!allowZero && n <= 0)
   ) {
     return null;
   }
 
-  return number;
+  return n;
 }
 
-function newDraft(employee) {
-  return {
-    ...blankDraft(),
-
-    employeeId: employee.employee_id,
-
-    deduction: String(
-      employee.weekly_advance_deduction ?? 0
-    ),
-
-    correctedBalance: String(
-      employee.advance_balance ?? 0
-    ),
-  };
-}
-
-function newRequestId() {
+function requestUuid() {
   if (
     typeof crypto === "undefined" ||
     !crypto.randomUUID
   ) {
     throw new Error(
-      "Your browser cannot generate a safe salary request ID."
+      "Secure request ID generation is unavailable."
     );
   }
 
   return crypto.randomUUID();
 }
 
-// ============================================
+// ==================================================
 // STYLES
-// ============================================
+// ==================================================
 
 const panelStyle = {
   backgroundColor: "#ffffff",
@@ -132,12 +137,6 @@ const buttonStyle = {
   color: "#ffffff",
 };
 
-const areaStyle = {
-  padding: 12,
-  border: "1px solid #e2e8f0",
-  borderRadius: 7,
-};
-
 const gridStyle = {
   display: "grid",
   gridTemplateColumns:
@@ -145,9 +144,11 @@ const gridStyle = {
   gap: 10,
 };
 
-// ============================================
-// FIELD COMPONENT
-// ============================================
+const areaStyle = {
+  padding: 12,
+  border: "1px solid #e2e8f0",
+  borderRadius: 7,
+};
 
 function Field({ label, children }) {
   return (
@@ -173,10 +174,6 @@ function Field({ label, children }) {
   );
 }
 
-// ============================================
-// STATUS COMPONENT
-// ============================================
-
 function Status({
   title,
   value,
@@ -188,11 +185,9 @@ function Status({
         textAlign: "center",
         padding: 9,
         borderRadius: 5,
-
         backgroundColor: danger
           ? "#fef2f2"
           : "#f8fafc",
-
         border: `1px solid ${
           danger ? "#ef4444" : "#cbd5e1"
         }`,
@@ -212,11 +207,9 @@ function Status({
         style={{
           fontSize: 12,
           fontWeight: 800,
-
           color: danger
             ? "#991b1b"
             : "#0f172a",
-
           marginTop: 4,
         }}
       >
@@ -226,9 +219,9 @@ function Status({
   );
 }
 
-// ============================================
-// MAIN COMPONENT
-// ============================================
+// ==================================================
+// MAIN PANEL
+// ==================================================
 
 export default function AdminSalaryManagementPanel({
   user,
@@ -242,22 +235,26 @@ export default function AdminSalaryManagementPanel({
   const accessToken =
     user?.access_token || null;
 
-  // ==========================================
+  // ==================================================
   // STATE
-  // ==========================================
+  // ==================================================
 
   const [employees, setEmployees] =
     useState([]);
 
-  const [
-    selectedEmployeeId,
-    setSelectedEmployeeId,
-  ] = useState("");
+  const [shops, setShops] =
+    useState([]);
+
+  const [selectedEmployeeId, setSelectedEmployeeId] =
+    useState("");
 
   const [draft, setDraft] =
-    useState(blankDraft);
+    useState(emptyDraft);
 
   const [loading, setLoading] =
+    useState(true);
+
+  const [shopsLoading, setShopsLoading] =
     useState(true);
 
   const [busyAction, setBusyAction] =
@@ -269,16 +266,15 @@ export default function AdminSalaryManagementPanel({
   const [isError, setIsError] =
     useState(false);
 
-  // Reuse financial request IDs after
-  // uncertain network failures.
-  // This helps prevent duplicate advances.
+  // Prevent duplicate financial transactions
+  // if a network request has an uncertain result.
 
   const pendingFinancialIds =
     useRef(new Map());
 
-  // ==========================================
+  // ==================================================
   // SUPABASE HEADERS
-  // ==========================================
+  // ==================================================
 
   const headers = useMemo(
     () => ({
@@ -296,9 +292,9 @@ export default function AdminSalaryManagementPanel({
     ]
   );
 
-  // ==========================================
+  // ==================================================
   // RPC HELPER
-  // ==========================================
+  // ==================================================
 
   const rpc = useCallback(
     async (
@@ -323,11 +319,8 @@ export default function AdminSalaryManagementPanel({
         )}/rest/v1/rpc/${functionName}`,
         {
           method: "POST",
-
           headers,
-
           body: JSON.stringify(body),
-
           cache: "no-store",
 
           ...(signal
@@ -359,9 +352,9 @@ export default function AdminSalaryManagementPanel({
     ]
   );
 
-  // ==========================================
-  // LOAD MASTER EMPLOYEE SALARIES
-  // ==========================================
+  // ==================================================
+  // LOAD ALL MASTER EMPLOYEE SALARY CARDS
+  // ==================================================
 
   const loadEmployees = useCallback(
     async (
@@ -399,8 +392,7 @@ export default function AdminSalaryManagementPanel({
                 previous
             )
               ? previous
-              : result[0]?.employee_id ||
-                ""
+              : result[0]?.employee_id || ""
         );
 
         if (!quiet) {
@@ -433,9 +425,56 @@ export default function AdminSalaryManagementPanel({
     [rpc]
   );
 
-  // ==========================================
-  // INITIAL LOAD + AUTO REFRESH
-  // ==========================================
+  // ==================================================
+  // LOAD ACTIVE PAYMENT SHOPS
+  // ==================================================
+
+  const loadPaymentShops = useCallback(
+    async (signal) => {
+      setShopsLoading(true);
+
+      try {
+        const result = await rpc(
+          "tl_salary_master_payment_shops",
+          {},
+          signal
+        );
+
+        if (!Array.isArray(result)) {
+          throw new Error(
+            "Invalid payment shop list."
+          );
+        }
+
+        if (!signal?.aborted) {
+          setShops(result);
+        }
+      } catch (error) {
+        if (
+          signal?.aborted ||
+          error?.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setIsError(true);
+
+        setMessage(
+          error?.message ||
+          "Unable to load salary payment shops."
+        );
+      } finally {
+        if (!signal?.aborted) {
+          setShopsLoading(false);
+        }
+      }
+    },
+    [rpc]
+  );
+
+  // ==================================================
+  // INITIAL LOAD AND BACKGROUND REFRESH
+  // ==================================================
 
   useEffect(() => {
     const controller =
@@ -445,11 +484,12 @@ export default function AdminSalaryManagementPanel({
       controller.signal
     );
 
-    // New Master Employees appear without
-    // separate salary registration.
-    //
-    // Background refresh does not overwrite
-    // partially edited employee fields.
+    loadPaymentShops(
+      controller.signal
+    );
+
+    // Lightweight employee refresh.
+    // Does not overwrite unsaved form fields.
 
     const timer = setInterval(
       () => {
@@ -470,11 +510,14 @@ export default function AdminSalaryManagementPanel({
       controller.abort();
       clearInterval(timer);
     };
-  }, [loadEmployees]);
+  }, [
+    loadEmployees,
+    loadPaymentShops,
+  ]);
 
-  // ==========================================
-  // SELECTED EMPLOYEE
-  // ==========================================
+  // ==================================================
+  // CURRENT EMPLOYEE
+  // ==================================================
 
   const selected = employees.find(
     (employee) =>
@@ -489,7 +532,7 @@ export default function AdminSalaryManagementPanel({
         selected.employee_id
     ) {
       setDraft(
-        newDraft(selected)
+        makeDraft(selected)
       );
     }
   }, [
@@ -497,10 +540,7 @@ export default function AdminSalaryManagementPanel({
     draft.employeeId,
   ]);
 
-  function update(
-    field,
-    value
-  ) {
+  function update(field, value) {
     setDraft(
       (previous) => ({
         ...previous,
@@ -519,7 +559,7 @@ export default function AdminSalaryManagementPanel({
 
     if (employee) {
       setDraft(
-        newDraft(employee)
+        makeDraft(employee)
       );
     }
 
@@ -527,9 +567,9 @@ export default function AdminSalaryManagementPanel({
     setIsError(false);
   }
 
-  // ==========================================
-  // PERFORM ADMIN ACTION
-  // ==========================================
+  // ==================================================
+  // EXISTING SALARY ACTIONS
+  // ==================================================
 
   async function perform(
     action,
@@ -562,7 +602,7 @@ export default function AdminSalaryManagementPanel({
 
       if (!requestId) {
         requestId =
-          newRequestId();
+          requestUuid();
 
         pendingFinancialIds.current.set(
           requestKey,
@@ -594,9 +634,7 @@ export default function AdminSalaryManagementPanel({
         }
       );
 
-      if (
-        result?.success !== true
-      ) {
+      if (result?.success !== true) {
         throw new Error(
           "The database did not confirm the salary action."
         );
@@ -636,7 +674,7 @@ export default function AdminSalaryManagementPanel({
 
       setMessage(
         result.already_applied
-          ? "This request was already recorded; it was not applied twice."
+          ? "This request was already recorded. It was not applied twice."
           : "Salary action saved successfully."
       );
 
@@ -655,47 +693,228 @@ export default function AdminSalaryManagementPanel({
     }
   }
 
-  // ==========================================
-  // SAVE SALARY SETTINGS
-  // ==========================================
+  // ==================================================
+  // NEW: SAVE MANUAL SALARY PAYMENT SHOP
+  // ==================================================
+
+  async function saveManualShop() {
+    if (
+      !selected ||
+      busyAction ||
+      shopsLoading
+    ) {
+      return;
+    }
+
+    const shopId =
+      draft.manualShopId || null;
+
+    const previousShopId =
+      selected.manual_salary_shop_id || null;
+
+    if (shopId === previousShopId) {
+      setIsError(false);
+
+      setMessage(
+        "No change to this employee's Salary Payment Shop."
+      );
+
+      return;
+    }
+
+    if (
+      shopId &&
+      !shops.some(
+        (shop) =>
+          shop.id === shopId
+      )
+    ) {
+      setIsError(true);
+
+      setMessage(
+        "Select an active payment shop."
+      );
+
+      return;
+    }
+
+    const reason =
+      draft.routingReason.trim();
+
+    if (reason.length < 3) {
+      setIsError(true);
+
+      setMessage(
+        "Enter a reason of at least 3 characters."
+      );
+
+      return;
+    }
+
+    const selectedShop =
+      shops.find(
+        (shop) =>
+          shop.id === shopId
+      );
+
+    const destination = shopId
+      ? selectedShop?.shop_name
+      : "AUTO — Follow Duty/Rota";
+
+    const confirmed =
+      window.confirm(
+        `CHANGE SALARY PAYMENT SHOP\n\n` +
+        `Employee: ${selected.employee_name}` +
+        `\nPrevious: ${
+          selected.manual_salary_shop_name ||
+          "AUTO — Duty/Rota"
+        }` +
+        `\nNew: ${destination}` +
+        `\nReason: ${reason}` +
+        `\n\nManual assignment overrides Duty/Rota for SALARY PAYMENT only.` +
+        `\n\nSave this change?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const employeeId =
+      selected.employee_id;
+
+    setBusyAction(
+      "SAVE_ROUTING"
+    );
+
+    setMessage("");
+    setIsError(false);
+
+    try {
+      const result = await rpc(
+        "tl_salary_master_set_payment_shop",
+        {
+          p_employee_id:
+            employeeId,
+
+          p_manual_shop_id:
+            shopId,
+
+          p_reason:
+            reason,
+        }
+      );
+
+      if (
+        result?.success !== true
+      ) {
+        throw new Error(
+          "The database did not confirm the payment shop change."
+        );
+      }
+
+      // Show the confirmed saved routing.
+      // Only the salary payment shop changes.
+
+      setEmployees(
+        (previous) =>
+          previous.map(
+            (person) =>
+              person.employee_id ===
+              employeeId
+                ? {
+                    ...person,
+
+                    manual_salary_shop_id:
+                      shopId,
+
+                    manual_salary_shop_name:
+                      shopId
+                        ? destination
+                        : null,
+
+                    salary_routing_mode:
+                      shopId
+                        ? "MANUAL"
+                        : "ROTA",
+                  }
+                : person
+          )
+      );
+
+      setDraft(
+        (previous) => ({
+          ...previous,
+          routingReason: "",
+        })
+      );
+
+      setMessage(
+        shopId
+          ? `Manual Salary Payment Shop saved: ${destination}.`
+          : "Salary routing restored to AUTO — Duty/Rota."
+      );
+
+      await loadEmployees(
+        undefined,
+        true
+      );
+    } catch (error) {
+      setIsError(true);
+
+      setMessage(
+        error?.message ||
+        "Unable to save Salary Payment Shop."
+      );
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  // ==================================================
+  // SAVE SALARY DEDUCTION / PIN
+  // ==================================================
 
   async function saveSettings() {
     if (!selected) {
       return;
     }
 
-    const deduction = parseMoney(
-      draft.deduction
-    );
+    const deduction =
+      parseMoney(
+        draft.deduction
+      );
 
     if (deduction === null) {
+      setIsError(true);
+
       setMessage(
         "Enter a valid weekly deduction (0 or more, up to 2 decimals)."
       );
 
-      setIsError(true);
       return;
     }
 
     if (
       draft.pin &&
-      !/^\d{4}$/.test(draft.pin)
+      !/^\d{4}$/.test(
+        draft.pin
+      )
     ) {
+      setIsError(true);
+
       setMessage(
-        "Salary PIN must contain exactly four digits."
+        "Salary PIN must contain exactly 4 digits."
       );
 
-      setIsError(true);
       return;
     }
 
-    const changingPin =
-      draft.pin.length === 4;
-
     if (
-      changingPin &&
+      draft.pin.length === 4 &&
       !window.confirm(
-        `SET SALARY PIN\n\n${selected.employee_name}\n\nReplace this employee's private Salary PIN?`
+        `SET SALARY PIN\n\n` +
+        `${selected.employee_name}` +
+        `\n\nReplace this employee's private Salary PIN?`
       )
     ) {
       return;
@@ -713,9 +932,9 @@ export default function AdminSalaryManagementPanel({
     );
   }
 
-  // ==========================================
-  // ADD EMPLOYEE ADVANCE
-  // ==========================================
+  // ==================================================
+  // ADD ADVANCE
+  // ==================================================
 
   async function addAdvance() {
     if (!selected) {
@@ -737,11 +956,12 @@ export default function AdminSalaryManagementPanel({
       return;
     }
 
-    const current = Number(
-      selected.advance_balance || 0
-    );
+    const current =
+      Number(
+        selected.advance_balance || 0
+      );
 
-    const approved =
+    const confirmed =
       window.confirm(
         `GIVE SALARY ADVANCE\n\n` +
         `Employee: ${selected.employee_name}` +
@@ -751,7 +971,7 @@ export default function AdminSalaryManagementPanel({
         `\n\nRecord this advance?`
       );
 
-    if (!approved) {
+    if (!confirmed) {
       return;
     }
 
@@ -767,18 +987,19 @@ export default function AdminSalaryManagementPanel({
     );
   }
 
-  // ==========================================
+  // ==================================================
   // CORRECT ADVANCE BALANCE
-  // ==========================================
+  // ==================================================
 
   async function correctBalance() {
     if (!selected) {
       return;
     }
 
-    const balance = parseMoney(
-      draft.correctedBalance
-    );
+    const balance =
+      parseMoney(
+        draft.correctedBalance
+      );
 
     const note =
       draft.correctionReason.trim();
@@ -797,7 +1018,7 @@ export default function AdminSalaryManagementPanel({
       setIsError(true);
 
       setMessage(
-        "Provide a reason with at least six characters."
+        "Provide a correction reason with at least 6 characters."
       );
 
       return;
@@ -814,7 +1035,7 @@ export default function AdminSalaryManagementPanel({
           balance
         )}` +
         `\nReason: ${note}` +
-        `\n\nThis correction will be audited. Continue?`
+        `\n\nThis correction is audited. Continue?`
       );
 
     if (!confirmed) {
@@ -830,9 +1051,9 @@ export default function AdminSalaryManagementPanel({
     );
   }
 
-  // ==========================================
+  // ==================================================
   // ADMIN UNLOCK SALARY PIN
-  // ==========================================
+  // ==================================================
 
   async function unlockPin() {
     if (
@@ -846,8 +1067,10 @@ export default function AdminSalaryManagementPanel({
       window.confirm(
         `UNLOCK SALARY PIN\n\n` +
         `${selected.employee_name}` +
-        `\nFailed attempts: ${selected.pin_failed_attempts} / 3` +
-        "\n\nReset failed attempts and unlock the PIN?"
+        `\nFailed attempts: ${
+          selected.pin_failed_attempts
+        } / 3` +
+        "\n\nReset attempts and unlock the PIN?"
       );
 
     if (!confirmed) {
@@ -860,25 +1083,46 @@ export default function AdminSalaryManagementPanel({
     );
   }
 
-  // ==========================================
+  // ==================================================
   // DISPLAY STATE
-  // ==========================================
+  // ==================================================
 
   const busy =
     Boolean(busyAction);
 
-  const ready = Boolean(
-    selected &&
-    draft.employeeId ===
-      selected.employee_id
-  );
+  const ready =
+    Boolean(
+      selected &&
+      draft.employeeId ===
+        selected.employee_id
+    );
 
   const salaryMissing =
     selected?.weekly_salary == null;
 
-  // ==========================================
+  const savedManualShopId =
+    selected?.manual_salary_shop_id ||
+    null;
+
+  const draftManualShopId =
+    draft.manualShopId ||
+    null;
+
+  const routingChanged =
+    savedManualShopId !==
+    draftManualShopId;
+
+  const savedRoutingText =
+    selected?.manual_salary_shop_id
+      ? `MANUAL — ${
+          selected.manual_salary_shop_name ||
+          "Assigned shop"
+        }`
+      : "AUTO — Duty/Rota";
+
+  // ==================================================
   // RENDER
-  // ==========================================
+  // ==================================================
 
   return (
     <section style={panelStyle}>
@@ -906,12 +1150,13 @@ export default function AdminSalaryManagementPanel({
           fontSize: 11,
         }}
       >
-        All active employees come from
-        the Master Employee List automatically.
+        All active employees come automatically
+        from the Master Employee List.
         One employee, one salary card.
-        Names and weekly salary are read-only.
-        Salary PINs and advance balances
-        remain private.
+        Name and weekly salary are read-only.
+        Salary PINs and advances remain private.
+        Admin can manually assign a Salary
+        Payment Shop without changing Duty/Rota.
       </div>
 
       {/* EMPLOYEE DROPDOWN */}
@@ -940,7 +1185,8 @@ export default function AdminSalaryManagementPanel({
               )
             }
             disabled={
-              loading || busy
+              loading ||
+              busy
             }
             style={inputStyle}
           >
@@ -994,7 +1240,8 @@ export default function AdminSalaryManagementPanel({
               loadEmployees()
             }
             disabled={
-              busy || loading
+              busy ||
+              loading
             }
             style={{
               ...buttonStyle,
@@ -1056,7 +1303,7 @@ export default function AdminSalaryManagementPanel({
           </div>
         )}
 
-      {/* SINGLE EMPLOYEE CARD */}
+      {/* SINGLE SALARY CARD */}
 
       {selected && ready && (
         <div
@@ -1119,7 +1366,7 @@ export default function AdminSalaryManagementPanel({
                 padding: 12,
               }}
             >
-              {/* MASTER EMPLOYEE DETAILS */}
+              {/* MASTER DETAILS */}
 
               <div style={gridStyle}>
                 <Field
@@ -1170,8 +1417,6 @@ export default function AdminSalaryManagementPanel({
                   />
                 </Field>
 
-                {/* WEEKLY DEDUCTION */}
-
                 <Field
                   label="WEEKLY ADVANCE DEDUCTION (KES)"
                 >
@@ -1195,8 +1440,6 @@ export default function AdminSalaryManagementPanel({
                     style={inputStyle}
                   />
                 </Field>
-
-                {/* SALARY PIN */}
 
                 <Field
                   label={
@@ -1239,7 +1482,225 @@ export default function AdminSalaryManagementPanel({
                 </Field>
               </div>
 
-              {/* SALARY STATUS GRID */}
+              {/* ==================================
+                  NEW MANUAL SALARY ROUTING
+              ================================== */}
+
+              <div
+                style={{
+                  ...areaStyle,
+
+                  background:
+                    "#eef2ff",
+
+                  borderColor:
+                    "#a5b4fc",
+                }}
+              >
+                <strong
+                  style={{
+                    color: "#3730a3",
+                    fontSize: 12,
+                  }}
+                >
+                  SALARY PAYMENT SHOP
+                  {" — "}
+                  ADMIN CONTROL
+                </strong>
+
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: "#4338ca",
+                    lineHeight: 1.5,
+                    margin:
+                      "6px 0 10px",
+                  }}
+                >
+                  MANUAL overrides Duty/Rota
+                  for salary payment only.
+                  AUTO follows effective Duty/Rota.
+                  Changing this setting does not
+                  change the employee's actual
+                  shop duty, OFF day, attendance
+                  or shift assignment.
+                </p>
+
+                <div style={gridStyle}>
+                  {/* ROUTING DROPDOWN */}
+
+                  <Field
+                    label="SALARY PAYMENT SHOP — AUTO / MANUAL"
+                  >
+                    <select
+                      value={
+                        draft.manualShopId
+                      }
+
+                      onChange={(event) =>
+                        update(
+                          "manualShopId",
+                          event.target.value
+                        )
+                      }
+
+                      disabled={
+                        busy ||
+                        shopsLoading
+                      }
+
+                      style={inputStyle}
+                    >
+                      <option value="">
+                        AUTO — FOLLOW DUTY/ROTA
+                      </option>
+
+                      {shops.map(
+                        (shop) => (
+                          <option
+                            key={shop.id}
+                            value={shop.id}
+                          >
+                            {shop.shop_name}
+                            {" — MANUAL"}
+                          </option>
+                        )
+                      )}
+
+                      {draft.manualShopId &&
+                        !shops.some(
+                          (shop) =>
+                            shop.id ===
+                            draft.manualShopId
+                        ) && (
+                          <option
+                            value={
+                              draft.manualShopId
+                            }
+                            disabled
+                          >
+                            Previous shop unavailable
+                          </option>
+                        )}
+                    </select>
+                  </Field>
+
+                  {/* AUDIT REASON */}
+
+                  <Field
+                    label="REASON FOR PAYMENT SHOP CHANGE"
+                  >
+                    <input
+                      value={
+                        draft.routingReason
+                      }
+
+                      onChange={(event) =>
+                        update(
+                          "routingReason",
+                          event.target.value
+                        )
+                      }
+
+                      placeholder="Explain why the payment shop is changing"
+
+                      disabled={busy}
+                      style={inputStyle}
+                    />
+                  </Field>
+
+                  {/* SAVE ROUTING */}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems:
+                        "end",
+                    }}
+                  >
+                    <button
+                      type="button"
+
+                      onClick={
+                        saveManualShop
+                      }
+
+                      disabled={
+                        busy ||
+                        shopsLoading ||
+                        !routingChanged
+                      }
+
+                      style={{
+                        ...buttonStyle,
+
+                        width:
+                          "100%",
+
+                        background:
+                          "#4f46e5",
+
+                        opacity:
+                          !routingChanged
+                            ? 0.6
+                            : 1,
+                      }}
+                    >
+                      {busyAction ===
+                      "SAVE_ROUTING"
+                        ? "SAVING..."
+                        : "SAVE PAYMENT SHOP"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* SAVED ROUTING */}
+
+                <div
+                  style={{
+                    marginTop: 9,
+                    padding: 9,
+
+                    background:
+                      "#ffffff",
+
+                    border:
+                      "1px solid #c7d2fe",
+
+                    borderRadius: 5,
+
+                    fontSize: 11,
+
+                    fontWeight: 800,
+
+                    color:
+                      "#3730a3",
+                  }}
+                >
+                  SAVED ROUTING:
+                  {" "}
+                  {savedRoutingText}
+                </div>
+
+                {routingChanged && (
+                  <div
+                    style={{
+                      marginTop: 7,
+                      fontSize: 10,
+                      color: "#92400e",
+                      fontWeight: 800,
+                    }}
+                  >
+                    Unsaved payment shop change.
+                    Enter a reason and press
+                    SAVE PAYMENT SHOP.
+                  </div>
+                )}
+              </div>
+
+              {/* ==================================
+                  EXISTING SALARY STATUS
+              ================================== */}
 
               <div
                 style={{
@@ -1308,8 +1769,6 @@ export default function AdminSalaryManagementPanel({
                 />
               </div>
 
-              {/* MISSING MASTER SALARY */}
-
               {salaryMissing && (
                 <div
                   role="alert"
@@ -1317,7 +1776,6 @@ export default function AdminSalaryManagementPanel({
                     color: "#991b1b",
                     background:
                       "#fef2f2",
-
                     padding: 10,
                     fontSize: 12,
                   }}
@@ -1329,7 +1787,7 @@ export default function AdminSalaryManagementPanel({
                 </div>
               )}
 
-              {/* SAVE SETTINGS */}
+              {/* SAVE SALARY SETTINGS */}
 
               <button
                 type="button"
@@ -1355,9 +1813,9 @@ export default function AdminSalaryManagementPanel({
                   : "SAVE SALARY SETTINGS"}
               </button>
 
-              {/* ====================================
+              {/* ==================================
                   EMPLOYEE ADVANCE
-              ==================================== */}
+              ================================== */}
 
               <div
                 style={{
@@ -1397,11 +1855,7 @@ export default function AdminSalaryManagementPanel({
                   </strong>
                 </div>
 
-                <div
-                  style={
-                    gridStyle
-                  }
-                >
+                <div style={gridStyle}>
                   <Field
                     label="ADD ADVANCE (KES)"
                   >
@@ -1422,11 +1876,9 @@ export default function AdminSalaryManagementPanel({
                       }
 
                       disabled={busy}
-
                       placeholder="Amount"
-                      style={
-                        inputStyle
-                      }
+
+                      style={inputStyle}
                     />
                   </Field>
 
@@ -1449,17 +1901,14 @@ export default function AdminSalaryManagementPanel({
 
                       placeholder="Reason / note"
 
-                      style={
-                        inputStyle
-                      }
+                      style={inputStyle}
                     />
                   </Field>
 
                   <div
                     style={{
                       display: "flex",
-                      alignItems:
-                        "end",
+                      alignItems: "end",
                     }}
                   >
                     <button
@@ -1469,9 +1918,7 @@ export default function AdminSalaryManagementPanel({
                         addAdvance
                       }
 
-                      disabled={
-                        busy
-                      }
+                      disabled={busy}
 
                       style={{
                         ...buttonStyle,
@@ -1492,13 +1939,14 @@ export default function AdminSalaryManagementPanel({
                 </div>
               </div>
 
-              {/* ====================================
+              {/* ==================================
                   ADVANCE BALANCE CORRECTION
-              ==================================== */}
+              ================================== */}
 
               <div
                 style={{
                   ...areaStyle,
+
                   background:
                     "#f8fafc",
                 }}
@@ -1524,20 +1972,14 @@ export default function AdminSalaryManagementPanel({
                       "#64748b",
                   }}
                 >
-                  Use only to fix an
-                  incorrect balance.
-                  This replaces the
-                  balance; it does not
-                  add a new advance.
-                  A reason and confirmation
-                  are required.
+                  Use only to fix an incorrect
+                  balance. This replaces the
+                  balance; it does not add
+                  a new advance. A reason and
+                  confirmation are required.
                 </p>
 
-                <div
-                  style={
-                    gridStyle
-                  }
-                >
+                <div style={gridStyle}>
                   <Field
                     label="CORRECT BALANCE TO (KES)"
                   >
@@ -1558,15 +2000,12 @@ export default function AdminSalaryManagementPanel({
                       }
 
                       disabled={busy}
-
-                      style={
-                        inputStyle
-                      }
+                      style={inputStyle}
                     />
                   </Field>
 
                   <Field
-                    label="REQUIRED REASON FOR CORRECTION"
+                    label="REQUIRED CORRECTION REASON"
                   >
                     <input
                       value={
@@ -1584,17 +2023,14 @@ export default function AdminSalaryManagementPanel({
 
                       placeholder="Explain the correction"
 
-                      style={
-                        inputStyle
-                      }
+                      style={inputStyle}
                     />
                   </Field>
 
                   <div
                     style={{
                       display: "flex",
-                      alignItems:
-                        "end",
+                      alignItems: "end",
                     }}
                   >
                     <button
@@ -1604,9 +2040,7 @@ export default function AdminSalaryManagementPanel({
                         correctBalance
                       }
 
-                      disabled={
-                        busy
-                      }
+                      disabled={busy}
 
                       style={{
                         ...buttonStyle,
@@ -1627,9 +2061,9 @@ export default function AdminSalaryManagementPanel({
                 </div>
               </div>
 
-              {/* ====================================
-                  PIN LOCK / ADMIN UNLOCK
-              ==================================== */}
+              {/* ==================================
+                  ADMIN PIN UNLOCK
+              ================================== */}
 
               {selected.pin_locked && (
                 <div
@@ -1662,10 +2096,9 @@ export default function AdminSalaryManagementPanel({
                       fontSize: 11,
                     }}
                   >
-                    Three incorrect PIN
-                    attempts.
-                    Admin must unlock
-                    the employee's PIN.
+                    Three incorrect PIN attempts.
+                    Admin must unlock this
+                    employee's Salary PIN.
                   </p>
 
                   <button
@@ -1675,9 +2108,7 @@ export default function AdminSalaryManagementPanel({
                       unlockPin
                     }
 
-                    disabled={
-                      busy
-                    }
+                    disabled={busy}
 
                     style={{
                       ...buttonStyle,
@@ -1719,13 +2150,12 @@ export default function AdminSalaryManagementPanel({
             "center",
         }}
       >
-        Salaries earned Monday–Sunday
-        become payable the following
-        Monday, subject to the cashier
-        Salary PIN and payment workflow.
-        Cashier payment migration is a
-        separate step; this Admin panel
-        does not pay salaries.
+        Salary earned Monday–Sunday
+        becomes payable the following Monday.
+        Manual Salary Payment Shop overrides
+        Duty/Rota for salary payment only.
+        Private Salary PIN and payment confirmation
+        are still required.
       </footer>
     </section>
   );
