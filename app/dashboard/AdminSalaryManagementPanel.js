@@ -4,1473 +4,180 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
-export default function AdminSalaryManagementPanel({
-  user,
-}) {
-  const [shops, setShops] = useState([]);
+// TEAM LEGEND / NYIKA
+// MASTER EMPLOYEE SALARY MANAGEMENT
+//
+// One Master Employee = One Salary Card
+// No Salary Slots
+// No separate employee creation
+// Names and salaries from Master Employees
+// Existing advances and PINs preserved
+//
+// Cashier salary payments are handled separately.
 
-  const [
-    selectedShopId,
-    setSelectedShopId,
-  ] = useState("");
+const blankDraft = () => ({
+  employeeId: "",
+  deduction: "0",
+  pin: "",
+  advanceAmount: "",
+  advanceNote: "",
+  correctedBalance: "0",
+  correctionReason: "",
+});
 
-  const [slots, setSlots] =
-    useState(
-      createEmptySlots()
-    );
+// ============================================
+// MONEY HELPERS
+// ============================================
 
-  const [
-    loadingShops,
-    setLoadingShops,
-  ] = useState(true);
+const money = (value) =>
+  (
+    Number.isFinite(Number(value))
+      ? Number(value)
+      : 0
+  ).toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
-  const [
-    loadingEmployees,
-    setLoadingEmployees,
-  ] = useState(false);
+function parseMoney(value, allowZero = true) {
+  const raw = String(value ?? "").trim();
 
-  const [
-    savingSlot,
-    setSavingSlot,
-  ] = useState(null);
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw)) {
+    return null;
+  }
 
-  const [
-    advanceSavingSlot,
-    setAdvanceSavingSlot,
-  ] = useState(null);
+  const number = Number(raw);
 
-  const [
-    unlockingSlot,
-    setUnlockingSlot,
-  ] = useState(null);
-
-  const [
-    message,
-    setMessage,
-  ] = useState("");
-
-  const [
-    messageType,
-    setMessageType,
-  ] = useState("");
-
-  const supabaseUrl =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_URL;
-
-  const supabaseAnonKey =
-    process.env
-      .NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const accessToken =
-    user?.access_token || null;
-
-  // ==================================================
-  // HEADERS
-  // ==================================================
-
-  const headers =
-    useMemo(() => {
-      return {
-        apikey:
-          supabaseAnonKey,
-
-        Authorization:
-          `Bearer ${accessToken}`,
-
-        "Content-Type":
-          "application/json",
-      };
-    }, [
-      supabaseAnonKey,
-      accessToken,
-    ]);
-
-  // ==================================================
-  // LOAD SHOPS
-  // ==================================================
-
-  const loadShops =
-    useCallback(
-      async () => {
-        if (
-          !supabaseUrl ||
-          !supabaseAnonKey ||
-          !accessToken
-        ) {
-          setLoadingShops(
-            false
-          );
-
-          return;
-        }
-
-        try {
-          setLoadingShops(
-            true
-          );
-
-          const response =
-            await fetch(
-              `${supabaseUrl}/rest/v1/shops` +
-                `?select=id,shop_name,shop_type,is_active` +
-                `&is_active=eq.true` +
-                `&order=shop_name.asc`,
-              {
-                method:
-                  "GET",
-
-                headers,
-
-                cache:
-                  "no-store",
-              }
-            );
-
-          const result =
-            await safeJson(
-              response
-            );
-
-          if (!response.ok) {
-            throw new Error(
-              result?.message ||
-                result?.details ||
-                "Unable to load shops."
-            );
-          }
-
-          const loaded =
-            Array.isArray(
-              result
-            )
-              ? result
-              : [];
-
-          setShops(
-            loaded
-          );
-
-          setSelectedShopId(
-            (
-              previous
-            ) =>
-              previous ||
-              loaded[0]?.id ||
-              ""
-          );
-        } catch (error) {
-          console.error(
-            "LOAD SALARY SHOPS ERROR:",
-            error
-          );
-
-          showError(
-            error?.message ||
-              "Unable to load shops."
-          );
-        } finally {
-          setLoadingShops(
-            false
-          );
-        }
-      },
-      [
-        supabaseUrl,
-        supabaseAnonKey,
-        accessToken,
-        headers,
-      ]
-    );
-
-  // ==================================================
-  // LOAD SALARY EMPLOYEES
-  // ==================================================
-
-  const loadEmployees =
-    useCallback(
-      async () => {
-        if (
-          !selectedShopId ||
-          !supabaseUrl ||
-          !supabaseAnonKey ||
-          !accessToken
-        ) {
-          setSlots(
-            createEmptySlots()
-          );
-
-          return;
-        }
-
-        try {
-          setLoadingEmployees(
-            true
-          );
-
-          const result =
-            await callRpc({
-              supabaseUrl,
-              headers,
-
-              functionName:
-                "tl_salary_admin_list",
-
-              body: {
-                p_shop_id:
-                  selectedShopId,
-              },
-            });
-
-          const loaded =
-            Array.isArray(
-              result
-            )
-              ? result
-              : [];
-
-          const next =
-            createEmptySlots();
-
-          for (
-            const employee of loaded
-          ) {
-            const slotIndex =
-              Number(
-                employee.slot_number
-              ) - 1;
-
-            if (
-              slotIndex < 0 ||
-              slotIndex > 2
-            ) {
-              continue;
-            }
-
-            next[
-              slotIndex
-            ] = {
-              slot_number:
-                Number(
-                  employee.slot_number
-                ),
-
-              id:
-                employee.id ||
-                null,
-
-              employee_name:
-                employee.employee_name ||
-                "",
-
-              weekly_salary:
-                String(
-                  employee.weekly_salary ??
-                    ""
-                ),
-
-              weekly_advance_deduction:
-                String(
-                  employee.weekly_advance_deduction ??
-                    ""
-                ),
-
-              advance_balance:
-                Number(
-                  employee.advance_balance ??
-                    0
-                ),
-
-              advance_status:
-                employee.advance_status ||
-                "NO ADVANCE",
-
-              is_active:
-                Boolean(
-                  employee.is_active
-                ),
-
-              salary_start_week:
-                employee.salary_start_week ||
-                null,
-
-              pin_set:
-                Boolean(
-                  employee.pin_set
-                ),
-
-              pin_failed_attempts:
-                Number(
-                  employee.pin_failed_attempts ??
-                    0
-                ),
-
-              pin_locked:
-                Boolean(
-                  employee.pin_locked
-                ),
-
-              new_pin:
-                "",
-
-              advance_amount:
-                "",
-
-              advance_note:
-                "",
-            };
-          }
-
-          setSlots(
-            next
-          );
-        } catch (error) {
-          console.error(
-            "LOAD SALARY EMPLOYEES ERROR:",
-            error
-          );
-
-          showError(
-            error?.message ||
-              "Unable to load salary employees."
-          );
-        } finally {
-          setLoadingEmployees(
-            false
-          );
-        }
-      },
-      [
-        selectedShopId,
-        supabaseUrl,
-        supabaseAnonKey,
-        accessToken,
-        headers,
-      ]
-    );
-
-  // ==================================================
-  // INITIAL LOAD
-  // ==================================================
-
-  useEffect(() => {
-    loadShops();
-  }, [loadShops]);
-
-  useEffect(() => {
-    loadEmployees();
-  }, [loadEmployees]);
-
-  // ==================================================
-  // LOCAL FIELD UPDATE
-  // ==================================================
-
-  function updateSlot(
-    slotNumber,
-    field,
-    value
+  if (
+    !Number.isFinite(number) ||
+    number > 1000000000 ||
+    (!allowZero && number <= 0)
   ) {
-    setSlots(
-      (
-        previous
-      ) =>
-        previous.map(
-          (
-            slot
-          ) =>
-            slot.slot_number ===
-            slotNumber
-              ? {
-                  ...slot,
-                  [field]:
-                    value,
-                }
-              : slot
-        )
-    );
-
-    clearMessage();
+    return null;
   }
 
-  // ==================================================
-  // SAVE EMPLOYEE SLOT
-  // ==================================================
-
-  async function saveEmployee(
-    slot
-  ) {
-    if (!selectedShopId) {
-      showError(
-        "Select a shop first."
-      );
-
-      return;
-    }
-
-    const employeeName =
-      String(
-        slot.employee_name ||
-          ""
-      ).trim();
-
-    if (
-      employeeName.length <
-      2
-    ) {
-      showError(
-        `Enter the employee name for Salary Slot ${slot.slot_number}.`
-      );
-
-      return;
-    }
-
-    const weeklySalary =
-      Number(
-        slot.weekly_salary
-      );
-
-    if (
-      !Number.isFinite(
-        weeklySalary
-      ) ||
-      weeklySalary < 0
-    ) {
-      showError(
-        `Enter a valid weekly salary for ${employeeName}.`
-      );
-
-      return;
-    }
-
-    if (
-      slot.is_active &&
-      weeklySalary <= 0
-    ) {
-      showError(
-        `${employeeName} cannot be activated with a zero weekly salary.`
-      );
-
-      return;
-    }
-
-    const deduction =
-      Number(
-        slot.weekly_advance_deduction ||
-          0
-      );
-
-    if (
-      !Number.isFinite(
-        deduction
-      ) ||
-      deduction < 0
-    ) {
-      showError(
-        `Enter a valid weekly advance deduction for ${employeeName}.`
-      );
-
-      return;
-    }
-
-    const pin =
-      String(
-        slot.new_pin ||
-          ""
-      ).trim();
-
-    if (
-      pin !== "" &&
-      !/^\d{4}$/.test(
-        pin
-      )
-    ) {
-      showError(
-        "Salary PIN must contain exactly 4 digits."
-      );
-
-      return;
-    }
-
-    if (
-      slot.is_active &&
-      !slot.pin_set &&
-      pin === ""
-    ) {
-      showError(
-        `Set a 4-digit Salary PIN before activating ${employeeName}.`
-      );
-
-      return;
-    }
-
-    try {
-      setSavingSlot(
-        slot.slot_number
-      );
-
-      clearMessage();
-
-      await callRpc({
-        supabaseUrl,
-        headers,
-
-        functionName:
-          "tl_salary_admin_save_employee",
-
-        body: {
-          p_shop_id:
-            selectedShopId,
-
-          p_slot_number:
-            slot.slot_number,
-
-          p_employee_name:
-            employeeName,
-
-          p_weekly_salary:
-            roundMoney(
-              weeklySalary
-            ),
-
-          p_weekly_advance_deduction:
-            roundMoney(
-              deduction
-            ),
-
-          p_is_active:
-            Boolean(
-              slot.is_active
-            ),
-
-          p_pin:
-            pin === ""
-              ? null
-              : pin,
-        },
-      });
-
-      setMessage(
-        `${employeeName} saved successfully.`
-      );
-
-      setMessageType(
-        "success"
-      );
-
-      await loadEmployees();
-    } catch (error) {
-      console.error(
-        "SAVE SALARY EMPLOYEE ERROR:",
-        error
-      );
-
-      showError(
-        error?.message ||
-          "Unable to save salary employee."
-      );
-    } finally {
-      setSavingSlot(
-        null
-      );
-    }
-  }
-
-  // ==================================================
-  // GIVE ADVANCE
-  // ==================================================
-
-  async function giveAdvance(
-    slot
-  ) {
-    if (!slot?.id) {
-      showError(
-        "Save this employee first before recording an advance."
-      );
-
-      return;
-    }
-
-    const amount =
-      Number(
-        slot.advance_amount
-      );
-
-    if (
-      !Number.isFinite(
-        amount
-      ) ||
-      amount <= 0
-    ) {
-      showError(
-        "Enter a valid advance amount."
-      );
-
-      return;
-    }
-
-    const employeeName =
-      slot.employee_name ||
-      "Employee";
-
-    const confirmed =
-      window.confirm(
-        `GIVE SALARY ADVANCE\n\n` +
-          `Employee: ${employeeName}\n` +
-          `Current Advance Balance: KES ${money(
-            slot.advance_balance
-          )}\n` +
-          `New Advance: KES ${money(
-            amount
-          )}\n` +
-          `New Balance: KES ${money(
-            Number(
-              slot.advance_balance ||
-                0
-            ) + amount
-          )}\n\n` +
-          "Record this employee advance?"
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setAdvanceSavingSlot(
-        slot.slot_number
-      );
-
-      clearMessage();
-
-      await callRpc({
-        supabaseUrl,
-        headers,
-
-        functionName:
-          "tl_salary_admin_add_advance",
-
-        body: {
-          p_employee_id:
-            slot.id,
-
-          p_amount:
-            roundMoney(
-              amount
-            ),
-
-          p_note:
-            String(
-              slot.advance_note ||
-                ""
-            ).trim() ||
-            null,
-        },
-      });
-
-      setMessage(
-        `KES ${money(
-          amount
-        )} advance added to ${employeeName}.`
-      );
-
-      setMessageType(
-        "success"
-      );
-
-      await loadEmployees();
-    } catch (error) {
-      console.error(
-        "SALARY ADVANCE ERROR:",
-        error
-      );
-
-      showError(
-        error?.message ||
-          "Unable to record advance."
-      );
-    } finally {
-      setAdvanceSavingSlot(
-        null
-      );
-    }
-  }
-
-  // ==================================================
-  // ADMIN UNLOCK PIN
-  // ==================================================
-
-  async function unlockPin(
-    slot
-  ) {
-    if (!slot?.id) {
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        `UNLOCK SALARY PIN\n\n` +
-          `${slot.employee_name}\n\n` +
-          `Failed attempts: ${slot.pin_failed_attempts}\n\n` +
-          "This will reset the failed PIN attempts to zero and unlock salary access.\n\n" +
-          "Continue?"
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setUnlockingSlot(
-        slot.slot_number
-      );
-
-      clearMessage();
-
-      await callRpc({
-        supabaseUrl,
-        headers,
-
-        functionName:
-          "tl_salary_admin_unlock_pin",
-
-        body: {
-          p_employee_id:
-            slot.id,
-        },
-      });
-
-      setMessage(
-        `${slot.employee_name}'s Salary PIN has been unlocked.`
-      );
-
-      setMessageType(
-        "success"
-      );
-
-      await loadEmployees();
-    } catch (error) {
-      console.error(
-        "UNLOCK SALARY PIN ERROR:",
-        error
-      );
-
-      showError(
-        error?.message ||
-          "Unable to unlock Salary PIN."
-      );
-    } finally {
-      setUnlockingSlot(
-        null
-      );
-    }
-  }
-
-  // ==================================================
-  // SELECTED SHOP
-  // ==================================================
-
-  const selectedShop =
-    shops.find(
-      (
-        shop
-      ) =>
-        String(
-          shop.id
-        ) ===
-        String(
-          selectedShopId
-        )
-    );
-
-  // ==================================================
-  // DISPLAY
-  // ==================================================
-
-  return (
-    <section
-      style={
-        panelStyle
-      }
-    >
-      <div
-        style={
-          titleStyle
-        }
-      >
-        EMPLOYEE SALARY MANAGEMENT
-      </div>
-
-      <div
-        style={
-          introStyle
-        }
-      >
-        Maximum 3 salary employees per shop. Only ACTIVE employees
-        will appear on the cashier dashboard. Each employee has a
-        private 4-digit Salary PIN.
-      </div>
-
-      <div
-        style={
-          toolbarStyle
-        }
-      >
-        <div>
-          <div
-            style={
-              labelStyle
-            }
-          >
-            SELECT SHOP
-          </div>
-
-          <select
-            value={
-              selectedShopId
-            }
-            disabled={
-              loadingShops
-            }
-            onChange={(
-              event
-            ) => {
-              setSelectedShopId(
-                event.target.value
-              );
-
-              clearMessage();
-            }}
-            style={
-              selectStyle
-            }
-          >
-            {shops.map(
-              (
-                shop
-              ) => (
-                <option
-                  key={
-                    shop.id
-                  }
-                  value={
-                    shop.id
-                  }
-                >
-                  {shop.shop_name} —{" "}
-                  {shop.shop_type}
-                </option>
-              )
-            )}
-          </select>
-        </div>
-
-        <div
-          style={
-            shopInfoStyle
-          }
-        >
-          Salary setup for{" "}
-          <strong>
-            {selectedShop
-              ?.shop_name ||
-              "-"}
-          </strong>
-
-          <button
-            type="button"
-            onClick={
-              loadEmployees
-            }
-            style={
-              refreshButtonStyle
-            }
-          >
-            REFRESH
-          </button>
-        </div>
-      </div>
-
-      {message && (
-        <div
-          style={{
-            ...messageStyle,
-
-            backgroundColor:
-              messageType ===
-              "success"
-                ? "#ecfdf5"
-                : "#fef2f2",
-
-            color:
-              messageType ===
-              "success"
-                ? "#166534"
-                : "#991b1b",
-          }}
-        >
-          {message}
-        </div>
-      )}
-
-      {loadingEmployees ? (
-        <div
-          style={
-            loadingStyle
-          }
-        >
-          Loading salary employees...
-        </div>
-      ) : (
-        <div
-          style={
-            slotsWrapStyle
-          }
-        >
-          {slots.map(
-            (
-              slot
-            ) => {
-              const busy =
-                savingSlot ===
-                  slot.slot_number ||
-                advanceSavingSlot ===
-                  slot.slot_number ||
-                unlockingSlot ===
-                  slot.slot_number;
-
-              return (
-                <div
-                  key={
-                    slot.slot_number
-                  }
-                  style={{
-                    ...employeeCardStyle,
-
-                    border:
-                      slot.pin_locked
-                        ? "2px solid #dc2626"
-                        : slot.is_active
-                        ? "2px solid #16a34a"
-                        : "1px solid #cbd5e1",
-                  }}
-                >
-                  <div
-                    style={
-                      employeeCardHeaderStyle
-                    }
-                  >
-                    <div>
-                      SALARY SLOT{" "}
-                      {
-                        slot.slot_number
-                      }
-                    </div>
-
-                    <div>
-                      {slot.is_active
-                        ? "ACTIVE"
-                        : "INACTIVE"}
-                    </div>
-                  </div>
-
-                  {/* =====================================
-                      BASIC EMPLOYEE SETTINGS
-                  ====================================== */}
-
-                  <div
-                    style={
-                      formGridStyle
-                    }
-                  >
-                    <Field
-                      label="EMPLOYEE NAME"
-                    >
-                      <input
-                        type="text"
-                        value={
-                          slot.employee_name
-                        }
-                        disabled={
-                          busy
-                        }
-                        placeholder="Employee name"
-                        onChange={(
-                          event
-                        ) =>
-                          updateSlot(
-                            slot.slot_number,
-                            "employee_name",
-                            event
-                              .target
-                              .value
-                          )
-                        }
-                        style={
-                          inputStyle
-                        }
-                      />
-                    </Field>
-
-                    <Field
-                      label="WEEKLY SALARY"
-                    >
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={
-                          slot.weekly_salary
-                        }
-                        disabled={
-                          busy
-                        }
-                        placeholder="0.00"
-                        onChange={(
-                          event
-                        ) =>
-                          updateSlot(
-                            slot.slot_number,
-                            "weekly_salary",
-                            event
-                              .target
-                              .value
-                          )
-                        }
-                        style={
-                          inputStyle
-                        }
-                      />
-                    </Field>
-
-                    <Field
-                      label="WEEKLY ADVANCE DEDUCTION"
-                    >
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={
-                          slot.weekly_advance_deduction
-                        }
-                        disabled={
-                          busy
-                        }
-                        placeholder="0.00"
-                        onChange={(
-                          event
-                        ) =>
-                          updateSlot(
-                            slot.slot_number,
-                            "weekly_advance_deduction",
-                            event
-                              .target
-                              .value
-                          )
-                        }
-                        style={
-                          inputStyle
-                        }
-                      />
-                    </Field>
-
-                    <Field
-                      label={
-                        slot.pin_set
-                          ? "NEW 4-DIGIT PIN (OPTIONAL)"
-                          : "4-DIGIT SALARY PIN"
-                      }
-                    >
-                      <input
-                        type="password"
-                        inputMode="numeric"
-                        maxLength={4}
-                        value={
-                          slot.new_pin
-                        }
-                        disabled={
-                          busy
-                        }
-                        placeholder={
-                          slot.pin_set
-                            ? "Leave blank to keep current PIN"
-                            : "0000"
-                        }
-                        onChange={(
-                          event
-                        ) => {
-                          const value =
-                            event.target.value.replace(
-                              /\D/g,
-                              ""
-                            );
-
-                          updateSlot(
-                            slot.slot_number,
-                            "new_pin",
-                            value.slice(
-                              0,
-                              4
-                            )
-                          );
-                        }}
-                        style={
-                          inputStyle
-                        }
-                      />
-                    </Field>
-                  </div>
-
-                  {/* =====================================
-                      STATUS
-                  ====================================== */}
-
-                  <div
-                    style={
-                      statusGridStyle
-                    }
-                  >
-                    <StatusBox
-                      title="ADVANCE BALANCE"
-                      value={`KES ${money(
-                        slot.advance_balance
-                      )}`}
-                    />
-
-                    <StatusBox
-                      title="ADVANCE"
-                      value={
-                        Number(
-                          slot.advance_balance ||
-                            0
-                        ) > 0
-                          ? "YES"
-                          : "NO"
-                      }
-                    />
-
-                    <StatusBox
-                      title="PIN"
-                      value={
-                        slot.pin_set
-                          ? "SET ✓"
-                          : "NOT SET"
-                      }
-                    />
-
-                    <StatusBox
-                      title="FAILED PIN"
-                      value={`${slot.pin_failed_attempts} / 3`}
-                    />
-
-                    <StatusBox
-                      title="PIN STATUS"
-                      value={
-                        slot.pin_locked
-                          ? "LOCKED"
-                          : "OPEN"
-                      }
-                      danger={
-                        slot.pin_locked
-                      }
-                    />
-
-                    <StatusBox
-                      title="SALARY START WEEK"
-                      value={
-                        slot.salary_start_week ||
-                        "-"
-                      }
-                    />
-                  </div>
-
-                  {/* =====================================
-                      ACTIVE SWITCH
-                  ====================================== */}
-
-                  <label
-                    style={
-                      activeToggleStyle
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        slot.is_active
-                      }
-                      disabled={
-                        busy
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        updateSlot(
-                          slot.slot_number,
-                          "is_active",
-                          event
-                            .target
-                            .checked
-                        )
-                      }
-                    />
-
-                    <span>
-                      Show this employee on cashier salary panel
-                    </span>
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      saveEmployee(
-                        slot
-                      )
-                    }
-                    disabled={
-                      busy
-                    }
-                    style={{
-                      ...saveEmployeeButtonStyle,
-
-                      backgroundColor:
-                        busy
-                          ? "#94a3b8"
-                          : "#0873b9",
-                    }}
-                  >
-                    {savingSlot ===
-                    slot.slot_number
-                      ? "SAVING EMPLOYEE..."
-                      : "SAVE EMPLOYEE SETTINGS"}
-                  </button>
-
-                  {/* =====================================
-                      ADVANCE MANAGEMENT
-                  ====================================== */}
-
-                  {slot.id && (
-                    <div
-                      style={
-                        advanceBoxStyle
-                      }
-                    >
-                      <div
-                        style={
-                          sectionTitleStyle
-                        }
-                      >
-                        EMPLOYEE ADVANCE
-                      </div>
-
-                      <div
-                        style={
-                          advanceInfoStyle
-                        }
-                      >
-                        Current outstanding advance:{" "}
-                        <strong>
-                          KES{" "}
-                          {money(
-                            slot.advance_balance
-                          )}
-                        </strong>
-                      </div>
-
-                      <div
-                        style={
-                          advanceGridStyle
-                        }
-                      >
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={
-                            slot.advance_amount
-                          }
-                          disabled={
-                            busy
-                          }
-                          placeholder="Advance amount"
-                          onChange={(
-                            event
-                          ) =>
-                            updateSlot(
-                              slot.slot_number,
-                              "advance_amount",
-                              event
-                                .target
-                                .value
-                            )
-                          }
-                          style={
-                            inputStyle
-                          }
-                        />
-
-                        <input
-                          type="text"
-                          value={
-                            slot.advance_note
-                          }
-                          disabled={
-                            busy
-                          }
-                          placeholder="Reason / note"
-                          onChange={(
-                            event
-                          ) =>
-                            updateSlot(
-                              slot.slot_number,
-                              "advance_note",
-                              event
-                                .target
-                                .value
-                            )
-                          }
-                          style={
-                            inputStyle
-                          }
-                        />
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            giveAdvance(
-                              slot
-                            )
-                          }
-                          disabled={
-                            busy
-                          }
-                          style={
-                            advanceButtonStyle
-                          }
-                        >
-                          {advanceSavingSlot ===
-                          slot.slot_number
-                            ? "SAVING..."
-                            : "ADD ADVANCE"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* =====================================
-                      PIN LOCK
-                  ====================================== */}
-
-                  {slot.pin_locked && (
-                    <div
-                      style={
-                        lockedBoxStyle
-                      }
-                    >
-                      <div>
-                        <strong>
-                          SALARY PIN LOCKED
-                        </strong>
-
-                        <div
-                          style={
-                            lockedTextStyle
-                          }
-                        >
-                          This employee reached 3 incorrect Salary PIN
-                          attempts. Cashier access remains blocked
-                          until Admin unlocks it.
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          unlockPin(
-                            slot
-                          )
-                        }
-                        disabled={
-                          busy
-                        }
-                        style={
-                          unlockButtonStyle
-                        }
-                      >
-                        {unlockingSlot ===
-                        slot.slot_number
-                          ? "UNLOCKING..."
-                          : "ADMIN UNLOCK PIN"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            }
-          )}
-        </div>
-      )}
-
-      <div
-        style={
-          footerStyle
-        }
-      >
-        Salary earned Monday–Sunday becomes payable from the following
-        Monday at 00:00 Africa/Nairobi. Salary amounts remain private
-        on the cashier screen until the employee enters their own
-        4-digit Salary PIN.
-      </div>
-    </section>
-  );
-
-  // ==================================================
-  // LOCAL HELPERS
-  // ==================================================
-
-  function clearMessage() {
-    setMessage("");
-    setMessageType("");
-  }
-
-  function showError(
-    text
-  ) {
-    setMessage(
-      text
-    );
-
-    setMessageType(
-      "error"
-    );
-  }
+  return number;
 }
 
-// ==================================================
-// COMPONENT HELPERS
-// ==================================================
+function newDraft(employee) {
+  return {
+    ...blankDraft(),
 
-function Field({
-  label,
-  children,
-}) {
+    employeeId: employee.employee_id,
+
+    deduction: String(
+      employee.weekly_advance_deduction ?? 0
+    ),
+
+    correctedBalance: String(
+      employee.advance_balance ?? 0
+    ),
+  };
+}
+
+function newRequestId() {
+  if (
+    typeof crypto === "undefined" ||
+    !crypto.randomUUID
+  ) {
+    throw new Error(
+      "Your browser cannot generate a safe salary request ID."
+    );
+  }
+
+  return crypto.randomUUID();
+}
+
+// ============================================
+// STYLES
+// ============================================
+
+const panelStyle = {
+  backgroundColor: "#ffffff",
+  borderRadius: 8,
+  overflow: "hidden",
+  boxShadow: "0 1px 6px rgba(0,0,0,.12)",
+  color: "#0f172a",
+};
+
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "9px 10px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 5,
+  fontSize: 12,
+  backgroundColor: "#ffffff",
+  color: "#0f172a",
+};
+
+const disabledInputStyle = {
+  ...inputStyle,
+  backgroundColor: "#f1f5f9",
+  color: "#334155",
+  cursor: "not-allowed",
+};
+
+const buttonStyle = {
+  padding: "10px 13px",
+  border: "none",
+  borderRadius: 5,
+  fontSize: 11,
+  fontWeight: 800,
+  cursor: "pointer",
+  color: "#ffffff",
+};
+
+const areaStyle = {
+  padding: 12,
+  border: "1px solid #e2e8f0",
+  borderRadius: 7,
+};
+
+const gridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(205px, 1fr))",
+  gap: 10,
+};
+
+// ============================================
+// FIELD COMPONENT
+// ============================================
+
+function Field({ label, children }) {
   return (
-    <div>
-      <div
-        style={
-          labelStyle
-        }
+    <label
+      style={{
+        display: "grid",
+        gap: 5,
+        minWidth: 0,
+      }}
+    >
+      <span
+        style={{
+          fontWeight: 800,
+          color: "#475569",
+          fontSize: 10,
+        }}
       >
         {label}
-      </div>
+      </span>
 
       {children}
-    </div>
+    </label>
   );
 }
 
-function StatusBox({
+// ============================================
+// STATUS COMPONENT
+// ============================================
+
+function Status({
   title,
   value,
   danger = false,
@@ -1478,36 +185,40 @@ function StatusBox({
   return (
     <div
       style={{
-        ...statusBoxStyle,
+        textAlign: "center",
+        padding: 9,
+        borderRadius: 5,
 
-        backgroundColor:
-          danger
-            ? "#fee2e2"
-            : "#f8fafc",
+        backgroundColor: danger
+          ? "#fef2f2"
+          : "#f8fafc",
 
-        borderColor:
-          danger
-            ? "#ef4444"
-            : "#cbd5e1",
-
-        color:
-          danger
-            ? "#991b1b"
-            : "#0f172a",
+        border: `1px solid ${
+          danger ? "#ef4444" : "#cbd5e1"
+        }`,
       }}
     >
       <div
-        style={
-          statusTitleStyle
-        }
+        style={{
+          fontSize: 9,
+          fontWeight: 800,
+          color: "#64748b",
+        }}
       >
         {title}
       </div>
 
       <div
-        style={
-          statusValueStyle
-        }
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+
+          color: danger
+            ? "#991b1b"
+            : "#0f172a",
+
+          marginTop: 4,
+        }}
       >
         {value}
       </div>
@@ -1515,700 +226,1507 @@ function StatusBox({
   );
 }
 
-// ==================================================
-// DATA HELPERS
-// ==================================================
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
-function createEmptySlots() {
-  return [
-    createEmptySlot(
-      1
-    ),
-    createEmptySlot(
-      2
-    ),
-    createEmptySlot(
-      3
-    ),
-  ];
-}
-
-function createEmptySlot(
-  slotNumber
-) {
-  return {
-    slot_number:
-      slotNumber,
-
-    id:
-      null,
-
-    employee_name:
-      "",
-
-    weekly_salary:
-      "",
-
-    weekly_advance_deduction:
-      "0",
-
-    advance_balance:
-      0,
-
-    advance_status:
-      "NO ADVANCE",
-
-    is_active:
-      false,
-
-    salary_start_week:
-      null,
-
-    pin_set:
-      false,
-
-    pin_failed_attempts:
-      0,
-
-    pin_locked:
-      false,
-
-    new_pin:
-      "",
-
-    advance_amount:
-      "",
-
-    advance_note:
-      "",
-  };
-}
-
-async function callRpc({
-  supabaseUrl,
-  headers,
-  functionName,
-  body,
+export default function AdminSalaryManagementPanel({
+  user,
 }) {
-  const response =
-    await fetch(
-      `${supabaseUrl}/rest/v1/rpc/${functionName}`,
-      {
-        method:
-          "POST",
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-        headers,
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-        body:
-          JSON.stringify(
-            body
+  const accessToken =
+    user?.access_token || null;
+
+  // ==========================================
+  // STATE
+  // ==========================================
+
+  const [employees, setEmployees] =
+    useState([]);
+
+  const [
+    selectedEmployeeId,
+    setSelectedEmployeeId,
+  ] = useState("");
+
+  const [draft, setDraft] =
+    useState(blankDraft);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [busyAction, setBusyAction] =
+    useState("");
+
+  const [message, setMessage] =
+    useState("");
+
+  const [isError, setIsError] =
+    useState(false);
+
+  // Reuse financial request IDs after
+  // uncertain network failures.
+  // This helps prevent duplicate advances.
+
+  const pendingFinancialIds =
+    useRef(new Map());
+
+  // ==========================================
+  // SUPABASE HEADERS
+  // ==========================================
+
+  const headers = useMemo(
+    () => ({
+      apikey: supabaseAnonKey,
+
+      Authorization:
+        `Bearer ${accessToken}`,
+
+      "Content-Type":
+        "application/json",
+    }),
+    [
+      supabaseAnonKey,
+      accessToken,
+    ]
+  );
+
+  // ==========================================
+  // RPC HELPER
+  // ==========================================
+
+  const rpc = useCallback(
+    async (
+      functionName,
+      body = {},
+      signal
+    ) => {
+      if (
+        !supabaseUrl ||
+        !supabaseAnonKey ||
+        !accessToken
+      ) {
+        throw new Error(
+          "Admin session is missing. Sign in again."
+        );
+      }
+
+      const response = await fetch(
+        `${String(supabaseUrl).replace(
+          /\/+$/,
+          ""
+        )}/rest/v1/rpc/${functionName}`,
+        {
+          method: "POST",
+
+          headers,
+
+          body: JSON.stringify(body),
+
+          cache: "no-store",
+
+          ...(signal
+            ? { signal }
+            : {}),
+        }
+      );
+
+      const result = await response
+        .json()
+        .catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+          result?.details ||
+          result?.hint ||
+          `${functionName} failed.`
+        );
+      }
+
+      return result;
+    },
+    [
+      supabaseUrl,
+      supabaseAnonKey,
+      accessToken,
+      headers,
+    ]
+  );
+
+  // ==========================================
+  // LOAD MASTER EMPLOYEE SALARIES
+  // ==========================================
+
+  const loadEmployees = useCallback(
+    async (
+      signal,
+      quiet = false
+    ) => {
+      if (!quiet) {
+        setLoading(true);
+      }
+
+      try {
+        const result = await rpc(
+          "tl_salary_master_admin_list",
+          {},
+          signal
+        );
+
+        if (!Array.isArray(result)) {
+          throw new Error(
+            "Unexpected Master Employee salary response."
+          );
+        }
+
+        if (signal?.aborted) {
+          return;
+        }
+
+        setEmployees(result);
+
+        setSelectedEmployeeId(
+          (previous) =>
+            result.some(
+              (employee) =>
+                employee.employee_id ===
+                previous
+            )
+              ? previous
+              : result[0]?.employee_id ||
+                ""
+        );
+
+        if (!quiet) {
+          setMessage("");
+          setIsError(false);
+        }
+      } catch (error) {
+        if (
+          signal?.aborted ||
+          error?.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setIsError(true);
+
+        setMessage(
+          error?.message ||
+          "Could not load employee salaries."
+        );
+      } finally {
+        if (
+          !signal?.aborted &&
+          !quiet
+        ) {
+          setLoading(false);
+        }
+      }
+    },
+    [rpc]
+  );
+
+  // ==========================================
+  // INITIAL LOAD + AUTO REFRESH
+  // ==========================================
+
+  useEffect(() => {
+    const controller =
+      new AbortController();
+
+    loadEmployees(
+      controller.signal
+    );
+
+    // New Master Employees appear without
+    // separate salary registration.
+    //
+    // Background refresh does not overwrite
+    // partially edited employee fields.
+
+    const timer = setInterval(
+      () => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          loadEmployees(
+            controller.signal,
+            true
+          );
+        }
+      },
+      20000
+    );
+
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, [loadEmployees]);
+
+  // ==========================================
+  // SELECTED EMPLOYEE
+  // ==========================================
+
+  const selected = employees.find(
+    (employee) =>
+      employee.employee_id ===
+      selectedEmployeeId
+  );
+
+  useEffect(() => {
+    if (
+      selected &&
+      draft.employeeId !==
+        selected.employee_id
+    ) {
+      setDraft(
+        newDraft(selected)
+      );
+    }
+  }, [
+    selected,
+    draft.employeeId,
+  ]);
+
+  function update(
+    field,
+    value
+  ) {
+    setDraft(
+      (previous) => ({
+        ...previous,
+        [field]: value,
+      })
+    );
+  }
+
+  function switchEmployee(id) {
+    setSelectedEmployeeId(id);
+
+    const employee = employees.find(
+      (person) =>
+        person.employee_id === id
+    );
+
+    if (employee) {
+      setDraft(
+        newDraft(employee)
+      );
+    }
+
+    setMessage("");
+    setIsError(false);
+  }
+
+  // ==========================================
+  // PERFORM ADMIN ACTION
+  // ==========================================
+
+  async function perform(
+    action,
+    data = {}
+  ) {
+    if (
+      !selected ||
+      busyAction
+    ) {
+      return false;
+    }
+
+    const financial =
+      action === "ADD_ADVANCE" ||
+      action === "CORRECT_BALANCE";
+
+    const requestKey = financial
+      ? `${selected.employee_id}:${action}:${JSON.stringify(
+          data
+        )}`
+      : null;
+
+    let requestId = null;
+
+    if (financial) {
+      requestId =
+        pendingFinancialIds.current.get(
+          requestKey
+        );
+
+      if (!requestId) {
+        requestId =
+          newRequestId();
+
+        pendingFinancialIds.current.set(
+          requestKey,
+          requestId
+        );
+      }
+    }
+
+    setBusyAction(action);
+
+    setMessage("");
+    setIsError(false);
+
+    try {
+      const result = await rpc(
+        "tl_salary_master_admin_action",
+        {
+          p_employee_id:
+            selected.employee_id,
+
+          p_action:
+            action,
+
+          p_data:
+            data,
+
+          p_request_id:
+            requestId,
+        }
+      );
+
+      if (
+        result?.success !== true
+      ) {
+        throw new Error(
+          "The database did not confirm the salary action."
+        );
+      }
+
+      await loadEmployees(
+        undefined,
+        true
+      );
+
+      if (requestKey) {
+        pendingFinancialIds.current.delete(
+          requestKey
+        );
+      }
+
+      setDraft(
+        (previous) => ({
+          ...previous,
+
+          deduction: String(
+            result.weekly_advance_deduction ??
+              previous.deduction
           ),
 
-        cache:
-          "no-store",
+          correctedBalance: String(
+            result.advance_balance ??
+              previous.correctedBalance
+          ),
+
+          pin: "",
+          advanceAmount: "",
+          advanceNote: "",
+          correctionReason: "",
+        })
+      );
+
+      setMessage(
+        result.already_applied
+          ? "This request was already recorded; it was not applied twice."
+          : "Salary action saved successfully."
+      );
+
+      return true;
+    } catch (error) {
+      setIsError(true);
+
+      setMessage(
+        error?.message ||
+        "Unable to save salary action."
+      );
+
+      return false;
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  // ==========================================
+  // SAVE SALARY SETTINGS
+  // ==========================================
+
+  async function saveSettings() {
+    if (!selected) {
+      return;
+    }
+
+    const deduction = parseMoney(
+      draft.deduction
+    );
+
+    if (deduction === null) {
+      setMessage(
+        "Enter a valid weekly deduction (0 or more, up to 2 decimals)."
+      );
+
+      setIsError(true);
+      return;
+    }
+
+    if (
+      draft.pin &&
+      !/^\d{4}$/.test(draft.pin)
+    ) {
+      setMessage(
+        "Salary PIN must contain exactly four digits."
+      );
+
+      setIsError(true);
+      return;
+    }
+
+    const changingPin =
+      draft.pin.length === 4;
+
+    if (
+      changingPin &&
+      !window.confirm(
+        `SET SALARY PIN\n\n${selected.employee_name}\n\nReplace this employee's private Salary PIN?`
+      )
+    ) {
+      return;
+    }
+
+    await perform(
+      "SAVE_SETTINGS",
+      {
+        weekly_advance_deduction:
+          deduction,
+
+        pin:
+          draft.pin || "",
       }
     );
-
-  const result =
-    await safeJson(
-      response
-    );
-
-  if (!response.ok) {
-    throw new Error(
-      result?.message ||
-        result?.details ||
-        result?.hint ||
-        `Unable to run ${functionName}.`
-    );
   }
 
-  return result;
-}
+  // ==========================================
+  // ADD EMPLOYEE ADVANCE
+  // ==========================================
 
-async function safeJson(
-  response
-) {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
-function money(
-  value
-) {
-  const number =
-    Number(
-      value ?? 0
-    );
-
-  return (
-    Number.isFinite(
-      number
-    )
-      ? number
-      : 0
-  ).toLocaleString(
-    "en-KE",
-    {
-      minimumFractionDigits:
-        2,
-
-      maximumFractionDigits:
-        2,
+  async function addAdvance() {
+    if (!selected) {
+      return;
     }
-  );
-}
 
-function roundMoney(
-  value
-) {
+    const amount = parseMoney(
+      draft.advanceAmount,
+      false
+    );
+
+    if (amount === null) {
+      setIsError(true);
+
+      setMessage(
+        "Enter a valid advance greater than zero (up to 2 decimals)."
+      );
+
+      return;
+    }
+
+    const current = Number(
+      selected.advance_balance || 0
+    );
+
+    const approved =
+      window.confirm(
+        `GIVE SALARY ADVANCE\n\n` +
+        `Employee: ${selected.employee_name}` +
+        `\nCurrent balance: KES ${money(current)}` +
+        `\nNew advance: KES ${money(amount)}` +
+        `\nExpected balance: KES ${money(current + amount)}` +
+        `\n\nRecord this advance?`
+      );
+
+    if (!approved) {
+      return;
+    }
+
+    await perform(
+      "ADD_ADVANCE",
+      {
+        amount,
+
+        note:
+          draft.advanceNote.trim() ||
+          null,
+      }
+    );
+  }
+
+  // ==========================================
+  // CORRECT ADVANCE BALANCE
+  // ==========================================
+
+  async function correctBalance() {
+    if (!selected) {
+      return;
+    }
+
+    const balance = parseMoney(
+      draft.correctedBalance
+    );
+
+    const note =
+      draft.correctionReason.trim();
+
+    if (balance === null) {
+      setIsError(true);
+
+      setMessage(
+        "Enter a valid corrected advance balance."
+      );
+
+      return;
+    }
+
+    if (note.length < 6) {
+      setIsError(true);
+
+      setMessage(
+        "Provide a reason with at least six characters."
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `CORRECT ADVANCE BALANCE\n\n` +
+        `Employee: ${selected.employee_name}` +
+        `\nCurrent balance: KES ${money(
+          selected.advance_balance
+        )}` +
+        `\nCorrected balance: KES ${money(
+          balance
+        )}` +
+        `\nReason: ${note}` +
+        `\n\nThis correction will be audited. Continue?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await perform(
+      "CORRECT_BALANCE",
+      {
+        balance,
+        note,
+      }
+    );
+  }
+
+  // ==========================================
+  // ADMIN UNLOCK SALARY PIN
+  // ==========================================
+
+  async function unlockPin() {
+    if (
+      !selected ||
+      !selected.pin_locked
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `UNLOCK SALARY PIN\n\n` +
+        `${selected.employee_name}` +
+        `\nFailed attempts: ${selected.pin_failed_attempts} / 3` +
+        "\n\nReset failed attempts and unlock the PIN?"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await perform(
+      "UNLOCK_PIN",
+      {}
+    );
+  }
+
+  // ==========================================
+  // DISPLAY STATE
+  // ==========================================
+
+  const busy =
+    Boolean(busyAction);
+
+  const ready = Boolean(
+    selected &&
+    draft.employeeId ===
+      selected.employee_id
+  );
+
+  const salaryMissing =
+    selected?.weekly_salary == null;
+
+  // ==========================================
+  // RENDER
+  // ==========================================
+
   return (
-    Math.round(
-      (
-        Number(
-          value
-        ) +
-        Number.EPSILON
-      ) *
-        100
-    ) / 100
+    <section style={panelStyle}>
+      {/* MAIN TITLE */}
+
+      <div
+        style={{
+          background: "#4f46e5",
+          color: "#ffffff",
+          padding: 14,
+          fontSize: 17,
+          fontWeight: 800,
+        }}
+      >
+        EMPLOYEE SALARY MANAGEMENT
+      </div>
+
+      {/* INFORMATION */}
+
+      <div
+        style={{
+          padding: "10px 15px",
+          background: "#eef2ff",
+          color: "#3730a3",
+          fontSize: 11,
+        }}
+      >
+        All active employees come from
+        the Master Employee List automatically.
+        One employee, one salary card.
+        Names and weekly salary are read-only.
+        Salary PINs and advance balances
+        remain private.
+      </div>
+
+      {/* EMPLOYEE DROPDOWN */}
+
+      <div
+        style={{
+          ...gridStyle,
+
+          padding: 15,
+          background: "#f8fafc",
+
+          alignItems: "end",
+
+          borderBottom:
+            "1px solid #e2e8f0",
+        }}
+      >
+        <Field
+          label="SELECT EMPLOYEE — MASTER EMPLOYEE LIST"
+        >
+          <select
+            value={selectedEmployeeId}
+            onChange={(event) =>
+              switchEmployee(
+                event.target.value
+              )
+            }
+            disabled={
+              loading || busy
+            }
+            style={inputStyle}
+          >
+            {employees.length === 0 && (
+              <option value="">
+                No active employees
+              </option>
+            )}
+
+            {employees.map(
+              (employee) => (
+                <option
+                  key={
+                    employee.employee_id
+                  }
+                  value={
+                    employee.employee_id
+                  }
+                >
+                  {employee.employee_name}
+                  {" — "}
+                  {employee.shop_category ||
+                    "Unassigned"}
+                </option>
+              )
+            )}
+          </select>
+        </Field>
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <strong
+            style={{
+              fontSize: 12,
+              color: "#475569",
+            }}
+          >
+            {employees.length} ACTIVE
+            MASTER EMPLOYEES
+          </strong>
+
+          <button
+            type="button"
+            onClick={() =>
+              loadEmployees()
+            }
+            disabled={
+              busy || loading
+            }
+            style={{
+              ...buttonStyle,
+              background: "#334155",
+            }}
+          >
+            {loading
+              ? "LOADING..."
+              : "REFRESH"}
+          </button>
+        </div>
+      </div>
+
+      {/* MESSAGES */}
+
+      {message && (
+        <div
+          role={
+            isError
+              ? "alert"
+              : "status"
+          }
+          style={{
+            margin:
+              "12px 15px 0",
+
+            padding: 10,
+            borderRadius: 5,
+            fontSize: 12,
+
+            background:
+              isError
+                ? "#fef2f2"
+                : "#ecfdf5",
+
+            color:
+              isError
+                ? "#991b1b"
+                : "#166534",
+          }}
+        >
+          {message}
+        </div>
+      )}
+
+      {/* LOADING */}
+
+      {loading &&
+        employees.length === 0 && (
+          <div
+            style={{
+              padding: 30,
+              textAlign: "center",
+              color: "#64748b",
+            }}
+          >
+            Loading Master Employee
+            salaries...
+          </div>
+        )}
+
+      {/* SINGLE EMPLOYEE CARD */}
+
+      {selected && ready && (
+        <div
+          style={{
+            padding: 15,
+          }}
+        >
+          <div
+            style={{
+              border: `2px solid ${
+                selected.pin_locked
+                  ? "#dc2626"
+                  : "#16a34a"
+              }`,
+
+              borderRadius: 7,
+              overflow: "hidden",
+
+              maxWidth: 950,
+              margin: "0 auto",
+            }}
+          >
+            {/* CARD HEADER */}
+
+            <div
+              style={{
+                background: "#0f172a",
+                color: "#ffffff",
+
+                padding: "11px 13px",
+
+                fontSize: 12,
+                fontWeight: 800,
+
+                display: "flex",
+                flexWrap: "wrap",
+
+                justifyContent:
+                  "space-between",
+
+                gap: 8,
+              }}
+            >
+              <span>
+                {selected.employee_name}
+                {" — "}
+                {selected.shop_category ||
+                  "Unassigned"}
+              </span>
+
+              <span>
+                MASTER EMPLOYEE · ACTIVE
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 13,
+                padding: 12,
+              }}
+            >
+              {/* MASTER EMPLOYEE DETAILS */}
+
+              <div style={gridStyle}>
+                <Field
+                  label="EMPLOYEE NAME — MASTER (READ ONLY)"
+                >
+                  <input
+                    value={
+                      selected.employee_name ||
+                      ""
+                    }
+                    readOnly
+                    style={
+                      disabledInputStyle
+                    }
+                  />
+                </Field>
+
+                <Field
+                  label="SHOP / CATEGORY — MASTER (READ ONLY)"
+                >
+                  <input
+                    value={
+                      selected.shop_category ||
+                      "Unassigned"
+                    }
+                    readOnly
+                    style={
+                      disabledInputStyle
+                    }
+                  />
+                </Field>
+
+                <Field
+                  label="WEEKLY SALARY — MASTER (READ ONLY)"
+                >
+                  <input
+                    value={
+                      salaryMissing
+                        ? "NOT SET IN MASTER"
+                        : `KES ${money(
+                            selected.weekly_salary
+                          )}`
+                    }
+                    readOnly
+                    style={
+                      disabledInputStyle
+                    }
+                  />
+                </Field>
+
+                {/* WEEKLY DEDUCTION */}
+
+                <Field
+                  label="WEEKLY ADVANCE DEDUCTION (KES)"
+                >
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+
+                    value={
+                      draft.deduction
+                    }
+
+                    onChange={(event) =>
+                      update(
+                        "deduction",
+                        event.target.value
+                      )
+                    }
+
+                    disabled={busy}
+                    style={inputStyle}
+                  />
+                </Field>
+
+                {/* SALARY PIN */}
+
+                <Field
+                  label={
+                    selected.pin_set
+                      ? "NEW 4-DIGIT PIN (OPTIONAL)"
+                      : "4-DIGIT SALARY PIN"
+                  }
+                >
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="new-password"
+                    maxLength={4}
+
+                    value={
+                      draft.pin
+                    }
+
+                    placeholder={
+                      selected.pin_set
+                        ? "Leave blank to keep current PIN"
+                        : "Enter new PIN"
+                    }
+
+                    onChange={(event) =>
+                      update(
+                        "pin",
+                        event.target.value
+                          .replace(
+                            /\D/g,
+                            ""
+                          )
+                          .slice(0, 4)
+                      )
+                    }
+
+                    disabled={busy}
+                    style={inputStyle}
+                  />
+                </Field>
+              </div>
+
+              {/* SALARY STATUS GRID */}
+
+              <div
+                style={{
+                  ...gridStyle,
+
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(130px, 1fr))",
+
+                  gap: 7,
+                }}
+              >
+                <Status
+                  title="ADVANCE BALANCE"
+                  value={`KES ${money(
+                    selected.advance_balance
+                  )}`}
+                />
+
+                <Status
+                  title="ADVANCE"
+                  value={
+                    Number(
+                      selected.advance_balance ||
+                      0
+                    ) > 0
+                      ? "YES"
+                      : "NO"
+                  }
+                />
+
+                <Status
+                  title="PIN"
+                  value={
+                    selected.pin_set
+                      ? "SET ✓"
+                      : "NOT SET"
+                  }
+                />
+
+                <Status
+                  title="FAILED PIN"
+                  value={`${
+                    selected.pin_failed_attempts ||
+                    0
+                  } / 3`}
+                />
+
+                <Status
+                  title="PIN STATUS"
+                  value={
+                    selected.pin_locked
+                      ? "LOCKED"
+                      : "OPEN"
+                  }
+                  danger={
+                    selected.pin_locked
+                  }
+                />
+
+                <Status
+                  title="SALARY START WEEK"
+                  value={
+                    selected.salary_start_week ||
+                    "—"
+                  }
+                />
+              </div>
+
+              {/* MISSING MASTER SALARY */}
+
+              {salaryMissing && (
+                <div
+                  role="alert"
+                  style={{
+                    color: "#991b1b",
+                    background:
+                      "#fef2f2",
+
+                    padding: 10,
+                    fontSize: 12,
+                  }}
+                >
+                  Weekly salary is missing
+                  in Master Employees.
+                  Set it there before
+                  salary payment.
+                </div>
+              )}
+
+              {/* SAVE SETTINGS */}
+
+              <button
+                type="button"
+                onClick={
+                  saveSettings
+                }
+                disabled={
+                  busy ||
+                  salaryMissing
+                }
+                style={{
+                  ...buttonStyle,
+
+                  background:
+                    busy
+                      ? "#94a3b8"
+                      : "#0873b9",
+                }}
+              >
+                {busyAction ===
+                "SAVE_SETTINGS"
+                  ? "SAVING..."
+                  : "SAVE SALARY SETTINGS"}
+              </button>
+
+              {/* ====================================
+                  EMPLOYEE ADVANCE
+              ==================================== */}
+
+              <div
+                style={{
+                  ...areaStyle,
+
+                  borderColor:
+                    "#f59e0b",
+
+                  background:
+                    "#fffbeb",
+                }}
+              >
+                <strong
+                  style={{
+                    color: "#92400e",
+                    fontSize: 12,
+                  }}
+                >
+                  EMPLOYEE ADVANCE
+                </strong>
+
+                <div
+                  style={{
+                    color: "#78350f",
+                    fontSize: 11,
+                    margin:
+                      "6px 0 10px",
+                  }}
+                >
+                  Current outstanding
+                  balance:{" "}
+                  <strong>
+                    KES{" "}
+                    {money(
+                      selected.advance_balance
+                    )}
+                  </strong>
+                </div>
+
+                <div
+                  style={
+                    gridStyle
+                  }
+                >
+                  <Field
+                    label="ADD ADVANCE (KES)"
+                  >
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+
+                      value={
+                        draft.advanceAmount
+                      }
+
+                      onChange={(event) =>
+                        update(
+                          "advanceAmount",
+                          event.target.value
+                        )
+                      }
+
+                      disabled={busy}
+
+                      placeholder="Amount"
+                      style={
+                        inputStyle
+                      }
+                    />
+                  </Field>
+
+                  <Field
+                    label="ADVANCE NOTE (OPTIONAL)"
+                  >
+                    <input
+                      value={
+                        draft.advanceNote
+                      }
+
+                      onChange={(event) =>
+                        update(
+                          "advanceNote",
+                          event.target.value
+                        )
+                      }
+
+                      disabled={busy}
+
+                      placeholder="Reason / note"
+
+                      style={
+                        inputStyle
+                      }
+                    />
+                  </Field>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems:
+                        "end",
+                    }}
+                  >
+                    <button
+                      type="button"
+
+                      onClick={
+                        addAdvance
+                      }
+
+                      disabled={
+                        busy
+                      }
+
+                      style={{
+                        ...buttonStyle,
+
+                        background:
+                          "#d97706",
+
+                        width:
+                          "100%",
+                      }}
+                    >
+                      {busyAction ===
+                      "ADD_ADVANCE"
+                        ? "SAVING..."
+                        : "ADD ADVANCE"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ====================================
+                  ADVANCE BALANCE CORRECTION
+              ==================================== */}
+
+              <div
+                style={{
+                  ...areaStyle,
+                  background:
+                    "#f8fafc",
+                }}
+              >
+                <strong
+                  style={{
+                    fontSize: 12,
+                  }}
+                >
+                  CORRECT ADVANCE BALANCE
+                  {" · "}
+                  ADMIN AUDIT
+                </strong>
+
+                <p
+                  style={{
+                    margin:
+                      "6px 0 10px",
+
+                    fontSize: 11,
+
+                    color:
+                      "#64748b",
+                  }}
+                >
+                  Use only to fix an
+                  incorrect balance.
+                  This replaces the
+                  balance; it does not
+                  add a new advance.
+                  A reason and confirmation
+                  are required.
+                </p>
+
+                <div
+                  style={
+                    gridStyle
+                  }
+                >
+                  <Field
+                    label="CORRECT BALANCE TO (KES)"
+                  >
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+
+                      value={
+                        draft.correctedBalance
+                      }
+
+                      onChange={(event) =>
+                        update(
+                          "correctedBalance",
+                          event.target.value
+                        )
+                      }
+
+                      disabled={busy}
+
+                      style={
+                        inputStyle
+                      }
+                    />
+                  </Field>
+
+                  <Field
+                    label="REQUIRED REASON FOR CORRECTION"
+                  >
+                    <input
+                      value={
+                        draft.correctionReason
+                      }
+
+                      onChange={(event) =>
+                        update(
+                          "correctionReason",
+                          event.target.value
+                        )
+                      }
+
+                      disabled={busy}
+
+                      placeholder="Explain the correction"
+
+                      style={
+                        inputStyle
+                      }
+                    />
+                  </Field>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems:
+                        "end",
+                    }}
+                  >
+                    <button
+                      type="button"
+
+                      onClick={
+                        correctBalance
+                      }
+
+                      disabled={
+                        busy
+                      }
+
+                      style={{
+                        ...buttonStyle,
+
+                        background:
+                          "#475569",
+
+                        width:
+                          "100%",
+                      }}
+                    >
+                      {busyAction ===
+                      "CORRECT_BALANCE"
+                        ? "CORRECTING..."
+                        : "SAVE BALANCE CORRECTION"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ====================================
+                  PIN LOCK / ADMIN UNLOCK
+              ==================================== */}
+
+              {selected.pin_locked && (
+                <div
+                  style={{
+                    ...areaStyle,
+
+                    background:
+                      "#fee2e2",
+
+                    borderColor:
+                      "#ef4444",
+                  }}
+                >
+                  <strong
+                    style={{
+                      color:
+                        "#991b1b",
+
+                      fontSize: 12,
+                    }}
+                  >
+                    SALARY PIN LOCKED
+                  </strong>
+
+                  <p
+                    style={{
+                      color:
+                        "#991b1b",
+
+                      fontSize: 11,
+                    }}
+                  >
+                    Three incorrect PIN
+                    attempts.
+                    Admin must unlock
+                    the employee's PIN.
+                  </p>
+
+                  <button
+                    type="button"
+
+                    onClick={
+                      unlockPin
+                    }
+
+                    disabled={
+                      busy
+                    }
+
+                    style={{
+                      ...buttonStyle,
+
+                      background:
+                        "#dc2626",
+                    }}
+                  >
+                    {busyAction ===
+                    "UNLOCK_PIN"
+                      ? "UNLOCKING..."
+                      : "ADMIN UNLOCK PIN"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FOOTER */}
+
+      <footer
+        style={{
+          borderTop:
+            "1px solid #e2e8f0",
+
+          background:
+            "#f8fafc",
+
+          padding: 12,
+
+          fontSize: 11,
+
+          color:
+            "#64748b",
+
+          textAlign:
+            "center",
+        }}
+      >
+        Salaries earned Monday–Sunday
+        become payable the following
+        Monday, subject to the cashier
+        Salary PIN and payment workflow.
+        Cashier payment migration is a
+        separate step; this Admin panel
+        does not pay salaries.
+      </footer>
+    </section>
   );
 }
-
-// ==================================================
-// STYLES
-// ==================================================
-
-const panelStyle = {
-  backgroundColor:
-    "#ffffff",
-
-  borderRadius:
-    "8px",
-
-  overflow:
-    "hidden",
-
-  boxShadow:
-    "0 1px 6px rgba(0,0,0,0.12)",
-};
-
-const titleStyle = {
-  backgroundColor:
-    "#4f46e5",
-
-  color:
-    "#ffffff",
-
-  padding:
-    "14px",
-
-  fontSize:
-    "17px",
-
-  fontWeight:
-    "bold",
-};
-
-const introStyle = {
-  padding:
-    "10px 15px",
-
-  backgroundColor:
-    "#eef2ff",
-
-  color:
-    "#3730a3",
-
-  fontSize:
-    "11px",
-};
-
-const toolbarStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "end",
-
-  gap:
-    "15px",
-
-  padding:
-    "15px",
-
-  backgroundColor:
-    "#f8fafc",
-
-  borderBottom:
-    "1px solid #e2e8f0",
-};
-
-const labelStyle = {
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-
-  color:
-    "#475569",
-
-  marginBottom:
-    "5px",
-};
-
-const selectStyle = {
-  minWidth:
-    "280px",
-
-  padding:
-    "9px",
-
-  border:
-    "1px solid #94a3b8",
-
-  borderRadius:
-    "5px",
-
-  backgroundColor:
-    "#ffffff",
-};
-
-const shopInfoStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "12px",
-
-  fontSize:
-    "12px",
-
-  color:
-    "#475569",
-};
-
-const refreshButtonStyle = {
-  padding:
-    "8px 14px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#334155",
-
-  color:
-    "#ffffff",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-
-  cursor:
-    "pointer",
-};
-
-const messageStyle = {
-  margin:
-    "10px 15px",
-
-  padding:
-    "9px",
-
-  borderRadius:
-    "5px",
-
-  fontSize:
-    "11px",
-};
-
-const loadingStyle = {
-  padding:
-    "30px",
-
-  textAlign:
-    "center",
-
-  color:
-    "#64748b",
-};
-
-const slotsWrapStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(3, minmax(0, 1fr))",
-
-  gap:
-    "12px",
-
-  padding:
-    "15px",
-};
-
-const employeeCardStyle = {
-  borderRadius:
-    "7px",
-
-  overflow:
-    "hidden",
-
-  backgroundColor:
-    "#ffffff",
-};
-
-const employeeCardHeaderStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  padding:
-    "9px 11px",
-
-  backgroundColor:
-    "#0f172a",
-
-  color:
-    "#ffffff",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-};
-
-const formGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(2, minmax(0, 1fr))",
-
-  gap:
-    "8px",
-
-  padding:
-    "10px",
-};
-
-const inputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "8px",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "4px",
-
-  fontSize:
-    "11px",
-
-  backgroundColor:
-    "#ffffff",
-};
-
-const statusGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(3, minmax(0, 1fr))",
-
-  gap:
-    "6px",
-
-  padding:
-    "0 10px 10px",
-};
-
-const statusBoxStyle = {
-  padding:
-    "7px",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "center",
-};
-
-const statusTitleStyle = {
-  fontSize:
-    "8px",
-
-  fontWeight:
-    "bold",
-
-  color:
-    "#64748b",
-};
-
-const statusValueStyle = {
-  marginTop:
-    "4px",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-};
-
-const activeToggleStyle = {
-  display:
-    "flex",
-
-  gap:
-    "8px",
-
-  alignItems:
-    "center",
-
-  margin:
-    "0 10px 9px",
-
-  padding:
-    "8px",
-
-  backgroundColor:
-    "#f0fdf4",
-
-  border:
-    "1px solid #bbf7d0",
-
-  borderRadius:
-    "4px",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-
-  color:
-    "#166534",
-};
-
-const saveEmployeeButtonStyle = {
-  width:
-    "calc(100% - 20px)",
-
-  margin:
-    "0 10px 10px",
-
-  padding:
-    "9px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "5px",
-
-  color:
-    "#ffffff",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-
-  cursor:
-    "pointer",
-};
-
-const advanceBoxStyle = {
-  margin:
-    "0 10px 10px",
-
-  padding:
-    "9px",
-
-  border:
-    "1px solid #f59e0b",
-
-  borderRadius:
-    "5px",
-
-  backgroundColor:
-    "#fffbeb",
-};
-
-const sectionTitleStyle = {
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-
-  color:
-    "#92400e",
-
-  marginBottom:
-    "5px",
-};
-
-const advanceInfoStyle = {
-  fontSize:
-    "10px",
-
-  color:
-    "#78350f",
-
-  marginBottom:
-    "7px",
-};
-
-const advanceGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "0.8fr 1.2fr 0.8fr",
-
-  gap:
-    "6px",
-};
-
-const advanceButtonStyle = {
-  border:
-    "none",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#d97706",
-
-  color:
-    "#ffffff",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "9px",
-
-  cursor:
-    "pointer",
-};
-
-const lockedBoxStyle = {
-  margin:
-    "0 10px 10px",
-
-  padding:
-    "9px",
-
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
-
-  gap:
-    "10px",
-
-  backgroundColor:
-    "#fee2e2",
-
-  border:
-    "1px solid #ef4444",
-
-  borderRadius:
-    "5px",
-
-  color:
-    "#991b1b",
-
-  fontSize:
-    "10px",
-};
-
-const lockedTextStyle = {
-  marginTop:
-    "3px",
-
-  fontSize:
-    "9px",
-};
-
-const unlockButtonStyle = {
-  padding:
-    "8px 10px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "4px",
-
-  backgroundColor:
-    "#dc2626",
-
-  color:
-    "#ffffff",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "9px",
-
-  cursor:
-    "pointer",
-};
-
-const footerStyle = {
-  padding:
-    "12px",
-
-  backgroundColor:
-    "#f8fafc",
-
-  color:
-    "#64748b",
-
-  fontSize:
-    "10px",
-
-  textAlign:
-    "center",
-
-  borderTop:
-    "1px solid #e2e8f0",
-};
