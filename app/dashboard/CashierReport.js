@@ -8,7 +8,6 @@ import CashierSalaryPanel from "./CashierSalaryPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
-import CashierAttendancePanel from "./CashierAttendancePanel";
 import CashierLiveFeedPanel from "./CashierLiveFeedPanel";
 
 import {
@@ -573,7 +572,6 @@ async function saveExpenses() {
       </header>
 
       <CashierLiveFeedPanel user={user} />
-      <CashierAttendancePanel user={user} currentShift={activeShift} />
 
       <div style={bodyStyle}>
         <aside style={sidebarStyle}>
