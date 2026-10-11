@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AdminRecoveryReportEditor from "./AdminRecoveryReportEditor";
-
+import Admin24HourShiftControl from "./Admin24HourShiftControl";
 const ZONE = "Africa/Nairobi";
 
 export default function AdminShiftOverridePanel({ user }) {
@@ -268,7 +268,14 @@ export default function AdminShiftOverridePanel({ user }) {
       </div>
 
       <div style={{ padding: 14 }}>
-        <div style={grid}>
+
+  <Admin24HourShiftControl
+    user={user}
+    shops={shops}
+    onChanged={refresh}
+  />
+
+  <div style={grid}>
           <div>
             <label style={label}>SHOP</label>
             <select
