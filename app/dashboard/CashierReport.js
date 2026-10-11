@@ -765,7 +765,22 @@ async function saveExpenses() {
           </div>
 
           {/* LOWER PANELS */}
-          <div style={lowerGridStyle}>
+<style>{`
+  @media (max-width: 950px) {
+    .tl-cashier-lower-grid {
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr)) !important;
+    }
+  }
+
+  @media (max-width: 650px) {
+    .tl-cashier-lower-grid {
+      grid-template-columns:
+        minmax(0, 1fr) !important;
+    }
+  }
+`}</style>
+         <div className="tl-cashier-lower-grid" style={lowerGridStyle}>
             <CashierSavingsPanel user={user} currentShift={activeShift} />
             <CashierSalaryPanel user={user} currentShift={activeShift} />
             <CashierAccountsPanel user={user} />
