@@ -15,6 +15,7 @@ import AdminSavingsPanel from "./AdminSavingsPanel";
 import AdminDutyControlPanel from "./AdminDutyControlPanel";
 import AdminLiveFeedPanel from "./AdminLiveFeedPanel";
 import AdminAttendanceControlPanel from "./AdminAttendanceControlPanel";
+import Admin24HourShiftDisplay from "./Admin24HourShiftDisplay";
 
 // TEAM LEGEND / NYIKA — Admin Dashboard
 // Editable Master Employee List with circular total
@@ -170,6 +171,11 @@ export default function AdminDashboard({ user }) {
                 supabaseAnonKey={supabaseAnonKey}
                 accessToken={accessToken}
               />
+                  <Admin24HourShiftDisplay
+  supabaseUrl={supabaseUrl}
+  supabaseAnonKey={supabaseAnonKey}
+  accessToken={accessToken}
+/>
             </>
           )}
 
