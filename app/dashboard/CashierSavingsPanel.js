@@ -749,14 +749,11 @@ export default function CashierSavingsPanel({ user, currentShift }) {
                   {/* SAVED AND AVAILABLE BALANCES */}
 
                   <div style={styles.balanceGrid}>
-                    <BalanceTile label="SAVED" amount={row.balance} />
-                    <BalanceTile
-                      label="AVAILABLE"
-                      amount={row.availableBalance}
-                      highlight
-                    />
-                  </div>
-
+  <BalanceTile
+    label="SAVED"
+    amount={row.balance}
+  />
+</div>
                   {/* EMPLOYEE BANKING SELECTOR */}
 
                   {isBanking && (
@@ -943,11 +940,7 @@ export default function CashierSavingsPanel({ user, currentShift }) {
               label="PENDING PAYMENTS"
               amount={totals.reserved}
             />
-            <TotalTile
-              label="AVAILABLE"
-              amount={totals.available}
-              highlight
-            />
+            
           </div>
 
           {/* RECENT PAYMENT REQUESTS */}
@@ -1252,13 +1245,12 @@ const styles = {
     padding: "5px 6px",
   },
 
-  balanceGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-    gap: 8,
-    marginBottom: 14,
-  },
-
+ balanceGrid: {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr)",
+  gap: 8,
+  marginBottom: 14,
+},
   balanceTile: {
     display: "grid",
     gap: 7,
