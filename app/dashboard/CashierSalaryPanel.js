@@ -1,1187 +1,434 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-// ==================================================
-// TEAM LEGEND / NYIKA
-// CASHIER SALARY PANEL - MASTER EMPLOYEE V3
-//
-// MASTER EMPLOYEE SALARY SYSTEM
-//
-// Salary payment authorization priority:
-//
-// 1. MANUAL SALARY PAYMENT SHOP
-//    Overrides Duty/Rota.
-//
-// 2. AUTO
-//    Follows effective Duty/Rota.
-//
-// Backend RPCs:
-//
-// - tl_salary_master_cashier_list_v3
-// - tl_salary_master_verify_pin_v3
-// - tl_salary_master_pay_v3
-//
-// Preserved:
-// - Matte-black professional appearance
-// - 4-digit private Salary PIN
-// - Maximum 3 incorrect PIN attempts
-// - Admin PIN unlock
-// - 20-second PIN box timer
-// - 20-second unlocked details timer
-// - 10-second PAID details timer
-// - Private payment confirmation
-// - Advance deductions
-// - Private expenses
-// - Dashboard financial refresh
-//
-// All calculations and financial postings
-// remain controlled by Supabase.
-//
-// ==================================================
+// TEAM LEGEND / NYIKA — Master Employee Salary V3
+// Visual redesign only; all private salary operations remain in Supabase.
 
-export default function CashierSalaryPanel({
-  user,
-  currentShift,
-  onSalaryPaid,
-}) {
-  // ==================================================
-  // STATE
-  // ==================================================
-
-  const [employees, setEmployees] =
-    useState([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [pinOpenId, setPinOpenId] =
-    useState(null);
-
-  const [pinInputs, setPinInputs] =
-    useState({});
-
-  const [verifyingId, setVerifyingId] =
-    useState(null);
-
-  const [payingId, setPayingId] =
-    useState(null);
-
-  const [unlocked, setUnlocked] =
-    useState({});
-
-  const [recentPaid, setRecentPaid] =
-    useState({});
-
-  const [message, setMessage] =
-    useState("");
-
-  const [messageType, setMessageType] =
-    useState("");
-
-  // ==================================================
-  // TIMERS AND REQUEST GUARDS
-  // ==================================================
+export default function CashierSalaryPanel({ user, currentShift, onSalaryPaid }) {
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [pinOpenId, setPinOpenId] = useState(null);
+  const [pinInputs, setPinInputs] = useState({});
+  const [verifyingId, setVerifyingId] = useState(null);
+  const [payingId, setPayingId] = useState(null);
+  const [unlocked, setUnlocked] = useState({});
+  const [recentPaid, setRecentPaid] = useState({});
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("");
 
   const lockTimersRef = useRef({});
-
   const pinTimersRef = useRef({});
-
   const unlockedTimersRef = useRef({});
-
   const listRequestRef = useRef(0);
-
   const verifyBusyRef = useRef(false);
-
   const payBusyRef = useRef(false);
 
-  // ==================================================
-  // SUPABASE
-  // ==================================================
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const accessToken = user?.access_token || null;
+  const shopId = currentShift?.shop_id || user?.shop_id || user?.shopId || null;
+  const shiftId = currentShift?.id || null;
+  const sessionScope = JSON.stringify([shopId, shiftId, accessToken]);
+  const activeScopeRef = useRef(sessionScope);
+  activeScopeRef.current = sessionScope;
 
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const loadEmployees = useCallback(async () => {
+    const requestNumber = ++listRequestRef.current;
+    const expectedScope = sessionScope;
 
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!shopId || !shiftId || !accessToken || !supabaseUrl || !supabaseAnonKey) {
+      setEmployees([]);
+      setLoading(false);
+      return;
+    }
 
-  const accessToken =
-    user?.access_token || null;
+    try {
+      const result = await callRpc({
+        supabaseUrl, accessToken, supabaseAnonKey,
+        functionName: "tl_salary_master_cashier_list_v3",
+        body: { p_shop_id: shopId, p_shift_id: shiftId },
+      });
 
-  const shopId =
-    currentShift?.shop_id ||
-    user?.shop_id ||
-    user?.shopId ||
-    null;
+      if (activeScopeRef.current !== expectedScope ||
+          listRequestRef.current !== requestNumber) return;
 
-  const shiftId =
-    currentShift?.id || null;
+      if (!Array.isArray(result)) throw new Error("Invalid Master Employee salary list.");
+      setEmployees(result);
+    } catch (error) {
+      if (activeScopeRef.current !== expectedScope ||
+          listRequestRef.current !== requestNumber) return;
 
-  // A private salary unlock belongs to one
-  // exact signed-in session and shift.
-  //
-  // If either changes, old private details
-  // must never appear in the new shift.
-
-  const sessionScope = JSON.stringify([
-    shopId,
-    shiftId,
-    accessToken,
-  ]);
-
-  const activeScopeRef = useRef(
-    sessionScope
-  );
-
-  // Kept current during rendering so an
-  // earlier async request cannot publish
-  // information into a new shift.
-
-  activeScopeRef.current =
-    sessionScope;
-
-  // ==================================================
-  // SALARY LISTING V3
-  //
-  // Reads Master Employees only.
-  //
-  // Backend authorization:
-  // MANUAL Salary Shop first.
-  // AUTO follows effective Duty/Rota.
-  //
-  // No salary amounts appear in the list.
-  // ==================================================
-
-  const loadEmployees =
-    useCallback(async () => {
-      const requestNumber =
-        ++listRequestRef.current;
-
-      const expectedScope =
-        sessionScope;
-
-      if (
-        !shopId ||
-        !shiftId ||
-        !accessToken ||
-        !supabaseUrl ||
-        !supabaseAnonKey
-      ) {
-        setEmployees([]);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const result = await callRpc({
-          supabaseUrl,
-          accessToken,
-          supabaseAnonKey,
-
-          functionName:
-            "tl_salary_master_cashier_list_v3",
-
-          body: {
-            p_shop_id: shopId,
-            p_shift_id: shiftId,
-          },
-        });
-
-        // Ignore responses from an earlier
-        // cashier session or shift.
-        //
-        // Also ignore older polling responses
-        // arriving after newer ones.
-
-        if (
-          activeScopeRef.current !==
-            expectedScope ||
-          listRequestRef.current !==
-            requestNumber
-        ) {
-          return;
-        }
-
-        if (!Array.isArray(result)) {
-          throw new Error(
-            "Invalid Master Employee salary list."
-          );
-        }
-
-        setEmployees(result);
-      } catch (error) {
-        if (
-          activeScopeRef.current !==
-            expectedScope ||
-          listRequestRef.current !==
-            requestNumber
-        ) {
-          return;
-        }
-
-        console.error(
-          "LOAD CASHIER SALARY V3 ERROR:",
-          error
-        );
-
-        setEmployees([]);
-
-        setMessage(
-          error?.message ||
-            "Unable to load salary information."
-        );
-
-        setMessageType("error");
-      } finally {
-        if (
-          activeScopeRef.current ===
-            expectedScope &&
-          listRequestRef.current ===
-            requestNumber
-        ) {
-          setLoading(false);
-        }
-      }
-    }, [
-      shopId,
-      shiftId,
-      accessToken,
-      supabaseUrl,
-      supabaseAnonKey,
-      sessionScope,
-    ]);
-
-  // ==================================================
-  // AUTO REFRESH EVERY FIVE SECONDS
-  // ==================================================
+      console.error("LOAD CASHIER SALARY V3 ERROR:", error);
+      setEmployees([]);
+      setMessage(error?.message || "Unable to load salary information.");
+      setMessageType("error");
+    } finally {
+      if (activeScopeRef.current === expectedScope &&
+          listRequestRef.current === requestNumber) setLoading(false);
+    }
+  }, [shopId, shiftId, accessToken, supabaseUrl, supabaseAnonKey, sessionScope]);
 
   useEffect(() => {
     setLoading(true);
-
     loadEmployees();
-
-    const timer = setInterval(
-      loadEmployees,
-      5000
-    );
-
-    return () => {
-      clearInterval(timer);
-
-      // Invalidates pending list requests
-      // when shift or component changes.
-
-      listRequestRef.current += 1;
-    };
+    const timer = setInterval(loadEmployees, 5000);
+    return () => { clearInterval(timer); listRequestRef.current += 1; };
   }, [loadEmployees]);
-
-  // ==================================================
-  // CLEAR PRIVATE DETAILS ON SHIFT / LOGIN CHANGE
-  // ==================================================
 
   useEffect(() => {
     setPinOpenId(null);
-
     setPinInputs({});
-
     setUnlocked({});
-
     setRecentPaid({});
-
     setVerifyingId(null);
-
     setPayingId(null);
-
     verifyBusyRef.current = false;
-
     payBusyRef.current = false;
-
     setMessage("");
-
     setMessageType("");
 
-    for (const timer of Object.values(
-      lockTimersRef.current
-    )) {
-      clearTimeout(timer);
-    }
-
-    for (const timer of Object.values(
-      pinTimersRef.current
-    )) {
-      clearTimeout(timer);
-    }
-
-    for (const timer of Object.values(
-      unlockedTimersRef.current
-    )) {
-      clearTimeout(timer);
-    }
+    Object.values(lockTimersRef.current).forEach(clearTimeout);
+    Object.values(pinTimersRef.current).forEach(clearTimeout);
+    Object.values(unlockedTimersRef.current).forEach(clearTimeout);
 
     lockTimersRef.current = {};
-
     pinTimersRef.current = {};
-
     unlockedTimersRef.current = {};
   }, [sessionScope]);
 
-  // ==================================================
-  // CLEAR TIMERS WHEN COMPONENT UNMOUNTS
-  // ==================================================
-
-  useEffect(() => {
-    return () => {
-      Object.values(
-        lockTimersRef.current
-      ).forEach(clearTimeout);
-
-      Object.values(
-        pinTimersRef.current
-      ).forEach(clearTimeout);
-
-      Object.values(
-        unlockedTimersRef.current
-      ).forEach(clearTimeout);
-    };
+  useEffect(() => () => {
+    Object.values(lockTimersRef.current).forEach(clearTimeout);
+    Object.values(pinTimersRef.current).forEach(clearTimeout);
+    Object.values(unlockedTimersRef.current).forEach(clearTimeout);
   }, []);
 
-  // ==================================================
-  // PIN TIMER HELPERS
-  // ==================================================
-
   function clearPinTimer(employeeId) {
-    const timer =
-      pinTimersRef.current[employeeId];
-
+    const timer = pinTimersRef.current[employeeId];
     if (timer) {
       clearTimeout(timer);
-
-      delete pinTimersRef.current[
-        employeeId
-      ];
+      delete pinTimersRef.current[employeeId];
     }
   }
 
   function startPinCloseTimer(employeeId) {
     clearPinTimer(employeeId);
+    const expectedScope = sessionScope;
 
-    const expectedScope =
-      sessionScope;
-
-    pinTimersRef.current[employeeId] =
-      setTimeout(() => {
-        if (
-          activeScopeRef.current !==
-          expectedScope
-        ) {
-          return;
-        }
-
-        setPinOpenId((current) =>
-          current === employeeId
-            ? null
-            : current
-        );
-
-        setPinInputs((previous) => ({
-          ...previous,
-          [employeeId]: "",
-        }));
-
-        setMessage("");
-
-        setMessageType("");
-
-        delete pinTimersRef.current[
-          employeeId
-        ];
-      }, 20000);
+    pinTimersRef.current[employeeId] = setTimeout(() => {
+      if (activeScopeRef.current !== expectedScope) return;
+      setPinOpenId((current) => current === employeeId ? null : current);
+      setPinInputs((previous) => ({ ...previous, [employeeId]: "" }));
+      setMessage("");
+      setMessageType("");
+      delete pinTimersRef.current[employeeId];
+    }, 20000);
   }
 
-  // ==================================================
-  // UNLOCKED SALARY TIMER HELPERS
-  // ==================================================
-
   function clearUnlockedTimer(employeeId) {
-    const timer =
-      unlockedTimersRef.current[
-        employeeId
-      ];
-
+    const timer = unlockedTimersRef.current[employeeId];
     if (timer) {
       clearTimeout(timer);
-
-      delete unlockedTimersRef.current[
-        employeeId
-      ];
+      delete unlockedTimersRef.current[employeeId];
     }
   }
 
   function startUnlockedCloseTimer(employeeId) {
     clearUnlockedTimer(employeeId);
+    const expectedScope = sessionScope;
 
-    const expectedScope =
-      sessionScope;
-
-    unlockedTimersRef.current[
-      employeeId
-    ] = setTimeout(() => {
-      if (
-        activeScopeRef.current !==
-        expectedScope
-      ) {
-        return;
-      }
+    unlockedTimersRef.current[employeeId] = setTimeout(() => {
+      if (activeScopeRef.current !== expectedScope) return;
 
       setUnlocked((previous) => {
-        const next = {
-          ...previous,
-        };
-
+        const next = { ...previous };
         delete next[employeeId];
-
         return next;
       });
 
       setPinOpenId(null);
-
-      setPinInputs((previous) => ({
-        ...previous,
-        [employeeId]: "",
-      }));
-
+      setPinInputs((previous) => ({ ...previous, [employeeId]: "" }));
       setMessage("");
-
       setMessageType("");
-
-      delete unlockedTimersRef.current[
-        employeeId
-      ];
-
+      delete unlockedTimersRef.current[employeeId];
       loadEmployees();
     }, 20000);
   }
 
-  // ==================================================
-  // PAID DETAILS TIMER
-  //
-  // Private confirmation remains visible for
-  // 10 seconds, then automatically disappears.
-  // ==================================================
-
   function startPaidCloseTimer(employeeId) {
-    const previousTimer =
-      lockTimersRef.current[employeeId];
+    const previousTimer = lockTimersRef.current[employeeId];
+    if (previousTimer) clearTimeout(previousTimer);
+    const expectedScope = sessionScope;
 
-    if (previousTimer) {
-      clearTimeout(previousTimer);
-    }
-
-    const expectedScope =
-      sessionScope;
-
-    lockTimersRef.current[
-      employeeId
-    ] = setTimeout(() => {
-      if (
-        activeScopeRef.current !==
-        expectedScope
-      ) {
-        return;
-      }
+    lockTimersRef.current[employeeId] = setTimeout(() => {
+      if (activeScopeRef.current !== expectedScope) return;
 
       setUnlocked((previous) => {
-        const next = {
-          ...previous,
-        };
-
+        const next = { ...previous };
         delete next[employeeId];
-
         return next;
       });
 
       setRecentPaid((previous) => {
-        const next = {
-          ...previous,
-        };
-
+        const next = { ...previous };
         delete next[employeeId];
-
         return next;
       });
 
       setPinOpenId(null);
-
-      setPinInputs((previous) => ({
-        ...previous,
-        [employeeId]: "",
-      }));
-
+      setPinInputs((previous) => ({ ...previous, [employeeId]: "" }));
       setMessage("");
-
       setMessageType("");
-
-      delete lockTimersRef.current[
-        employeeId
-      ];
-
+      delete lockTimersRef.current[employeeId];
       loadEmployees();
     }, 10000);
   }
 
-  // ==================================================
-  // OPEN PRIVATE SALARY PIN BOX
-  // ==================================================
-
   function openPin(row) {
-    if (
-      !shiftId ||
-      !shopId ||
-      !accessToken
-    ) {
-      setMessage(
-        "An active cashier shift is required to access salaries."
-      );
-
+    if (!shiftId || !shopId || !accessToken) {
+      setMessage("An active cashier shift is required to access salaries.");
       setMessageType("error");
-
       return;
     }
 
-    if (
-      verifyingId !== null ||
-      payingId !== null ||
-      verifyBusyRef.current ||
-      payBusyRef.current
-    ) {
-      return;
-    }
+    if (verifyingId !== null || payingId !== null ||
+        verifyBusyRef.current || payBusyRef.current) return;
 
     if (row?.pin_locked) {
-      setMessage(
-        `${row.employee_name}'s Salary PIN is locked. Contact Admin.`
-      );
-
+      setMessage(`${row.employee_name}'s Salary PIN is locked. Contact Admin.`);
       setMessageType("error");
-
       return;
     }
 
-    if (
-      String(
-        row?.status || ""
-      ).toUpperCase() !== "PENDING"
-    ) {
-      return;
-    }
+    if (String(row?.status || "").toUpperCase() !== "PENDING") return;
 
-    // Only one PIN box may be open.
+    for (const employeeId of Object.keys(pinTimersRef.current)) clearPinTimer(employeeId);
 
-    for (const employeeId of Object.keys(
-      pinTimersRef.current
-    )) {
-      clearPinTimer(employeeId);
-    }
-
-    setPinOpenId(
-      row.employee_id
-    );
-
-    setPinInputs((previous) => ({
-      ...previous,
-
-      [row.employee_id]: "",
-    }));
-
+    setPinOpenId(row.employee_id);
+    setPinInputs((previous) => ({ ...previous, [row.employee_id]: "" }));
     setMessage("");
-
     setMessageType("");
-
-    startPinCloseTimer(
-      row.employee_id
-    );
+    startPinCloseTimer(row.employee_id);
   }
 
-  // ==================================================
-  // VERIFY PRIVATE SALARY PIN V3
-  //
-  // Supabase checks:
-  //
-  // - Master Employee account
-  // - Manual Shop / Duty-Rota routing
-  // - Exact shop and active shift
-  // - Valid 4-digit hashed PIN
-  // - Maximum 3 failed attempts
-  // - Oldest payable salary week
-  //
-  // A successful PIN creates a private session
-  // tied to the employee, shift, user and week.
-  // ==================================================
-
   async function verifyPin(row) {
-    if (
-      !row?.employee_id ||
-      !shiftId ||
-      !shopId
-    ) {
-      setMessage(
-        "An authorized working shift is required."
-      );
-
+    if (!row?.employee_id || !shiftId || !shopId) {
+      setMessage("An authorized working shift is required.");
       setMessageType("error");
-
       return;
     }
 
-    if (verifyBusyRef.current) {
-      return;
-    }
-
-    const pin = String(
-      pinInputs[row.employee_id] || ""
-    ).trim();
+    if (verifyBusyRef.current) return;
+    const pin = String(pinInputs[row.employee_id] || "").trim();
 
     if (!/^\d{4}$/.test(pin)) {
-      setMessage(
-        "Enter the 4-digit Salary PIN."
-      );
-
+      setMessage("Enter the 4-digit Salary PIN.");
       setMessageType("error");
-
-      startPinCloseTimer(
-        row.employee_id
-      );
-
+      startPinCloseTimer(row.employee_id);
       return;
     }
 
-    const expectedScope =
-      sessionScope;
-
+    const expectedScope = sessionScope;
     verifyBusyRef.current = true;
 
     try {
-      clearPinTimer(
-        row.employee_id
-      );
-
-      setVerifyingId(
-        row.employee_id
-      );
-
+      clearPinTimer(row.employee_id);
+      setVerifyingId(row.employee_id);
       setMessage("");
-
       setMessageType("");
 
       const result = await callRpc({
-        supabaseUrl,
-        accessToken,
-        supabaseAnonKey,
-
-        functionName:
-          "tl_salary_master_verify_pin_v3",
-
-        body: {
-          p_employee_id:
-            row.employee_id,
-
-          p_shift_id:
-            shiftId,
-
-          p_pin:
-            pin,
-        },
+        supabaseUrl, accessToken, supabaseAnonKey,
+        functionName: "tl_salary_master_verify_pin_v3",
+        body: { p_employee_id: row.employee_id, p_shift_id: shiftId, p_pin: pin },
       });
 
-      if (
-        activeScopeRef.current !==
-        expectedScope
-      ) {
-        return;
-      }
-
-      // ==========================================
-      // INCORRECT OR LOCKED PIN
-      // ==========================================
+      if (activeScopeRef.current !== expectedScope) return;
 
       if (!result?.success) {
-        setMessage(
-          result?.message ||
-            "Unable to unlock salary."
-        );
-
+        setMessage(result?.message || "Unable to unlock salary.");
         setMessageType("error");
-
-        setPinInputs((previous) => ({
-          ...previous,
-
-          [row.employee_id]: "",
-        }));
-
+        setPinInputs((previous) => ({ ...previous, [row.employee_id]: "" }));
         await loadEmployees();
 
-        if (
-          result?.code === "PIN_LOCKED"
-        ) {
-          clearPinTimer(
-            row.employee_id
-          );
-
+        if (result?.code === "PIN_LOCKED") {
+          clearPinTimer(row.employee_id);
           setPinOpenId(null);
         } else {
-          startPinCloseTimer(
-            row.employee_id
-          );
+          startPinCloseTimer(row.employee_id);
         }
-
         return;
       }
 
-      // ==========================================
-      // NO PENDING SALARY
-      // ==========================================
-
-      if (
-        result?.code ===
-        "NO_PENDING_SALARY"
-      ) {
-        clearPinTimer(
-          row.employee_id
-        );
-
-        setMessage(
-          result?.message ||
-            "No salary is currently due."
-        );
-
+      if (result?.code === "NO_PENDING_SALARY") {
+        clearPinTimer(row.employee_id);
+        setMessage(result?.message || "No salary is currently due.");
         setMessageType("success");
-
         setPinOpenId(null);
-
-        setPinInputs((previous) => ({
-          ...previous,
-
-          [row.employee_id]: "",
-        }));
-
+        setPinInputs((previous) => ({ ...previous, [row.employee_id]: "" }));
         await loadEmployees();
-
         return;
       }
 
-      // ==========================================
-      // REQUIRE SUCCESSFUL PRIVATE PIN SESSION
-      // ==========================================
-
-      if (
-        result?.code !== "PIN_OK" ||
-        !result?.session_id
-      ) {
-        setMessage(
-          result?.message ||
-            "Unable to open salary."
-        );
-
+      if (result?.code !== "PIN_OK" || !result?.session_id) {
+        setMessage(result?.message || "Unable to open salary.");
         setMessageType("error");
-
-        startPinCloseTimer(
-          row.employee_id
-        );
-
+        startPinCloseTimer(row.employee_id);
         return;
       }
 
-      clearPinTimer(
-        row.employee_id
-      );
-
-      // Save private salary details only
-      // for the current shift and login.
-
+      clearPinTimer(row.employee_id);
       setUnlocked((previous) => ({
         ...previous,
-
-        [row.employee_id]: {
-          ...result,
-
-          _sessionScope:
-            expectedScope,
-        },
+        [row.employee_id]: { ...result, _sessionScope: expectedScope },
       }));
 
       setPinOpenId(null);
-
-      setPinInputs((previous) => ({
-        ...previous,
-
-        [row.employee_id]: "",
-      }));
-
-      setMessage(
-        `${row.employee_name}'s salary has been unlocked.`
-      );
-
+      setPinInputs((previous) => ({ ...previous, [row.employee_id]: "" }));
+      setMessage(`${row.employee_name}'s salary has been unlocked.`);
       setMessageType("success");
-
-      startUnlockedCloseTimer(
-        row.employee_id
-      );
+      startUnlockedCloseTimer(row.employee_id);
     } catch (error) {
-      if (
-        activeScopeRef.current !==
-        expectedScope
-      ) {
-        return;
-      }
+      if (activeScopeRef.current !== expectedScope) return;
 
-      console.error(
-        "VERIFY MASTER SALARY PIN V3 ERROR:",
-        error
-      );
-
-      setMessage(
-        error?.message ||
-          "Unable to verify Salary PIN."
-      );
-
+      console.error("VERIFY MASTER SALARY PIN V3 ERROR:", error);
+      setMessage(error?.message || "Unable to verify Salary PIN.");
       setMessageType("error");
-
-      setPinInputs((previous) => ({
-        ...previous,
-
-        [row.employee_id]: "",
-      }));
-
-      startPinCloseTimer(
-        row.employee_id
-      );
+      setPinInputs((previous) => ({ ...previous, [row.employee_id]: "" }));
+      startPinCloseTimer(row.employee_id);
     } finally {
-      if (
-        activeScopeRef.current ===
-        expectedScope
-      ) {
+      if (activeScopeRef.current === expectedScope) {
         verifyBusyRef.current = false;
-
         setVerifyingId(null);
       }
     }
   }
 
-  // ==================================================
-  // PAY MASTER EMPLOYEE SALARY V3
-  //
-  // The database, not the browser, controls:
-  //
-  // - Oldest payable week
-  // - PIN session validity
-  // - Manual Shop / Duty-Rota authorization
-  // - Weekly salary deductions
-  // - Duplicate-payment protection
-  // - Private salary expense posting
-  // - Advance balance updates
-  // - Shift financial totals
-  //
-  // Browser provides confirmation only.
-  // ==================================================
-
   async function paySalary(row) {
-    const details =
-      unlocked[row.employee_id];
+    const details = unlocked[row.employee_id];
 
-    if (
-      !shiftId ||
-      !details?.session_id ||
-      details?._sessionScope !==
-        sessionScope
-    ) {
-      setMessage(
-        "Salary authorization is missing. Enter the Salary PIN again."
-      );
-
+    if (!shiftId || !details?.session_id || details?._sessionScope !== sessionScope) {
+      setMessage("Salary authorization is missing. Enter the Salary PIN again.");
       setMessageType("error");
-
       return;
     }
 
-    if (
-      payBusyRef.current ||
-      payingId !== null
-    ) {
-      return;
-    }
-
-    clearUnlockedTimer(
-      row.employee_id
-    );
+    if (payBusyRef.current || payingId !== null) return;
+    clearUnlockedTimer(row.employee_id);
 
     const confirmed = window.confirm(
       "CONFIRM WEEKLY SALARY PAYMENT\n\n" +
-
-      `Employee: ${
-        details.employee_name ||
-        row.employee_name
-      }\n` +
-
-      `Earned Week: ${formatWeek(
-        details.earned_week_start,
-        details.earned_week_end
-      )}\n\n` +
-
-      `Weekly Salary: KES ${money(
-        details.gross_salary
-      )}\n` +
-
-      `Advance: ${
-        details.advance ||
-        "NO"
-      }\n` +
-
-      `Advance Deduction: KES ${money(
-        details.advance_deduction
-      )}\n` +
-
-      `Net Salary To Pay: KES ${money(
-        details.net_salary
-      )}\n` +
-
-      `Advance Balance After: KES ${money(
-        details.advance_balance_after
-      )}\n\n` +
-
+      `Employee: ${details.employee_name || row.employee_name}\n` +
+      `Earned Week: ${formatWeek(details.earned_week_start, details.earned_week_end)}\n\n` +
+      `Weekly Salary: KES ${money(details.gross_salary)}\n` +
+      `Advance: ${details.advance || "NO"}\n` +
+      `Advance Deduction: KES ${money(details.advance_deduction)}\n` +
+      `Net Salary To Pay: KES ${money(details.net_salary)}\n` +
+      `Advance Balance After: KES ${money(details.advance_balance_after)}\n\n` +
       "The net salary will automatically be added to Expenses as a PRIVATE salary expense.\n\n" +
-
       "Pay this salary?"
     );
 
     if (!confirmed) {
-      startUnlockedCloseTimer(
-        row.employee_id
-      );
-
+      startUnlockedCloseTimer(row.employee_id);
       return;
     }
 
-    // Browser only blocks duplicate clicks.
-    // The database also prevents duplicate
-    // financial transactions independently.
-
-    const expectedScope =
-      sessionScope;
-
+    const expectedScope = sessionScope;
     payBusyRef.current = true;
 
     try {
-      setPayingId(
-        row.employee_id
-      );
-
+      setPayingId(row.employee_id);
       setMessage("");
-
       setMessageType("");
 
       const result = await callRpc({
-        supabaseUrl,
-        accessToken,
-        supabaseAnonKey,
-
-        functionName:
-          "tl_salary_master_pay_v3",
-
+        supabaseUrl, accessToken, supabaseAnonKey,
+        functionName: "tl_salary_master_pay_v3",
         body: {
-          p_employee_id:
-            row.employee_id,
-
-          p_shift_id:
-            shiftId,
-
-          p_session_id:
-            details.session_id,
+          p_employee_id: row.employee_id,
+          p_shift_id: shiftId,
+          p_session_id: details.session_id,
         },
       });
 
-      // A shift/login change must not
-      // reveal the old cashier's salary.
+      if (activeScopeRef.current !== expectedScope) return;
 
-      if (
-        activeScopeRef.current !==
-        expectedScope
-      ) {
-        return;
+      if (!result?.success || result?.code !== "SALARY_PAID") {
+        throw new Error(result?.message || "Unable to pay salary.");
       }
 
-      if (
-        !result?.success ||
-        result?.code !== "SALARY_PAID"
-      ) {
-        throw new Error(
-          result?.message ||
-            "Unable to pay salary."
-        );
-      }
-
-      // ==========================================
-      // DATABASE CONFIRMED PAYMENT
-      // ==========================================
-
-      setRecentPaid((previous) => ({
-        ...previous,
-
-        [row.employee_id]: true,
-      }));
+      setRecentPaid((previous) => ({ ...previous, [row.employee_id]: true }));
 
       setUnlocked((previous) => ({
         ...previous,
-
-        [row.employee_id]: {
-          ...details,
-
-          ...result,
-
-          _sessionScope:
-            expectedScope,
-        },
+        [row.employee_id]: { ...details, ...result, _sessionScope: expectedScope },
       }));
 
       setPinOpenId(null);
-
-      setPinInputs((previous) => ({
-        ...previous,
-
-        [row.employee_id]: "",
-      }));
+      setPinInputs((previous) => ({ ...previous, [row.employee_id]: "" }));
 
       setMessage(
         `${row.employee_name}'s salary was paid successfully. Salary details will hide automatically in 10 seconds.`
       );
-
       setMessageType("success");
+      startPaidCloseTimer(row.employee_id);
 
-      // Begin privacy countdown immediately
-      // after the confirmed database payment.
-
-      startPaidCloseTimer(
-        row.employee_id
-      );
-
-      // ==========================================
-      // REFRESH CASHIER FINANCIAL REPORT
-      // ==========================================
-      //
-      // A report refresh error must never
-      // misreport a completed payment as failed.
-
-      if (
-        typeof onSalaryPaid ===
-        "function"
-      ) {
+      // Dashboard refresh failure must not misreport a completed payment.
+      if (typeof onSalaryPaid === "function") {
         try {
           await onSalaryPaid();
         } catch (refreshError) {
-          console.error(
-            "MASTER SALARY PAID - DASHBOARD REFRESH ERROR:",
-            refreshError
-          );
+          console.error("MASTER SALARY PAID - DASHBOARD REFRESH ERROR:", refreshError);
         }
       }
 
-      if (
-        activeScopeRef.current ===
-        expectedScope
-      ) {
-        await loadEmployees();
-      }
+      if (activeScopeRef.current === expectedScope) await loadEmployees();
     } catch (error) {
-      if (
-        activeScopeRef.current !==
-        expectedScope
-      ) {
-        return;
-      }
+      if (activeScopeRef.current !== expectedScope) return;
 
-      console.error(
-        "PAY MASTER SALARY V3 ERROR:",
-        error
-      );
-
-      setMessage(
-        error?.message ||
-          "Unable to complete salary payment."
-      );
-
+      console.error("PAY MASTER SALARY V3 ERROR:", error);
+      setMessage(error?.message || "Unable to complete salary payment.");
       setMessageType("error");
-
-      // Keep private details briefly
-      // so the cashier can see the error.
-      //
-      // The backend will independently reject
-      // a reused or invalid PIN session.
-
-      startUnlockedCloseTimer(
-        row.employee_id
-      );
+      startUnlockedCloseTimer(row.employee_id);
     } finally {
-      if (
-        activeScopeRef.current ===
-        expectedScope
-      ) {
+      if (activeScopeRef.current === expectedScope) {
         payBusyRef.current = false;
-
         setPayingId(null);
       }
     }
   }
 
-  // ==================================================
-  // DISPLAY
-  // ==================================================
-
   return (
-    <section style={panelStyle}>
-      {/* TITLE */}
+    <section className="tl-salary-v3">
+      <style>{salaryCss}</style>
 
-      <div style={titleStyle}>
-        WEEKLY SALARY
+      <div className="tl-salary-title">
+        <div>
+          <div className="tl-salary-eyebrow">PRIVATE PAYROLL</div>
+          <div className="tl-salary-heading">WEEKLY SALARY</div>
+        </div>
+        <span className="tl-salary-heading-chip">MASTER EMPLOYEE V3</span>
       </div>
 
-      {/* PRIVACY NOTICE */}
-
-      <div style={privacyNoticeStyle}>
-        Salary amounts are private. Each employee
-        must use their own 4-digit Salary PIN.
+      <div className="tl-salary-privacy">
+        <span aria-hidden="true">🔒</span>
+        <span>
+          Salary amounts are private. Each employee must enter their own
+          4-digit Salary PIN.
+        </span>
       </div>
-
-      {/* MESSAGES */}
 
       {message && (
         <div
-          style={{
-            ...messageStyle,
-
-            border:
-              messageType === "success"
-                ? "1px solid #2F6B47"
-                : "1px solid #79363C",
-
-            background:
-              messageType === "success"
-                ? "#10261A"
-                : "#2C1619",
-
-            color: "#FFFFFF",
-          }}
+          role="status"
+          className={`tl-salary-message ${messageType === "success" ? "success" : "error"}`}
         >
           {message}
         </div>
       )}
 
-      {/* TABLE HEADER */}
-
-      <div style={headerStyle}>
+      <div className="tl-salary-gridhead" aria-hidden="true">
         <div>EMPLOYEE</div>
         <div>SALARY</div>
         <div>STATUS</div>
@@ -1189,257 +436,133 @@ export default function CashierSalaryPanel({
       </div>
 
       {loading ? (
-        <div style={emptyStyle}>
-          Loading salary employees...
-        </div>
+        <div className="tl-salary-empty">Loading salary employees...</div>
       ) : employees.length === 0 ? (
-        <div style={emptyStyle}>
-          No salary employees authorized for this
-          working shift.
+        <div className="tl-salary-empty">
+          No salary employees authorized for this working shift.
         </div>
       ) : (
         employees.map((row) => {
-          const employeeId =
-            row.employee_id;
-
-          const storedDetails =
-            unlocked[employeeId];
-
-          // Private details must belong to
-          // the currently active cashier shift.
+          const employeeId = row.employee_id;
+          const storedDetails = unlocked[employeeId];
 
           const details =
-            storedDetails?._sessionScope ===
-            sessionScope
-              ? storedDetails
-              : null;
+            storedDetails?._sessionScope === sessionScope ? storedDetails : null;
 
-          const justPaid = Boolean(
-            recentPaid[employeeId] &&
-            details
-          );
-
-          const status = String(
-            row.status || "NOT DUE"
-          ).toUpperCase();
-
-          const locked = Boolean(
-            row.pin_locked ||
-            status === "LOCKED"
-          );
-
-          const pinOpen =
-            pinOpenId === employeeId;
+          const justPaid = Boolean(recentPaid[employeeId] && details);
+          const status = String(row.status || "NOT DUE").toUpperCase();
+          const locked = Boolean(row.pin_locked || status === "LOCKED");
+          const pinOpen = pinOpenId === employeeId;
+          const visibleStatus = justPaid ? "PAID" : locked ? "LOCKED" : status;
 
           return (
-            <div key={employeeId}>
-              {/* ======================================
-                  SALARY EMPLOYEE ROW
-                  ====================================== */}
+            <div className="tl-salary-employee" key={employeeId}>
+              <div className="tl-salary-row">
+                <div className="tl-salary-name">{row.employee_name}</div>
+                <div className="tl-salary-private">🔒 PRIVATE</div>
+                <SalaryStatus status={visibleStatus} />
 
-              <div style={salaryRowStyle}>
-                <div style={employeeNameStyle}>
-                  {row.employee_name}
-                </div>
-
-                <div style={privateStyle}>
-                  🔒 PRIVATE
-                </div>
-
-                <SalaryStatus
-                  status={
-                    justPaid
-                      ? "PAID"
-                      : locked
-                      ? "LOCKED"
-                      : status
-                  }
-                />
-
-                <div>
+                <div className="tl-salary-action">
                   {justPaid ? (
-                    <div style={paidPrivateStyle}>
-                      PAID ✓
-                    </div>
+                    <span className="tl-salary-action-label positive">PAID ✓</span>
                   ) : locked ? (
-                    <div style={lockedStyle}>
-                      CONTACT ADMIN
-                    </div>
+                    <span className="tl-salary-action-label negative">CONTACT ADMIN</span>
                   ) : details ? (
-                    <div style={unlockedBadgeStyle}>
-                      UNLOCKED
-                    </div>
+                    <span className="tl-salary-action-label neutral">UNLOCKED</span>
                   ) : status === "PENDING" ? (
                     <button
                       type="button"
-
-                      onClick={() =>
-                        openPin(row)
-                      }
-
-                      disabled={
-                        verifyingId !== null ||
-                        payingId !== null
-                      }
-
-                      style={viewButtonStyle}
+                      className="tl-salary-view"
+                      onClick={() => openPin(row)}
+                      disabled={verifyingId !== null || payingId !== null}
                     >
                       VIEW / PAY
                     </button>
                   ) : status === "PAID" ? (
-                    <div style={paidPrivateStyle}>
-                      PRIVATE ✓
-                    </div>
+                    <span className="tl-salary-action-label positive">PRIVATE ✓</span>
                   ) : (
-                    <div style={notDueStyle}>
-                      NOT DUE
-                    </div>
+                    <span className="tl-salary-action-label muted">NOT DUE</span>
                   )}
                 </div>
               </div>
 
-              {/* ======================================
-                  PRIVATE SALARY PIN BOX
-                  ====================================== */}
-
               {pinOpen && !locked && (
-                <div style={pinBoxStyle}>
-                  <div style={pinLabelStyle}>
-                    Enter {row.employee_name}'s
-                    4-digit Salary PIN
+                <div className="tl-salary-pin-box">
+                  <div className="tl-salary-pin-title">
+                    Enter {row.employee_name}'s 4-digit Salary PIN
                   </div>
 
-                  <div style={pinGridStyle}>
+                  <div className="tl-salary-pin-grid">
                     <input
                       type="password"
-
                       inputMode="numeric"
-
                       maxLength={4}
-
-                      value={
-                        pinInputs[employeeId] ||
-                        ""
-                      }
-
-                      disabled={
-                        verifyingId ===
-                          employeeId ||
-                        payingId !== null
-                      }
-
+                      value={pinInputs[employeeId] || ""}
+                      disabled={verifyingId === employeeId || payingId !== null}
                       autoFocus
-
                       placeholder="••••"
-
                       autoComplete="off"
-
+                      aria-label="4-digit Salary PIN"
                       onChange={(event) => {
-                        const value =
-                          event.target.value
-                            .replace(/\D/g, "")
-                            .slice(0, 4);
+                        const value = event.target.value.replace(/\D/g, "").slice(0, 4);
 
-                        setPinInputs(
-                          (previous) => ({
-                            ...previous,
-
-                            [employeeId]:
-                              value,
-                          })
-                        );
+                        setPinInputs((previous) => ({
+                          ...previous,
+                          [employeeId]: value,
+                        }));
 
                         setMessage("");
-
                         setMessageType("");
-
-                        startPinCloseTimer(
-                          employeeId
-                        );
+                        startPinCloseTimer(employeeId);
                       }}
-
-                      style={pinInputStyle}
+                      className="tl-salary-pin-input"
                     />
 
                     <button
                       type="button"
-
-                      disabled={
-                        verifyingId !== null ||
-                        payingId !== null
-                      }
-
-                      onClick={() =>
-                        verifyPin(row)
-                      }
-
-                      style={pinConfirmButtonStyle}
+                      className="tl-salary-unlock"
+                      disabled={verifyingId !== null || payingId !== null}
+                      onClick={() => verifyPin(row)}
                     >
-                      {verifyingId === employeeId
-                        ? "CHECKING..."
-                        : "UNLOCK"}
+                      {verifyingId === employeeId ? "CHECKING..." : "UNLOCK"}
                     </button>
 
                     <button
                       type="button"
-
-                      disabled={
-                        verifyingId === employeeId
-                      }
-
+                      className="tl-salary-cancel"
+                      disabled={verifyingId === employeeId}
                       onClick={() => {
-                        clearPinTimer(
-                          employeeId
-                        );
-
+                        clearPinTimer(employeeId);
                         setPinOpenId(null);
-
-                        setPinInputs(
-                          (previous) => ({
-                            ...previous,
-
-                            [employeeId]:
-                              "",
-                          })
-                        );
-
+                        setPinInputs((previous) => ({
+                          ...previous,
+                          [employeeId]: "",
+                        }));
                         setMessage("");
-
                         setMessageType("");
                       }}
-
-                      style={cancelButtonStyle}
                     >
                       CANCEL
                     </button>
                   </div>
 
-                  <div style={attemptsStyle}>
-                    Maximum 3 incorrect attempts.
-                    After the third incorrect PIN,
-                    Admin must unlock the employee.
-                    The PIN box closes automatically
-                    after 20 seconds of inactivity.
+                  <div className="tl-salary-hint">
+                    Maximum 3 incorrect attempts. Admin must unlock the PIN
+                    after the third failure. The PIN box closes after
+                    20 seconds of inactivity.
                   </div>
                 </div>
               )}
 
-              {/* ======================================
-                  PRIVATE SALARY DETAILS
-                  ====================================== */}
-
               {details && (
-                <div style={detailsBoxStyle}>
-                  <div style={detailsTitleStyle}>
-                    {details.employee_name ||
-                      row.employee_name}
-                    {" — PRIVATE SALARY DETAILS"}
+                <div className="tl-salary-details">
+                  <div className="tl-salary-details-heading">
+                    {details.employee_name || row.employee_name} — PRIVATE SALARY DETAILS
                   </div>
 
-                  <div style={detailsGridStyle}>
+                  <div className="tl-salary-detail-grid">
                     <DetailBox
                       title="EARNED WEEK"
-
                       value={formatWeek(
                         details.earned_week_start,
                         details.earned_week_end
@@ -1448,106 +571,64 @@ export default function CashierSalaryPanel({
 
                     <DetailBox
                       title="WEEKLY SALARY"
-
-                      value={`KES ${money(
-                        details.gross_salary
-                      )}`}
+                      value={`KES ${money(details.gross_salary)}`}
                     />
 
                     <DetailBox
                       title="ADVANCE"
-
                       value={
                         details.advance ||
-                        (Number(
-                          details.advance_balance_before ||
-                            0
-                        ) > 0
-                          ? "YES"
-                          : "NO")
+                        (Number(details.advance_balance_before || 0) > 0 ? "YES" : "NO")
                       }
                     />
 
                     <DetailBox
                       title="ADVANCE BALANCE"
-
-                      value={`KES ${money(
-                        details.advance_balance_before
-                      )}`}
+                      value={`KES ${money(details.advance_balance_before)}`}
                     />
 
                     <DetailBox
                       title="ADV. DEDUCTION"
-
-                      value={`KES ${money(
-                        details.advance_deduction
-                      )}`}
+                      value={`KES ${money(details.advance_deduction)}`}
                     />
 
                     <DetailBox
                       title="NET SALARY"
-
-                      value={`KES ${money(
-                        details.net_salary
-                      )}`}
-
+                      value={`KES ${money(details.net_salary)}`}
                       strong
                     />
 
                     <DetailBox
                       title="ADVANCE AFTER"
-
-                      value={`KES ${money(
-                        details.advance_balance_after
-                      )}`}
+                      value={`KES ${money(details.advance_balance_after)}`}
                     />
 
                     <DetailBox
                       title="PAYMENT"
-
-                      value={
-                        justPaid
-                          ? "PAID ✓"
-                          : "PENDING"
-                      }
-
+                      value={justPaid ? "PAID ✓" : "PENDING"}
                       strong
                     />
                   </div>
 
                   {justPaid ? (
-                    <div style={tenSecondStyle}>
-                      Salary paid successfully.
-                      These private details will
-                      lock automatically after
-                      10 seconds.
+                    <div className="tl-salary-paid-note">
+                      Salary paid successfully. Private details disappear
+                      automatically after 10 seconds.
                     </div>
                   ) : (
                     <>
                       <button
                         type="button"
-
-                        disabled={
-                          payingId !== null ||
-                          verifyingId !== null
-                        }
-
-                        onClick={() =>
-                          paySalary(row)
-                        }
-
-                        style={payButtonStyle}
+                        className="tl-salary-pay"
+                        disabled={payingId !== null || verifyingId !== null}
+                        onClick={() => paySalary(row)}
                       >
-                        {payingId === employeeId
-                          ? "PAYING SALARY..."
-                          : "PAY SALARY"}
+                        {payingId === employeeId ? "PAYING SALARY..." : "PAY SALARY"}
                       </button>
 
-                      <div style={unlockedNoticeStyle}>
-                        Private salary details will
-                        close automatically after
-                        20 seconds if no payment
-                        is made.
+                      <div className="tl-salary-hint centered">
+                        Private salary details close automatically after
+                        20 seconds if no payment is made.
                       </div>
                     </>
                   )}
@@ -1558,87 +639,39 @@ export default function CashierSalaryPanel({
         })
       )}
 
-      {/* FOOTER */}
-
-      <div style={footerStyle}>
-        Salary earned Monday–Sunday becomes payable
-        from the following Monday. A successful salary
-        payment is automatically added to Expenses
-        as a private salary expense.
+      <div className="tl-salary-footer">
+        Salary earned Monday–Sunday becomes payable from the following Monday.
+        Successful payments are posted automatically to Expenses as private
+        salary expenses.
       </div>
     </section>
   );
 }
 
-// ==================================================
-// STATUS BADGES
-// ==================================================
-
 function SalaryStatus({ status }) {
-  const text = String(
-    status || ""
-  ).toUpperCase();
+  const value = String(status || "").toUpperCase();
 
-  let style =
-    notDueStatusStyle;
-
-  if (text === "PENDING") {
-    style =
-      pendingStatusStyle;
-  }
-
-  if (text === "PAID") {
-    style =
-      paidStatusStyle;
-  }
-
-  if (text === "LOCKED") {
-    style =
-      lockedStatusStyle;
-  }
+  const tone =
+    value === "PAID" ? "paid" :
+    value === "LOCKED" ? "locked" :
+    value === "PENDING" ? "pending" :
+    "not-due";
 
   return (
-    <div style={style}>
-      {text === "PAID"
-        ? "PAID ✓"
-        : text}
+    <div className={`tl-salary-status ${tone}`}>
+      {value === "PAID" ? "PAID ✓" : value}
     </div>
   );
 }
 
-// ==================================================
-// PRIVATE SALARY DETAIL BOX
-// ==================================================
-
-function DetailBox({
-  title,
-  value,
-  strong = false,
-}) {
+function DetailBox({ title, value, strong = false }) {
   return (
-    <div
-      style={{
-        ...detailBoxStyle,
-
-        ...(strong
-          ? strongDetailBoxStyle
-          : {}),
-      }}
-    >
-      <div style={detailTitleStyle}>
-        {title}
-      </div>
-
-      <div style={detailValueStyle}>
-        {value}
-      </div>
+    <div className={`tl-salary-detail ${strong ? "highlight" : ""}`}>
+      <div className="tl-salary-detail-title">{title}</div>
+      <div className="tl-salary-detail-value">{value}</div>
     </div>
   );
 }
-
-// ==================================================
-// SUPABASE RPC HELPER
-// ==================================================
 
 async function callRpc({
   supabaseUrl,
@@ -1647,52 +680,32 @@ async function callRpc({
   functionName,
   body,
 }) {
-  if (
-    !supabaseUrl ||
-    !accessToken ||
-    !supabaseAnonKey
-  ) {
-    throw new Error(
-      "Supabase connection or login is missing."
-    );
+  if (!supabaseUrl || !accessToken || !supabaseAnonKey) {
+    throw new Error("Supabase connection or login is missing.");
   }
 
   const response = await fetch(
-    `${String(supabaseUrl).replace(
-      /\/+$/,
-      ""
-    )}/rest/v1/rpc/${functionName}`,
+    `${String(supabaseUrl).replace(/\/+$/, "")}/rest/v1/rpc/${functionName}`,
     {
       method: "POST",
-
       headers: {
-        apikey:
-          supabaseAnonKey,
-
-        Authorization:
-          `Bearer ${accessToken}`,
-
-        "Content-Type":
-          "application/json",
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
       },
-
-      body:
-        JSON.stringify(body),
-
-      cache:
-        "no-store",
+      body: JSON.stringify(body),
+      cache: "no-store",
     }
   );
 
-  const result =
-    await safeJson(response);
+  const result = await safeJson(response);
 
   if (!response.ok) {
     throw new Error(
       result?.message ||
-        result?.details ||
-        result?.hint ||
-        `Unable to run ${functionName}.`
+      result?.details ||
+      result?.hint ||
+      `Unable to run ${functionName}.`
     );
   }
 
@@ -1707,725 +720,175 @@ async function safeJson(response) {
   }
 }
 
-// ==================================================
-// MONEY AND DATE HELPERS
-// ==================================================
-
 function money(value) {
-  const numeric =
-    Number(value ?? 0);
+  const number = Number(value ?? 0);
 
-  return (
-    Number.isFinite(numeric)
-      ? numeric
-      : 0
-  ).toLocaleString("en-KE", {
+  return (Number.isFinite(number) ? number : 0).toLocaleString("en-KE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 }
 
 function formatWeek(start, end) {
-  if (!start) {
-    return "-";
-  }
-
-  const startText =
-    formatDate(start);
-
-  const endText = end
-    ? formatDate(end)
-    : "-";
-
-  return `${startText} - ${endText}`;
+  if (!start) return "-";
+  return `${formatDate(start)} - ${end ? formatDate(end) : "-"}`;
 }
 
 function formatDate(value) {
-  if (!value) {
-    return "-";
-  }
+  if (!value) return "-";
 
-  // Format SQL date without shifting
-  // the calendar date across time zones.
+  const datePart = String(value).slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
 
-  const datePart =
-    String(value).slice(0, 10);
-
-  const match =
-    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
-      datePart
-    );
-
-  if (!match) {
-    return String(value);
-  }
+  if (!match) return String(value);
 
   const date = new Date(
-    Date.UTC(
-      Number(match[1]),
-      Number(match[2]) - 1,
-      Number(match[3])
-    )
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
   );
 
-  if (
-    Number.isNaN(date.getTime())
-  ) {
-    return String(value);
-  }
+  if (Number.isNaN(date.getTime())) return String(value);
 
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone: "UTC",
-
-      day: "2-digit",
-
-      month: "short",
-
-      year: "numeric",
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
 }
 
 // ==================================================
-// PROFESSIONAL MATTE BLACK STYLES
-// UNCHANGED
+// PROFESSIONAL RESPONSIVE SALARY STYLES
 // ==================================================
 
-const panelStyle = {
-  minWidth: 0,
-
-  background:
-    "linear-gradient(180deg, #11161C 0%, #0B0F13 100%)",
-
-  color: "#FFFFFF",
-
-  border: "1px solid #303840",
-
-  borderRadius: "14px",
-
-  overflow: "hidden",
-
-  boxShadow:
-    "0 10px 28px rgba(0,0,0,0.22)",
-};
-
-const titleStyle = {
-  padding: "13px 15px",
-
-  background:
-    "linear-gradient(145deg, rgba(215,179,106,0.15), rgba(17,22,28,0.98))",
-
-  color: "#FFFFFF",
-
-  borderBottom:
-    "1px solid rgba(215,179,106,0.34)",
-
-  borderLeft:
-    "4px solid #D7B36A",
-
-  fontSize: "15px",
-
-  fontWeight: 950,
-
-  letterSpacing:
-    "0.5px",
-};
-
-const privacyNoticeStyle = {
-  padding: "9px 12px",
-
-  backgroundColor:
-    "#0D1115",
-
-  color: "#FFFFFF",
-
-  borderBottom:
-    "1px solid #292F36",
-
-  fontSize: "11px",
-
-  textAlign: "center",
-
-  lineHeight: 1.45,
-};
-
-const messageStyle = {
-  margin: "8px",
-
-  padding: "9px",
-
-  borderRadius: "7px",
-
-  fontSize: "11px",
-
-  fontWeight: 800,
-};
-
-const headerStyle = {
-  display: "grid",
-
-  gridTemplateColumns:
-    "1.3fr 0.8fr 0.8fr 0.9fr",
-
-  gap: "5px",
-
-  padding: "9px",
-
-  backgroundColor:
-    "#11161C",
-
-  color: "#FFFFFF",
-
-  borderBottom:
-    "1px solid #343C45",
-
-  fontSize: "10px",
-
-  fontWeight: 900,
-
-  textAlign: "center",
-
-  letterSpacing:
-    "0.35px",
-};
-
-const salaryRowStyle = {
-  display: "grid",
-
-  gridTemplateColumns:
-    "1.3fr 0.8fr 0.8fr 0.9fr",
-
-  gap: "6px",
-
-  padding: "8px",
-
-  alignItems: "center",
-
-  backgroundColor:
-    "#0D1115",
-
-  borderBottom:
-    "1px solid #252B31",
-
-  color: "#FFFFFF",
-
-  fontSize: "11px",
-};
-
-const employeeNameStyle = {
-  fontWeight: 900,
-
-  color: "#FFFFFF",
-};
-
-const privateStyle = {
-  padding: "6px",
-
-  borderRadius: "6px",
-
-  backgroundColor:
-    "#171C22",
-
-  border: "1px solid #424B55",
-
-  color: "#FFFFFF",
-
-  textAlign: "center",
-
-  fontWeight: 900,
-
-  fontSize: "9px",
-};
-
-// ==================================================
-// STATUS BADGE STYLES
-// ==================================================
-
-const pendingStatusStyle = {
-  padding: "6px",
-
-  borderRadius: "6px",
-
-  backgroundColor:
-    "#171C22",
-
-  color: "#FFFFFF",
-
-  border:
-    "1px solid rgba(215,179,106,0.48)",
-
-  textAlign: "center",
-
-  fontWeight: 900,
-
-  fontSize: "9px",
-};
-
-const paidStatusStyle = {
-  padding: "6px",
-
-  borderRadius: "6px",
-
-  backgroundColor:
-    "#10261A",
-
-  color: "#FFFFFF",
-
-  border:
-    "1px solid #2F6B47",
-
-  textAlign: "center",
-
-  fontWeight: 900,
-
-  fontSize: "9px",
-};
-
-const notDueStatusStyle = {
-  padding: "6px",
-
-  borderRadius: "6px",
-
-  backgroundColor:
-    "#171C22",
-
-  color: "#FFFFFF",
-
-  border:
-    "1px solid #424B55",
-
-  textAlign: "center",
-
-  fontWeight: 900,
-
-  fontSize: "9px",
-};
-
-const lockedStatusStyle = {
-  padding: "6px",
-
-  borderRadius: "6px",
-
-  backgroundColor:
-    "#2C1619",
-
-  color: "#FFFFFF",
-
-  border:
-    "1px solid #79363C",
-
-  textAlign: "center",
-
-  fontWeight: 900,
-
-  fontSize: "9px",
-};
-
-// ==================================================
-// ACTION STYLES
-// ==================================================
-
-const viewButtonStyle = {
-  width: "100%",
-
-  minHeight: "34px",
-
-  padding: "7px",
-
-  border:
-    "1px solid rgba(215,179,106,0.45)",
-
-  borderRadius: "7px",
-
-  background:
-    "linear-gradient(145deg, rgba(215,179,106,0.15), #11161C)",
-
-  color: "#FFFFFF",
-
-  fontSize: "10px",
-
-  fontWeight: 900,
-
-  cursor: "pointer",
-};
-
-const lockedStyle = {
-  padding: "6px",
-
-  borderRadius: "6px",
-
-  backgroundColor:
-    "#2C1619",
-
-  border:
-    "1px solid #79363C",
-
-  color: "#FFFFFF",
-
-  textAlign: "center",
-
-  fontSize: "9px",
-
-  fontWeight: 900,
-};
-
-const unlockedBadgeStyle = {
-  padding: "6px",
-
-  borderRadius: "6px",
-
-  backgroundColor:
-    "#171C22",
-
-  border:
-    "1px solid rgba(215,179,106,0.48)",
-
-  color: "#FFFFFF",
-
-  textAlign: "center",
-
-  fontSize: "9px",
-
-  fontWeight: 900,
-};
-
-const paidPrivateStyle = {
-  padding: "6px",
-
-  borderRadius: "6px",
-
-  backgroundColor:
-    "#10261A",
-
-  border:
-    "1px solid #2F6B47",
-
-  color: "#FFFFFF",
-
-  textAlign: "center",
-
-  fontSize: "9px",
-
-  fontWeight: 900,
-};
-
-const notDueStyle = {
-  padding: "6px",
-
-  borderRadius: "6px",
-
-  backgroundColor:
-    "#171C22",
-
-  border:
-    "1px solid #424B55",
-
-  color: "#FFFFFF",
-
-  textAlign: "center",
-
-  fontSize: "9px",
-
-  fontWeight: 900,
-};
-
-// ==================================================
-// PIN BOX STYLES
-// ==================================================
-
-const pinBoxStyle = {
-  margin: "8px",
-
-  padding: "10px",
-
-  border:
-    "1px solid rgba(215,179,106,0.48)",
-
-  background:
-    "linear-gradient(145deg, #151A20, #0C1014)",
-
-  borderRadius: "9px",
-};
-
-const pinLabelStyle = {
-  marginBottom: "7px",
-
-  color: "#FFFFFF",
-
-  fontSize: "11px",
-
-  fontWeight: 900,
-};
-
-const pinGridStyle = {
-  display: "grid",
-
-  gridTemplateColumns:
-    "1fr 100px 80px",
-
-  gap: "7px",
-};
-
-const pinInputStyle = {
-  width: "100%",
-
-  boxSizing: "border-box",
-
-  minHeight: "38px",
-
-  padding: "8px",
-
-  border:
-    "1px solid #4A535D",
-
-  borderRadius: "7px",
-
-  backgroundColor:
-    "#080B0E",
-
-  color: "#FFFFFF",
-
-  textAlign: "center",
-
-  fontSize: "15px",
-
-  fontWeight: 900,
-
-  letterSpacing:
-    "5px",
-
-  outline: "none",
-};
-
-const pinConfirmButtonStyle = {
-  border:
-    "1px solid rgba(215,179,106,0.48)",
-
-  borderRadius: "7px",
-
-  background:
-    "linear-gradient(145deg, rgba(215,179,106,0.15), #11161C)",
-
-  color: "#FFFFFF",
-
-  fontSize: "9px",
-
-  fontWeight: 900,
-
-  cursor: "pointer",
-};
-
-const cancelButtonStyle = {
-  border:
-    "1px solid #454E58",
-
-  borderRadius: "7px",
-
-  backgroundColor:
-    "#171C22",
-
-  color: "#FFFFFF",
-
-  fontSize: "9px",
-
-  fontWeight: 900,
-
-  cursor: "pointer",
-};
-
-const attemptsStyle = {
-  marginTop: "7px",
-
-  color: "#AAB2BC",
-
-  fontSize: "9px",
-
-  lineHeight: 1.45,
-};
-
-// ==================================================
-// PRIVATE SALARY DETAILS STYLES
-// ==================================================
-
-const detailsBoxStyle = {
-  margin: "8px",
-
-  padding: "10px",
-
-  border:
-    "1px solid rgba(215,179,106,0.50)",
-
-  background:
-    "linear-gradient(145deg, #151A20, #0B0F13)",
-
-  borderRadius: "9px",
-};
-
-const detailsTitleStyle = {
-  marginBottom: "9px",
-
-  color: "#FFFFFF",
-
-  fontSize: "11px",
-
-  fontWeight: 950,
-
-  letterSpacing:
-    "0.3px",
-};
-
-const detailsGridStyle = {
-  display: "grid",
-
-  gridTemplateColumns:
-    "repeat(4, minmax(0, 1fr))",
-
-  gap: "7px",
-};
-
-const detailBoxStyle = {
-  padding: "8px",
-
-  border:
-    "1px solid #39424C",
-
-  borderRadius: "7px",
-
-  backgroundColor:
-    "#080B0E",
-
-  textAlign: "center",
-
-  color: "#FFFFFF",
-};
-
-const strongDetailBoxStyle = {
-  background:
-    "linear-gradient(145deg, rgba(215,179,106,0.13), #0D1115)",
-
-  border:
-    "1px solid rgba(215,179,106,0.52)",
-};
-
-const detailTitleStyle = {
-  fontSize: "8px",
-
-  color: "#AAB2BC",
-
-  fontWeight: 900,
-};
-
-const detailValueStyle = {
-  marginTop: "4px",
-
-  fontSize: "11px",
-
-  fontWeight: 950,
-
-  color: "#FFFFFF",
-};
-
-const payButtonStyle = {
-  width: "100%",
-
-  marginTop: "9px",
-
-  minHeight: "38px",
-
-  padding: "9px",
-
-  border:
-    "1px solid rgba(215,179,106,0.52)",
-
-  borderRadius: "7px",
-
-  background:
-    "linear-gradient(145deg, rgba(215,179,106,0.17), #11161C)",
-
-  color: "#FFFFFF",
-
-  fontSize: "10px",
-
-  fontWeight: 950,
-
-  cursor: "pointer",
-};
-
-const tenSecondStyle = {
-  marginTop: "9px",
-
-  padding: "8px",
-
-  borderRadius: "7px",
-
-  backgroundColor:
-    "#10261A",
-
-  border:
-    "1px solid #2F6B47",
-
-  color: "#FFFFFF",
-
-  textAlign: "center",
-
-  fontSize: "9px",
-
-  fontWeight: 900,
-};
-
-const unlockedNoticeStyle = {
-  marginTop: "7px",
-
-  padding: "7px",
-
-  borderRadius: "7px",
-
-  backgroundColor:
-    "#171C22",
-
-  border:
-    "1px solid #424B55",
-
-  color: "#FFFFFF",
-
-  textAlign: "center",
-
-  fontSize: "9px",
-
-  fontWeight: 800,
-};
-
-const emptyStyle = {
-  padding: "20px",
-
-  backgroundColor:
-    "#0D1115",
-
-  color: "#FFFFFF",
-
-  textAlign: "center",
-
-  fontSize: "11px",
-
-  fontWeight: 750,
-};
-
-const footerStyle = {
-  padding: "9px 10px",
-
-  borderTop:
-    "1px solid #292F36",
-
-  backgroundColor:
-    "#0D1115",
-
-  color: "#AAB2BC",
-
-  textAlign: "center",
-
-  fontSize: "9px",
-
-  lineHeight: 1.45,
-};
+const salaryCss = `
+.tl-salary-v3 {
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: #101f30;
+  color: #f0f5fa;
+  border: 1px solid #2a3d52;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 25px rgba(0,0,0,.12);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.tl-salary-v3 * { box-sizing: border-box; }
+.tl-salary-title {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  background: #152639; border-left: 3px solid #d9b66c; border-bottom: 1px solid #2a3d52;
+  padding: 16px 18px;
+}
+.tl-salary-eyebrow { color: #d9b66c; font-weight: 800; font-size: 10px; letter-spacing: .12em; }
+.tl-salary-heading { font-size: 17px; font-weight: 850; letter-spacing: .05em; margin-top: 3px; }
+.tl-salary-heading-chip {
+  color: #b6c4d2; border: 1px solid #3b4c60; background: #0a1725;
+  padding: 7px 10px; border-radius: 7px; font-size: 10px; font-weight: 800; letter-spacing: .04em;
+}
+.tl-salary-privacy {
+  display: flex; align-items: center; gap: 10px; color: #c4d0dc; background: #0a1725;
+  padding: 12px 18px; border-bottom: 1px solid #223448; font-size: 12px; line-height: 1.5;
+}
+.tl-salary-message {
+  margin: 12px 14px; padding: 12px 13px; border-radius: 8px;
+  font-size: 12px; font-weight: 750; overflow-wrap: anywhere;
+}
+.tl-salary-message.success { background: #10332e; color: #a8ebd1; border: 1px solid #2a6354; }
+.tl-salary-message.error { background: #38202a; color: #ffc3ce; border: 1px solid #774155; }
+.tl-salary-gridhead, .tl-salary-row {
+  display: grid; grid-template-columns: minmax(130px,1.6fr) minmax(100px,.8fr) minmax(95px,.75fr) minmax(126px,.9fr);
+  gap: 12px; align-items: center; padding: 12px 16px;
+}
+.tl-salary-gridhead {
+  color: #91a5b8; background: #0a1725; font-size: 10px; letter-spacing: .08em;
+  font-weight: 850; border-bottom: 1px solid #2a3d52;
+}
+.tl-salary-employee { border-bottom: 1px solid #223448; }
+.tl-salary-employee:last-of-type { border-bottom: none; }
+.tl-salary-row { min-height: 74px; background: #101f30; }
+.tl-salary-employee:nth-of-type(even) > .tl-salary-row { background: #132336; }
+.tl-salary-name { min-width: 0; font-size: 14px; font-weight: 800; overflow-wrap: anywhere; }
+.tl-salary-private {
+  color: #c5d4e4; background: #0a1725; border: 1px solid #304359; padding: 9px 10px;
+  border-radius: 7px; text-align: center; font-weight: 800; font-size: 11px;
+}
+.tl-salary-status, .tl-salary-action-label {
+  display: block; width: 100%; border-radius: 7px; padding: 10px 8px; text-align: center;
+  font-size: 11px; line-height: 1.3; font-weight: 850;
+}
+.tl-salary-status.pending { background: #322a1d; color: #ffe3a8; border: 1px solid #695638; }
+.tl-salary-status.paid { background: #10332e; color: #a8ebd1; border: 1px solid #2a6354; }
+.tl-salary-status.locked { background: #38202a; color: #ffc3ce; border: 1px solid #774155; }
+.tl-salary-status.not-due { background: #15263a; color: #b8c8d8; border: 1px solid #344459; }
+.tl-salary-action-label.positive { background: #10332e; color: #a8ebd1; border: 1px solid #2a6354; }
+.tl-salary-action-label.negative { background: #38202a; color: #ffc3ce; border: 1px solid #774155; }
+.tl-salary-action-label.neutral { background: #322a1d; color: #ffe3a8; border: 1px solid #695638; }
+.tl-salary-action-label.muted { background: #15263a; color: #b8c8d8; border: 1px solid #344459; }
+.tl-salary-action { min-width: 0; }
+.tl-salary-v3 button { font-family: inherit; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+.tl-salary-v3 button:disabled { opacity: .45; cursor: not-allowed; }
+.tl-salary-view {
+  display: block; min-height: 41px; width: 100%; padding: 9px 12px;
+  background: #1c695d; color: #fff; border: 1px solid #2b8b7c; border-radius: 7px;
+  font-size: 11px; font-weight: 850; white-space: nowrap;
+}
+.tl-salary-view:not(:disabled):hover { background: #258171; }
+.tl-salary-pin-box, .tl-salary-details {
+  margin: 4px 15px 15px; padding: 17px;
+  border: 1px solid #6a593a; background: #132337; border-radius: 10px;
+}
+.tl-salary-pin-title, .tl-salary-details-heading {
+  color: #f0f5fa; margin-bottom: 12px; font-size: 13px; font-weight: 850; line-height: 1.5;
+}
+.tl-salary-pin-grid { display: grid; grid-template-columns: minmax(0,1fr) 110px 95px; gap: 9px; }
+.tl-salary-pin-input {
+  min-width: 0; width: 100%; min-height: 45px; padding: 10px;
+  color: #fff; background: #0a1725; border: 1px solid #42566b; border-radius: 7px;
+  font-size: 20px; font-weight: 850; letter-spacing: .25em; text-align: center;
+}
+.tl-salary-unlock, .tl-salary-cancel {
+  min-height: 45px; padding: 9px 10px; border-radius: 7px;
+  font-size: 11px; font-weight: 850;
+}
+.tl-salary-unlock { background: #1c695d; color: #fff; border: 1px solid #2b8b7c; }
+.tl-salary-cancel { background: #172638; color: #c4d0dc; border: 1px solid #40536a; }
+.tl-salary-hint { color: #aab9c9; font-size: 11px; line-height: 1.6; margin-top: 10px; }
+.tl-salary-hint.centered { text-align: center; }
+.tl-salary-detail-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,165px),1fr)); gap: 9px; }
+.tl-salary-detail {
+  min-width: 0; padding: 12px; background: #0a1725; border: 1px solid #2a3d52;
+  border-radius: 8px; overflow-wrap: anywhere;
+}
+.tl-salary-detail.highlight { background: #15352f; border-color: #307d6c; }
+.tl-salary-detail-title { color: #91a5b8; font-size: 10px; font-weight: 850; letter-spacing: .06em; }
+.tl-salary-detail-value { color: #f0f5fa; font-size: 14px; font-weight: 850; margin-top: 7px; font-variant-numeric: tabular-nums; }
+.tl-salary-detail.highlight .tl-salary-detail-value { color: #a8ebd1; }
+.tl-salary-pay {
+  width: 100%; margin-top: 14px; padding: 13px 15px; min-height: 46px;
+  color: #fff; background: #1c695d; border: 1px solid #2b8b7c;
+  border-radius: 8px; font-size: 13px; font-weight: 850;
+}
+.tl-salary-pay:not(:disabled):hover { background: #258171; }
+.tl-salary-paid-note {
+  margin-top: 12px; padding: 11px; border: 1px solid #2a6354; background: #10332e;
+  border-radius: 8px; color: #a8ebd1; font-size: 12px; font-weight: 750; text-align: center;
+}
+.tl-salary-empty { padding: 30px 18px; text-align: center; color: #c4d0dc; font-size: 13px; }
+.tl-salary-footer {
+  padding: 14px 18px; border-top: 1px solid #223448; color: #91a5b8;
+  background: #0a1725; font-size: 11px; line-height: 1.6;
+}
+@media (max-width: 720px) {
+  .tl-salary-title { padding: 13px 12px; }
+  .tl-salary-heading { font-size: 15px; }
+  .tl-salary-gridhead { display: none; }
+  .tl-salary-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 9px; padding: 13px 12px; }
+  .tl-salary-name { grid-column: 1 / -1; font-size: 14px; }
+  .tl-salary-pin-box, .tl-salary-details { margin: 2px 10px 12px; padding: 12px; }
+  .tl-salary-pin-grid { grid-template-columns: minmax(0,1fr) 88px 75px; gap: 6px; }
+  .tl-salary-unlock, .tl-salary-cancel { font-size: 10px; padding: 6px; }
+  .tl-salary-privacy { padding: 11px 12px; }
+  .tl-salary-private, .tl-salary-status, .tl-salary-action-label { padding: 9px 7px; }
+}
+`;
