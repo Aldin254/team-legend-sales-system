@@ -587,10 +587,12 @@ export const summaryValueStyle = {
 
 export const lowerGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,380px),1fr))",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   gap: 14,
+  width: "100%",
   margin: "16px 0 22px",
   alignItems: "start",
+  boxSizing: "border-box",
 };
 
 export const sidebarIconStyle = {
