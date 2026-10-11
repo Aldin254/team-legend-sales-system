@@ -1,1744 +1,680 @@
-// ============================================================
-// TEAM LEGEND
-// PROFESSIONAL CASHIER THEME
-// MATTE BLACK • GOLD • WHITE
-// ============================================================
+// TEAM LEGEND / NYIKA — Cashier Professional Theme
+ // Appearance only. No database calls or financial logic.
 
-export const COLORS = {
-  page: "#080A0D",
-  surface: "#0D1115",
-  card: "#11161C",
-  cardRaised: "#171C22",
-  cardSoft: "#1A2027",
-
-  border: "#292F36",
-  borderStrong: "#3A4149",
-
-  text: "#FFFFFF",
-  textSoft: "#FFFFFF",
-  muted: "#FFFFFF",
-
-  gold: "#D7B36A",
-  goldDark: "#72531E",
-  goldDeep: "#584018",
-  goldSoft: "#F4DDA7",
-
-  blue: "#60A5FA",
-  green: "#34D399",
-  red: "#F87171",
-  amber: "#FBBF24",
+const C = {
+  canvas: "#08121e",
+  canvasDeep: "#050c15",
+  header: "#0d1b2b",
+  sidebar: "#0b1827",
+  panel: "#101f30",
+  panelRaised: "#15263a",
+  field: "#0a1725",
+  border: "#2a3d52",
+  borderSoft: "#223448",
+  text: "#f0f5fa",
+  subtext: "#c4d0dc",
+  muted: "#91a5b8",
+  gold: "#d9b66c",
+  teal: "#40c9ac",
+  blue: "#7db8fa",
+  red: "#fb8b96",
+  greenBg: "#10332e",
+  blueBg: "#142d48",
+  redBg: "#38202a",
 };
 
-
-// ============================================================
-// PART 1
-// PAGE • HEADER • SIDEBAR • TOP CARDS
-// ============================================================
+const font = {
+  fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+};
 
 export const pageStyle = {
+  ...font,
+  width: "100%",
   minHeight: "100vh",
-
-  background:
-    "radial-gradient(circle at 72% -15%, #202832 0%, #11161B 27%, #080A0D 70%)",
-
-  color: "#FFFFFF",
-
-  fontFamily:
-    "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-
-  fontSize: "15px",
-
-  lineHeight: 1.45,
+  background: `linear-gradient(150deg, ${C.canvas} 0%, ${C.canvasDeep} 100%)`,
+  color: C.text,
+  fontSize: 13,
+  lineHeight: 1.5,
+  boxSizing: "border-box",
 };
-
 
 export const loadingStyle = {
-  minHeight: "100vh",
-
+  ...pageStyle,
   display: "flex",
-
   justifyContent: "center",
-
   alignItems: "center",
-
-  background: COLORS.page,
-
-  color: "#FFFFFF",
-
-  fontSize: "19px",
-
-  fontWeight: 800,
+  minHeight: "100vh",
+  fontSize: 16,
+  fontWeight: 600,
 };
-
-
-// ============================================================
-// TOP HEADER
-// ============================================================
 
 export const topHeaderStyle = {
-  position: "relative",
-
-  zIndex: 20,
-
-  background:
-    "linear-gradient(90deg, #090C10 0%, #11171D 50%, #090C10 100%)",
-
-  color: "#FFFFFF",
-
-  minHeight: "76px",
-
-  padding: "14px 24px",
-
+  background: C.header,
+  borderBottom: `1px solid ${C.border}`,
+  boxShadow: "0 5px 24px rgba(0,0,0,.15)",
+  padding: "15px clamp(16px,2.5vw,32px)",
   display: "flex",
-
-  justifyContent: "space-between",
-
   alignItems: "center",
-
-  gap: "20px",
-
-  borderBottom:
-    "1px solid rgba(255,255,255,0.10)",
-
-  boxShadow:
-    "0 12px 36px rgba(0,0,0,0.28)",
+  justifyContent: "space-between",
+  flexWrap: "wrap",
+  gap: 16,
 };
-
 
 export const brandWrapStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "14px",
+  gap: 12,
+  minWidth: 0,
 };
-
 
 export const crownStyle = {
-  width: "48px",
-  height: "48px",
-
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-
-  borderRadius: "13px",
-
-  background:
-    "linear-gradient(145deg, rgba(215,179,106,0.20), rgba(215,179,106,0.06))",
-
-  border:
-    "1px solid rgba(215,179,106,0.32)",
-
-  color: COLORS.gold,
-
-  fontSize: "30px",
-
+  fontSize: 31,
   lineHeight: 1,
-
-  boxShadow:
-    "0 8px 22px rgba(0,0,0,0.28)",
+  color: C.gold,
+  textShadow: "0 1px 10px rgba(217,182,108,.12)",
 };
-
 
 export const brandStyle = {
-  fontSize: "27px",
-
-  fontWeight: 950,
-
-  color: "#FFFFFF",
-
-  letterSpacing: "0.8px",
-
-  lineHeight: 1.05,
+  color: C.text,
+  fontSize: "clamp(18px,2vw,24px)",
+  fontWeight: 850,
+  letterSpacing: ".04em",
+  lineHeight: 1.15,
 };
-
 
 export const taglineStyle = {
-  marginTop: "6px",
-
-  fontSize: "11px",
-
-  fontWeight: 800,
-
-  color: "#FFFFFF",
-
-  letterSpacing: "2.4px",
-
-  textTransform: "uppercase",
+  marginTop: 5,
+  color: C.gold,
+  fontSize: 9,
+  letterSpacing: ".2em",
+  fontWeight: 700,
 };
-
 
 export const headerRightStyle = {
   display: "flex",
-
   alignItems: "center",
-
-  gap: "18px",
-
-  textAlign: "right",
-
-  color: "#FFFFFF",
-
-  fontSize: "14px",
-
-  fontWeight: 700,
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+  gap: 16,
+  color: C.subtext,
+  fontSize: 12,
 };
-
 
 export const headerShopStyle = {
-  marginTop: "4px",
-
-  color: "#FFFFFF",
-
-  fontSize: "13px",
-
-  fontWeight: 950,
-
-  letterSpacing: "0.6px",
+  color: C.muted,
+  fontSize: 10,
+  letterSpacing: ".1em",
+  marginTop: 3,
 };
-
 
 export const logoutButtonStyle = {
-  minHeight: "40px",
-
-  padding: "0 17px",
-
-  background:
-    "linear-gradient(145deg, #1B2026, #13171C)",
-
-  color: "#FFFFFF",
-
-  border:
-    "1px solid #4A535D",
-
-  borderRadius: "10px",
-
+  border: `1px solid ${C.border}`,
+  background: C.panelRaised,
+  color: C.text,
+  borderRadius: 8,
+  padding: "9px 16px",
+  fontSize: 12,
+  fontWeight: 750,
   cursor: "pointer",
-
-  fontSize: "14px",
-
-  fontWeight: 900,
-
-  boxShadow:
-    "0 7px 18px rgba(0,0,0,0.22)",
 };
 
-
-// ============================================================
-// BODY
-// ============================================================
-
+// Flex wrapping preserves a usable layout on narrow cashier devices.
 export const bodyStyle = {
   display: "flex",
+  flexWrap: "wrap",
   alignItems: "stretch",
+  gap: 0,
   width: "100%",
 };
 
-
-// ============================================================
-// SIDEBAR
-// ============================================================
-
 export const sidebarStyle = {
-  width: "225px",
-
-  flexShrink: 0,
-
-  minHeight:
-    "calc(100vh - 76px)",
-
-  padding: "12px 0 20px",
-
-  background:
-    "linear-gradient(180deg, #0A0D11 0%, #0D1116 55%, #090C10 100%)",
-
-  borderRight:
-    "1px solid rgba(255,255,255,0.08)",
-
-  boxShadow:
-    "8px 0 28px rgba(0,0,0,0.16)",
+  flex: "0 1 172px",
+  minWidth: 145,
+  background: C.sidebar,
+  borderRight: `1px solid ${C.borderSoft}`,
+  padding: "18px 10px",
+  boxSizing: "border-box",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "stretch",
+  gap: 5,
 };
-
-
-export function getSidebarItemStyle(active = false) {
-  return {
-    margin: "6px 10px",
-
-    minHeight: "47px",
-
-    padding: "0 15px",
-
-    display: "flex",
-
-    alignItems: "center",
-
-    gap: "13px",
-
-    color: "#FFFFFF",
-
-    background: active
-      ? "linear-gradient(135deg, rgba(215,179,106,0.19), rgba(215,179,106,0.07))"
-      : "transparent",
-
-    border: active
-      ? "1px solid rgba(215,179,106,0.42)"
-      : "1px solid transparent",
-
-    borderRadius: "11px",
-
-    fontSize: "15px",
-
-    fontWeight: active
-      ? 900
-      : 750,
-
-    cursor: "pointer",
-  };
-}
-
-
-export const sidebarIconStyle = {
-  width: "25px",
-
-  minWidth: "25px",
-
-  display: "inline-flex",
-
-  justifyContent: "center",
-
-  alignItems: "center",
-
-  fontSize: "18px",
-
-  color: "#FFFFFF",
-};
-
-
-// ============================================================
-// MAIN CONTENT
-// ============================================================
 
 export const mainStyle = {
-  flex: 1,
+  flex: "1 1 680px",
   minWidth: 0,
-  padding: "13px",
-  overflow: "hidden",
+  padding: "clamp(12px,2vw,25px)",
+  boxSizing: "border-box",
 };
-
-
-// ============================================================
-// TOP GRID
-// ============================================================
 
 export const topGridStyle = {
   display: "grid",
-
-  gridTemplateColumns:
-    "minmax(210px, 1.6fr) repeat(5, minmax(120px, 1fr))",
-
-  gap: "9px",
-
-  marginBottom: "10px",
+  gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,150px),1fr))",
+  gap: 10,
+  marginBottom: 12,
 };
 
-
-// ============================================================
-// SHOP CARD
-// ============================================================
+const baseTopCard = {
+  borderRadius: 11,
+  minWidth: 0,
+  minHeight: 94,
+  padding: "14px 15px",
+  boxSizing: "border-box",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+};
 
 export const shopCardStyle = {
-  position: "relative",
-
-  minHeight: "86px",
-
-  padding: "11px 13px",
-
-  display: "flex",
-
-  flexDirection: "column",
-
-  justifyContent: "center",
-
-  alignItems: "center",
-
-  textAlign: "center",
-
-  overflow: "hidden",
-
-  color: "#FFFFFF",
-
-  background:
-    "linear-gradient(145deg, rgba(215,179,106,0.19), rgba(20,25,31,0.97))",
-
-  border:
-    "1px solid rgba(215,179,106,0.42)",
-
-  borderRadius: "12px",
-
-  boxShadow:
-    "0 8px 22px rgba(0,0,0,0.20)",
+  ...baseTopCard,
+  background: "linear-gradient(145deg,#17283a,#102031)",
+  border: `1px solid ${C.border}`,
+  borderTop: `2px solid ${C.gold}`,
 };
-
 
 export const shopTitleStyle = {
-  color: "#FFFFFF",
-
-  fontSize: "25px",
-
-  fontWeight: 950,
-
-  lineHeight: 1,
-
-  letterSpacing: "0.5px",
+  color: C.text,
+  fontSize: "clamp(15px,1.5vw,19px)",
+  fontWeight: 850,
+  letterSpacing: ".04em",
+  overflowWrap: "anywhere",
 };
-
 
 export const shopSubtitleStyle = {
-  marginTop: "7px",
-
-  color: "#FFFFFF",
-
-  fontSize: "14px",
-
-  fontWeight: 900,
+  marginTop: 4,
+  color: C.subtext,
+  fontSize: 10,
+  letterSpacing: ".1em",
+  fontWeight: 700,
 };
-
 
 export const smallTextStyle = {
-  marginTop: "7px",
-
-  color: "#FFFFFF",
-
-  fontSize: "12px",
-
-  fontWeight: 750,
+  marginTop: 5,
+  color: C.muted,
+  fontSize: 10,
 };
-
-
-// ============================================================
-// OTHER FIVE TOP CARDS
-// SAME STYLE AS NYIKA01
-// ============================================================
-
-export function getInfoCardStyle() {
-  return {
-    position: "relative",
-
-    minHeight: "86px",
-
-    padding: "11px 10px",
-
-    display: "flex",
-
-    flexDirection: "column",
-
-    justifyContent: "center",
-
-    alignItems: "center",
-
-    textAlign: "center",
-
-    overflow: "hidden",
-
-    color: "#FFFFFF",
-
-    background:
-      "linear-gradient(145deg, rgba(215,179,106,0.19), rgba(20,25,31,0.97))",
-
-    border:
-      "1px solid rgba(215,179,106,0.42)",
-
-    borderRadius: "12px",
-
-    boxShadow:
-      "0 8px 22px rgba(0,0,0,0.20)",
-  };
-}
-
 
 export const infoTitleStyle = {
-  color: "#FFFFFF",
-
-  fontSize: "12px",
-
-  fontWeight: 900,
-
-  letterSpacing: "0.75px",
-
+  color: C.muted,
+  fontSize: 10,
+  letterSpacing: ".12em",
   textTransform: "uppercase",
-};
-
-
-export const infoValueStyle = {
-  marginTop: "8px",
-
-  color: "#FFFFFF",
-
-  fontSize: "19px",
-
-  fontWeight: 950,
-
-  lineHeight: 1.1,
-};
-
-
-export const infoSubvalueStyle = {
-  marginTop: "6px",
-
-  color: "#FFFFFF",
-
-  fontSize: "12px",
-
   fontWeight: 750,
 };
 
-
-export function getInfoCardAccentStyle() {
-  return {
-    position: "absolute",
-
-    left: "14px",
-
-    right: "14px",
-
-    bottom: 0,
-
-    height: "3px",
-
-    borderRadius:
-      "3px 3px 0 0",
-
-    background:
-      COLORS.gold,
-
-    opacity: 0.9,
-  };
-}
-// ============================================================
-// PART 2
-// REPORT PANELS
-// BLACK + WHITE
-// GOLD ONLY FOR SELECTED FINANCIAL / ACTION AREAS
-// ============================================================
-
-
-// ============================================================
-// MAIN REPORT PANEL
-// ============================================================
-
-export const panelStyle = {
-  background:
-    "linear-gradient(180deg, #101419 0%, #0B0F13 100%)",
-
-  color: "#FFFFFF",
-
-  borderRadius: "15px",
-
-  overflow: "hidden",
-
-  border:
-    "1px solid #303840",
-
-  boxShadow:
-    "0 12px 30px rgba(0,0,0,0.20)",
+export const infoValueStyle = {
+  color: C.text,
+  fontSize: "clamp(13px,1.4vw,17px)",
+  lineHeight: 1.3,
+  fontWeight: 800,
+  marginTop: 6,
+  overflowWrap: "anywhere",
 };
 
+export const infoSubvalueStyle = {
+  color: C.subtext,
+  fontSize: 10,
+  marginTop: 4,
+  fontVariantNumeric: "tabular-nums",
+};
 
-// ============================================================
-// INCOME / PLATFORM / EXPENSE HEADERS
-// BLACK + WHITE + SMALL GOLD EDGE
-// ============================================================
+export const shiftGreetingStyle = {
+  border: `1px solid ${C.borderSoft}`,
+  borderLeft: `3px solid ${C.gold}`,
+  borderRadius: 8,
+  padding: "9px 14px",
+  background: "#101e2d",
+  color: C.subtext,
+  fontSize: 12,
+  fontWeight: 700,
+  marginBottom: 16,
+};
 
-export function getPanelTitleStyle() {
-  return {
-    position: "relative",
+export const messageStyle = {
+  padding: "10px 14px",
+  borderRadius: 8,
+  border: `1px solid ${C.border}`,
+  fontSize: 12,
+  fontWeight: 700,
+  marginBottom: 12,
+  overflowWrap: "anywhere",
+};
 
-    padding: "13px 15px",
+export const reportGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,305px),1fr))",
+  alignItems: "start",
+  gap: 14,
+  width: "100%",
+  marginBottom: 14,
+};
 
-    background:
-      "linear-gradient(145deg, #11161C, #0B0F13)",
-
-    color: "#FFFFFF",
-
-    fontSize: "15px",
-
-    fontWeight: 950,
-
-    letterSpacing: "0.5px",
-
-    borderBottom:
-      "1px solid #343B43",
-
-    borderLeft:
-      `4px solid ${COLORS.gold}`,
-  };
-}
-
-
-// ============================================================
-// TABLE HEADER
-// ============================================================
+export const panelStyle = {
+  minWidth: 0,
+  background: C.panel,
+  border: `1px solid ${C.border}`,
+  borderRadius: 12,
+  boxShadow: "0 8px 25px rgba(0,0,0,.10)",
+  overflowX: "auto",
+  overflowY: "hidden",
+  paddingBottom: 11,
+};
 
 export const tableHeaderStyle = {
   display: "grid",
-
-  gridTemplateColumns:
-    "1.6fr 1fr",
-
-  padding: "11px 13px",
-
-  backgroundColor:
-    "#11161C",
-
-  color: "#FFFFFF",
-
-  fontSize: "13px",
-
-  fontWeight: 900,
-
-  letterSpacing: "0.45px",
-
-  borderBottom:
-    "1px solid #343B43",
+  gridTemplateColumns: "minmax(0,1.5fr) minmax(100px,.9fr)",
+  gap: 8,
+  alignItems: "center",
+  padding: "10px 12px",
+  borderBottom: `1px solid ${C.borderSoft}`,
+  background: C.field,
+  color: C.muted,
+  fontSize: 9,
+  letterSpacing: ".08em",
+  fontWeight: 800,
 };
-
-
-// ============================================================
-// INCOME ROWS
-// ============================================================
 
 export const incomeRowStyle = {
   display: "grid",
-
-  gridTemplateColumns:
-    "1.6fr 1fr",
-
-  gap: "10px",
-
-  padding: "8px 12px",
-
+  gridTemplateColumns: "minmax(0,1.5fr) minmax(100px,.9fr)",
+  gap: 9,
   alignItems: "center",
-
-  minHeight: "44px",
-
-  backgroundColor:
-    "#0D1115",
-
-  color: "#FFFFFF",
-
-  fontSize: "14px",
-
-  fontWeight: 700,
-
-  borderBottom:
-    "1px solid #252B31",
+  padding: "8px 12px",
+  minHeight: 38,
+  borderBottom: `1px solid ${C.borderSoft}`,
+  color: C.subtext,
+  fontSize: 11,
 };
 
+const moneyCell = {
+  padding: "7px 9px",
+  minHeight: 29,
+  boxSizing: "border-box",
+  borderRadius: 6,
+  fontSize: 11,
+  lineHeight: 1.4,
+  fontWeight: 750,
+  fontVariantNumeric: "tabular-nums",
+  textAlign: "right",
+};
 
 export const amountBoxStyle = {
-  padding: "9px 10px",
-
-  border:
-    "1px solid #3B434C",
-
-  background:
-    "#080B0E",
-
-  color:
-    "#FFFFFF",
-
-  borderRadius:
-    "8px",
-
-  textAlign:
-    "right",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    850,
+  ...moneyCell,
+  color: C.text,
+  background: C.field,
+  border: `1px solid ${C.borderSoft}`,
 };
-
-
-// ============================================================
-// INPUTS
-// ============================================================
 
 export const moneyInputStyle = {
+  ...moneyCell,
+  display: "block",
   width: "100%",
-
-  boxSizing:
-    "border-box",
-
-  minHeight:
-    "40px",
-
-  padding:
-    "9px 10px",
-
-  border:
-    "1px solid #454E58",
-
-  backgroundColor:
-    "#080B0E",
-
-  color:
-    "#FFFFFF",
-
-  borderRadius:
-    "8px",
-
-  textAlign:
-    "right",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    800,
-
-  outline:
-    "none",
+  minWidth: 65,
+  outlineOffset: 2,
+  background: C.field,
+  color: C.text,
+  border: `1px solid ${C.border}`,
+  fontFamily: "inherit",
 };
-
-
-// ============================================================
-// SAVED / LOCKED VALUES
-// NOW BLACK + WHITE
-// ============================================================
 
 export const savedMoneyStyle = {
-  padding:
-    "9px 10px",
-
-  border:
-    "1px solid #454E58",
-
-  backgroundColor:
-    "#080B0E",
-
-  color:
-    "#FFFFFF",
-
-  borderRadius:
-    "8px",
-
-  textAlign:
-    "right",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    850,
+  ...moneyCell,
+  color: "#8ce3c4",
+  background: C.greenBg,
+  border: "1px solid #2a6354",
 };
-
 
 export const lockedMoneyStyle = {
-  padding:
-    "9px 10px",
-
-  border:
-    "1px solid #454E58",
-
-  backgroundColor:
-    "#080B0E",
-
-  color:
-    "#FFFFFF",
-
-  borderRadius:
-    "8px",
-
-  textAlign:
-    "right",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    850,
+  ...moneyCell,
+  color: C.muted,
+  background: "#0d1926",
+  border: `1px solid ${C.borderSoft}`,
 };
-
 
 export const missingReadingStyle = {
-  padding:
-    "9px 10px",
-
-  border:
-    "1px solid #4A535D",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  borderRadius:
-    "8px",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "13px",
-
-  fontWeight:
-    900,
+  ...moneyCell,
+  color: C.red,
+  background: C.redBg,
+  border: "1px solid #723c49",
+  textAlign: "center",
 };
-
-
-export const savedInlineStyle = {
-  color: "#FFFFFF",
-
-  fontWeight: 950,
-
-  fontSize: "14px",
-};
-
 
 export const readOnlyInlineStyle = {
-  color: "#FFFFFF",
-
-  fontWeight: 950,
-
-  fontSize: "14px",
+  marginLeft: 5,
+  color: C.gold,
+  fontWeight: 700,
 };
-
-
-// ============================================================
-// TOTAL ADDED
-// GOLD
-// ============================================================
 
 export const incomeTotalStyle = {
   display: "flex",
+  flexWrap: "wrap",
   justifyContent: "space-between",
-  alignItems: "center",
-  gap: "12px",
-  padding: "13px 14px",
-
-  background:
-    "linear-gradient(145deg, #11161C, #0B0F13)",
-
-  color: "#FFFFFF",
-
-  borderTop: "1px solid #343B43",
-  borderBottom: "1px solid #343B43",
-
-  fontSize: "16px",
-  fontWeight: 950,
+  gap: 8,
+  margin: "9px 10px 0",
+  padding: "11px 12px",
+  background: "#152f30",
+  border: "1px solid #2c645a",
+  borderRadius: 7,
+  color: "#b5f2dc",
+  fontSize: 12,
   fontVariantNumeric: "tabular-nums",
 };
 
-// ============================================================
-// NOTICES
-// BLACK + WHITE
-// ============================================================
+const quietNote = {
+  margin: "9px 11px 0",
+  borderRadius: 7,
+  padding: "9px 10px",
+  color: C.muted,
+  fontSize: 10,
+  lineHeight: 1.6,
+};
 
 export const companyFloatNoticeStyle = {
-  margin:
-    "10px",
-
-  padding:
-    "11px 12px",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #3D4650",
-
-  borderRadius:
-    "9px",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "12px",
-
-  fontWeight:
-    750,
-
-  lineHeight:
-    1.5,
+  ...quietNote,
+  background: C.field,
+  border: `1px solid ${C.borderSoft}`,
 };
-
 
 export const automaticExpenseNoticeStyle = {
-  margin:
-    "10px",
-
-  padding:
-    "11px 12px",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #3D4650",
-
-  borderRadius:
-    "9px",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "12px",
-
-  fontWeight:
-    750,
-
-  lineHeight:
-    1.5,
+  ...quietNote,
+  background: C.field,
+  border: `1px solid ${C.borderSoft}`,
 };
-
 
 export const panelButtonWrapStyle = {
-  padding:
-    "10px",
+  padding: "10px 11px 3px",
 };
-
-
-// ============================================================
-// PLATFORM SALES
-// ============================================================
 
 export const platformStatusStyle = {
   display: "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
-
-  gap:
-    "10px",
-
-  minHeight:
-    "40px",
-
-  padding:
-    "8px 11px",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "13px",
-
-  fontWeight:
-    700,
-
-  borderBottom:
-    "1px solid #252B31",
+  flexWrap: "wrap",
+  justifyContent: "space-between",
+  gap: 10,
+  color: C.subtext,
+  padding: "10px 12px",
+  fontSize: 11,
+  fontWeight: 700,
 };
-
 
 export const platformHeaderStyle = {
-  display:
-    "grid",
-
-  padding:
-    "10px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#11161C",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "13px",
-
-  fontWeight:
-    900,
-
-  borderBottom:
-    "1px solid #343B43",
+  display: "grid",
+  gap: 7,
+  minWidth: 295,
+  alignItems: "center",
+  background: C.field,
+  borderTop: `1px solid ${C.borderSoft}`,
+  borderBottom: `1px solid ${C.borderSoft}`,
+  padding: "10px 12px",
+  color: C.muted,
+  fontSize: 9,
+  letterSpacing: ".045em",
+  fontWeight: 800,
+  textAlign: "left",
 };
-
 
 export const platformRowStyle = {
-  display:
-    "grid",
-
-  gap:
-    "8px",
-
-  padding:
-    "8px 10px",
-
-  minHeight:
-    "44px",
-
-  alignItems:
-    "center",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    700,
-
-  borderBottom:
-    "1px solid #252B31",
+  display: "grid",
+  gap: 7,
+  minWidth: 295,
+  alignItems: "center",
+  padding: "9px 12px",
+  borderBottom: `1px solid ${C.borderSoft}`,
+  color: C.text,
+  fontSize: 11,
 };
-
 
 export const savedTextStyle = {
-  fontSize:
-    "12px",
-
-  color:
-    "#FFFFFF",
-
-  fontWeight:
-    900,
+  color: C.teal,
+  fontSize: 9,
+  fontWeight: 750,
+  marginTop: 3,
 };
-
 
 export const outputBoxStyle = {
-  padding:
-    "9px",
-
-  textAlign:
-    "right",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    900,
+  ...moneyCell,
+  background: C.field,
+  border: `1px solid ${C.borderSoft}`,
+  color: C.subtext,
 };
-
 
 export const platformActionsStyle = {
-  padding:
-    "10px",
-
-  display:
-    "grid",
-
-  gap:
-    "7px",
+  display: "grid",
+  gap: 7,
+  padding: "12px 11px 0",
 };
-
-
-// ============================================================
-// STATUS BANNERS
-// BLACK + WHITE
-// ============================================================
 
 export const completeStyle = {
-  padding:
-    "10px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #454E58",
-
-  borderRadius:
-    "8px",
-
-  fontSize:
-    "13px",
-
-  fontWeight:
-    900,
+  padding: "9px 11px",
+  borderRadius: 7,
+  background: C.greenBg,
+  color: "#8ce3c4",
+  border: "1px solid #2a6354",
+  textAlign: "center",
+  fontWeight: 800,
+  fontSize: 11,
 };
-
 
 export const waitingStyle = {
-  padding:
-    "10px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #454E58",
-
-  borderRadius:
-    "8px",
-
-  fontSize:
-    "13px",
-
-  fontWeight:
-    900,
+  padding: "10px 11px",
+  borderRadius: 7,
+  background: C.blueBg,
+  color: "#b1d2ff",
+  border: "1px solid #355779",
+  textAlign: "center",
+  fontWeight: 750,
+  fontSize: 11,
 };
-
 
 export const warningStyle = {
-  padding:
-    "10px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #454E58",
-
-  borderRadius:
-    "8px",
-
-  fontSize:
-    "13px",
-
-  fontWeight:
-    900,
+  padding: "10px 11px",
+  borderRadius: 7,
+  background: C.redBg,
+  color: "#ffc2cb",
+  border: "1px solid #723c49",
+  textAlign: "center",
+  fontWeight: 750,
+  fontSize: 11,
 };
 
-
-// ============================================================
-// NORMAL ACTION
-// BLACK + WHITE
-// ============================================================
-
-export const greenActionStyle = {
-  width:
-    "100%",
-
-  minHeight:
-    "42px",
-
-  padding:
-    "10px 14px",
-
-  border:
-    "1px solid #4B545E",
-
-  background:
-    "linear-gradient(145deg, #181E24, #0E1216)",
-
-  color:
-    "#FFFFFF",
-
-  borderRadius:
-    "9px",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    900,
-
-  cursor:
-    "pointer",
-
-  boxShadow:
-    "0 6px 16px rgba(0,0,0,0.20)",
+const action = {
+  display: "block",
+  width: "100%",
+  padding: "11px 12px",
+  borderRadius: 8,
+  border: "none",
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: "pointer",
+  transition: "filter .15s ease",
 };
-
-
-// ============================================================
-// SAVE CLOSING READINGS
-// GOLD
-// ============================================================
 
 export const blueActionStyle = {
-  ...greenActionStyle,
-
-  border:
-    `1px solid ${COLORS.gold}`,
-
-  background:
-    "linear-gradient(135deg, #9A7734, #654A1C)",
-
-  color:
-    "#FFFFFF",
-
-  fontWeight:
-    950,
+  ...action,
+  background: "#247b93",
+  color: "#fff",
+  border: "1px solid #3e99ac",
 };
-
-
-// ============================================================
-// SAVE EXPENSES
-// GOLD
-// ============================================================
 
 export const redActionStyle = {
-  width: "100%",
-  minHeight: "42px",
-  padding: "10px 14px",
-
-  border: "1px solid #454E58",
-
-  background:
-    "linear-gradient(145deg, #171C22, #0D1115)",
-
-  color: "#FFFFFF",
-
-  borderRadius: "9px",
-
-  fontSize: "14px",
-  fontWeight: 900,
-
-  cursor: "pointer",
-
-  boxShadow:
-    "0 6px 16px rgba(0,0,0,0.20)",
+  ...action,
+  background: "#9d4359",
+  color: "#fff",
+  border: "1px solid #c45b72",
 };
-
-
-// ============================================================
-// EXPENSES
-// ============================================================
 
 export const expenseHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "42px 1.5fr 1fr",
-
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#11161C",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "13px",
-
-  fontWeight:
-    900,
-
-  borderBottom:
-    "1px solid #343B43",
+  display: "grid",
+  gridTemplateColumns: "25px minmax(0,1.4fr) minmax(76px,.85fr)",
+  gap: 6,
+  padding: "10px 12px",
+  background: C.field,
+  borderBottom: `1px solid ${C.borderSoft}`,
+  color: C.muted,
+  fontSize: 9,
+  letterSpacing: ".05em",
+  fontWeight: 800,
 };
-
 
 export const expenseRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "42px 1.5fr 1fr",
-
-  gap:
-    "8px",
-
-  minHeight:
-    "44px",
-
-  padding:
-    "7px 10px",
-
-  alignItems:
-    "center",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    700,
-
-  borderBottom:
-    "1px solid #252B31",
+  display: "grid",
+  gridTemplateColumns: "25px minmax(0,1.4fr) minmax(76px,.85fr)",
+  gap: 6,
+  alignItems: "center",
+  padding: "6px 11px",
+  borderBottom: `1px solid ${C.borderSoft}`,
+  fontSize: 11,
+  color: C.muted,
 };
-
 
 export const expenseInputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  minHeight:
-    "39px",
-
-  padding:
-    "9px 10px",
-
-  border:
-    "1px solid #454E58",
-
-  backgroundColor:
-    "#080B0E",
-
-  color:
-    "#FFFFFF",
-
-  borderRadius:
-    "8px",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    750,
-
-  outline:
-    "none",
+  display: "block",
+  width: "100%",
+  minWidth: 0,
+  minHeight: 32,
+  boxSizing: "border-box",
+  padding: "6px 8px",
+  borderRadius: 6,
+  border: `1px solid ${C.border}`,
+  outlineOffset: 2,
+  background: C.field,
+  color: C.text,
+  fontSize: 11,
+  fontFamily: "inherit",
 };
-
 
 export const savedExpenseStyle = {
-  padding:
-    "9px 10px",
-
-  border:
-    "1px solid #454E58",
-
-  backgroundColor:
-    "#080B0E",
-
-  color:
-    "#FFFFFF",
-
-  borderRadius:
-    "8px",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    850,
+  background: C.greenBg,
+  border: "1px solid #2a6354",
+  color: "#a8ebd1",
+  padding: "7px 8px",
+  borderRadius: 6,
+  fontSize: 11,
+  overflowWrap: "anywhere",
 };
-
-
-// ============================================================
-// TOTAL EXPENSES INSIDE EXPENSE PANEL
-// GOLD
-// ============================================================
 
 export const expenseTotalStyle = {
   display: "flex",
-  justifyContent: "space-between",
+  flexWrap: "wrap",
   alignItems: "center",
-  gap: "12px",
-  padding: "13px 14px",
-
-  background:
-    "linear-gradient(145deg, #11161C, #0B0F13)",
-
-  color: "#FFFFFF",
-
-  borderTop: "1px solid #343B43",
-  borderBottom: "1px solid #343B43",
-
-  fontSize: "16px",
-  fontWeight: 950,
+  justifyContent: "space-between",
+  gap: 7,
+  margin: "11px 10px 0",
+  padding: "11px 12px",
+  background: "#34202d",
+  border: "1px solid #774155",
+  borderRadius: 7,
+  color: "#ffc3ce",
+  fontSize: 12,
   fontVariantNumeric: "tabular-nums",
 };
-// ============================================================
-// PART 3
-// LAYOUT • SUMMARY • LOWER MODULES • MESSAGES
-// ============================================================
-
-
-// ============================================================
-// MAIN 3-COLUMN REPORT GRID
-// ============================================================
-
-export const reportGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(3, minmax(300px, 1fr))",
-
-  gap:
-    "10px",
-
-  alignItems:
-    "start",
-
-  width:
-    "100%",
-};
-
-
-// ============================================================
-// SHIFT GREETING
-// BLACK + WHITE
-// ============================================================
-
-export const shiftGreetingStyle = {
-  marginBottom:
-    "10px",
-
-  padding:
-    "10px 14px",
-
-  backgroundColor:
-    "#0D1115",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #3B434C",
-
-  borderRadius:
-    "9px",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    900,
-};
-
-
-// ============================================================
-// SYSTEM MESSAGE BASE
-// ============================================================
-
-export const messageStyle = {
-  marginBottom:
-    "10px",
-
-  padding:
-    "11px 13px",
-
-  borderRadius:
-    "9px",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    850,
-
-  lineHeight:
-    1.45,
-
-  border:
-    "1px solid rgba(255,255,255,0.15)",
-};
-
-
-// ============================================================
-// BOTTOM FINANCIAL SUMMARY GRID
-// ============================================================
 
 export const summaryGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(3, minmax(220px, 1fr))",
-
-  gap:
-    "10px",
-
-  marginTop:
-    "10px",
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,225px),1fr))",
+  gap: 12,
+  margin: "15px 0",
 };
-
-
-// ============================================================
-// TOTAL SALES
-// TOTAL EXPENSES
-// CLOSING BALANCE
-// ALL GOLD
-// ============================================================
-
-export function getSummaryBoxStyle() {
-  return {
-    position: "relative",
-
-    minHeight: "86px",
-
-    padding: "11px 13px",
-
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-
-    textAlign: "center",
-
-    overflow: "hidden",
-
-    color: "#FFFFFF",
-
-    background:
-      "linear-gradient(145deg, rgba(215,179,106,0.19), rgba(20,25,31,0.97))",
-
-    border:
-      "1px solid rgba(215,179,106,0.42)",
-
-    borderRadius: "12px",
-
-    boxShadow:
-      "0 8px 22px rgba(0,0,0,0.20)",
-  };
-}
-
 
 export const summaryValueStyle = {
-  marginTop: "8px",
-
-  padding: 0,
-
-  background: "transparent",
-
-  border: "none",
-
-  color: "#FFFFFF",
-
-  fontSize: "21px",
-
-  fontWeight: 950,
-
-  lineHeight: 1.1,
-
+  marginTop: 7,
+  fontSize: "clamp(17px,1.9vw,24px)",
+  letterSpacing: "-.035em",
+  fontWeight: 850,
+  color: C.text,
   fontVariantNumeric: "tabular-nums",
+  overflowWrap: "anywhere",
 };
-
-// ============================================================
-// LOWER MODULES
-// ============================================================
 
 export const lowerGridStyle = {
   display: "grid",
-
-  gridTemplateColumns:
-    "repeat(3, minmax(0, 1fr))",
-
-  gap: "12px",
-
-  width: "100%",
-
-  marginTop: "14px",
-
+  gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,380px),1fr))",
+  gap: 14,
+  margin: "16px 0 22px",
   alignItems: "start",
 };
 
-
-// ============================================================
-// PROFESSIONAL SECTION
-// ============================================================
-
-export const professionalSectionStyle = {
-  background:
-    "linear-gradient(180deg, #11161C 0%, #0B0F13 100%)",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #303840",
-
-  borderRadius:
-    "15px",
-
-  boxShadow:
-    "0 12px 30px rgba(0,0,0,0.20)",
-
-  overflow:
-    "hidden",
+export const sidebarIconStyle = {
+  fontSize: 16,
+  opacity: .85,
+  width: 22,
+  flexShrink: 0,
+  textAlign: "center",
 };
 
-
-export const professionalHeadingStyle = {
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "18px",
-
-  fontWeight:
-    950,
-};
-
-
-export const professionalSubheadingStyle = {
-  marginTop:
-    "4px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "13px",
-
-  fontWeight:
-    700,
-
-  lineHeight:
-    1.45,
-};
-
-
-export const dividerStyle = {
-  height:
-    "1px",
-
-  width:
-    "100%",
-
-  background:
-    "#343B43",
-
-  margin:
-    "14px 0",
-};
-
-
-export const largeMoneyStyle = {
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "22px",
-
-  fontWeight:
-    950,
-
-  fontVariantNumeric:
-    "tabular-nums",
-};
-
-
-export const statusTextStyle = {
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "13px",
-
-  fontWeight:
-    750,
-};
-
-
-export const emptyStateStyle = {
-  padding:
-    "22px",
-
-  textAlign:
-    "center",
-
-  color:
-    "#FFFFFF",
-
-  backgroundColor:
-    "#0D1115",
-
-  border:
-    "1px dashed #454E58",
-
-  borderRadius:
-    "10px",
-
-  fontSize:
-    "14px",
-
-  fontWeight:
-    700,
-};
-
-
-// ============================================================
-// RESPONSIVE HELPERS
-// ============================================================
-
-export function getProfessionalTopGridStyle(
-  compact = false
-) {
-  if (compact) {
-    return {
-      ...topGridStyle,
-
-      gridTemplateColumns:
-        "repeat(2, minmax(150px, 1fr))",
-    };
-  }
-
-  return topGridStyle;
+export function getSidebarItemStyle(active = false) {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 8,
+    padding: "11px 10px",
+    background: active ? "#163846" : "transparent",
+    color: active ? "#eefaf7" : C.subtext,
+    border: active ? "1px solid #326775" : "1px solid transparent",
+    borderLeft: active ? `3px solid ${C.teal}` : "3px solid transparent",
+    fontSize: 11,
+    fontWeight: active ? 800 : 650,
+    minWidth: 0,
+  };
 }
 
-
-export function getProfessionalReportGridStyle(
-  compact = false
-) {
-  if (compact) {
-    return {
-      ...reportGridStyle,
-
-      gridTemplateColumns:
-        "1fr",
-    };
-  }
-
-  return reportGridStyle;
+function toneColor(tone) {
+  const t = String(tone || "").toLowerCase();
+  if (t === "red") return C.red;
+  if (t === "green") return C.teal;
+  if (t === "blue") return C.blue;
+  if (t === "brown") return C.gold;
+  if (t === "navy") return C.gold;
+  return C.gold;
 }
 
+export function getInfoCardStyle(tone) {
+  return {
+    ...baseTopCard,
+    position: "relative",
+    overflow: "hidden",
+    background: C.panel,
+    border: `1px solid ${C.border}`,
+    borderTop: `2px solid ${toneColor(tone)}`,
+  };
+}
 
-export function getProfessionalSummaryGridStyle(
-  compact = false
-) {
-  if (compact) {
-    return {
-      ...summaryGridStyle,
+export function getInfoCardAccentStyle(tone) {
+  return {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 2,
+    background: toneColor(tone),
+    opacity: .42,
+  };
+}
 
-      gridTemplateColumns:
-        "1fr",
-    };
-  }
+export function getPanelTitleStyle(tone) {
+  return {
+    color: C.text,
+    background: "#152639",
+    borderBottom: `1px solid ${C.border}`,
+    borderLeft: `3px solid ${toneColor(tone)}`,
+    padding: "12px 13px",
+    fontSize: 11,
+    fontWeight: 850,
+    letterSpacing: ".1em",
+  };
+}
 
-  return summaryGridStyle;
+export function getSummaryBoxStyle(tone) {
+  return {
+    background: "linear-gradient(130deg,#15283b,#101e2e)",
+    border: `1px solid ${C.border}`,
+    borderLeft: `3px solid ${toneColor(tone)}`,
+    borderRadius: 10,
+    padding: "15px 16px",
+    fontSize: 10,
+    fontWeight: 750,
+    letterSpacing: ".09em",
+    color: C.muted,
+    minWidth: 0,
+  };
 }
