@@ -14,7 +14,6 @@ import AdminMpesaRatesPanel from "./AdminMpesaRatesPanel";
 import AdminSavingsPanel from "./AdminSavingsPanel";
 import AdminDutyControlPanel from "./AdminDutyControlPanel";
 import AdminLiveFeedPanel from "./AdminLiveFeedPanel";
-import AdminAttendanceControlPanel from "./AdminAttendanceControlPanel";
 import Admin24HourShiftDisplay from "./Admin24HourShiftDisplay";
 
 // TEAM LEGEND / NYIKA — Admin Dashboard
@@ -33,7 +32,6 @@ const menuItems = [
   { id: "DUTY_ROTA", label: "Duty / Rota", icon: "📅" },
   { id: "MASTER_EMPLOYEES", label: "Master Employee List", icon: "👥" },
   { id: "LIVE_FEED", label: "Live Feed", icon: "●" },
-  { id: "ATTENDANCE_CONTROL", label: "Attendance Control", icon: "✓" },
   { id: "SALARY", label: "Employee Salary", icon: "💰" },
   { id: "ACCOUNTANT", label: "Accountant Control", icon: "₭" },
   { id: "MPESA_RATES", label: "M-Pesa Rates", icon: "M" },
@@ -194,16 +192,6 @@ export default function AdminDashboard({ user }) {
                 subtitle="Post and manage shared announcements shown in the moving cashier Live Feed."
               />
               <AdminLiveFeedPanel user={user} />
-            </>
-          )}
-
-          {activeSection === "ATTENDANCE_CONTROL" && (
-            <>
-              <PageHeading
-                title="Attendance Control"
-                subtitle="Monitor employee attendance, 24-hour shop exemptions, and grant or revoke Lunch and Supper."
-              />
-              <AdminAttendanceControlPanel user={user} />
             </>
           )}
 
@@ -1083,13 +1071,7 @@ function DashboardHome({
       "Open Live Feed",
       "LIVE_FEED",
     ],
-    [
-      "ATTENDANCE CONTROL",
-      "Monitor employee sign-in, 24-hour exemptions, and grant or revoke Lunch and Supper with a permanent audit trail.",
-      "#b45309",
-      "Open Attendance Control",
-      "ATTENDANCE_CONTROL",
-    ],
+   
     [
       "EMPLOYEE SALARY",
       "Manage employee salaries, 4-digit Salary PINs, advances, deductions and salary access.",
@@ -1122,7 +1104,6 @@ function DashboardHome({
 
   const statuses = [
     "Shift Override",
-    "Attendance / Meal Control",
     "Admin Corrections",
     "Shared Live Feed",
     "Master Employee List",
