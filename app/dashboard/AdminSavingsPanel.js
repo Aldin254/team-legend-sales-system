@@ -9,9 +9,9 @@ import {
 } from "react";
 
 // TEAM LEGEND / NYIKA — ADMIN SAVINGS / BANKING
-// Banking and shop payment totals remain read-only.
-// Manual employee-to-shop pinning is the ONLY Admin edit.
-// Financial totals use Accountant-confirmed BANKING payment records.
+// READ ONLY
+// Salary Management controls employee shop routing.
+// No separate Banking AUTO / MANUAL configuration.
 
 const REFRESH_MS = 10000;
 
@@ -27,16 +27,18 @@ const PAYMENT_CATEGORIES = [
   "RENT",
 ];
 
-// ================================================
-// NAIROBI DATES
-// ================================================
+// ============================================
+// DATE HELPERS
+// ============================================
 
 function dateKey(value) {
   if (!value) return "";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return "";
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
 
   const parts = new Intl.DateTimeFormat(
     "en-GB",
@@ -49,7 +51,9 @@ function dateKey(value) {
   ).formatToParts(date);
 
   const get = (key) =>
-    parts.find((p) => p.type === key)?.value || "";
+    parts.find(
+      (part) => part.type === key
+    )?.value || "";
 
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
@@ -59,7 +63,9 @@ function localTime(value) {
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
 
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Africa/Nairobi",
@@ -74,7 +80,9 @@ function displayDate(value) {
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
 
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Africa/Nairobi",
@@ -86,13 +94,18 @@ function displayDate(value) {
 
 function periodBounds(period) {
   const today = dateKey(new Date());
-  const d = new Date(`${today}T12:00:00Z`);
 
-  const mondayOffset = (d.getUTCDay() + 6) % 7;
-  const weekStart = new Date(d);
+  const date = new Date(
+    `${today}T12:00:00Z`
+  );
+
+  const mondayOffset =
+    (date.getUTCDay() + 6) % 7;
+
+  const weekStart = new Date(date);
 
   weekStart.setUTCDate(
-    d.getUTCDate() - mondayOffset
+    date.getUTCDate() - mondayOffset
   );
 
   const key = (value) =>
@@ -107,54 +120,76 @@ function periodBounds(period) {
 
   if (period === "last_week") {
     const start = new Date(weekStart);
-    start.setUTCDate(start.getUTCDate() - 7);
+
+    start.setUTCDate(
+      start.getUTCDate() - 7
+    );
 
     const end = new Date(weekStart);
-    end.setUTCDate(end.getUTCDate() - 1);
 
-    return [key(start), key(end)];
+    end.setUTCDate(
+      end.getUTCDate() - 1
+    );
+
+    return [
+      key(start),
+      key(end),
+    ];
   }
 
   const sunday = new Date(weekStart);
-  sunday.setUTCDate(sunday.getUTCDate() + 6);
 
-  return [key(weekStart), key(sunday)];
+  sunday.setUTCDate(
+    sunday.getUTCDate() + 6
+  );
+
+  return [
+    key(weekStart),
+    key(sunday),
+  ];
 }
 
 function withinPeriod(value, period) {
-  const key = dateKey(value);
-  const [start, end] = periodBounds(period);
+  const day = dateKey(value);
+
+  const [start, end] =
+    periodBounds(period);
 
   return Boolean(
-    key &&
-    key >= start &&
-    key <= end
+    day &&
+    day >= start &&
+    day <= end
   );
 }
 
 function monthKey(period) {
-  const now = dateKey(new Date());
+  const today = dateKey(new Date());
 
   if (period === "last_month") {
-    const [year, month] = now.split("-").map(Number);
+    const [year, month] =
+      today.split("-").map(Number);
 
     return new Date(
-      Date.UTC(year, month - 2, 1)
+      Date.UTC(
+        year,
+        month - 2,
+        1
+      )
     ).toISOString().slice(0, 7);
   }
 
-  return now.slice(0, 7);
+  return today.slice(0, 7);
 }
 
-// ================================================
-// MONEY / RECORD HELPERS
-// ================================================
+// ============================================
+// GENERAL HELPERS
+// ============================================
 
 function money(value) {
-  const numeric = Number(value ?? 0);
+  const number = Number(value ?? 0);
 
   return (
-    Number.isFinite(numeric) ? numeric : 0
+    Number.isFinite(number) ? number : 0
   ).toLocaleString("en-KE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -167,11 +202,11 @@ function upper(value) {
     .toUpperCase();
 }
 
-function sameId(a, b) {
+function sameId(first, second) {
   return Boolean(
-    a &&
-    b &&
-    String(a) === String(b)
+    first &&
+    second &&
+    String(first) === String(second)
   );
 }
 
@@ -199,28 +234,33 @@ function isConfirmed(row) {
 }
 
 function labelForPerson(row, shops) {
-  const shop = shops.find((s) =>
-    sameId(s.id, row.shop_id)
+  const shop = shops.find(
+    (item) =>
+      sameId(
+        item.id,
+        row.shop_id
+      )
   );
 
   const assignment =
     shop?.name ||
-    (row.job_title === "TEAM_LEADER"
-      ? "TEAM LEADER"
-      : row.job_title === "ACCOUNTANT"
-      ? "ACCOUNTANT"
-      : "UNASSIGNED");
+    (
+      row.job_title === "TEAM_LEADER"
+        ? "TEAM LEADER"
+        : row.job_title === "ACCOUNTANT"
+        ? "ACCOUNTANT"
+        : "UNASSIGNED"
+    );
 
-  return `${
-    assignment
-  } — ${
-    row.full_name || "Employee"
-  }`;
+  return (
+    `${assignment} — ` +
+    `${row.full_name || "Employee"}`
+  );
 }
 
-// ================================================
-// SUMMARY METRIC
-// ================================================
+// ============================================
+// METRIC CARD
+// ============================================
 
 function Metric({
   title,
@@ -229,7 +269,9 @@ function Metric({
   children,
 }) {
   return (
-    <div className={`tlba-metric ${variant}`}>
+    <div
+      className={`tlba-metric ${variant}`}
+    >
       <div className="tlba-metric-label">
         {title}
       </div>
@@ -245,9 +287,9 @@ function Metric({
   );
 }
 
-// ================================================
-// MAIN COMPONENT
-// ================================================
+// ============================================
+// MAIN ADMIN PANEL
+// ============================================
 
 export default function AdminSavingsPanel({
   user,
@@ -257,31 +299,39 @@ export default function AdminSavingsPanel({
   ).replace(/\/+$/, "");
 
   const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    "";
 
-  const token = user?.access_token || "";
+  const token =
+    user?.access_token || "";
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loading, setLoading] =
+    useState(true);
 
-  const [payments, setPayments] = useState([]);
-  const [balances, setBalances] = useState([]);
+  const [error, setError] =
+    useState("");
+
+  const [payments, setPayments] =
+    useState([]);
+
+  const [balances, setBalances] =
+    useState([]);
 
   const [
     masterEmployees,
     setMasterEmployees,
   ] = useState([]);
 
-  const [shops, setShops] = useState([]);
+  const [shops, setShops] =
+    useState([]);
 
   const [period, setPeriod] =
     useState("this_week");
 
-  const [detailsPeriod, setDetailsPeriod] =
-    useState("this_week");
-
-  const [source, setSource] =
-    useState("ROTA_AUTO");
+  const [
+    detailsPeriod,
+    setDetailsPeriod,
+  ] = useState("this_week");
 
   const [
     bankingEmployeeId,
@@ -293,50 +343,33 @@ export default function AdminSavingsPanel({
     setDetailsEmployeeId,
   ] = useState("");
 
-  const [shopId, setShopId] = useState("");
+  const [shopId, setShopId] =
+    useState("");
 
   const [shopMonth, setShopMonth] =
     useState("this_month");
 
-  // ================================================
-  // MANUAL ASSIGNMENT STATE
-  // ================================================
-
   const [
-    manualAssignments,
-    setManualAssignments,
-  ] = useState([]);
-
-  const [manualReady, setManualReady] =
-    useState(false);
-
-  const [manualError, setManualError] =
-    useState("");
-
-  const [manualShopId, setManualShopId] =
-    useState("");
-
-  const [savingManual, setSavingManual] =
-    useState(false);
-
-  const [manualNotice, setManualNotice] =
-    useState("");
-
-  const [statementOpen, setStatementOpen] =
-    useState(true);
+    statementOpen,
+    setStatementOpen,
+  ] = useState(true);
 
   const [truncated, setTruncated] =
     useState(false);
 
   const requestRef = useRef(0);
 
-  // ================================================
-  // SUPABASE RPC
-  // ================================================
+  // ==========================================
+  // SUPABASE
+  // ==========================================
 
   const rpc = useCallback(
     async (name, args = {}) => {
-      if (!baseUrl || !anonKey || !token) {
+      if (
+        !baseUrl ||
+        !anonKey ||
+        !token
+      ) {
         throw new Error(
           "Admin login is missing."
         );
@@ -350,8 +383,10 @@ export default function AdminSavingsPanel({
 
           headers: {
             apikey: anonKey,
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
+            Authorization:
+              `Bearer ${token}`,
+            "Content-Type":
+              "application/json",
           },
 
           body: JSON.stringify(args),
@@ -372,98 +407,129 @@ export default function AdminSavingsPanel({
 
       return body;
     },
-    [baseUrl, anonKey, token]
+    [
+      baseUrl,
+      anonKey,
+      token,
+    ]
   );
 
-  // ================================================
-  // LOAD CURRENT DASHBOARD DATA
-  // ================================================
+  // ==========================================
+  // LOAD EXISTING READ-ONLY DATA
+  // ==========================================
 
-  const load = useCallback(async () => {
-    const ticket = ++requestRef.current;
-
-    if (!baseUrl || !token || !anonKey) {
-      setError("Admin login is missing.");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const [
-        snapshot,
-        people,
-        shopOptions,
-      ] = await Promise.all([
-        rpc(
-          "tl_admin_savings_activity_snapshot",
-          { p_limit: 500 }
-        ),
-
-        rpc(
-          "tl_admin_master_employee_list"
-        ),
-
-        rpc(
-          "tl_admin_master_employee_shops_v1"
-        ),
-      ]);
-
-      if (ticket !== requestRef.current) {
-        return;
-      }
+  const load = useCallback(
+    async () => {
+      const ticket =
+        ++requestRef.current;
 
       if (
-        !Array.isArray(snapshot?.payments) ||
-        !Array.isArray(snapshot?.balances) ||
-        !Array.isArray(people) ||
-        !Array.isArray(shopOptions)
+        !baseUrl ||
+        !anonKey ||
+        !token
       ) {
-        throw new Error(
-          "Unexpected banking data format."
+        setError(
+          "Admin login is missing."
         );
-      }
 
-      setPayments(snapshot.payments);
-      setBalances(snapshot.balances);
-      setMasterEmployees(people);
-      setShops(shopOptions);
-
-      setTruncated(
-        snapshot.payments.length >= 500
-      );
-
-      setError("");
-    } catch (err) {
-      if (ticket !== requestRef.current) {
+        setLoading(false);
         return;
       }
 
-      console.error(
-        "ADMIN SAVINGS / BANKING ERROR:",
-        err
-      );
+      try {
+        const [
+          snapshot,
+          people,
+          shopOptions,
+        ] = await Promise.all([
+          rpc(
+            "tl_admin_savings_activity_snapshot",
+            {
+              p_limit: 500,
+            }
+          ),
 
-      setError(
-        err?.message ||
-        "Unable to load Banking."
-      );
-    } finally {
-      if (ticket === requestRef.current) {
-        setLoading(false);
+          rpc(
+            "tl_admin_master_employee_list"
+          ),
+
+          rpc(
+            "tl_admin_master_employee_shops_v1"
+          ),
+        ]);
+
+        if (
+          ticket !== requestRef.current
+        ) {
+          return;
+        }
+
+        if (
+          !Array.isArray(snapshot?.payments) ||
+          !Array.isArray(snapshot?.balances) ||
+          !Array.isArray(people) ||
+          !Array.isArray(shopOptions)
+        ) {
+          throw new Error(
+            "Unexpected banking data format."
+          );
+        }
+
+        setPayments(snapshot.payments);
+        setBalances(snapshot.balances);
+        setMasterEmployees(people);
+        setShops(shopOptions);
+
+        setTruncated(
+          snapshot.payments.length >= 500
+        );
+
+        setError("");
+      } catch (err) {
+        if (
+          ticket !== requestRef.current
+        ) {
+          return;
+        }
+
+        console.error(
+          "ADMIN SAVINGS / BANKING ERROR:",
+          err
+        );
+
+        setError(
+          err?.message ||
+          "Unable to load Banking."
+        );
+      } finally {
+        if (
+          ticket === requestRef.current
+        ) {
+          setLoading(false);
+        }
       }
-    }
-  }, [rpc, baseUrl, anonKey, token]);
+    },
+    [
+      rpc,
+      baseUrl,
+      anonKey,
+      token,
+    ]
+  );
 
-  // ================================================
+  // ==========================================
   // AUTO REFRESH
-  // ================================================
+  // ==========================================
 
   useEffect(() => {
     void load();
 
-    const timer = setInterval(() => {
-      void load();
-    }, REFRESH_MS);
+    const timer = setInterval(
+      () => {
+        void load();
+      },
+      REFRESH_MS
+    );
 
     return () => {
       clearInterval(timer);
@@ -471,272 +537,29 @@ export default function AdminSavingsPanel({
     };
   }, [load]);
 
-  // ================================================
-  // LOAD MANUAL SHOP ASSIGNMENTS
-  // ================================================
-
-  const loadManual = useCallback(async () => {
-    try {
-      const rows = await rpc(
-        "tl_admin_banking_manual_list"
-      );
-
-      if (!Array.isArray(rows)) {
-        throw new Error(
-          "Invalid manual assignment list."
-        );
-      }
-
-      setManualAssignments(rows);
-      setManualReady(true);
-      setManualError("");
-    } catch (err) {
-      setManualReady(false);
-
-      setManualError(
-        err?.message ||
-        "Manual assignment unavailable."
-      );
-    }
-  }, [rpc]);
-
-  useEffect(() => {
-    if (source !== "MANUAL") return;
-
-    void loadManual();
-
-    const timer = setInterval(() => {
-      void loadManual();
-    }, REFRESH_MS);
-
-    return () => clearInterval(timer);
-  }, [source, loadManual]);
-
-  // ================================================
-  // SAVE MANUAL ASSIGNMENT
-  // ================================================
-
-  async function saveManualAssignment() {
-    if (
-      savingManual ||
-      !bankingEmployeeId ||
-      !manualShopId ||
-      !manualReady
-    ) {
-      return;
-    }
-
-    const employee = manualEmployees.find(
-      (e) =>
-        sameId(
-          e.employee_id,
-          bankingEmployeeId
-        )
-    );
-
-    const shop = shops.find(
-      (s) => sameId(s.id, manualShopId)
-    );
-
-    if (!employee || !shop) return;
-
-    const existing = manualAssignments.find(
-      (x) =>
-        sameId(
-          x.employee_id,
-          employee.employee_id
-        )
-    );
-
-    const replacing =
-      existing &&
-      !sameId(
-        existing.shop_id,
-        shop.id
-      );
-
-    const confirmed = window.confirm(
-      `${
-        replacing ? "CHANGE" : "SAVE"
-      } MANUAL BANKING ASSIGNMENT\n\n` +
-      `Employee: ${employee.full_name}\n` +
-      `Shop: ${shop.name}\n\n` +
-      "One employee can be manually pinned to only one shop.\n" +
-      "Banking balances and payment history will not change."
-    );
-
-    if (!confirmed) return;
-
-    setSavingManual(true);
-    setManualNotice("");
-
-    try {
-      const result = await rpc(
-        "tl_admin_banking_manual_set",
-        {
-          p_employee_id:
-            employee.employee_id,
-
-          p_shop_id:
-            shop.id,
-        }
-      );
-
-      if (result?.success !== true) {
-        throw new Error(
-          "Assignment was not confirmed."
-        );
-      }
-
-      await loadManual();
-
-      setManualNotice(
-        "ASSIGNMENT SAVED"
-      );
-    } catch (err) {
-      setManualNotice(
-        err?.message ||
-        "Unable to save assignment."
-      );
-    } finally {
-      setSavingManual(false);
-    }
-  }
-
-  // ================================================
-  // REMOVE MANUAL ASSIGNMENT
-  // ================================================
-
-  async function removeManualAssignment() {
-    if (
-      savingManual ||
-      !bankingEmployeeId ||
-      !manualReady
-    ) {
-      return;
-    }
-
-    const existing = manualAssignments.find(
-      (x) =>
-        sameId(
-          x.employee_id,
-          bankingEmployeeId
-        )
-    );
-
-    if (!existing) return;
-
-    const employee = manualEmployees.find(
-      (e) =>
-        sameId(
-          e.employee_id,
-          bankingEmployeeId
-        )
-    );
-
-    const confirmed = window.confirm(
-      "REMOVE MANUAL ASSIGNMENT\n\n" +
-      `${
-        employee?.full_name || "Employee"
-      }\n\n` +
-      "Banking history and balances will remain unchanged."
-    );
-
-    if (!confirmed) return;
-
-    setSavingManual(true);
-    setManualNotice("");
-
-    try {
-      const result = await rpc(
-        "tl_admin_banking_manual_remove",
-        {
-          p_employee_id:
-            bankingEmployeeId,
-        }
-      );
-
-      if (result?.success !== true) {
-        throw new Error(
-          "Removal was not confirmed."
-        );
-      }
-
-      setManualShopId("");
-
-      await loadManual();
-
-      setManualNotice(
-        "ASSIGNMENT REMOVED"
-      );
-    } catch (err) {
-      setManualNotice(
-        err?.message ||
-        "Unable to remove assignment."
-      );
-    } finally {
-      setSavingManual(false);
-    }
-  }
-
-  // ================================================
-  // MASTER EMPLOYEES
-  // ================================================
+  // ==========================================
+  // MASTER EMPLOYEE LIST
+  // Salary manages routing.
+  // Banking has no duplicate route setting.
+  // ==========================================
 
   const activeEmployees = useMemo(
     () =>
       masterEmployees.filter(
-        (e) =>
+        (employee) =>
           upper(
-            e.employment_status
+            employee.employment_status
           ) === "ACTIVE"
       ),
     [masterEmployees]
   );
 
-  // Current fixed-shop baseline.
-  // Actual daily Duty Rota routing is the
-  // next integration step.
-
-  const autoEmployees = useMemo(
-    () =>
-      activeEmployees.filter(
-        (e) => Boolean(e.shop_id)
-      ),
-    [activeEmployees]
-  );
-
-  // Manual source is for employees without
-  // a permanent Master Employee shop.
-
-  const manualEmployees = useMemo(
-    () =>
-      activeEmployees.filter(
-        (e) => !e.shop_id
-      ),
-    [activeEmployees]
-  );
-
-  const eligibleEmployees =
-    source === "ROTA_AUTO"
-      ? autoEmployees
-      : manualEmployees;
-
-  const existingManual =
-    manualAssignments.find(
-      (row) =>
-        sameId(
-          row.employee_id,
-          bankingEmployeeId
-        )
-    ) || null;
-
   useEffect(() => {
     if (
-      !eligibleEmployees.some(
-        (e) =>
+      !activeEmployees.some(
+        (employee) =>
           sameId(
-            e.employee_id,
+            employee.employee_id,
             bankingEmployeeId
           )
       )
@@ -744,16 +567,16 @@ export default function AdminSavingsPanel({
       setBankingEmployeeId("");
     }
   }, [
-    eligibleEmployees,
+    activeEmployees,
     bankingEmployeeId,
   ]);
 
   useEffect(() => {
     if (
       !activeEmployees.some(
-        (e) =>
+        (employee) =>
           sameId(
-            e.employee_id,
+            employee.employee_id,
             detailsEmployeeId
           )
       )
@@ -768,24 +591,31 @@ export default function AdminSavingsPanel({
   useEffect(() => {
     if (
       !shops.some(
-        (s) => sameId(s.id, shopId)
+        (shop) =>
+          sameId(
+            shop.id,
+            shopId
+          )
       )
     ) {
       setShopId("");
     }
-  }, [shops, shopId]);
+  }, [
+    shops,
+    shopId,
+  ]);
 
-  // ================================================
+  // ==========================================
   // BANKING TOTALS
-  // ================================================
+  // ==========================================
 
   const confirmedBanking = useMemo(
     () =>
       payments.filter(
-        (p) =>
-          categoryOf(p) ===
+        (payment) =>
+          categoryOf(payment) ===
             "BANKING" &&
-          isConfirmed(p)
+          isConfirmed(payment)
       ),
     [payments]
   );
@@ -793,21 +623,24 @@ export default function AdminSavingsPanel({
   const periodBanked = useMemo(
     () =>
       confirmedBanking.filter(
-        (p) =>
+        (payment) =>
           withinPeriod(
-            paymentDate(p),
+            paymentDate(payment),
             period
           )
       ),
-    [confirmedBanking, period]
+    [
+      confirmedBanking,
+      period,
+    ]
   );
 
   const totalBanked = useMemo(
     () =>
       periodBanked.reduce(
-        (sum, p) =>
+        (sum, payment) =>
           sum +
-          Number(p.amount || 0),
+          Number(payment.amount || 0),
         0
       ),
     [periodBanked]
@@ -817,27 +650,30 @@ export default function AdminSavingsPanel({
     () =>
       payments
         .filter(
-          (p) =>
-            categoryOf(p) ===
+          (payment) =>
+            categoryOf(payment) ===
               "BANKING" &&
             [
               "PENDING",
               "PROCESSING",
             ].includes(
-              upper(p.status)
+              upper(payment.status)
             ) &&
             withinPeriod(
-              p.requested_at,
+              payment.requested_at,
               period
             )
         )
         .reduce(
-          (sum, p) =>
+          (sum, payment) =>
             sum +
-            Number(p.amount || 0),
+            Number(payment.amount || 0),
           0
         ),
-    [payments, period]
+    [
+      payments,
+      period,
+    ]
   );
 
   const confirmedAmount = useMemo(
@@ -845,23 +681,21 @@ export default function AdminSavingsPanel({
       confirmedBanking.reduce(
         (sum, item) =>
           sum +
-          Number(
-            item.amount || 0
-          ),
+          Number(item.amount || 0),
         0
       ),
     [confirmedBanking]
   );
 
-  // ================================================
-  // SAVED BANKING BALANCE
-  // ================================================
+  // ==========================================
+  // EMPLOYEE SAVINGS BALANCE
+  // ==========================================
 
   const selectedBankingEmployee =
-    eligibleEmployees.find(
-      (e) =>
+    activeEmployees.find(
+      (employee) =>
         sameId(
-          e.employee_id,
+          employee.employee_id,
           bankingEmployeeId
         )
     ) || null;
@@ -871,21 +705,21 @@ export default function AdminSavingsPanel({
       selectedBankingEmployee
         ? balances
             .filter(
-              (b) =>
-                categoryOf(b) ===
+              (balance) =>
+                categoryOf(balance) ===
                   "BANKING" &&
                 sameId(
-                  b.employee_id,
+                  balance.employee_id,
                   bankingId(
                     selectedBankingEmployee
                   )
                 )
             )
             .reduce(
-              (sum, b) =>
+              (sum, balance) =>
                 sum +
                 Number(
-                  b.current_balance || 0
+                  balance.current_balance || 0
                 ),
               0
             )
@@ -896,29 +730,32 @@ export default function AdminSavingsPanel({
     ]
   );
 
-  // ================================================
+  // ==========================================
   // EMPLOYEE BANKING STATEMENT
-  // ================================================
+  // ==========================================
+
+  const selectedDetailsEmployee =
+    activeEmployees.find(
+      (employee) =>
+        sameId(
+          employee.employee_id,
+          detailsEmployeeId
+        )
+    ) || null;
 
   const statementRows = useMemo(
     () =>
       confirmedBanking
         .filter(
-          (p) =>
+          (payment) =>
             sameId(
-              p.employee_id,
+              payment.employee_id,
               bankingId(
-                activeEmployees.find(
-                  (e) =>
-                    sameId(
-                      e.employee_id,
-                      detailsEmployeeId
-                    )
-                )
+                selectedDetailsEmployee
               )
             ) &&
             withinPeriod(
-              paymentDate(p),
+              paymentDate(payment),
               detailsPeriod
             )
         )
@@ -929,26 +766,27 @@ export default function AdminSavingsPanel({
         ),
     [
       confirmedBanking,
-      detailsEmployeeId,
+      selectedDetailsEmployee,
       detailsPeriod,
-      activeEmployees,
     ]
   );
 
   const statementTotal = useMemo(
     () =>
       statementRows.reduce(
-        (sum, row) =>
+        (sum, payment) =>
           sum +
-          Number(row.amount || 0),
+          Number(
+            payment.amount || 0
+          ),
         0
       ),
     [statementRows]
   );
 
-  // ================================================
-  // MONTHLY SHOP PAYMENT STATUS
-  // ================================================
+  // ==========================================
+  // SHOP MONTHLY PAYMENT STATUS
+  // ==========================================
 
   const monthPayments = useMemo(
     () =>
@@ -957,15 +795,16 @@ export default function AdminSavingsPanel({
           category,
 
           paid: payments.some(
-            (p) =>
+            (payment) =>
               sameId(
-                p.shop_id,
+                payment.shop_id,
                 shopId
               ) &&
-              categoryOf(p) === category &&
-              isConfirmed(p) &&
+              categoryOf(payment) ===
+                category &&
+              isConfirmed(payment) &&
               dateKey(
-                paymentDate(p)
+                paymentDate(payment)
               ).slice(0, 7) ===
                 monthKey(shopMonth)
           ),
@@ -978,9 +817,9 @@ export default function AdminSavingsPanel({
     ]
   );
 
-  // ================================================
+  // ==========================================
   // DISPLAY
-  // ================================================
+  // ==========================================
 
   return (
     <section className="tlba-root">
@@ -1011,7 +850,7 @@ export default function AdminSavingsPanel({
         </div>
       ) : (
         <>
-          {/* TOP SUMMARY */}
+          {/* TOTALS */}
 
           <div className="tlba-summary">
             <Metric
@@ -1021,19 +860,19 @@ export default function AdminSavingsPanel({
               <select
                 aria-label="Total banked period"
                 value={period}
-                onChange={(e) =>
+                onChange={(event) =>
                   setPeriod(
-                    e.target.value
+                    event.target.value
                   )
                 }
               >
                 {PERIODS.map(
-                  ([value, name]) => (
+                  ([value, label]) => (
                     <option
                       key={value}
                       value={value}
                     >
-                      {name}
+                      {label}
                     </option>
                   )
                 )}
@@ -1053,12 +892,12 @@ export default function AdminSavingsPanel({
             />
           </div>
 
-          {/* MAIN LAYOUT */}
+          {/* BANKING */}
 
           <div className="tlba-layout">
-            {/* BANKING */}
-
-            <section className="tlba-panel tlba-banking">
+            <section
+              className="tlba-panel tlba-banking"
+            >
               <div className="tlba-panelhead">
                 <h2>Banking</h2>
 
@@ -1076,29 +915,6 @@ export default function AdminSavingsPanel({
                   </strong>
                 </div>
 
-                <label htmlFor="tlba-source">
-                  ROTA AUTO / MANUAL
-                </label>
-
-                <select
-                  id="tlba-source"
-                  value={source}
-                  onChange={(e) => {
-                    setSource(e.target.value);
-                    setBankingEmployeeId("");
-                    setManualShopId("");
-                    setManualNotice("");
-                  }}
-                >
-                  <option value="ROTA_AUTO">
-                    Rota Auto
-                  </option>
-
-                  <option value="MANUAL">
-                    Manual
-                  </option>
-                </select>
-
                 <label htmlFor="tlba-master">
                   MASTER EMPLOYEE
                 </label>
@@ -1106,162 +922,40 @@ export default function AdminSavingsPanel({
                 <select
                   id="tlba-master"
                   value={bankingEmployeeId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-
-                    setBankingEmployeeId(id);
-
-                    setManualShopId(
-                      manualAssignments.find(
-                        (row) =>
-                          sameId(
-                            row.employee_id,
-                            id
-                          )
-                      )?.shop_id || ""
-                    );
-
-                    setManualNotice("");
-                  }}
+                  onChange={(event) =>
+                    setBankingEmployeeId(
+                      event.target.value
+                    )
+                  }
                 >
                   <option value="">
                     Select employee
                   </option>
 
-                  {eligibleEmployees.map(
-                    (person) => (
+                  {activeEmployees.map(
+                    (employee) => (
                       <option
                         key={
-                          person.employee_id
+                          employee.employee_id
                         }
                         value={
-                          person.employee_id
+                          employee.employee_id
                         }
                       >
                         {labelForPerson(
-                          person,
+                          employee,
                           shops
                         )}
                       </option>
                     )
                   )}
                 </select>
-
-                {/* MANUAL ASSIGNMENT */}
-
-                {source === "MANUAL" && (
-                  <div className="tlba-manual">
-                    <label htmlFor="tlba-manual-shop">
-                      ASSIGN SHOP
-                    </label>
-
-                    <select
-                      id="tlba-manual-shop"
-                      value={manualShopId}
-                      disabled={
-                        !bankingEmployeeId ||
-                        savingManual ||
-                        !manualReady
-                      }
-                      onChange={(e) => {
-                        setManualShopId(
-                          e.target.value
-                        );
-
-                        setManualNotice("");
-                      }}
-                    >
-                      <option value="">
-                        Select shop
-                      </option>
-
-                      {shops.map(
-                        (shop) => (
-                          <option
-                            key={shop.id}
-                            value={shop.id}
-                          >
-                            {shop.name}
-                          </option>
-                        )
-                      )}
-                    </select>
-
-                    <div className="tlba-manual-actions">
-                      <button
-                        className="tlba-save"
-                        type="button"
-                        disabled={
-                          !manualReady ||
-                          !bankingEmployeeId ||
-                          !manualShopId ||
-                          savingManual
-                        }
-                        onClick={
-                          saveManualAssignment
-                        }
-                      >
-                        {savingManual
-                          ? "SAVING..."
-                          : "SAVE ASSIGNMENT"}
-                      </button>
-
-                      <button
-                        className="tlba-remove"
-                        type="button"
-                        disabled={
-                          !manualReady ||
-                          !existingManual ||
-                          savingManual
-                        }
-                        onClick={
-                          removeManualAssignment
-                        }
-                      >
-                        REMOVE ASSIGNMENT
-                      </button>
-                    </div>
-
-                    {existingManual && (
-                      <div className="tlba-assigned">
-                        ASSIGNED:{" "}
-                        {shops.find(
-                          (x) =>
-                            sameId(
-                              x.id,
-                              existingManual.shop_id
-                            )
-                        )?.name || "Unknown shop"}
-                      </div>
-                    )}
-
-                    {manualError && (
-                      <div
-                        role="alert"
-                        className="tlba-manual-error"
-                      >
-                        {manualError}
-                      </div>
-                    )}
-
-                    {manualNotice && (
-                      <div
-                        role="status"
-                        className="tlba-assigned"
-                      >
-                        {manualNotice}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             </section>
 
-            {/* RIGHT COLUMN */}
+            {/* SHOP PAYMENT STATUS */}
 
             <div className="tlba-right">
-              {/* SHOP MONTHLY PAYMENT STATUS */}
-
               <section className="tlba-panel">
                 <div className="tlba-panelhead">
                   <h2>
@@ -1281,9 +975,9 @@ export default function AdminSavingsPanel({
                   <select
                     id="tlba-month"
                     value={shopMonth}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       setShopMonth(
-                        e.target.value
+                        event.target.value
                       )
                     }
                   >
@@ -1303,9 +997,9 @@ export default function AdminSavingsPanel({
                   <select
                     id="tlba-shop"
                     value={shopId}
-                    onChange={(e) =>
+                    onChange={(event) =>
                       setShopId(
-                        e.target.value
+                        event.target.value
                       )
                     }
                   >
@@ -1388,9 +1082,9 @@ export default function AdminSavingsPanel({
                   <select
                     id="tlba-details-employee"
                     value={detailsEmployeeId}
-                    onChange={(e) => {
+                    onChange={(event) => {
                       setDetailsEmployeeId(
-                        e.target.value
+                        event.target.value
                       );
 
                       setStatementOpen(true);
@@ -1401,17 +1095,17 @@ export default function AdminSavingsPanel({
                     </option>
 
                     {activeEmployees.map(
-                      (person) => (
+                      (employee) => (
                         <option
                           key={
-                            person.employee_id
+                            employee.employee_id
                           }
                           value={
-                            person.employee_id
+                            employee.employee_id
                           }
                         >
                           {labelForPerson(
-                            person,
+                            employee,
                             shops
                           )}
                         </option>
@@ -1423,19 +1117,19 @@ export default function AdminSavingsPanel({
                     <select
                       aria-label="Employee statement period"
                       value={detailsPeriod}
-                      onChange={(e) =>
+                      onChange={(event) =>
                         setDetailsPeriod(
-                          e.target.value
+                          event.target.value
                         )
                       }
                     >
                       {PERIODS.map(
-                        ([value, name]) => (
+                        ([value, label]) => (
                           <option
                             key={value}
                             value={value}
                           >
-                            {name}
+                            {label}
                           </option>
                         )
                       )}
@@ -1476,7 +1170,8 @@ export default function AdminSavingsPanel({
                                 Select employee
                               </td>
                             </tr>
-                          ) : statementRows.length === 0 ? (
+                          ) : statementRows.length ===
+                            0 ? (
                             <tr>
                               <td colSpan={4}>
                                 No confirmed banking
@@ -1484,12 +1179,14 @@ export default function AdminSavingsPanel({
                             </tr>
                           ) : (
                             statementRows.map(
-                              (item) => (
-                                <tr key={item.id}>
+                              (payment) => (
+                                <tr
+                                  key={payment.id}
+                                >
                                   <td>
                                     {displayDate(
                                       paymentDate(
-                                        item
+                                        payment
                                       )
                                     )}
                                   </td>
@@ -1497,21 +1194,21 @@ export default function AdminSavingsPanel({
                                   <td>
                                     {localTime(
                                       paymentDate(
-                                        item
+                                        payment
                                       )
                                     )}
                                   </td>
 
                                   <td>
-                                    {item.payment_reference ||
-                                      item.external_transaction_id ||
+                                    {payment.payment_reference ||
+                                      payment.external_transaction_id ||
                                       "—"}
                                   </td>
 
                                   <td className="tlba-positive">
                                     +{" "}
                                     {money(
-                                      item.amount
+                                      payment.amount
                                     )}
                                   </td>
                                 </tr>
@@ -1529,10 +1226,7 @@ export default function AdminSavingsPanel({
                     </div>
 
                     <strong>
-                      KES{" "}
-                      {money(
-                        statementTotal
-                      )}
+                      KES {money(statementTotal)}
                     </strong>
                   </div>
                 </div>
@@ -1545,9 +1239,9 @@ export default function AdminSavingsPanel({
   );
 }
 
-// ================================================
-// COMPLETE NAVY / GOLD STYLING
-// ================================================
+// ============================================
+// NAVY / GOLD STYLES
+// ============================================
 
 const css = `
 .tlba-root {
@@ -1566,7 +1260,8 @@ const css = `
 
 .tlba-summary {
   display: grid;
-  grid-template-columns: repeat(3,minmax(0,1fr));
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
   gap: 13px;
   margin-bottom: 15px;
 }
@@ -1574,18 +1269,21 @@ const css = `
 .tlba-metric {
   min-width: 0;
   padding: 20px;
-  background: linear-gradient(110deg,#073e37,#06252e);
+  background:
+    linear-gradient(110deg, #073e37, #06252e);
   border: 1px solid #158570;
   border-radius: 9px;
 }
 
 .tlba-metric.amber {
-  background: linear-gradient(110deg,#54321f,#201d22);
+  background:
+    linear-gradient(110deg, #54321f, #201d22);
   border-color: #b57c2b;
 }
 
 .tlba-metric.green {
-  background: linear-gradient(110deg,#073e37,#06252e);
+  background:
+    linear-gradient(110deg, #073e37, #06252e);
   border-color: #158570;
 }
 
@@ -1605,7 +1303,7 @@ const css = `
 }
 
 .tlba-metric-content strong {
-  font-size: clamp(19px,2vw,27px);
+  font-size: clamp(19px, 2vw, 27px);
   color: #ffdb68;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -1642,7 +1340,9 @@ const css = `
 
 .tlba-layout {
   display: grid;
-  grid-template-columns: minmax(0,1.12fr) minmax(0,1fr);
+  grid-template-columns:
+    minmax(0, 1.12fr)
+    minmax(0, 1fr);
   gap: 15px;
   align-items: start;
 }
@@ -1673,7 +1373,7 @@ const css = `
 .tlba-panelhead h2 {
   margin: 0;
   color: #ffdc6a;
-  font-size: clamp(17px,1.65vw,24px);
+  font-size: clamp(17px, 1.65vw, 24px);
   font-weight: 850;
 }
 
@@ -1841,7 +1541,7 @@ const css = `
 }
 
 .tlba-total strong {
-  font-size: clamp(19px,2.3vw,29px);
+  font-size: clamp(19px, 2.3vw, 29px);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1860,77 +1560,14 @@ const css = `
   font-weight: 800;
 }
 
-/* MANUAL ASSIGNMENT */
-
-.tlba-manual {
-  display: grid;
-  gap: 9px;
-  margin-top: 8px;
-  border-top: 1px solid #21496e;
-  padding-top: 12px;
-}
-
-.tlba-manual-actions {
-  display: grid;
-  grid-template-columns: repeat(2,minmax(0,1fr));
-  gap: 9px;
-  margin-top: 5px;
-}
-
-.tlba-manual-actions button {
-  border-radius: 8px;
-  padding: 12px 9px;
-  min-height: 44px;
-  font-size: 12px;
-  font-weight: 850;
-  cursor: pointer;
-}
-
-.tlba-manual-actions button:disabled {
-  opacity: .5;
-  cursor: not-allowed;
-}
-
-.tlba-save {
-  background: #078a62;
-  color: #fff;
-  border: 1px solid #159e78;
-}
-
-.tlba-remove {
-  background: #4d2633;
-  color: #ffd3db;
-  border: 1px solid #995066;
-}
-
-.tlba-assigned {
-  background: #0d3c34;
-  border: 1px solid #167b67;
-  border-radius: 7px;
-  padding: 10px 12px;
-  color: #b5ffdf;
-  font-weight: 800;
-}
-
-.tlba-manual-error {
-  background: #50242e;
-  border: 1px solid #ad5365;
-  border-radius: 7px;
-  padding: 10px 12px;
-  color: #ffd3db;
-  font-weight: 800;
-}
-
 @media (max-width: 1000px) {
   .tlba-layout {
     grid-template-columns: 1fr;
   }
 
   .tlba-summary {
-    grid-template-columns: repeat(
-      auto-fit,
-      minmax(230px,1fr)
-    );
+    grid-template-columns:
+      repeat(auto-fit, minmax(230px, 1fr));
   }
 }
 
@@ -1958,10 +1595,6 @@ const css = `
   .tlba-metric select {
     max-width: none;
     width: 100%;
-  }
-
-  .tlba-manual-actions {
-    grid-template-columns: 1fr;
   }
 }
 `;
