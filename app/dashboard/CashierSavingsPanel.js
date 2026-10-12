@@ -2,11 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-// =============================================================
-// TEAM LEGEND / NYIKA — CASHIER SAVINGS / BANKING
-// Professional styling; original Supabase money rules retained
-// =============================================================
-
+// TEAM LEGEND — shared 12H and 24H Savings / Banking panel.
+// Presentation is compact; existing money RPC workflows are unchanged.
 const CATEGORY_CONFIG = [
   { key: "WIFI", label: "WiFi", fixedPayment: true },
   { key: "DSTV", label: "DStv", fixedPayment: true },
@@ -26,14 +23,16 @@ const T = {
   muted: "#91A5B8",
   gold: "#D9B66C",
   teal: "#40C9AC",
-  blue: "#7DB8FA",
-  danger: "#FB8B96",
 };
 
 function blankInputs() {
   const result = {};
   for (const category of CATEGORY_CONFIG) {
-    result[category.key] = { save: "", pay: "", withdraw: "" };
+    result[category.key] = {
+      save: "",
+      pay: "",
+      withdraw: "",
+    };
   }
   return result;
 }
@@ -42,24 +41,44 @@ export default function CashierSavingsPanel({ user, currentShift }) {
   const [categories, setCategories] = useState([]);
   const [paymentRequests, setPaymentRequests] = useState([]);
   const [bankingEmployees, setBankingEmployees] = useState([]);
-  const [selectedBankingEmployeeId, setSelectedBankingEmployeeId] = useState("");
+  const [selectedBankingEmployeeId, setSelectedBankingEmployeeId] =
+    useState("");
   const [inputs, setInputs] = useState(blankInputs);
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState("");
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
+  const [notice, setNotice] = useState(null);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const accessToken = user?.access_token || null;
   const shiftId = currentShift?.id || null;
 
-  // ===========================================================
-  // LOAD SAVINGS AND EMPLOYEE BANKING
-  // ===========================================================
+  // All transient messages disappear after five seconds.
+  useEffect(() => {
+    if (!notice) return;
+
+    const timer = setTimeout(() => {
+      setNotice(null);
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  function notify(text, type = "error") {
+    setNotice({ text, type });
+  }
+
+  // ==========================================
+  // LOAD SAVINGS
+  // ==========================================
 
   const loadSavings = useCallback(async (silent = false) => {
-    if (!shiftId || !accessToken || !supabaseUrl || !supabaseAnonKey) {
+    if (
+      !shiftId ||
+      !accessToken ||
+      !supabaseUrl ||
+      !supabaseAnonKey
+    ) {
       setLoading(false);
       return;
     }
@@ -69,25 +88,37 @@ export default function CashierSavingsPanel({ user, currentShift }) {
 
       const headers = authHeaders(supabaseAnonKey, accessToken);
 
-      const [savingsResponse, bankingResponse] = await Promise.all([
-        fetch(`${supabaseUrl}/rest/v1/rpc/tl_cashier_savings_snapshot`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ p_shift_id: shiftId }),
-          cache: "no-store",
-        }),
-        fetch(`${supabaseUrl}/rest/v1/rpc/tl_cashier_banking_directory`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ p_shift_id: shiftId }),
-          cache: "no-store",
-        }),
-      ]);
+      const [savingsResponse, bankingResponse] =
+        await Promise.all([
+          fetch(
+            `${supabaseUrl}/rest/v1/rpc/tl_cashier_savings_snapshot`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                p_shift_id: shiftId,
+              }),
+              cache: "no-store",
+            }
+          ),
+          fetch(
+            `${supabaseUrl}/rest/v1/rpc/tl_cashier_banking_directory`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                p_shift_id: shiftId,
+              }),
+              cache: "no-store",
+            }
+          ),
+        ]);
 
-      const [savingsResult, bankingResult] = await Promise.all([
-        safeJson(savingsResponse),
-        safeJson(bankingResponse),
-      ]);
+      const [savingsResult, bankingResult] =
+        await Promise.all([
+          safeJson(savingsResponse),
+          safeJson(bankingResponse),
+        ]);
 
       if (!savingsResponse.ok) {
         throw new Error(
@@ -107,15 +138,21 @@ export default function CashierSavingsPanel({ user, currentShift }) {
         );
       }
 
-      const loadedCategories = Array.isArray(savingsResult?.categories)
+      const loadedCategories = Array.isArray(
+        savingsResult?.categories
+      )
         ? savingsResult.categories
         : [];
 
-      const loadedRequests = Array.isArray(savingsResult?.payment_requests)
+      const loadedRequests = Array.isArray(
+        savingsResult?.payment_requests
+      )
         ? savingsResult.payment_requests
         : [];
 
-      const loadedEmployees = Array.isArray(bankingResult?.employees)
+      const loadedEmployees = Array.isArray(
+        bankingResult?.employees
+      )
         ? bankingResult.employees
         : [];
 
@@ -123,42 +160,51 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       setPaymentRequests(loadedRequests);
       setBankingEmployees(loadedEmployees);
 
-      setSelectedBankingEmployeeId((previous) => {
-        if (!previous) return "";
-        return loadedEmployees.some(
-          (employee) =>
-            String(employee.employee_id) === String(previous)
+      setSelectedBankingEmployeeId((previous) =>
+        previous &&
+        loadedEmployees.some(
+          (e) =>
+            String(e.employee_id) === String(previous)
         )
           ? previous
-          : "";
-      });
+          : ""
+      );
     } catch (error) {
       console.error("LOAD SAVINGS ERROR:", error);
 
       if (!silent) {
-        setMessage(error?.message || "Unable to load Savings.");
-        setMessageType("error");
+        setNotice({
+          text: error?.message || "Unable to load Savings.",
+          type: "error",
+        });
       }
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [shiftId, accessToken, supabaseUrl, supabaseAnonKey]);
+  }, [
+    shiftId,
+    accessToken,
+    supabaseUrl,
+    supabaseAnonKey,
+  ]);
 
-  // ===========================================================
-  // LIVE REFRESH
-  // ===========================================================
+  // ==========================================
+  // AUTO REFRESH
+  // ==========================================
 
   useEffect(() => {
     loadSavings();
 
-    const timer = setInterval(() => loadSavings(true), 5000);
+    const timer = setInterval(() => {
+      loadSavings(true);
+    }, 5000);
 
     return () => clearInterval(timer);
   }, [loadSavings]);
 
-  // ===========================================================
-  // EMPLOYEE BANKING DIRECTORY
-  // ===========================================================
+  // ==========================================
+  // BANKING EMPLOYEE DIRECTORY
+  // ==========================================
 
   const sortedBankingEmployees = useMemo(
     () =>
@@ -166,11 +212,13 @@ export default function CashierSavingsPanel({ user, currentShift }) {
         const mobileA = a?.is_mobile ? 0 : 1;
         const mobileB = b?.is_mobile ? 0 : 1;
 
-        if (mobileA !== mobileB) return mobileA - mobileB;
+        if (mobileA !== mobileB) {
+          return mobileA - mobileB;
+        }
 
-        const shopCompare = String(a?.shop_name || "").localeCompare(
-          String(b?.shop_name || "")
-        );
+        const shopCompare = String(
+          a?.shop_name || ""
+        ).localeCompare(String(b?.shop_name || ""));
 
         return shopCompare !== 0
           ? shopCompare
@@ -193,9 +241,9 @@ export default function CashierSavingsPanel({ user, currentShift }) {
     );
   }, [bankingEmployees, selectedBankingEmployeeId]);
 
-  // ===========================================================
-  // SAVINGS ROWS
-  // ===========================================================
+  // ==========================================
+  // CATEGORY DATA
+  // ==========================================
 
   const rows = useMemo(
     () =>
@@ -204,7 +252,9 @@ export default function CashierSavingsPanel({ user, currentShift }) {
           return {
             ...config,
             accountId: null,
-            balance: Number(selectedBankingEmployee?.saved_balance || 0),
+            balance: Number(
+              selectedBankingEmployee?.saved_balance || 0
+            ),
             obligationAmount: null,
             pendingPaymentAmount: Number(
               selectedBankingEmployee?.pending_payment_amount || 0
@@ -212,13 +262,15 @@ export default function CashierSavingsPanel({ user, currentShift }) {
             availableBalance: Number(
               selectedBankingEmployee?.available_balance || 0
             ),
-            employeeId: selectedBankingEmployee?.employee_id || null,
+            employeeId:
+              selectedBankingEmployee?.employee_id || null,
           };
         }
 
         const found = categories.find(
           (row) =>
-            String(row?.category || "").toUpperCase() === config.key
+            String(row?.category || "").toUpperCase() ===
+            config.key
         );
 
         return {
@@ -226,44 +278,45 @@ export default function CashierSavingsPanel({ user, currentShift }) {
           accountId: found?.account_id || null,
           balance: Number(found?.balance || 0),
           obligationAmount:
-            found?.obligation_amount === null ||
-            found?.obligation_amount === undefined
+            found?.obligation_amount == null
               ? null
               : Number(found.obligation_amount),
           pendingPaymentAmount: Number(
             found?.pending_payment_amount || 0
           ),
-          availableBalance: Number(found?.available_balance || 0),
+          availableBalance: Number(
+            found?.available_balance || 0
+          ),
         };
       }),
     [categories, selectedBankingEmployee]
   );
 
-  // ===========================================================
+  // ==========================================
   // TOTALS
-  // ===========================================================
+  // ==========================================
 
   const totals = useMemo(() => {
-    let saved = 0;
-    let reserved = 0;
-    let available = 0;
-
-    for (const row of rows) {
-      saved += Number(row.balance || 0);
-      reserved += Number(row.pendingPaymentAmount || 0);
-      available += Number(row.availableBalance || 0);
-    }
-
     return {
-      saved: roundMoney(saved),
-      reserved: roundMoney(reserved),
-      available: roundMoney(available),
+      saved: roundMoney(
+        rows.reduce(
+          (sum, row) => sum + Number(row.balance || 0),
+          0
+        )
+      ),
+      reserved: roundMoney(
+        rows.reduce(
+          (sum, row) =>
+            sum + Number(row.pendingPaymentAmount || 0),
+          0
+        )
+      ),
     };
   }, [rows]);
 
-  // ===========================================================
+  // ==========================================
   // INPUT HELPERS
-  // ===========================================================
+  // ==========================================
 
   function setInput(category, field, value) {
     setInputs((previous) => ({
@@ -274,8 +327,7 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       },
     }));
 
-    setMessage("");
-    setMessageType("");
+    setNotice(null);
   }
 
   function clearInput(category, field) {
@@ -288,34 +340,40 @@ export default function CashierSavingsPanel({ user, currentShift }) {
     }));
   }
 
-  function clearBankingInputs() {
-    setInputs((previous) => ({
-      ...previous,
-      BANKING: { save: "", pay: "", withdraw: "" },
-    }));
-  }
-
   function selectBankingEmployee(employeeId) {
     setSelectedBankingEmployeeId(employeeId);
-    clearBankingInputs();
-    setMessage("");
-    setMessageType("");
+
+    setInputs((previous) => ({
+      ...previous,
+      BANKING: {
+        save: "",
+        pay: "",
+        withdraw: "",
+      },
+    }));
+
+    setNotice(null);
   }
 
   function requireBankingEmployee() {
     if (selectedBankingEmployee) return true;
 
-    setMessage("Select an employee before using Banking.");
-    setMessageType("error");
+    notify("Select an employee for Banking.");
     return false;
   }
-
-  // ===========================================================
-  // SAVE — POSTS IMMEDIATELY TO SAVINGS AND EXPENSES
-  // ===========================================================
+  // ==========================================
+  // SAVE MONEY
+  // ==========================================
 
   async function saveMoney(row) {
-    if (row.key === "BANKING" && !requireBankingEmployee()) return;
+    if (actionKey) return;
+
+    if (
+      row.key === "BANKING" &&
+      !requireBankingEmployee()
+    ) {
+      return;
+    }
 
     const rawAmount = inputs[row.key]?.save;
     const amount = Number(rawAmount);
@@ -325,8 +383,7 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       !Number.isFinite(amount) ||
       amount <= 0
     ) {
-      setMessage(`Enter a valid amount to save for ${row.label}.`);
-      setMessageType("error");
+      notify(`Enter a valid ${row.label} save amount.`);
       return;
     }
 
@@ -337,7 +394,7 @@ export default function CashierSavingsPanel({ user, currentShift }) {
 
     const confirmed = window.confirm(
       `Save KES ${money(amount)} to ${row.label}?${bankingText}\n\n` +
-        `This will immediately add KES ${money(amount)} to Expenses and Savings.`
+      `This will immediately add KES ${money(amount)} to Expenses and Savings.`
     );
 
     if (!confirmed) return;
@@ -346,8 +403,7 @@ export default function CashierSavingsPanel({ user, currentShift }) {
 
     try {
       setActionKey(key);
-      setMessage("");
-      setMessageType("");
+      setNotice(null);
 
       const isBanking = row.key === "BANKING";
 
@@ -358,7 +414,8 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       const body = isBanking
         ? {
             p_shift_id: shiftId,
-            p_employee_id: selectedBankingEmployee.employee_id,
+            p_employee_id:
+              selectedBankingEmployee.employee_id,
             p_amount: roundMoney(amount),
           }
         : {
@@ -371,7 +428,10 @@ export default function CashierSavingsPanel({ user, currentShift }) {
         `${supabaseUrl}/rest/v1/rpc/${functionName}`,
         {
           method: "POST",
-          headers: authHeaders(supabaseAnonKey, accessToken),
+          headers: authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
           body: JSON.stringify(body),
         }
       );
@@ -381,30 +441,36 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       if (!response.ok) {
         throw new Error(
           result?.message ||
-            result?.details ||
-            result?.hint ||
-            "Unable to save money."
+          result?.details ||
+          result?.hint ||
+          "Unable to save money."
         );
       }
 
       clearInput(row.key, "save");
 
-      setMessage(
+      notify(
         isBanking
-          ? `${selectedBankingEmployee.employee_name}: KES ${money(amount)} Banking saved successfully.`
-          : `${row.label}: KES ${money(amount)} saved successfully.`
+          ? `${selectedBankingEmployee.employee_name}: KES ${money(amount)} saved.`
+          : `${row.label}: KES ${money(amount)} saved.`,
+        "success"
       );
 
-      setMessageType("success");
       await loadSavings(true);
     } catch (error) {
       console.error("SAVE MONEY ERROR:", error);
-      setMessage(error?.message || "Unable to save money.");
-      setMessageType("error");
+
+      notify(
+        error?.message || "Unable to save money."
+      );
     } finally {
       setActionKey("");
     }
   }
+
+  // ==========================================
+  // PAYMENT AMOUNT
+  // ==========================================
 
   function getPaymentAmount(row) {
     return row.fixedPayment
@@ -412,40 +478,47 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       : Number(inputs[row.key]?.pay || 0);
   }
 
-  // ===========================================================
-  // REQUEST PAY — ACCOUNTANT CONFIRMATION REQUIRED
-  // ===========================================================
+  // ==========================================
+  // REQUEST PAYMENT — ACCOUNTANT APPROVAL
+  // ==========================================
 
   async function requestPayment(row) {
-    if (row.key === "BANKING" && !requireBankingEmployee()) return;
+    if (actionKey) return;
+
+    if (
+      row.key === "BANKING" &&
+      !requireBankingEmployee()
+    ) {
+      return;
+    }
 
     if (
       row.fixedPayment &&
-      (row.obligationAmount === null ||
+      (
+        row.obligationAmount === null ||
         !Number.isFinite(row.obligationAmount) ||
-        row.obligationAmount <= 0)
+        row.obligationAmount <= 0
+      )
     ) {
-      setMessage(
-        `${row.label} fixed payment amount has not been configured by Admin yet.`
+      notify(
+        `${row.label} payment amount is not set by Admin.`
       );
-      setMessageType("error");
       return;
     }
 
     const amount = getPaymentAmount(row);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      setMessage(`Enter a valid ${row.label} payment amount.`);
-      setMessageType("error");
+      notify(
+        `Enter a valid ${row.label} payment amount.`
+      );
       return;
     }
 
     if (amount > row.availableBalance) {
-      setMessage(
-        `${row.label} payment cannot exceed available Savings. ` +
-          `Available: KES ${money(row.availableBalance)}.`
+      notify(
+        `${row.label}: Available KES ${money(row.availableBalance)}.`
       );
-      setMessageType("error");
       return;
     }
 
@@ -456,8 +529,8 @@ export default function CashierSavingsPanel({ user, currentShift }) {
 
     const confirmed = window.confirm(
       `Request ${row.label} payment?${bankingText}\n\n` +
-        `Amount: KES ${money(amount)}\n\n` +
-        `The Accountant must confirm the actual payment before this amount leaves Savings.`
+      `Amount: KES ${money(amount)}\n\n` +
+      `The Accountant must confirm the actual payment before this amount leaves Savings.`
     );
 
     if (!confirmed) return;
@@ -466,8 +539,7 @@ export default function CashierSavingsPanel({ user, currentShift }) {
 
     try {
       setActionKey(key);
-      setMessage("");
-      setMessageType("");
+      setNotice(null);
 
       const isBanking = row.key === "BANKING";
 
@@ -478,7 +550,8 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       const body = isBanking
         ? {
             p_shift_id: shiftId,
-            p_employee_id: selectedBankingEmployee.employee_id,
+            p_employee_id:
+              selectedBankingEmployee.employee_id,
             p_amount: roundMoney(amount),
           }
         : {
@@ -491,7 +564,10 @@ export default function CashierSavingsPanel({ user, currentShift }) {
         `${supabaseUrl}/rest/v1/rpc/${functionName}`,
         {
           method: "POST",
-          headers: authHeaders(supabaseAnonKey, accessToken),
+          headers: authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
           body: JSON.stringify(body),
         }
       );
@@ -501,37 +577,46 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       if (!response.ok) {
         throw new Error(
           result?.message ||
-            result?.details ||
-            result?.hint ||
-            "Unable to request payment."
+          result?.details ||
+          result?.hint ||
+          "Unable to request payment."
         );
       }
 
-      if (!row.fixedPayment) clearInput(row.key, "pay");
+      if (!row.fixedPayment) {
+        clearInput(row.key, "pay");
+      }
 
-      setMessage(
-        isBanking
-          ? `${selectedBankingEmployee.employee_name}: Banking payment request sent to Accountant for KES ${money(amount)}.`
-          : `${row.label} payment request sent to Accountant for KES ${money(amount)}.`
+      notify(
+        `${row.label}: Payment request sent to Accountant.`,
+        "success"
       );
 
-      setMessageType("success");
       await loadSavings(true);
     } catch (error) {
       console.error("REQUEST PAYMENT ERROR:", error);
-      setMessage(error?.message || "Unable to request payment.");
-      setMessageType("error");
+
+      notify(
+        error?.message || "Unable to request payment."
+      );
     } finally {
       setActionKey("");
     }
   }
 
-  // ===========================================================
-  // WITHDRAW — RETURNS TO M-SHWARI ADDED FLOAT
-  // ===========================================================
+  // ==========================================
+  // WITHDRAW SAVINGS
+  // ==========================================
 
   async function withdrawMoney(row) {
-    if (row.key === "BANKING" && !requireBankingEmployee()) return;
+    if (actionKey) return;
+
+    if (
+      row.key === "BANKING" &&
+      !requireBankingEmployee()
+    ) {
+      return;
+    }
 
     const rawAmount = inputs[row.key]?.withdraw;
     const amount = Number(rawAmount);
@@ -541,17 +626,16 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       !Number.isFinite(amount) ||
       amount <= 0
     ) {
-      setMessage(`Enter a valid ${row.label} withdrawal amount.`);
-      setMessageType("error");
+      notify(
+        `Enter a valid ${row.label} withdrawal amount.`
+      );
       return;
     }
 
     if (amount > row.availableBalance) {
-      setMessage(
-        `Withdrawal cannot exceed available ${row.label} Savings. ` +
-          `Available: KES ${money(row.availableBalance)}.`
+      notify(
+        `${row.label}: Available KES ${money(row.availableBalance)}.`
       );
-      setMessageType("error");
       return;
     }
 
@@ -562,7 +646,7 @@ export default function CashierSavingsPanel({ user, currentShift }) {
 
     const confirmed = window.confirm(
       `Withdraw KES ${money(amount)} from ${row.label} Savings?${bankingText}\n\n` +
-        `The money will automatically enter the next available M-Shwari Added Float position.`
+      `The money will automatically enter the next available M-Shwari Added Float position.`
     );
 
     if (!confirmed) return;
@@ -571,8 +655,7 @@ export default function CashierSavingsPanel({ user, currentShift }) {
 
     try {
       setActionKey(key);
-      setMessage("");
-      setMessageType("");
+      setNotice(null);
 
       const isBanking = row.key === "BANKING";
 
@@ -583,7 +666,8 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       const body = isBanking
         ? {
             p_shift_id: shiftId,
-            p_employee_id: selectedBankingEmployee.employee_id,
+            p_employee_id:
+              selectedBankingEmployee.employee_id,
             p_amount: roundMoney(amount),
           }
         : {
@@ -596,7 +680,10 @@ export default function CashierSavingsPanel({ user, currentShift }) {
         `${supabaseUrl}/rest/v1/rpc/${functionName}`,
         {
           method: "POST",
-          headers: authHeaders(supabaseAnonKey, accessToken),
+          headers: authHeaders(
+            supabaseAnonKey,
+            accessToken
+          ),
           body: JSON.stringify(body),
         }
       );
@@ -606,86 +693,91 @@ export default function CashierSavingsPanel({ user, currentShift }) {
       if (!response.ok) {
         throw new Error(
           result?.message ||
-            result?.details ||
-            result?.hint ||
-            "Unable to withdraw Savings."
+          result?.details ||
+          result?.hint ||
+          "Unable to withdraw Savings."
         );
       }
 
       clearInput(row.key, "withdraw");
 
-      setMessage(
-        isBanking
-          ? `${selectedBankingEmployee.employee_name}: KES ${money(amount)} withdrawn from Banking to M-Shwari Added Float ${result?.mshwari_slot || ""}.`
-          : `${row.label}: KES ${money(amount)} withdrawn to M-Shwari Added Float ${result?.mshwari_slot || ""}.`
+      notify(
+        `${row.label}: KES ${money(amount)} withdrawn to M-Shwari Float ${result?.mshwari_slot || ""}.`,
+        "success"
       );
 
-      setMessageType("success");
       await loadSavings(true);
     } catch (error) {
       console.error("WITHDRAW SAVINGS ERROR:", error);
-      setMessage(error?.message || "Unable to withdraw Savings.");
-      setMessageType("error");
+
+      notify(
+        error?.message || "Unable to withdraw Savings."
+      );
     } finally {
       setActionKey("");
     }
   }
-
-  // ===========================================================
+  // ==========================================
   // DISPLAY
-  // ===========================================================
+  // ==========================================
 
   return (
-    <section style={styles.panel}>
+    <section className="tl-shared-savings" style={styles.panel}>
+      <style>{`
+        .tl-shared-savings input[type="number"] {
+          appearance: textfield;
+          -moz-appearance: textfield;
+        }
+
+        .tl-shared-savings input[type="number"]::-webkit-inner-spin-button,
+        .tl-shared-savings input[type="number"]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+      `}</style>
+
       <div style={styles.heading}>
-        <div style={styles.headingTitle}>
-          SAVINGS <span style={{ color: T.gold }}>/</span> BANKING
-        </div>
-        <div style={styles.headingCaption}>
-          Shop savings · employee banking · Accountant payment requests
-        </div>
+        SAVINGS / BANKING
       </div>
 
-      <div style={styles.instruction}>
-        <span style={styles.instructionDot} />
-        <span>
-          <strong style={{ color: T.ink }}>SAVE</strong> posts immediately to
-          Savings and Expenses.{" "}
-          <strong style={{ color: T.ink }}>PAY</strong> requires Accountant
-          confirmation.
-        </span>
-      </div>
-
-      {message && (
+      {notice && (
         <div
           role="status"
+          aria-live="polite"
           style={{
             ...styles.message,
-            ...(messageType === "success"
+            ...(notice.type === "success"
               ? styles.messageSuccess
               : styles.messageError),
           }}
         >
-          {message}
+          {notice.text}
         </div>
       )}
 
       {loading ? (
-        <div style={styles.loading}>Loading Savings / Banking…</div>
+        <div style={styles.loading}>
+          Loading...
+        </div>
       ) : (
         <>
-          {/* SAVINGS CATEGORY CARDS */}
-
           <div style={styles.categoryGrid}>
             {rows.map((row) => {
-              const saveBusy = actionKey === `SAVE-${row.key}`;
-              const payBusy = actionKey === `PAY-${row.key}`;
-              const withdrawBusy = actionKey === `WITHDRAW-${row.key}`;
-              const anyBusy = actionKey !== "";
+              const saveBusy =
+                actionKey === `SAVE-${row.key}`;
 
+              const payBusy =
+                actionKey === `PAY-${row.key}`;
+
+              const withdrawBusy =
+                actionKey === `WITHDRAW-${row.key}`;
+
+              const anyBusy = actionKey !== "";
               const isBanking = row.key === "BANKING";
+
               const bankingReady =
-                !isBanking || Boolean(selectedBankingEmployee);
+                !isBanking ||
+                Boolean(selectedBankingEmployee);
 
               const fixedAmountReady =
                 row.obligationAmount !== null &&
@@ -694,7 +786,8 @@ export default function CashierSavingsPanel({ user, currentShift }) {
 
               const fixedCanPay =
                 fixedAmountReady &&
-                row.availableBalance >= row.obligationAmount;
+                row.availableBalance >=
+                  row.obligationAmount;
 
               const selected = inputs[row.key] || {
                 save: "",
@@ -718,94 +811,80 @@ export default function CashierSavingsPanel({ user, currentShift }) {
                   key={row.key}
                   style={{
                     ...styles.categoryCard,
-                    ...(isBanking ? styles.bankingCard : {}),
+                    ...(isBanking
+                      ? styles.bankingCard
+                      : {}),
                   }}
                 >
                   <div style={styles.categoryHead}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={styles.categoryName}>{row.label}</div>
-                      <div style={styles.categorySub}>
-                        {row.fixedPayment
-                          ? `Fixed payment: ${
-                              fixedAmountReady
-                                ? `KES ${money(row.obligationAmount)}`
-                                : "Not configured"
-                            }`
-                          : isBanking
-                          ? "Employee banking"
-                          : "Variable payment amount"}
-                      </div>
-                    </div>
+                    <strong style={styles.categoryName}>
+                      {row.label}
+                    </strong>
 
-                    <span style={styles.categoryTag}>
-                      {isBanking
-                        ? "EMPLOYEE"
-                        : row.fixedPayment
-                        ? "FIXED"
-                        : "VARIABLE"}
-                    </span>
+                    {row.fixedPayment && (
+                      <span style={styles.fixedTag}>
+                        FIXED
+                      </span>
+                    )}
                   </div>
 
-                  {/* SAVED AND AVAILABLE BALANCES */}
+                  <div style={styles.balanceTile}>
+                    <span style={styles.balanceLabel}>
+                      SAVED
+                    </span>
 
-                  <div style={styles.balanceGrid}>
-  <BalanceTile
-    label="SAVED"
-    amount={row.balance}
-  />
-</div>
-                  {/* EMPLOYEE BANKING SELECTOR */}
+                    <strong style={styles.balanceAmount}>
+                      KES {money(row.balance)}
+                    </strong>
+                  </div>
 
                   {isBanking && (
                     <div style={styles.bankingSelectorWrap}>
-                      <label
-                        style={styles.label}
-                        htmlFor="tl-banking-employee"
-                      >
-                        SELECT EMPLOYEE
-                      </label>
-
                       <select
-                        id="tl-banking-employee"
+                        aria-label="Select Banking employee"
                         value={selectedBankingEmployeeId}
                         disabled={anyBusy}
                         onChange={(event) =>
-                          selectBankingEmployee(event.target.value)
+                          selectBankingEmployee(
+                            event.target.value
+                          )
                         }
                         style={styles.select}
                       >
-                        <option value="">Select employee</option>
+                        <option value="">
+                          Select employee
+                        </option>
 
-                        {sortedBankingEmployees.map((employee) => (
-                          <option
-                            key={employee.employee_id}
-                            value={employee.employee_id}
-                          >
-                            {employee.is_mobile
-                              ? `★ MOBILE — ${employee.employee_name}`
-                              : `${
-                                  employee.shop_name || "UNASSIGNED"
-                                } — ${employee.employee_name}`}
-                          </option>
-                        ))}
+                        {sortedBankingEmployees.map(
+                          (employee) => (
+                            <option
+                              key={employee.employee_id}
+                              value={employee.employee_id}
+                            >
+                              {employee.is_mobile
+                                ? `★ MOBILE — ${employee.employee_name}`
+                                : `${employee.shop_name || "UNASSIGNED"} — ${employee.employee_name}`}
+                            </option>
+                          )
+                        )}
                       </select>
                     </div>
                   )}
 
-                  {/* PENDING PAYMENT RESERVATION */}
-
                   {row.pendingPaymentAmount > 0 && (
                     <div style={styles.reserved}>
-                      KES {money(row.pendingPaymentAmount)} reserved for
-                      Accountant confirmation.
+                      PENDING: KES{" "}
+                      {money(row.pendingPaymentAmount)}
                     </div>
                   )}
 
-                  {/* SAVE / PAY / WITHDRAW */}
-
                   <div style={styles.actions}>
+                    {/* SAVE */}
+
                     <div style={styles.actionRow}>
-                      <span style={styles.actionLabel}>SAVE</span>
+                      <span style={styles.actionLabel}>
+                        SAVE
+                      </span>
 
                       <input
                         type="number"
@@ -820,7 +899,11 @@ export default function CashierSavingsPanel({ user, currentShift }) {
                             : "Amount"
                         }
                         onChange={(event) =>
-                          setInput(row.key, "save", event.target.value)
+                          setInput(
+                            row.key,
+                            "save",
+                            event.target.value
+                          )
                         }
                         style={styles.input}
                       />
@@ -832,15 +915,22 @@ export default function CashierSavingsPanel({ user, currentShift }) {
                         style={{
                           ...styles.actionButton,
                           ...styles.saveButton,
-                          opacity: anyBusy || !bankingReady ? 0.45 : 1,
+                          opacity:
+                            anyBusy || !bankingReady
+                              ? 0.45
+                              : 1,
                         }}
                       >
-                        {saveBusy ? "Saving…" : "Save"}
+                        {saveBusy ? "Saving..." : "Save"}
                       </button>
                     </div>
 
+                    {/* REQUEST PAY */}
+
                     <div style={styles.actionRow}>
-                      <span style={styles.actionLabel}>PAY</span>
+                      <span style={styles.actionLabel}>
+                        PAY
+                      </span>
 
                       {row.fixedPayment ? (
                         <input
@@ -852,7 +942,7 @@ export default function CashierSavingsPanel({ user, currentShift }) {
                               ? money(row.obligationAmount)
                               : ""
                           }
-                          placeholder="Admin fixed amount"
+                          placeholder="Not set"
                           style={{
                             ...styles.input,
                             ...styles.readOnlyInput,
@@ -872,7 +962,11 @@ export default function CashierSavingsPanel({ user, currentShift }) {
                               : "Amount"
                           }
                           onChange={(event) =>
-                            setInput(row.key, "pay", event.target.value)
+                            setInput(
+                              row.key,
+                              "pay",
+                              event.target.value
+                            )
                           }
                           style={styles.input}
                         />
@@ -888,12 +982,18 @@ export default function CashierSavingsPanel({ user, currentShift }) {
                           opacity: disablePay ? 0.45 : 1,
                         }}
                       >
-                        {payBusy ? "Sending…" : "Request Pay"}
+                        {payBusy
+                          ? "Sending..."
+                          : "Request Pay"}
                       </button>
                     </div>
 
+                    {/* WITHDRAW */}
+
                     <div style={styles.actionRow}>
-                      <span style={styles.actionLabel}>WITHDRAW</span>
+                      <span style={styles.actionLabel}>
+                        WITHDRAW
+                      </span>
 
                       <input
                         type="number"
@@ -901,14 +1001,18 @@ export default function CashierSavingsPanel({ user, currentShift }) {
                         step="0.01"
                         aria-label={`${row.label} withdrawal amount`}
                         value={selected.withdraw}
-                        disabled={anyBusy || !bankingReady}
+                        disabled={disableWithdraw}
                         placeholder={
                           isBanking && !bankingReady
                             ? "Select employee"
                             : "Amount"
                         }
                         onChange={(event) =>
-                          setInput(row.key, "withdraw", event.target.value)
+                          setInput(
+                            row.key,
+                            "withdraw",
+                            event.target.value
+                          )
                         }
                         style={styles.input}
                       />
@@ -920,10 +1024,13 @@ export default function CashierSavingsPanel({ user, currentShift }) {
                         style={{
                           ...styles.actionButton,
                           ...styles.withdrawButton,
-                          opacity: disableWithdraw ? 0.45 : 1,
+                          opacity:
+                            disableWithdraw ? 0.45 : 1,
                         }}
                       >
-                        {withdrawBusy ? "Working…" : "Withdraw"}
+                        {withdrawBusy
+                          ? "Working..."
+                          : "Withdraw"}
                       </button>
                     </div>
                   </div>
@@ -932,93 +1039,80 @@ export default function CashierSavingsPanel({ user, currentShift }) {
             })}
           </div>
 
-          {/* SAVINGS TOTALS */}
+          {/* TOTALS */}
 
           <div style={styles.totalsGrid}>
-            <TotalTile label="TOTAL SAVED" amount={totals.saved} />
             <TotalTile
-              label="PENDING PAYMENTS"
-              amount={totals.reserved}
+              label="TOTAL SAVED"
+              amount={totals.saved}
             />
-            
-          </div>
 
-          {/* RECENT PAYMENT REQUESTS */}
-
-          <div style={styles.history}>
-            <div style={styles.historyHeading}>
-              RECENT PAYMENT REQUESTS
-            </div>
-
-            {paymentRequests.length === 0 ? (
-              <div style={styles.emptyHistory}>
-                No payment requests yet.
-              </div>
-            ) : (
-              <div style={styles.historyGrid}>
-                {paymentRequests.slice(0, 6).map((request) => (
-                  <div key={request.id} style={styles.historyRow}>
-                    <div style={{ minWidth: 0 }}>
-                      <strong style={{ color: T.ink }}>
-                        {request.category}
-                      </strong>
-                      <div style={styles.historyDate}>
-                        {formatDateTime(request.requested_at)}
-                      </div>
-                    </div>
-
-                    <strong style={styles.historyAmount}>
-                      KES {money(request.amount)}
-                    </strong>
-
-                    <StatusBadge status={request.status} />
-                  </div>
-                ))}
-              </div>
+            {totals.reserved > 0 && (
+              <TotalTile
+                label="PENDING PAYMENTS"
+                amount={totals.reserved}
+              />
             )}
           </div>
 
-          <div style={styles.footnote}>
-            Saving reduces available shift money immediately because it is
-            posted to Expenses. Paying later does not create a second
-            expense. Employee Banking follows the selected employee.
-          </div>
+          {/* FINANCIAL STATUSES REMAIN VISIBLE */}
+
+          {paymentRequests.length > 0 && (
+            <div style={styles.history}>
+              <div style={styles.historyHeading}>
+                PAYMENT STATUS
+              </div>
+
+              <div style={styles.historyGrid}>
+                {paymentRequests
+                  .slice(0, 6)
+                  .map((request) => (
+                    <div
+                      key={request.id}
+                      style={styles.historyRow}
+                    >
+                      <div style={styles.historyName}>
+                        <strong>
+                          {request.category}
+                        </strong>
+
+                        <span style={styles.historyDate}>
+                          {formatDateTime(
+                            request.requested_at
+                          )}
+                        </span>
+                      </div>
+
+                      <strong style={styles.historyAmount}>
+                        KES {money(request.amount)}
+                      </strong>
+
+                      <StatusBadge
+                        status={request.status}
+                      />
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </section>
   );
 }
 
-// =============================================================
-// REUSABLE DISPLAY COMPONENTS
-// =============================================================
+// ==========================================
+// DISPLAY COMPONENTS
+// ==========================================
 
-function BalanceTile({ label, amount, highlight = false }) {
-  return (
-    <div style={styles.balanceTile}>
-      <span style={styles.balanceLabel}>{label}</span>
-      <strong
-        style={{
-          ...styles.balanceAmount,
-          color: highlight ? T.teal : T.ink,
-        }}
-      >
-        KES {money(amount)}
-      </strong>
-    </div>
-  );
-}
-
-function TotalTile({ label, amount, highlight = false }) {
+function TotalTile({ label, amount }) {
   return (
     <div style={styles.totalTile}>
-      <div style={styles.totalLabel}>{label}</div>
-      <strong
-        style={{
-          ...styles.totalAmount,
-          color: highlight ? T.teal : T.ink,
-        }}
-      >
+      <span style={styles.totalLabel}>
+        {label}
+      </span>
+
+      <strong style={styles.totalAmount}>
         KES {money(amount)}
       </strong>
     </div>
@@ -1028,26 +1122,30 @@ function TotalTile({ label, amount, highlight = false }) {
 function StatusBadge({ status }) {
   const value = String(status || "").toUpperCase();
 
-  let style = styles.statusPending;
-
-  if (value === "CONFIRMED") {
-    style = styles.statusConfirmed;
-  } else if (value === "PROCESSING") {
-    style = styles.statusProcessing;
-  } else if (["REJECTED", "FAILED", "CANCELLED"].includes(value)) {
-    style = styles.statusRejected;
-  }
+  const statusStyle =
+    value === "CONFIRMED"
+      ? styles.statusConfirmed
+      : value === "PROCESSING"
+      ? styles.statusProcessing
+      : ["REJECTED", "FAILED", "CANCELLED"].includes(value)
+      ? styles.statusRejected
+      : styles.statusPending;
 
   return (
-    <span style={{ ...styles.statusBase, ...style }}>
+    <span
+      style={{
+        ...styles.statusBase,
+        ...statusStyle,
+      }}
+    >
       {value || "PENDING"}
     </span>
   );
 }
 
-// =============================================================
-// API / MONEY HELPERS
-// =============================================================
+// ==========================================
+// API AND MONEY HELPERS
+// ==========================================
 
 function authHeaders(anonKey, accessToken) {
   return {
@@ -1074,7 +1172,9 @@ function money(value) {
 
 function roundMoney(value) {
   return (
-    Math.round((Number(value) + Number.EPSILON) * 100) / 100
+    Math.round(
+      (Number(value) + Number.EPSILON) * 100
+    ) / 100
   );
 }
 
@@ -1093,10 +1193,9 @@ function formatDateTime(value) {
     return "";
   }
 }
-
-// =============================================================
-// PROFESSIONAL SAVINGS PANEL STYLES
-// =============================================================
+// ==========================================
+// SAVINGS / BANKING STYLES
+// ==========================================
 
 const styles = {
   panel: {
@@ -1115,55 +1214,21 @@ const styles = {
   },
 
   heading: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 8,
-    padding: "15px 17px",
+    padding: "12px 16px",
     background: "#152639",
     borderLeft: `3px solid ${T.gold}`,
     borderBottom: `1px solid ${T.border}`,
-  },
-
-  headingTitle: {
+    color: T.ink,
     fontSize: 14,
     fontWeight: 850,
-    letterSpacing: ".07em",
-    color: T.ink,
-  },
-
-  headingCaption: {
-    fontSize: 11,
-    color: T.muted,
-  },
-
-  instruction: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 9,
-    padding: "11px 17px",
-    borderBottom: `1px solid ${T.softBorder}`,
-    color: T.sub,
-    fontSize: 12,
-    lineHeight: 1.5,
-  },
-
-  instructionDot: {
-    flexShrink: 0,
-    width: 7,
-    height: 7,
-    marginTop: 6,
-    background: T.teal,
-    borderRadius: "50%",
+    letterSpacing: ".06em",
   },
 
   message: {
-    margin: "11px 13px 0",
-    padding: "11px 12px",
-    borderRadius: 8,
+    margin: "9px 12px 0",
+    padding: "10px 12px",
+    borderRadius: 7,
     fontSize: 12,
-    lineHeight: 1.5,
     fontWeight: 750,
   },
 
@@ -1180,7 +1245,7 @@ const styles = {
   },
 
   loading: {
-    padding: 28,
+    padding: 20,
     textAlign: "center",
     color: T.sub,
   },
@@ -1189,18 +1254,18 @@ const styles = {
     display: "grid",
     gridTemplateColumns:
       "repeat(auto-fit, minmax(min(100%, 330px), 1fr))",
-    gap: 13,
-    padding: "15px",
+    gap: 12,
+    padding: "12px",
   },
 
   categoryCard: {
     display: "flex",
     flexDirection: "column",
     minWidth: 0,
-    padding: "15px",
+    padding: 13,
     background: T.surfaceRaised,
     border: `1px solid ${T.border}`,
-    borderRadius: 10,
+    borderRadius: 9,
     boxSizing: "border-box",
   },
 
@@ -1212,53 +1277,37 @@ const styles = {
 
   categoryHead: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    marginBottom: 14,
-    minHeight: 53,
+    marginBottom: 10,
   },
 
   categoryName: {
     color: T.ink,
     fontSize: 16,
     fontWeight: 850,
-    letterSpacing: ".015em",
   },
 
-  categorySub: {
-    marginTop: 5,
-    fontSize: 11,
-    lineHeight: 1.4,
-    color: T.muted,
-  },
-
-  categoryTag: {
-    flexShrink: 0,
+  fixedTag: {
     color: T.gold,
     fontSize: 9,
-    fontWeight: 850,
-    letterSpacing: ".05em",
+    fontWeight: 800,
     border: "1px solid #6A593A",
     background: "#2A2930",
     borderRadius: 5,
-    padding: "5px 6px",
+    padding: "4px 6px",
   },
 
- balanceGrid: {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr)",
-  gap: 8,
-  marginBottom: 14,
-},
   balanceTile: {
     display: "grid",
-    gap: 7,
+    gap: 5,
     minWidth: 0,
+    marginBottom: 11,
     background: T.inset,
     border: `1px solid ${T.softBorder}`,
     borderRadius: 7,
-    padding: "10px 11px",
+    padding: "9px 11px",
   },
 
   balanceLabel: {
@@ -1269,27 +1318,14 @@ const styles = {
   },
 
   balanceAmount: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 850,
     fontVariantNumeric: "tabular-nums",
     overflowWrap: "anywhere",
   },
 
   bankingSelectorWrap: {
-    padding: 11,
-    marginBottom: 12,
-    background: T.inset,
-    border: `1px solid ${T.border}`,
-    borderRadius: 8,
-  },
-
-  label: {
-    display: "block",
-    fontSize: 10,
-    color: T.sub,
-    fontWeight: 850,
-    marginBottom: 7,
-    letterSpacing: ".07em",
+    marginBottom: 10,
   },
 
   select: {
@@ -1307,11 +1343,11 @@ const styles = {
   },
 
   reserved: {
-    marginBottom: 12,
-    padding: "10px 11px",
+    marginBottom: 10,
+    padding: "8px 10px",
     color: "#FFE3A8",
     fontSize: 11,
-    lineHeight: 1.5,
+    fontWeight: 800,
     background: "#322A1D",
     border: "1px solid #695638",
     borderRadius: 7,
@@ -1319,13 +1355,14 @@ const styles = {
 
   actions: {
     display: "grid",
-    gap: 9,
+    gap: 8,
     marginTop: "auto",
   },
 
   actionRow: {
     display: "grid",
-    gridTemplateColumns: "66px minmax(0,1fr) 104px",
+    gridTemplateColumns:
+      "66px minmax(0,1fr) 104px",
     alignItems: "center",
     gap: 7,
     minWidth: 0,
@@ -1335,7 +1372,6 @@ const styles = {
     color: T.sub,
     fontSize: 10,
     fontWeight: 850,
-    letterSpacing: ".015em",
   },
 
   input: {
@@ -1343,8 +1379,8 @@ const styles = {
     minWidth: 0,
     width: "100%",
     boxSizing: "border-box",
-    minHeight: 40,
-    padding: "9px 10px",
+    minHeight: 39,
+    padding: "8px 10px",
     color: T.ink,
     background: T.inset,
     border: `1px solid ${T.border}`,
@@ -1365,7 +1401,7 @@ const styles = {
   actionButton: {
     minWidth: 0,
     width: "100%",
-    minHeight: 40,
+    minHeight: 39,
     padding: "7px 6px",
     borderRadius: 7,
     fontWeight: 850,
@@ -1398,24 +1434,24 @@ const styles = {
     gridTemplateColumns:
       "repeat(auto-fit, minmax(min(100%, 195px), 1fr))",
     gap: 10,
-    padding: "0 15px 15px",
+    padding: "0 12px 12px",
   },
 
   totalTile: {
     minWidth: 0,
     display: "grid",
-    gap: 7,
-    padding: "14px 15px",
+    gap: 5,
+    padding: "11px 13px",
     background: T.surfaceRaised,
     border: `1px solid ${T.border}`,
-    borderRadius: 9,
+    borderRadius: 8,
   },
 
   totalLabel: {
     color: T.muted,
     fontSize: 10,
     fontWeight: 800,
-    letterSpacing: ".08em",
+    letterSpacing: ".07em",
   },
 
   totalAmount: {
@@ -1426,50 +1462,51 @@ const styles = {
   },
 
   history: {
-    margin: "0 15px 15px",
-    padding: "14px",
+    margin: "0 12px 12px",
+    padding: "11px",
     background: T.surfaceRaised,
     border: `1px solid ${T.border}`,
-    borderRadius: 9,
+    borderRadius: 8,
   },
 
   historyHeading: {
     color: T.sub,
     fontSize: 11,
-    letterSpacing: ".07em",
+    letterSpacing: ".06em",
     fontWeight: 850,
-    marginBottom: 10,
-  },
-
-  emptyHistory: {
-    color: T.muted,
-    fontSize: 12,
-    padding: "10px 0",
+    marginBottom: 8,
   },
 
   historyGrid: {
     display: "grid",
     gridTemplateColumns:
       "repeat(auto-fit, minmax(min(100%,290px),1fr))",
-    gap: 8,
+    gap: 7,
   },
 
   historyRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(0,1fr) auto auto",
+    gridTemplateColumns:
+      "minmax(0,1fr) auto auto",
     alignItems: "center",
-    gap: 10,
-    padding: "11px 12px",
+    gap: 9,
+    padding: "9px 10px",
     background: T.inset,
     border: `1px solid ${T.softBorder}`,
     borderRadius: 7,
     fontSize: 11,
   },
 
+  historyName: {
+    display: "grid",
+    gap: 3,
+    minWidth: 0,
+    color: T.ink,
+  },
+
   historyDate: {
     fontSize: 10,
     color: T.muted,
-    marginTop: 3,
   },
 
   historyAmount: {
@@ -1481,8 +1518,7 @@ const styles = {
   statusBase: {
     fontSize: 9,
     fontWeight: 850,
-    letterSpacing: ".03em",
-    padding: "6px 8px",
+    padding: "5px 7px",
     borderRadius: 5,
     whiteSpace: "nowrap",
     textAlign: "center",
@@ -1510,13 +1546,5 @@ const styles = {
     color: "#FFC3CE",
     background: "#38202A",
     border: "1px solid #774155",
-  },
-
-  footnote: {
-    color: T.muted,
-    borderTop: `1px solid ${T.softBorder}`,
-    padding: "12px 16px 15px",
-    fontSize: 11,
-    lineHeight: 1.55,
   },
 };
