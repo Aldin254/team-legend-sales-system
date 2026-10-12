@@ -385,7 +385,7 @@ function labelForPerson(
     upper(employee.assignment_type) ===
     "NOT_FIXED"
   ) {
-    return `RELIEF / NOT FIXED — ${name}`;
+    return `RELIEF — ${name}`;
   }
 
   if (
