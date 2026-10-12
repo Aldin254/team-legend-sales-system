@@ -30,8 +30,9 @@ import {
   getPanelTitleStyle, getSummaryBoxStyle,
 } from "./CashierProfessionalTheme";
 
+const EXPENSE_ROW_COUNT = 10;
 const emptyExpenses = () =>
-  Array.from({ length: 10 }, () => ({ description: "", amount: "" }));
+  Array.from({ length: EXPENSE_ROW_COUNT }, () => ({ description: "", amount: "" }));
 
 export default function CashierReport({ user, currentShift }) {
   const router = useRouter();
@@ -50,6 +51,7 @@ export default function CashierReport({ user, currentShift }) {
   const [messageType, setMessageType] = useState("");
   const [now, setNow] = useState(() => new Date());
   const requestIdRef = useRef(0);
+  const expenseSavingRef = useRef(false);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -62,7 +64,6 @@ export default function CashierReport({ user, currentShift }) {
   const cashierName =
     user?.full_name || user?.name || user?.username || "Cashier";
 
-  // Use data from this particular shift, never from a previous shift.
   const activeShift = shift?.id === shiftId ? shift : currentShift;
   const shiftStatus = String(activeShift?.status || "").trim().toUpperCase();
   const isShiftOpen = shiftStatus === "OPEN";
@@ -75,7 +76,6 @@ export default function CashierReport({ user, currentShift }) {
   }, []);
 
   useEffect(() => {
-    // Prevent unsaved inputs and old requests crossing shift IDs.
     requestIdRef.current += 1;
     setShift(currentShift || null);
     setPlatforms([]);
@@ -100,6 +100,7 @@ export default function CashierReport({ user, currentShift }) {
     const headers = authHeaders(supabaseAnonKey, accessToken);
     const base = `${supabaseUrl}/rest/v1`;
     const encodedId = encodeURIComponent(shiftId);
+
     try {
       const responses = await Promise.all([
         fetch(`${base}/shifts?id=eq.${encodedId}&select=*&limit=1`, {
@@ -124,7 +125,7 @@ export default function CashierReport({ user, currentShift }) {
         fetch(
           `${base}/expenses?shift_id=eq.${encodedId}` +
             `&select=id,description,amount,created_at,source_type,source_record_id,is_private` +
-            `&order=created_at.asc`,
+            `&order=created_at.asc,id.asc`,
           { headers, cache: "no-store" }
         ),
       ]);
@@ -186,7 +187,7 @@ export default function CashierReport({ user, currentShift }) {
         return next;
       });
       setExpenseInputs((old) =>
-        Array.from({ length: 10 }, (_, index) =>
+        Array.from({ length: EXPENSE_ROW_COUNT }, (_, index) =>
           manual[index]
             ? {
                 description: manual[index].description || "",
@@ -248,6 +249,9 @@ export default function CashierReport({ user, currentShift }) {
   const companySlots = Array.from({ length: 3 }, (_, i) => floatData.companyEntries[i] || null);
   const mshwariSlots = Array.from({ length: 3 }, (_, i) => floatData.mshwariEntries[i] || null);
   const manualExpenses = useMemo(() => expenses.filter(isManualPublicExpense), [expenses]);
+  // Only ONE unsaved expense is editable. A saved expense permanently locks
+  // on the cashier sheet; its position is restored from the database on reload.
+  const activeExpenseIndex = Math.min(manualExpenses.length, EXPENSE_ROW_COUNT);
 
   const platformRows = useMemo(
     () => platforms.map((platform) => {
@@ -271,11 +275,7 @@ export default function CashierReport({ user, currentShift }) {
     [platforms, readings, openingInputs, closingInputs]
   );
 
-  // ==================================================
-  // CHECK OPEN STATUS BEFORE CASHIER WRITES
   // Supabase must independently enforce permissions.
-  // ==================================================
-
   async function verifyShiftOpen() {
     if (!shiftId || !shopId || !accessToken || !supabaseUrl || !supabaseAnonKey) {
       throw new Error("Shift or login information is missing.");
@@ -283,15 +283,10 @@ export default function CashierReport({ user, currentShift }) {
     const response = await fetch(
       `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(shiftId)}` +
         `&select=id,shop_id,status,business_date&limit=1`,
-      {
-        headers: authHeaders(supabaseAnonKey, accessToken),
-        cache: "no-store",
-      }
+      { headers: authHeaders(supabaseAnonKey, accessToken), cache: "no-store" }
     );
     const result = await safeJson(response);
-    if (!response.ok) {
-      throw new Error(result?.message || "Unable to verify shift status.");
-    }
+    if (!response.ok) throw new Error(result?.message || "Unable to verify shift status.");
     const fresh = Array.isArray(result) ? result[0] : null;
     if (!fresh || String(fresh.shop_id) !== String(shopId) ||
         String(fresh.status || "").toUpperCase() !== "OPEN") {
@@ -300,69 +295,88 @@ export default function CashierReport({ user, currentShift }) {
     return fresh;
   }
 
-  // ==================================================
-  // SAVE MANUAL EXPENSES
-  // ==================================================
-async function saveExpenses() {
-    if (savingExpenses) return;
+  // ==========================================
+// SAVE EXACTLY ONE EXPENSE, THEN LOCK IT
+  // ==========================================
+  async function saveExpenses() {
+    if (savingExpenses || expenseSavingRef.current) return;
     if (!isShiftOpen) {
       setMessage("This shift is closed. Contact Admin for corrections.");
       setMessageType("error");
       return;
     }
-    const rowsToSave = [];
-    for (let i = 0; i < 10; i += 1) {
-      if (manualExpenses[i]) continue;
-      const description = String(expenseInputs[i]?.description || "").trim();
-      const raw = expenseInputs[i]?.amount;
-      const hasAmount = raw !== "" && raw !== null && raw !== undefined;
-      if (!description && !hasAmount) continue;
-      if (!description) {
-        setMessage(`Enter the description for expense ${i + 1}.`);
-        setMessageType("error");
-        return;
-      }
-      const amount = Number(raw);
-      if (!hasAmount || !Number.isFinite(amount) || amount <= 0) {
-        setMessage(`Enter a valid amount for expense ${i + 1}.`);
-        setMessageType("error");
-        return;
-      }
-      rowsToSave.push({
-        shift_id: shiftId, description, amount: roundMoney(amount),
-        created_by: cashierId, source_type: "MANUAL", is_private: false,
-      });
+    if (loading) return;
+    if (activeExpenseIndex >= EXPENSE_ROW_COUNT) {
+      setMessage("All 10 expense rows have already been saved.");
+      setMessageType("error");
+      return;
     }
-    if (!rowsToSave.length) {
-      setMessage("Enter at least one manual expense.");
+
+    const index = activeExpenseIndex;
+    const description = String(expenseInputs[index]?.description || "").trim();
+    const raw = expenseInputs[index]?.amount;
+    const hasAmount = raw !== "" && raw !== null && raw !== undefined;
+    const amount = Number(raw);
+
+    if (!description) {
+      setMessage(`Enter the description for expense ${index + 1}.`);
+      setMessageType("error");
+      return;
+    }
+    if (!hasAmount || !Number.isFinite(amount) || roundMoney(amount) <= 0) {
+      setMessage(`Enter a valid amount for expense ${index + 1}.`);
       setMessageType("error");
       return;
     }
 
     let posted = false;
+    expenseSavingRef.current = true;
     try {
       setSavingExpenses(true);
       setMessage("");
       setMessageType("");
       await verifyShiftOpen();
+
+      // Detect edits from another open browser before posting.
+      // Database enforcement is still required for strict protection.
+      const beforeResponse = await fetch(
+        `${supabaseUrl}/rest/v1/expenses?shift_id=eq.${encodeURIComponent(shiftId)}` +
+          `&select=id,source_type,source_record_id,is_private`,
+        { headers: authHeaders(supabaseAnonKey, accessToken), cache: "no-store" }
+      );
+      const beforeRows = await safeJson(beforeResponse);
+      if (!beforeResponse.ok || !Array.isArray(beforeRows)) {
+        throw new Error("Unable to verify existing expense rows.");
+      }
+      if (beforeRows.filter(isManualPublicExpense).length !== index) {
+        throw new Error("Expense rows changed elsewhere. Refresh the report before saving.");
+      }
+
       const response = await fetch(`${supabaseUrl}/rest/v1/expenses`, {
         method: "POST",
         headers: {
           ...authHeaders(supabaseAnonKey, accessToken),
           Prefer: "return=representation",
         },
-        body: JSON.stringify(rowsToSave),
+        body: JSON.stringify({
+          shift_id: shiftId,
+          description,
+          amount: roundMoney(amount),
+          created_by: cashierId,
+          source_type: "MANUAL",
+          is_private: false,
+        }),
       });
       const inserted = await safeJson(response);
       if (!response.ok) {
-        throw new Error(inserted?.message || inserted?.details || "Unable to save expenses.");
+        throw new Error(inserted?.message || inserted?.details || "Unable to save expense.");
       }
-      if (!Array.isArray(inserted) || inserted.length !== rowsToSave.length) {
+      if (!Array.isArray(inserted) || inserted.length !== 1) {
         throw new Error("Expense save response was incomplete. Refresh before retrying.");
       }
       posted = true;
 
-      // Re-read persisted expenses rather than writing a stale local total.
+      // Recalculate total from all saved expense records.
       const summaryResponse = await fetch(
         `${supabaseUrl}/rest/v1/expenses?shift_id=eq.${encodeURIComponent(shiftId)}` +
           `&select=amount`,
@@ -370,7 +384,7 @@ async function saveExpenses() {
       );
       const summaryRows = await safeJson(summaryResponse);
       if (!summaryResponse.ok || !Array.isArray(summaryRows)) {
-        throw new Error("Expenses were saved, but the total must be reconciled.");
+        throw new Error("Expense saved, but the total must be reconciled.");
       }
       const newExpenseTotal = roundMoney(
         summaryRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
@@ -388,25 +402,28 @@ async function saveExpenses() {
       );
       const updated = await safeJson(shiftResponse);
       if (!shiftResponse.ok || !Array.isArray(updated) || !updated.length) {
-        throw new Error("Expenses saved, but the shift total was not updated.");
+        throw new Error("Expense saved, but the shift total was not updated.");
       }
-      setMessage("Expenses saved successfully.");
+
+      setMessage(index + 1 < EXPENSE_ROW_COUNT
+        ? `Expense ${index + 1} saved and locked. Expense ${index + 2} is now open.`
+        : "Expense 10 saved and locked. All expense rows completed.");
       setMessageType("success");
     } catch (error) {
       setMessage(posted
-        ? `Expenses were saved. Do not resubmit; Admin must check totals. ${error?.message || ""}`
-        : error?.message || "Unable to save expenses.");
+        ? `Expense saved. Do not resubmit; Admin must check totals. ${error?.message || ""}`
+        : error?.message || "Unable to save expense.");
       setMessageType("error");
     } finally {
       setSavingExpenses(false);
       await loadReport();
+      expenseSavingRef.current = false;
     }
   }
 
-  // ==================================================
-  // SAVE CLOSING READINGS — DATE AWARE, NO EXPIRY
-  // ==================================================
-
+  // ==========================================
+  // SAVE CLOSING READINGS — UNCHANGED
+  // ==========================================
   async function saveClosingReadings() {
     if (savingClosing) return;
     if (!isShiftOpen) {
@@ -471,7 +488,6 @@ async function saveExpenses() {
         if (opening === null) {
           throw new Error(`Opening reading for ${platform.platform_name} is missing. Contact Admin.`);
         }
-        // Signed readings remain valid: negative, zero and positive.
         if (closing === null) {
           throw new Error(`Enter a valid closing reading for ${platform.platform_name}.`);
         }
@@ -534,7 +550,6 @@ async function saveExpenses() {
       await loadReport();
     }
   }
-
   const openingBalance = Number(activeShift?.opening_balance || 0);
   const savedTotalOutput = Number(activeShift?.total_output || 0);
   const totalExpenses = Number(activeShift?.total_expenses || 0);
@@ -550,8 +565,31 @@ async function saveExpenses() {
     return <div style={loadingStyle}>Loading cashier report...</div>;
   }
   if (!activeShift) return null;
+
   return (
-    <div style={pageStyle}>
+    <div className="tl-cashier-12h" style={pageStyle}>
+      {/* Remove number spinner arrows in this 12-HOUR report only. */}
+      <style>{`
+        .tl-cashier-12h input[type="number"] {
+          appearance: textfield;
+          -moz-appearance: textfield;
+        }
+        .tl-cashier-12h input[type="number"]::-webkit-inner-spin-button,
+        .tl-cashier-12h input[type="number"]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        @media (max-width: 950px) {
+          .tl-cashier-lower-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+        @media (max-width: 650px) {
+          .tl-cashier-lower-grid {
+            grid-template-columns: minmax(0, 1fr) !important;
+          }
+        }
+      `}</style>
       <header style={topHeaderStyle}>
         <div style={brandWrapStyle}>
           <div style={crownStyle}>♛</div>
@@ -692,14 +730,15 @@ async function saveExpenses() {
               </div>
             </section>
 
-            {/* EXPENSES */}
+            {/* EXPENSES — ONE ROW AT A TIME */}
             <section style={panelStyle}>
               <PanelTitle title="EXPENSES" tone="red" />
               <div style={expenseHeaderStyle}>
                 <div>NO.</div><div>DESCRIPTION</div><div>AMOUNT (KES)</div>
               </div>
-              {Array.from({ length: 10 }, (_, index) => {
+              {Array.from({ length: EXPENSE_ROW_COUNT }, (_, index) => {
                 const saved = manualExpenses[index];
+                const canEdit = isShiftOpen && !savingExpenses && !loading && index === activeExpenseIndex;
                 return (
                   <div key={index} style={expenseRowStyle}>
                     <div>{index + 1}</div>
@@ -712,20 +751,20 @@ async function saveExpenses() {
                       <>
                         <input
                           value={expenseInputs[index]?.description || ""}
-                          disabled={!isShiftOpen || savingExpenses}
-                          placeholder="Description"
+                          disabled={!canEdit}
+                          placeholder={index === activeExpenseIndex ? "Description" : "Locked"}
                           onChange={(event) => {
                             const value = event.target.value;
                             setExpenseInputs((old) => old.map((item, i) =>
                               i === index ? { ...item, description: value } : item
                             ));
                           }}
-                          style={expenseInputStyle}
+                          style={{ ...expenseInputStyle, opacity: canEdit ? 1 : 0.65 }}
                         />
                         <input
                           type="number" min="0" step="0.01"
                           value={expenseInputs[index]?.amount ?? ""}
-                          disabled={!isShiftOpen || savingExpenses}
+                          disabled={!canEdit}
                           placeholder="0.00"
                           onChange={(event) => {
                             const value = event.target.value;
@@ -733,7 +772,7 @@ async function saveExpenses() {
                               i === index ? { ...item, amount: value } : item
                             ));
                           }}
-                          style={expenseInputStyle}
+                          style={{ ...expenseInputStyle, opacity: canEdit ? 1 : 0.65 }}
                         />
                       </>
                     )}
@@ -749,9 +788,16 @@ async function saveExpenses() {
               </div>
               <div style={panelButtonWrapStyle}>
                 <button type="button" onClick={saveExpenses}
-                  disabled={savingExpenses || !isShiftOpen || loading}
-                  style={{ ...redActionStyle, opacity: savingExpenses || !isShiftOpen ? 0.6 : 1 }}>
-                  {savingExpenses ? "Saving..." : "Save Expenses"}
+                  disabled={savingExpenses || !isShiftOpen || loading || activeExpenseIndex >= EXPENSE_ROW_COUNT}
+                  style={{
+                    ...redActionStyle,
+                    opacity: savingExpenses || !isShiftOpen || activeExpenseIndex >= EXPENSE_ROW_COUNT ? 0.6 : 1,
+                  }}>
+                  {savingExpenses
+                    ? "Saving..."
+                    : activeExpenseIndex >= EXPENSE_ROW_COUNT
+                    ? "All Expenses Saved"
+                    : `Save Expense ${activeExpenseIndex + 1}`}
                 </button>
               </div>
             </section>
@@ -764,23 +810,8 @@ async function saveExpenses() {
             <SummaryBox title="CLOSING BALANCE" amount={closingBalance} tone="navy" />
           </div>
 
-          {/* LOWER PANELS */}
-<style>{`
-  @media (max-width: 950px) {
-    .tl-cashier-lower-grid {
-      grid-template-columns:
-        repeat(2, minmax(0, 1fr)) !important;
-    }
-  }
-
-  @media (max-width: 650px) {
-    .tl-cashier-lower-grid {
-      grid-template-columns:
-        minmax(0, 1fr) !important;
-    }
-  }
-`}</style>
-         <div className="tl-cashier-lower-grid" style={lowerGridStyle}>
+          {/* LOWER PANELS UNCHANGED */}
+          <div className="tl-cashier-lower-grid" style={lowerGridStyle}>
             <CashierSavingsPanel user={user} currentShift={activeShift} />
             <CashierSalaryPanel user={user} currentShift={activeShift} />
             <CashierAccountsPanel user={user} />
@@ -799,9 +830,9 @@ async function saveExpenses() {
   );
 }
 
-// ==================================================
-// SMALL COMPONENTS
-// ==================================================
+// ==========================================
+// SMALL DISPLAY COMPONENTS
+// ==========================================
 function SidebarItem({ icon, label, active }) {
   return (
     <div style={getSidebarItemStyle(active)}>
@@ -876,10 +907,9 @@ function SummaryBox({ title, amount, tone }) {
   );
 }
 
-// ==================================================
+// ==========================================
 // HELPERS
-// ==================================================
-
+// ==========================================
 function authHeaders(anonKey, token) {
   return {
     apikey: anonKey,
@@ -894,7 +924,8 @@ async function safeJson(response) {
 
 function isManualPublicExpense(expense) {
   const source = String(expense?.source_type || "").trim().toUpperCase();
-  return (source === "" || source === "MANUAL") && expense?.is_private !== true;
+  return (source === "" || source === "MANUAL") &&
+    expense?.is_private !== true && expense?.source_record_id == null;
 }
 
 function numericOrNull(value) {
@@ -915,8 +946,8 @@ function roundMoney(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
-// Date-aware check: once 9:30 PM of the ORIGINAL business date passes,
-// the closing stage remains available while this shift is OPEN.
+// Date-aware: Once 9:30 PM of the original business date passes,
+// closing stays available while the shift is OPEN.
 function is12HourClosingAvailable(shift, now = new Date()) {
   const businessDate = String(shift?.business_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) return false;
@@ -937,7 +968,6 @@ function is12HourClosingAvailable(shift, now = new Date()) {
 }
 
 function reportDateValue(value) {
-  // A bare YYYY-MM-DD is a Nairobi calendar date, not a UTC timestamp.
   const dateString = String(value || "");
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
     return new Date(`${dateString}T12:00:00+03:00`);
