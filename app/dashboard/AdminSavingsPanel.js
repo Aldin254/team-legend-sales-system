@@ -8,10 +8,14 @@ import {
   useState,
 } from "react";
 
-// TEAM LEGEND / NYIKA — ADMIN SAVINGS / BANKING
-// READ ONLY
-// Salary Management controls employee shop routing.
-// No separate Banking AUTO / MANUAL configuration.
+// ==================================================
+// TEAM LEGEND / NYIKA
+// ADMIN SAVINGS / BANKING — MASTER EMPLOYEE
+//
+// Salary AUTO/MANUAL controls employee routing.
+// Banking does NOT maintain separate assignments.
+// Admin Banking is read-only.
+// ==================================================
 
 const REFRESH_MS = 10000;
 
@@ -27,9 +31,9 @@ const PAYMENT_CATEGORIES = [
   "RENT",
 ];
 
-// ============================================
+// ==================================================
 // DATE HELPERS
-// ============================================
+// ==================================================
 
 function dateKey(value) {
   if (!value) return "";
@@ -51,11 +55,14 @@ function dateKey(value) {
   ).formatToParts(date);
 
   const get = (key) =>
-    parts.find(
-      (part) => part.type === key
-    )?.value || "";
+    parts.find((part) => part.type === key)
+      ?.value || "";
 
-  return `${get("year")}-${get("month")}-${get("day")}`;
+  return (
+    `${get("year")}-` +
+    `${get("month")}-` +
+    `${get("day")}`
+  );
 }
 
 function localTime(value) {
@@ -181,9 +188,9 @@ function monthKey(period) {
   return today.slice(0, 7);
 }
 
-// ============================================
+// ==================================================
 // GENERAL HELPERS
-// ============================================
+// ==================================================
 
 function money(value) {
   const number = Number(value ?? 0);
@@ -210,14 +217,6 @@ function sameId(first, second) {
   );
 }
 
-function bankingId(person) {
-  return (
-    person?.profile_id ||
-    person?.banking_employee_id ||
-    person?.employee_id
-  );
-}
-
 function categoryOf(row) {
   return upper(row?.category);
 }
@@ -233,34 +232,39 @@ function isConfirmed(row) {
   );
 }
 
-function labelForPerson(row, shops) {
+function bankingId(employee) {
+  return employee?.employee_id || null;
+}
+
+function labelForPerson(employee, shops) {
   const shop = shops.find(
     (item) =>
       sameId(
         item.id,
-        row.shop_id
+        employee.shop_id
       )
   );
 
   const assignment =
     shop?.name ||
+    shop?.shop_name ||
     (
-      row.job_title === "TEAM_LEADER"
+      employee.job_title === "TEAM_LEADER"
         ? "TEAM LEADER"
-        : row.job_title === "ACCOUNTANT"
+        : employee.job_title === "ACCOUNTANT"
         ? "ACCOUNTANT"
         : "UNASSIGNED"
     );
 
   return (
     `${assignment} — ` +
-    `${row.full_name || "Employee"}`
+    `${employee.full_name || "Employee"}`
   );
 }
 
-// ============================================
+// ==================================================
 // METRIC CARD
-// ============================================
+// ==================================================
 
 function Metric({
   title,
@@ -287,15 +291,16 @@ function Metric({
   );
 }
 
-// ============================================
-// MAIN ADMIN PANEL
-// ============================================
+// ==================================================
+// MAIN COMPONENT
+// ==================================================
 
 export default function AdminSavingsPanel({
   user,
 }) {
   const baseUrl = String(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    ""
   ).replace(/\/+$/, "");
 
   const anonKey =
@@ -304,6 +309,10 @@ export default function AdminSavingsPanel({
 
   const token =
     user?.access_token || "";
+
+  // ==================================================
+  // STATE
+  // ==================================================
 
   const [loading, setLoading] =
     useState(true);
@@ -359,9 +368,9 @@ export default function AdminSavingsPanel({
 
   const requestRef = useRef(0);
 
-  // ==========================================
-  // SUPABASE
-  // ==========================================
+  // ==================================================
+  // SUPABASE RPC
+  // ==================================================
 
   const rpc = useCallback(
     async (name, args = {}) => {
@@ -414,9 +423,9 @@ export default function AdminSavingsPanel({
     ]
   );
 
-  // ==========================================
-  // LOAD EXISTING READ-ONLY DATA
-  // ==========================================
+  // ==================================================
+  // LOAD MASTER EMPLOYEES + BANKING
+  // ==================================================
 
   const load = useCallback(
     async () => {
@@ -465,8 +474,12 @@ export default function AdminSavingsPanel({
         }
 
         if (
-          !Array.isArray(snapshot?.payments) ||
-          !Array.isArray(snapshot?.balances) ||
+          !Array.isArray(
+            snapshot?.payments
+          ) ||
+          !Array.isArray(
+            snapshot?.balances
+          ) ||
           !Array.isArray(people) ||
           !Array.isArray(shopOptions)
         ) {
@@ -475,10 +488,21 @@ export default function AdminSavingsPanel({
           );
         }
 
-        setPayments(snapshot.payments);
-        setBalances(snapshot.balances);
-        setMasterEmployees(people);
-        setShops(shopOptions);
+        setPayments(
+          snapshot.payments
+        );
+
+        setBalances(
+          snapshot.balances
+        );
+
+        setMasterEmployees(
+          people
+        );
+
+        setShops(
+          shopOptions
+        );
 
         setTruncated(
           snapshot.payments.length >= 500
@@ -517,9 +541,9 @@ export default function AdminSavingsPanel({
     ]
   );
 
-  // ==========================================
+  // ==================================================
   // AUTO REFRESH
-  // ==========================================
+  // ==================================================
 
   useEffect(() => {
     void load();
@@ -537,11 +561,14 @@ export default function AdminSavingsPanel({
     };
   }, [load]);
 
-  // ==========================================
+  // ==================================================
   // MASTER EMPLOYEE LIST
-  // Salary manages routing.
-  // Banking has no duplicate route setting.
-  // ==========================================
+  //
+  // NO BANKING AUTO/MANUAL CONTROLS.
+  //
+  // Admin Salary Management is the ONLY
+  // source of employee shop routing.
+  // ==================================================
 
   const activeEmployees = useMemo(
     () =>
@@ -605,9 +632,9 @@ export default function AdminSavingsPanel({
     shopId,
   ]);
 
-  // ==========================================
+  // ==================================================
   // BANKING TOTALS
-  // ==========================================
+  // ==================================================
 
   const confirmedBanking = useMemo(
     () =>
@@ -640,7 +667,9 @@ export default function AdminSavingsPanel({
       periodBanked.reduce(
         (sum, payment) =>
           sum +
-          Number(payment.amount || 0),
+          Number(
+            payment.amount || 0
+          ),
         0
       ),
     [periodBanked]
@@ -657,7 +686,9 @@ export default function AdminSavingsPanel({
               "PENDING",
               "PROCESSING",
             ].includes(
-              upper(payment.status)
+              upper(
+                payment.status
+              )
             ) &&
             withinPeriod(
               payment.requested_at,
@@ -667,7 +698,9 @@ export default function AdminSavingsPanel({
         .reduce(
           (sum, payment) =>
             sum +
-            Number(payment.amount || 0),
+            Number(
+              payment.amount || 0
+            ),
           0
         ),
     [
@@ -679,17 +712,21 @@ export default function AdminSavingsPanel({
   const confirmedAmount = useMemo(
     () =>
       confirmedBanking.reduce(
-        (sum, item) =>
+        (sum, payment) =>
           sum +
-          Number(item.amount || 0),
+          Number(
+            payment.amount || 0
+          ),
         0
       ),
     [confirmedBanking]
   );
 
-  // ==========================================
-  // EMPLOYEE SAVINGS BALANCE
-  // ==========================================
+  // ==================================================
+  // SAVED BANKING BALANCE
+  //
+  // Match by MASTER EMPLOYEE ID.
+  // ==================================================
 
   const selectedBankingEmployee =
     activeEmployees.find(
@@ -719,7 +756,8 @@ export default function AdminSavingsPanel({
               (sum, balance) =>
                 sum +
                 Number(
-                  balance.current_balance || 0
+                  balance.current_balance ||
+                  0
                 ),
               0
             )
@@ -730,9 +768,9 @@ export default function AdminSavingsPanel({
     ]
   );
 
-  // ==========================================
+  // ==================================================
   // EMPLOYEE BANKING STATEMENT
-  // ==========================================
+  // ==================================================
 
   const selectedDetailsEmployee =
     activeEmployees.find(
@@ -761,8 +799,12 @@ export default function AdminSavingsPanel({
         )
         .sort(
           (a, b) =>
-            new Date(b.confirmed_at) -
-            new Date(a.confirmed_at)
+            new Date(
+              b.confirmed_at
+            ) -
+            new Date(
+              a.confirmed_at
+            )
         ),
     [
       confirmedBanking,
@@ -784,9 +826,9 @@ export default function AdminSavingsPanel({
     [statementRows]
   );
 
-  // ==========================================
+  // ==================================================
   // SHOP MONTHLY PAYMENT STATUS
-  // ==========================================
+  // ==================================================
 
   const monthPayments = useMemo(
     () =>
@@ -817,9 +859,9 @@ export default function AdminSavingsPanel({
     ]
   );
 
-  // ==========================================
-  // DISPLAY
-  // ==========================================
+  // ==================================================
+  // RENDER
+  // ==================================================
 
   return (
     <section className="tlba-root">
@@ -850,7 +892,7 @@ export default function AdminSavingsPanel({
         </div>
       ) : (
         <>
-          {/* TOTALS */}
+          {/* TOP SUMMARY */}
 
           <div className="tlba-summary">
             <Metric
@@ -892,14 +934,16 @@ export default function AdminSavingsPanel({
             />
           </div>
 
-          {/* BANKING */}
+          {/* MAIN LAYOUT */}
 
           <div className="tlba-layout">
-            <section
-              className="tlba-panel tlba-banking"
-            >
+            {/* BANKING */}
+
+            <section className="tlba-panel tlba-banking">
               <div className="tlba-panelhead">
-                <h2>Banking</h2>
+                <h2>
+                  Banking
+                </h2>
 
                 <span className="tlba-badge">
                   READ ONLY
@@ -908,7 +952,9 @@ export default function AdminSavingsPanel({
 
               <div className="tlba-inner">
                 <div className="tlba-saved">
-                  <div>SAVED</div>
+                  <div>
+                    SAVED
+                  </div>
 
                   <strong>
                     KES {money(savedBalance)}
@@ -953,9 +999,11 @@ export default function AdminSavingsPanel({
               </div>
             </section>
 
-            {/* SHOP PAYMENT STATUS */}
+            {/* RIGHT COLUMN */}
 
             <div className="tlba-right">
+              {/* SHOP MONTHLY PAYMENT STATUS */}
+
               <section className="tlba-panel">
                 <div className="tlba-panelhead">
                   <h2>
@@ -1013,7 +1061,8 @@ export default function AdminSavingsPanel({
                           key={shop.id}
                           value={shop.id}
                         >
-                          {shop.name}
+                          {shop.name ||
+                            shop.shop_name}
                         </option>
                       )
                     )}
@@ -1239,9 +1288,9 @@ export default function AdminSavingsPanel({
   );
 }
 
-// ============================================
+// ==================================================
 // NAVY / GOLD STYLES
-// ============================================
+// ==================================================
 
 const css = `
 .tlba-root {
@@ -1269,21 +1318,30 @@ const css = `
 .tlba-metric {
   min-width: 0;
   padding: 20px;
-  background:
-    linear-gradient(110deg, #073e37, #06252e);
+  background: linear-gradient(
+    110deg,
+    #073e37,
+    #06252e
+  );
   border: 1px solid #158570;
   border-radius: 9px;
 }
 
 .tlba-metric.amber {
-  background:
-    linear-gradient(110deg, #54321f, #201d22);
+  background: linear-gradient(
+    110deg,
+    #54321f,
+    #201d22
+  );
   border-color: #b57c2b;
 }
 
 .tlba-metric.green {
-  background:
-    linear-gradient(110deg, #073e37, #06252e);
+  background: linear-gradient(
+    110deg,
+    #073e37,
+    #06252e
+  );
   border-color: #158570;
 }
 
@@ -1567,7 +1625,10 @@ const css = `
 
   .tlba-summary {
     grid-template-columns:
-      repeat(auto-fit, minmax(230px, 1fr));
+      repeat(
+        auto-fit,
+        minmax(230px, 1fr)
+      );
   }
 }
 
