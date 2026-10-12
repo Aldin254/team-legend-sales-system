@@ -1265,9 +1265,21 @@ export default function CashierReport({ user, currentShift }) {
             />
           </div>
 
-          <div style={shiftGreetingStyle}>
-            {shiftGreeting}
-          </div>
+         
+<div
+  style={{
+    ...shiftGreetingStyle,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    textAlign: "center",
+    width: "100%",
+    boxSizing: "border-box",
+  }}
+>
+  {shiftGreeting}
+</div>
+
 
           {message && (
             <div
