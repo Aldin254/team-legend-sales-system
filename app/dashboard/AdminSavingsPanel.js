@@ -240,26 +240,54 @@ function labelForPerson(employee, shops) {
   const shop = shops.find(
     (item) =>
       sameId(
-        item.id,
+        item.id || item.shop_id,
         employee.shop_id
       )
   );
 
-  const assignment =
-    shop?.name ||
-    shop?.shop_name ||
+  const masterShopName =
+    String(employee.shop_name || "").trim();
+
+  const lookupShopName =
+    String(
+      shop?.shop_name ||
+      shop?.name ||
+      ""
+    ).trim();
+
+  const validShopName = (name) =>
+    name &&
+    ![
+      "UNASSIGNED",
+      "NOT FIXED",
+      "NO SHOP ASSIGNED",
+      "UNKNOWN SHOP",
+    ].includes(upper(name));
+
+  const assignedShop =
+    validShopName(masterShopName)
+      ? masterShopName
+      : validShopName(lookupShopName)
+      ? lookupShopName
+      : "";
+
+  const jobTitle = upper(
+    employee.job_title
+  );
+
+  const label =
+    assignedShop ||
     (
-      employee.job_title === "TEAM_LEADER"
+      jobTitle === "TEAM_LEADER"
         ? "TEAM LEADER"
-        : employee.job_title === "ACCOUNTANT"
+        : jobTitle === "ACCOUNTANT"
         ? "ACCOUNTANT"
         : "UNASSIGNED"
     );
 
-  return (
-    `${assignment} — ` +
-    `${employee.full_name || "Employee"}`
-  );
+  return `${label} — ${
+    employee.full_name || "Employee"
+  }`;
 }
 
 // ==================================================
