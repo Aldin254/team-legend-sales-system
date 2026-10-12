@@ -19,7 +19,7 @@ import {
   infoSubvalueStyle, reportGridStyle, panelStyle, tableHeaderStyle,
   incomeRowStyle, amountBoxStyle, moneyInputStyle, savedMoneyStyle,
   lockedMoneyStyle, missingReadingStyle, readOnlyInlineStyle,
-  incomeTotalStyle, companyFloatNoticeStyle, automaticExpenseNoticeStyle,
+  incomeTotalStyle,
   panelButtonWrapStyle, platformStatusStyle, platformHeaderStyle,
   platformRowStyle, savedTextStyle, outputBoxStyle, platformActionsStyle,
   completeStyle, waitingStyle, warningStyle, blueActionStyle,
@@ -68,6 +68,16 @@ export default function CashierReport({ user, currentShift }) {
   const shiftStatus = String(activeShift?.status || "").trim().toUpperCase();
   const isShiftOpen = shiftStatus === "OPEN";
   const closingWindowOpen = is12HourClosingAvailable(activeShift, now);
+
+  // Temporary cashier messages clear after five seconds.
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => {
+      setMessage("");
+      setMessageType("");
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [message, messageType]);
 
   useEffect(() => {
     setNow(new Date());
@@ -248,9 +258,8 @@ export default function CashierReport({ user, currentShift }) {
   }, [incomeEntries]);
   const companySlots = Array.from({ length: 3 }, (_, i) => floatData.companyEntries[i] || null);
   const mshwariSlots = Array.from({ length: 3 }, (_, i) => floatData.mshwariEntries[i] || null);
+  const mshwariSlots = Array.from({ length: 3 }, (_, i) => floatData.mshwariEntries[i] || null);
   const manualExpenses = useMemo(() => expenses.filter(isManualPublicExpense), [expenses]);
-  // Only ONE unsaved expense is editable. A saved expense permanently locks
-  // on the cashier sheet; its position is restored from the database on reload.
   const activeExpenseIndex = Math.min(manualExpenses.length, EXPENSE_ROW_COUNT);
 
   const platformRows = useMemo(
@@ -275,7 +284,6 @@ export default function CashierReport({ user, currentShift }) {
     [platforms, readings, openingInputs, closingInputs]
   );
 
-  // Supabase must independently enforce permissions.
   async function verifyShiftOpen() {
     if (!shiftId || !shopId || !accessToken || !supabaseUrl || !supabaseAnonKey) {
       throw new Error("Shift or login information is missing.");
@@ -295,9 +303,7 @@ export default function CashierReport({ user, currentShift }) {
     return fresh;
   }
 
-  // ==========================================
-// SAVE EXACTLY ONE EXPENSE, THEN LOCK IT
-  // ==========================================
+  // Save one manual expense at a time.
   async function saveExpenses() {
     if (savingExpenses || expenseSavingRef.current) return;
     if (!isShiftOpen) {
@@ -337,8 +343,6 @@ export default function CashierReport({ user, currentShift }) {
       setMessageType("");
       await verifyShiftOpen();
 
-      // Detect edits from another open browser before posting.
-      // Database enforcement is still required for strict protection.
       const beforeResponse = await fetch(
         `${supabaseUrl}/rest/v1/expenses?shift_id=eq.${encodeURIComponent(shiftId)}` +
           `&select=id,source_type,source_record_id,is_private`,
@@ -376,7 +380,6 @@ export default function CashierReport({ user, currentShift }) {
       }
       posted = true;
 
-      // Recalculate total from all saved expense records.
       const summaryResponse = await fetch(
         `${supabaseUrl}/rest/v1/expenses?shift_id=eq.${encodeURIComponent(shiftId)}` +
           `&select=amount`,
@@ -405,10 +408,9 @@ export default function CashierReport({ user, currentShift }) {
         throw new Error("Expense saved, but the shift total was not updated.");
       }
 
-      setMessage(index + 1 < EXPENSE_ROW_COUNT
-        ? `Expense ${index + 1} saved and locked. Expense ${index + 2} is now open.`
-        : "Expense 10 saved and locked. All expense rows completed.");
-      setMessageType("success");
+      // No unnecessary "saved and unlocked" banner.
+      setMessage("");
+      setMessageType("");
     } catch (error) {
       setMessage(posted
         ? `Expense saved. Do not resubmit; Admin must check totals. ${error?.message || ""}`
@@ -421,9 +423,6 @@ export default function CashierReport({ user, currentShift }) {
     }
   }
 
-  // ==========================================
-  // SAVE CLOSING READINGS — UNCHANGED
-  // ==========================================
   async function saveClosingReadings() {
     if (savingClosing) return;
     if (!isShiftOpen) {
@@ -550,6 +549,7 @@ export default function CashierReport({ user, currentShift }) {
       await loadReport();
     }
   }
+
   const openingBalance = Number(activeShift?.opening_balance || 0);
   const savedTotalOutput = Number(activeShift?.total_output || 0);
   const totalExpenses = Number(activeShift?.total_expenses || 0);
@@ -568,7 +568,6 @@ export default function CashierReport({ user, currentShift }) {
 
   return (
     <div className="tl-cashier-12h" style={pageStyle}>
-      {/* Remove number spinner arrows in this 12-HOUR report only. */}
       <style>{`
         .tl-cashier-12h input[type="number"] {
           appearance: textfield;
@@ -590,6 +589,7 @@ export default function CashierReport({ user, currentShift }) {
           }
         }
       `}</style>
+
       <header style={topHeaderStyle}>
         <div style={brandWrapStyle}>
           <div style={crownStyle}>♛</div>
@@ -647,7 +647,7 @@ export default function CashierReport({ user, currentShift }) {
           )}
 
           <div style={reportGridStyle}>
-            {/* INCOME — READ ONLY COMPANY AND M-SHWARI FLOATS */}
+            {/* INCOME STATEMENT */}
             <section style={panelStyle}>
               <PanelTitle title="INCOME STATEMENT" tone="blue" />
               <div style={tableHeaderStyle}>
@@ -662,11 +662,6 @@ export default function CashierReport({ user, currentShift }) {
               ))}
               <div style={incomeTotalStyle}>
                 <strong>TOTAL ADDED</strong><strong>{money(totalAdded)}</strong>
-              </div>
-              <div style={companyFloatNoticeStyle}>
-                Company Float and M-Shwari Float 1, 2 and 3 are read-only.
-                Company Float is posted by Legend Accounts. M-Shwari Float is
-                added automatically after a Savings withdrawal.
               </div>
             </section>
 
@@ -730,7 +725,7 @@ export default function CashierReport({ user, currentShift }) {
               </div>
             </section>
 
-            {/* EXPENSES — ONE ROW AT A TIME */}
+            {/* EXPENSES — SEQUENTIAL LOCKING */}
             <section style={panelStyle}>
               <PanelTitle title="EXPENSES" tone="red" />
               <div style={expenseHeaderStyle}>
@@ -782,10 +777,6 @@ export default function CashierReport({ user, currentShift }) {
               <div style={expenseTotalStyle}>
                 <strong>TOTAL EXPENSES</strong><strong>{money(totalExpenses)}</strong>
               </div>
-              <div style={automaticExpenseNoticeStyle}>
-                Savings are added automatically to Total Expenses when saved.
-                Cashier → Legend Accounts transfers are added after Accounts confirms receipt.
-              </div>
               <div style={panelButtonWrapStyle}>
                 <button type="button" onClick={saveExpenses}
                   disabled={savingExpenses || !isShiftOpen || loading || activeExpenseIndex >= EXPENSE_ROW_COUNT}
@@ -810,7 +801,7 @@ export default function CashierReport({ user, currentShift }) {
             <SummaryBox title="CLOSING BALANCE" amount={closingBalance} tone="navy" />
           </div>
 
-          {/* LOWER PANELS UNCHANGED */}
+          {/* LOWER PANELS */}
           <div className="tl-cashier-lower-grid" style={lowerGridStyle}>
             <CashierSavingsPanel user={user} currentShift={activeShift} />
             <CashierSalaryPanel user={user} currentShift={activeShift} />
@@ -822,7 +813,6 @@ export default function CashierReport({ user, currentShift }) {
             />
           </div>
 
-          {/* The ONE cashier shift-close action. */}
           <CashierCloseShiftButton user={user} currentShift={activeShift} />
         </main>
       </div>
@@ -830,9 +820,7 @@ export default function CashierReport({ user, currentShift }) {
   );
 }
 
-// ==========================================
-// SMALL DISPLAY COMPONENTS
-// ==========================================
+// DISPLAY COMPONENTS
 function SidebarItem({ icon, label, active }) {
   return (
     <div style={getSidebarItemStyle(active)}>
@@ -850,9 +838,7 @@ function TopCard({ title, subtitle, footer }) {
       <div style={smallTextStyle}>{footer}</div>
     </div>
   );
-}
-
-function InfoCard({ title, value, subvalue, tone }) {
+  function InfoCard({ title, value, subvalue, tone }) {
   return (
     <div style={getInfoCardStyle(tone)}>
       <div style={infoTitleStyle}>{title}</div>
@@ -907,9 +893,6 @@ function SummaryBox({ title, amount, tone }) {
   );
 }
 
-// ==========================================
-// HELPERS
-// ==========================================
 function authHeaders(anonKey, token) {
   return {
     apikey: anonKey,
@@ -946,8 +929,6 @@ function roundMoney(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
-// Date-aware: Once 9:30 PM of the original business date passes,
-// closing stays available while the shift is OPEN.
 function is12HourClosingAvailable(shift, now = new Date()) {
   const businessDate = String(shift?.business_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) return false;
