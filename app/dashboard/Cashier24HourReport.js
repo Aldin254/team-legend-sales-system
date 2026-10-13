@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -54,10 +55,10 @@ company: [
 "",
 ],
 
-mshwari: [  
-  "",  
-  "",  
-  "",  
+mshwari: [
+  "",
+  "",
+  "",
 ],
 
 });
@@ -72,13 +73,13 @@ length:
 10,
 },
 
-() => ({  
-    description:  
-      "",  
+() => ({
+    description:
+      "",
 
-    amount:  
-      "",  
-  })  
+    amount:
+      "",
+  })
 )
 
 );
@@ -182,20 +183,20 @@ setNow(
 new Date()
 );
 
-const timer =  
-  setInterval(  
-    () => {  
-      setNow(  
-        new Date()  
-      );  
-    },  
-    15000  
-  );  
+const timer =
+  setInterval(
+    () => {
+      setNow(
+        new Date()
+      );
+    },
+    15000
+  );
 
-return () => {  
-  clearInterval(  
-    timer  
-  );  
+return () => {
+  clearInterval(
+    timer
+  );
 };
 
 }, []);
@@ -218,389 +219,389 @@ setLoading(
 false
 );
 
-return;  
-    }  
+return;
+    }
 
-    try {  
-      // ------------------------------------------  
-      // SHIFT  
-      // ------------------------------------------  
+    try {
+      // ------------------------------------------
+      // SHIFT
+      // ------------------------------------------
 
-      const shiftResponse =  
-        await fetch(  
-          `${supabaseUrl}/rest/v1/shifts` +  
-            `?id=eq.${encodeURIComponent(  
-              shiftId  
-            )}` +  
-            `&select=*` +  
-            `&limit=1`,  
-          {  
-            method:  
-              "GET",  
+      const shiftResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/shifts` +
+            `?id=eq.${encodeURIComponent(
+              shiftId
+            )}` +
+            `&select=*` +
+            `&limit=1`,
+          {
+            method:
+              "GET",
 
-            headers:  
-              authHeaders(  
-                supabaseAnonKey,  
-                accessToken  
-              ),  
+            headers:
+              authHeaders(
+                supabaseAnonKey,
+                accessToken
+              ),
 
-            cache:  
-              "no-store",  
-          }  
-        );  
+            cache:
+              "no-store",
+          }
+        );
 
-      const shiftResult =  
-        await safeJson(  
-          shiftResponse  
-        );  
+      const shiftResult =
+        await safeJson(
+          shiftResponse
+        );
 
-      if (  
-        !shiftResponse.ok  
-      ) {  
-        throw new Error(  
-          shiftResult?.message ||  
-            shiftResult?.details ||  
-            "Unable to load shift."  
-        );  
-      }  
+      if (
+        !shiftResponse.ok
+      ) {
+        throw new Error(
+          shiftResult?.message ||
+            shiftResult?.details ||
+            "Unable to load shift."
+        );
+      }
 
-      const latestShift =  
-        Array.isArray(  
-          shiftResult  
-        ) &&  
-        shiftResult.length >  
-          0  
-          ? shiftResult[0]  
-          : null;  
+      const latestShift =
+        Array.isArray(
+          shiftResult
+        ) &&
+        shiftResult.length >
+          0
+          ? shiftResult[0]
+          : null;
 
-      // ------------------------------------------  
-      // FLOATS  
-      // ------------------------------------------  
+      // ------------------------------------------
+      // FLOATS
+      // ------------------------------------------
 
-      const incomeResponse =  
-        await fetch(  
-          `${supabaseUrl}/rest/v1/shift_income_entries` +  
-            `?shift_id=eq.${encodeURIComponent(  
-              shiftId  
-            )}` +  
-            `&select=id,entry_type,description,amount,created_at` +  
-            `&order=created_at.asc`,  
-          {  
-            method:  
-              "GET",  
+      const incomeResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/shift_income_entries` +
+            `?shift_id=eq.${encodeURIComponent(
+              shiftId
+            )}` +
+            `&select=id,entry_type,description,amount,created_at` +
+            `&order=created_at.asc`,
+          {
+            method:
+              "GET",
 
-            headers:  
-              authHeaders(  
-                supabaseAnonKey,  
-                accessToken  
-              ),  
+            headers:
+              authHeaders(
+                supabaseAnonKey,
+                accessToken
+              ),
 
-            cache:  
-              "no-store",  
-          }  
-        );  
+            cache:
+              "no-store",
+          }
+        );
 
-      const incomeResult =  
-        await safeJson(  
-          incomeResponse  
-        );  
+      const incomeResult =
+        await safeJson(
+          incomeResponse
+        );
 
-      if (  
-        !incomeResponse.ok  
-      ) {  
-        throw new Error(  
-          incomeResult?.message ||  
-            incomeResult?.details ||  
-            "Unable to load float entries."  
-        );  
-      }  
+      if (
+        !incomeResponse.ok
+      ) {
+        throw new Error(
+          incomeResult?.message ||
+            incomeResult?.details ||
+            "Unable to load float entries."
+        );
+      }
 
-      const loadedIncome =  
-        Array.isArray(  
-          incomeResult  
-        )  
-          ? incomeResult  
-          : [];  
+      const loadedIncome =
+        Array.isArray(
+          incomeResult
+        )
+          ? incomeResult
+          : [];
 
-      // ------------------------------------------  
-      // EXPENSES  
-      //  
-      // All expenses remain included in totals.  
-      //  
-      // Only true MANUAL expenses populate the  
-      // cashier's 10 editable rows.  
-      //  
-      // Salary and Cashier -> Accounts automatic  
-      // expenses therefore do NOT consume a  
-      // manual expense position.  
-      // ------------------------------------------  
+      // ------------------------------------------
+      // EXPENSES
+      //
+      // All expenses remain included in totals.
+      //
+      // Only true MANUAL expenses populate the
+      // cashier's 10 editable rows.
+      //
+      // Salary and Cashier -> Accounts automatic
+      // expenses therefore do NOT consume a
+      // manual expense position.
+      // ------------------------------------------
 
-      const expenseResponse =  
-        await fetch(  
-          `${supabaseUrl}/rest/v1/expenses` +  
-            `?shift_id=eq.${encodeURIComponent(  
-              shiftId  
-            )}` +  
-            `&select=id,description,amount,created_at,source_type,source_record_id,is_private` +  
-            `&order=created_at.asc`,  
-          {  
-            method:  
-              "GET",  
+      const expenseResponse =
+        await fetch(
+          `${supabaseUrl}/rest/v1/expenses` +
+            `?shift_id=eq.${encodeURIComponent(
+              shiftId
+            )}` +
+            `&select=id,description,amount,created_at,source_type,source_record_id,is_private` +
+            `&order=created_at.asc`,
+          {
+            method:
+              "GET",
 
-            headers:  
-              authHeaders(  
-                supabaseAnonKey,  
-                accessToken  
-              ),  
+            headers:
+              authHeaders(
+                supabaseAnonKey,
+                accessToken
+              ),
 
-            cache:  
-              "no-store",  
-          }  
-        );  
+            cache:
+              "no-store",
+          }
+        );
 
-      const expenseResult =  
-        await safeJson(  
-          expenseResponse  
-        );  
+      const expenseResult =
+        await safeJson(
+          expenseResponse
+        );
 
-      if (  
-        !expenseResponse.ok  
-      ) {  
-        throw new Error(  
-          expenseResult?.message ||  
-            expenseResult?.details ||  
-            "Unable to load expenses."  
-        );  
-      }  
+      if (
+        !expenseResponse.ok
+      ) {
+        throw new Error(
+          expenseResult?.message ||
+            expenseResult?.details ||
+            "Unable to load expenses."
+        );
+      }
 
-      const loadedExpenses =  
-        Array.isArray(  
-          expenseResult  
-        )  
-          ? expenseResult  
-          : [];  
+      const loadedExpenses =
+        Array.isArray(
+          expenseResult
+        )
+          ? expenseResult
+          : [];
 
-      const loadedManualExpenses =  
-        loadedExpenses.filter(  
-          (  
-            expense  
-          ) => {  
-            const sourceType =  
-              String(  
-                expense?.source_type ||  
-                  ""  
-              )  
-                .trim()  
-                .toUpperCase();  
+      const loadedManualExpenses =
+        loadedExpenses.filter(
+          (
+            expense
+          ) => {
+            const sourceType =
+              String(
+                expense?.source_type ||
+                  ""
+              )
+                .trim()
+                .toUpperCase();
 
-            const manualSource =  
-              sourceType ===  
-                "" ||  
-              sourceType ===  
-                "MANUAL";  
+            const manualSource =
+              sourceType ===
+                "" ||
+              sourceType ===
+                "MANUAL";
 
-            return (  
-              manualSource &&  
-              expense?.is_private !==  
-                true  
-            );  
-          }  
-        );  
+            return (
+              manualSource &&
+              expense?.is_private !==
+                true
+            );
+          }
+        );
 
-      // ------------------------------------------  
-      // SET STATE  
-      // ------------------------------------------  
+      // ------------------------------------------
+      // SET STATE
+      // ------------------------------------------
 
-      setShift(  
-        latestShift ||  
-          currentShift  
-      );  
+      setShift(
+        latestShift ||
+          currentShift
+      );
 
-      setIncomeEntries(  
-        loadedIncome  
-      );  
+      setIncomeEntries(
+        loadedIncome
+      );
 
-      // Keep ALL expenses.  
-      // Total Expenses must include:  
-      // manual + salary + cashier return expenses.  
-      setExpenses(  
-        loadedExpenses  
-      );  
+      // Keep ALL expenses.
+      // Total Expenses must include:
+      // manual + salary + cashier return expenses.
+      setExpenses(
+        loadedExpenses
+      );
 
-      // ------------------------------------------  
-      // FLOAT INPUTS  
-      // ------------------------------------------  
+      // ------------------------------------------
+      // FLOAT INPUTS
+      // ------------------------------------------
 
-      const companyRows =  
-        loadedIncome.filter(  
-          (  
-            entry  
-          ) =>  
-            entry.entry_type ===  
-            "COMPANY_FLOAT"  
-        );  
+      const companyRows =
+        loadedIncome.filter(
+          (
+            entry
+          ) =>
+            entry.entry_type ===
+            "COMPANY_FLOAT"
+        );
 
-      const mshwariRows =  
-        loadedIncome.filter(  
-          (  
-            entry  
-          ) =>  
-            entry.entry_type ===  
-            "MSHWARI_FLOAT"  
-        );  
+      const mshwariRows =
+        loadedIncome.filter(
+          (
+            entry
+          ) =>
+            entry.entry_type ===
+            "MSHWARI_FLOAT"
+        );
 
-      setFloatInputs(  
-        (  
-          previous  
-        ) => {  
-          const company = [  
-            ...previous.company,  
-          ];  
+      setFloatInputs(
+        (
+          previous
+        ) => {
+          const company = [
+            ...previous.company,
+          ];
 
-          const mshwari = [  
-            ...previous.mshwari,  
-          ];  
+          const mshwari = [
+            ...previous.mshwari,
+          ];
 
-          for (  
-            let i = 0;  
-            i < 3;  
-            i += 1  
-          ) {  
-            if (  
-              companyRows[  
-                i  
-              ]  
-            ) {  
-              company[  
-                i  
-              ] =  
-                String(  
-                  companyRows[  
-                    i  
-                  ].amount ??  
-                    ""  
-                );  
-            }  
+          for (
+            let i = 0;
+            i < 3;
+            i += 1
+          ) {
+            if (
+              companyRows[
+                i
+              ]
+            ) {
+              company[
+                i
+              ] =
+                String(
+                  companyRows[
+                    i
+                  ].amount ??
+                    ""
+                );
+            }
 
-            if (  
-              mshwariRows[  
-                i  
-              ]  
-            ) {  
-              mshwari[  
-                i  
-              ] =  
-                String(  
-                  mshwariRows[  
-                    i  
-                  ].amount ??  
-                    ""  
-                );  
-            }  
-          }  
+            if (
+              mshwariRows[
+                i
+              ]
+            ) {
+              mshwari[
+                i
+              ] =
+                String(
+                  mshwariRows[
+                    i
+                  ].amount ??
+                    ""
+                );
+            }
+          }
 
-          return {  
-            company,  
-            mshwari,  
-          };  
-        }  
-      );  
+          return {
+            company,
+            mshwari,
+          };
+        }
+      );
 
-      // ------------------------------------------  
-      // MANUAL EXPENSE INPUTS  
-      // ------------------------------------------  
+      // ------------------------------------------
+      // MANUAL EXPENSE INPUTS
+      // ------------------------------------------
 
-      setExpenseInputs(  
-        (  
-          previous  
-        ) => {  
-          const next =  
-            Array.from(  
-              {  
-                length:  
-                  10,  
-              },  
+      setExpenseInputs(
+        (
+          previous
+        ) => {
+          const next =
+            Array.from(
+              {
+                length:
+                  10,
+              },
 
-              (  
-                _,  
-                index  
-              ) => ({  
-                description:  
-                  previous[  
-                    index  
-                  ]  
-                    ?.description ||  
-                  "",  
+              (
+                _,
+                index
+              ) => ({
+                description:
+                  previous[
+                    index
+                  ]
+                    ?.description ||
+                  "",
 
-                amount:  
-                  previous[  
-                    index  
-                  ]  
-                    ?.amount ||  
-                  "",  
-              })  
-            );  
+                amount:
+                  previous[
+                    index
+                  ]
+                    ?.amount ||
+                  "",
+              })
+            );
 
-          for (  
-            let i = 0;  
-            i < 10;  
-            i += 1  
-          ) {  
-            if (  
-              loadedManualExpenses[  
-                i  
-              ]  
-            ) {  
-              next[i] = {  
-                description:  
-                  loadedManualExpenses[  
-                    i  
-                  ]  
-                    .description ||  
-                  "",  
+          for (
+            let i = 0;
+            i < 10;
+            i += 1
+          ) {
+            if (
+              loadedManualExpenses[
+                i
+              ]
+            ) {
+              next[i] = {
+                description:
+                  loadedManualExpenses[
+                    i
+                  ]
+                    .description ||
+                  "",
 
-                amount:  
-                  String(  
-                    loadedManualExpenses[  
-                      i  
-                    ].amount ??  
-                      ""  
-                  ),  
-              };  
-            }  
-          }  
+                amount:
+                  String(
+                    loadedManualExpenses[
+                      i
+                    ].amount ??
+                      ""
+                  ),
+              };
+            }
+          }
 
-          return next;  
-        }  
-      );  
-    } catch (error) {  
-      console.error(  
-        "24H CASHIER REPORT ERROR:",  
-        error  
-      );  
+          return next;
+        }
+      );
+    } catch (error) {
+      console.error(
+        "24H CASHIER REPORT ERROR:",
+        error
+      );
 
-      setMessage(  
-        error?.message ||  
-          "Unable to load 24-hour cashier report."  
-      );  
+      setMessage(
+        error?.message ||
+          "Unable to load 24-hour cashier report."
+      );
 
-      setMessageType(  
-        "error"  
-      );  
-    } finally {  
-      setLoading(  
-        false  
-      );  
-    }  
-  },  
-  [  
-    shiftId,  
-    shopId,  
-    accessToken,  
-    supabaseUrl,  
-    supabaseAnonKey,  
-    currentShift,  
-  ]  
+      setMessageType(
+        "error"
+      );
+    } finally {
+      setLoading(
+        false
+      );
+    }
+  },
+  [
+    shiftId,
+    shopId,
+    accessToken,
+    supabaseUrl,
+    supabaseAnonKey,
+    currentShift,
+  ]
 );
 
 // ==================================================
@@ -608,46 +609,42 @@ return;
 // ==================================================
 
 const refresh24HourReport =
-useCallback(
-async () => {
-await loadReport();
+  useCallback(
+    async () => {
+      await loadReport();
 
-setRefreshKey(  
-      (  
-        previous  
-      ) =>  
-        previous +  
-        1  
-    );  
-  },  
-  [  
-    loadReport,  
-  ]  
-);
+      setRefreshKey(
+        (previous) =>
+          previous + 1
+      );
+    },
+    [
+      loadReport,
+    ]
+  );
 
 // ==================================================
 // AUTO REFRESH EVERY 5 SECONDS
 // ==================================================
 
 useEffect(() => {
-refresh24HourReport();
+  refresh24HourReport();
 
-const timer =  
-  setInterval(  
-    () => {  
-      refresh24HourReport();  
-    },  
-    5000  
-  );  
+  const timer =
+    setInterval(
+      () => {
+        refresh24HourReport();
+      },
+      5000
+    );
 
-return () => {  
-  clearInterval(  
-    timer  
-  );  
-};
-
+  return () => {
+    clearInterval(
+      timer
+    );
+  };
 }, [
-refresh24HourReport,
+  refresh24HourReport,
 ]);
 
 // ==================================================
@@ -655,14 +652,13 @@ refresh24HourReport,
 // ==================================================
 
 function logout() {
-sessionStorage.removeItem(
-"teamLegendUser"
-);
+  sessionStorage.removeItem(
+    "teamLegendUser"
+  );
 
-router.replace(  
-  "/"  
-);
-
+  router.replace(
+    "/"
+  );
 }
 
 // ==================================================
@@ -670,118 +666,90 @@ router.replace(
 // ==================================================
 
 const companyEntries =
-incomeEntries.filter(
-(
-entry
-) =>
-entry.entry_type ===
-"COMPANY_FLOAT"
-);
+  incomeEntries.filter(
+    (entry) =>
+      entry.entry_type ===
+      "COMPANY_FLOAT"
+  );
 
 const mshwariEntries =
-incomeEntries.filter(
-(
-entry
-) =>
-entry.entry_type ===
-"MSHWARI_FLOAT"
-);
+  incomeEntries.filter(
+    (entry) =>
+      entry.entry_type ===
+      "MSHWARI_FLOAT"
+  );
 
 const companyTotal =
-roundMoney(
-companyEntries.reduce(
-(
-sum,
-entry
-) =>
-sum +
-Number(
-entry.amount ??
-0
-),
-0
-)
-);
+  roundMoney(
+    companyEntries.reduce(
+      (sum, entry) =>
+        sum +
+        Number(
+          entry.amount ?? 0
+        ),
+      0
+    )
+  );
 
 const mshwariTotal =
-roundMoney(
-mshwariEntries.reduce(
-(
-sum,
-entry
-) =>
-sum +
-Number(
-entry.amount ??
-0
-),
-0
-)
-);
+  roundMoney(
+    mshwariEntries.reduce(
+      (sum, entry) =>
+        sum +
+        Number(
+          entry.amount ?? 0
+        ),
+      0
+    )
+  );
 
 const companySlots =
-Array.from(
-{
-length:
-3,
-},
-
-(  
-    _,  
-    index  
-  ) =>  
-    companyEntries[  
-      index  
-    ] ||  
-    null  
-);
+  Array.from(
+    {
+      length: 3,
+    },
+    (_, index) =>
+      companyEntries[index] ||
+      null
+  );
 
 const mshwariSlots =
-Array.from(
-{
-length:
-3,
-},
-
-(  
-    _,  
-    index  
-  ) =>  
-    mshwariEntries[  
-      index  
-    ] ||  
-    null  
-);
+  Array.from(
+    {
+      length: 3,
+    },
+    (_, index) =>
+      mshwariEntries[index] ||
+      null
+  );
 
 // ==================================================
 // MANUAL EXPENSES
 // ==================================================
 
 const manualExpenses =
-expenses.filter(
-(
-expense
-) => {
-const sourceType =
-String(
-expense?.source_type ||
-""
-)
-.trim()
-.toUpperCase();
+  expenses.filter(
+    (expense) => {
+      const sourceType =
+        String(
+          expense?.source_type ||
+            ""
+        )
+          .trim()
+          .toUpperCase();
 
-return (  
-      (  
-        sourceType ===  
-          "" ||  
-        sourceType ===  
-          "MANUAL"  
-      ) &&  
-      expense?.is_private !==  
-        true  
-    );  
-  }  
-);
+      return (
+        (
+          sourceType ===
+            "" ||
+          sourceType ===
+            "MANUAL"
+        ) &&
+        expense?.is_private !==
+          true
+      );
+    }
+  );
 
 // ==================================================
 // SAVE M-SHWARI FLOATS
@@ -791,482 +759,466 @@ return (
 // ==================================================
 
 async function saveFloats() {
-const rowsToSave =
-[];
+  const rowsToSave = [];
 
-for (  
-  let i = 0;  
-  i < 3;  
-  i += 1  
-) {  
-  const mshwariUnlocked =  
-    i === 0 ||  
-    Boolean(  
-      mshwariSlots[  
-        i - 1  
-      ]  
-    );  
+  for (
+    let i = 0;
+    i < 3;
+    i += 1
+  ) {
+    const mshwariUnlocked =
+      i === 0 ||
+      Boolean(
+        mshwariSlots[
+          i - 1
+        ]
+      );
 
-  if (  
-    mshwariUnlocked &&  
-    !mshwariSlots[i]  
-  ) {  
-    const raw =  
-      floatInputs.mshwari[  
-        i  
-      ];  
+    if (
+      mshwariUnlocked &&
+      !mshwariSlots[i]
+    ) {
+      const raw =
+        floatInputs.mshwari[
+          i
+        ];
 
-    if (  
-      raw !== "" &&  
-      raw !==  
-        undefined  
-    ) {  
-      const value =  
-        Number(  
-          raw  
-        );  
+      if (
+        raw !== "" &&
+        raw !== undefined
+      ) {
+        const value =
+          Number(raw);
 
-      if (  
-        !Number.isFinite(  
-          value  
-        ) ||  
-        value <= 0  
-      ) {  
-        setMessage(  
-          `Enter a valid M-Shwari Float ${  
-            i + 1  
-          }.`  
-        );  
+        if (
+          !Number.isFinite(
+            value
+          ) ||
+          value <= 0
+        ) {
+          setMessage(
+            `Enter a valid M-Shwari Float ${
+              i + 1
+            }.`
+          );
 
-        setMessageType(  
-          "error"  
-        );  
+          setMessageType(
+            "error"
+          );
 
-        return;  
-      }  
+          return;
+        }
 
-      rowsToSave.push({  
-        shift_id:  
-          shiftId,  
+        rowsToSave.push({
+          shift_id:
+            shiftId,
 
-        entry_type:  
-          "MSHWARI_FLOAT",  
+          entry_type:
+            "MSHWARI_FLOAT",
 
-        description:  
-          `Float ${  
-            i + 1  
-          } from M-Shwari`,  
+          description:
+            `Float ${
+              i + 1
+            } from M-Shwari`,
 
-        amount:  
-          roundMoney(  
-            value  
-          ),  
-      });  
-    }  
-  }  
-}  
+          amount:
+            roundMoney(
+              value
+            ),
+        });
+      }
+    }
+  }
 
-if (  
-  rowsToSave.length ===  
-  0  
-) {  
-  setMessage(  
-    "Enter at least one active M-Shwari float amount."  
-  );  
+  if (
+    rowsToSave.length ===
+    0
+  ) {
+    setMessage(
+      "Enter at least one active M-Shwari float amount."
+    );
 
-  setMessageType(  
-    "error"  
-  );  
+    setMessageType(
+      "error"
+    );
 
-  return;  
-}  
+    return;
+  }
 
-try {  
-  setSavingFloats(  
-    true  
-  );  
+  try {
+    setSavingFloats(
+      true
+    );
 
-  setMessage(  
-    ""  
-  );  
+    setMessage(
+      ""
+    );
 
-  const response =  
-    await fetch(  
-      `${supabaseUrl}/rest/v1/shift_income_entries`,  
-      {  
-        method:  
-          "POST",  
+    const response =
+      await fetch(
+        `${supabaseUrl}/rest/v1/shift_income_entries`,
+        {
+          method:
+            "POST",
 
-        headers: {  
-          apikey:  
-            supabaseAnonKey,  
+          headers: {
+            apikey:
+              supabaseAnonKey,
 
-          Authorization:  
-            `Bearer ${accessToken}`,  
+            Authorization:
+              `Bearer ${accessToken}`,
 
-          "Content-Type":  
-            "application/json",  
+            "Content-Type":
+              "application/json",
 
-          Prefer:  
-            "return=representation",  
-        },  
+            Prefer:
+              "return=representation",
+          },
 
-        body:  
-          JSON.stringify(  
-            rowsToSave  
-          ),  
-      }  
-    );  
+          body:
+            JSON.stringify(
+              rowsToSave
+            ),
+        }
+      );
 
-  const result =  
-    await safeJson(  
-      response  
-    );  
+    const result =
+      await safeJson(
+        response
+      );
 
-  if (  
-    !response.ok  
-  ) {  
-    throw new Error(  
-      result?.message ||  
-        result?.details ||  
-        "Unable to save M-Shwari float."  
-    );  
-  }  
+    if (
+      !response.ok
+    ) {
+      throw new Error(
+        result?.message ||
+          result?.details ||
+          "Unable to save M-Shwari float."
+      );
+    }
 
-  const newFloatTotal =  
-    roundMoney(  
-      companyTotal +  
-        mshwariTotal +  
-        rowsToSave.reduce(  
-          (  
-            sum,  
-            row  
-          ) =>  
-            sum +  
-            Number(  
-              row.amount ??  
-                0  
-            ),  
-          0  
-        )  
-    );  
+    const newFloatTotal =
+      roundMoney(
+        companyTotal +
+          mshwariTotal +
+          rowsToSave.reduce(
+            (sum, row) =>
+              sum +
+              Number(
+                row.amount ?? 0
+              ),
+            0
+          )
+      );
 
-  const shiftResponse =  
-    await fetch(  
-      `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(  
-        shiftId  
-      )}`,  
-      {  
-        method:  
-          "PATCH",  
+    const shiftResponse =
+      await fetch(
+        `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(
+          shiftId
+        )}`,
+        {
+          method:
+            "PATCH",
 
-        headers: {  
-          apikey:  
-            supabaseAnonKey,  
+          headers: {
+            apikey:
+              supabaseAnonKey,
 
-          Authorization:  
-            `Bearer ${accessToken}`,  
+            Authorization:
+              `Bearer ${accessToken}`,
 
-          "Content-Type":  
-            "application/json",  
-        },  
+            "Content-Type":
+              "application/json",
+          },
 
-        body:  
-          JSON.stringify({  
-            total_added_float:  
-              newFloatTotal,  
-          }),  
-      }  
-    );  
+          body:
+            JSON.stringify({
+              total_added_float:
+                newFloatTotal,
+            }),
+        }
+      );
 
-  if (  
-    !shiftResponse.ok  
-  ) {  
-    throw new Error(  
-      "M-Shwari float saved but shift total could not be updated."  
-    );  
-  }  
+    if (
+      !shiftResponse.ok
+    ) {
+      throw new Error(
+        "M-Shwari float saved but shift total could not be updated."
+      );
+    }
 
-  setMessage(  
-    "M-Shwari float saved successfully."  
-  );  
+    setMessage(
+      "M-Shwari float saved successfully."
+    );
 
-  setMessageType(  
-    "success"  
-  );  
+    setMessageType(
+      "success"
+    );
 
-  await refresh24HourReport();  
-} catch (error) {  
-  setMessage(  
-    error?.message ||  
-      "Unable to save M-Shwari float."  
-  );  
+    await refresh24HourReport();
+  } catch (error) {
+    setMessage(
+      error?.message ||
+        "Unable to save M-Shwari float."
+    );
 
-  setMessageType(  
-    "error"  
-  );  
-} finally {  
-  setSavingFloats(  
-    false  
-  );  
+    setMessageType(
+      "error"
+    );
+  } finally {
+    setSavingFloats(
+      false
+    );
+  }
 }
 
-}
 // ==================================================
 // SAVE MANUAL EXPENSES
 // ==================================================
 
 async function saveExpenses() {
-const nextIndex =
-manualExpenses.length;
+  const nextIndex =
+    manualExpenses.length;
 
-if (  
-  nextIndex >= 10  
-) {  
-  setMessage(  
-    "All 10 manual expense rows have already been saved."  
-  );  
+  if (
+    nextIndex >= 10
+  ) {
+    setMessage(
+      "All 10 manual expense rows have already been saved."
+    );
 
-  setMessageType(  
-    "success"  
-  );  
+    setMessageType(
+      "success"
+    );
 
-  return;  
-}  
+    return;
+  }
 
-const description =  
-  String(  
-    expenseInputs[  
-      nextIndex  
-    ]?.description ||  
-      ""  
-  ).trim();  
+  const description =
+    String(
+      expenseInputs[
+        nextIndex
+      ]?.description ||
+        ""
+    ).trim();
 
-const rawAmount =  
-  expenseInputs[  
-    nextIndex  
-  ]?.amount;  
+  const rawAmount =
+    expenseInputs[
+      nextIndex
+    ]?.amount;
 
-if (  
-  description ===  
-  ""  
-) {  
-  setMessage(  
-    `Enter the description for expense ${  
-      nextIndex + 1  
-    }.`  
-  );  
+  if (
+    description === ""
+  ) {
+    setMessage(
+      `Enter the description for expense ${
+        nextIndex + 1
+      }.`
+    );
 
-  setMessageType(  
-    "error"  
-  );  
+    setMessageType(
+      "error"
+    );
 
-  return;  
-}  
+    return;
+  }
 
-if (  
-  rawAmount === "" ||  
-  rawAmount ===  
-    null ||  
-  rawAmount ===  
-    undefined  
-) {  
-  setMessage(  
-    `Enter the amount for expense ${  
-      nextIndex + 1  
-    }.`  
-  );  
+  if (
+    rawAmount === "" ||
+    rawAmount === null ||
+    rawAmount === undefined
+  ) {
+    setMessage(
+      `Enter the amount for expense ${
+        nextIndex + 1
+      }.`
+    );
 
-  setMessageType(  
-    "error"  
-  );  
+    setMessageType(
+      "error"
+    );
 
-  return;  
-}  
+    return;
+  }
 
-const amount =  
-  Number(  
-    rawAmount  
-  );  
+  const amount =
+    Number(
+      rawAmount
+    );
 
-if (  
-  !Number.isFinite(  
-    amount  
-  ) ||  
-  amount <= 0  
-) {  
-  setMessage(  
-    `Enter a valid amount for expense ${  
-      nextIndex + 1  
-    }.`  
-  );  
+  if (
+    !Number.isFinite(
+      amount
+    ) ||
+    amount <= 0
+  ) {
+    setMessage(
+      `Enter a valid amount for expense ${
+        nextIndex + 1
+      }.`
+    );
 
-  setMessageType(  
-    "error"  
-  );  
+    setMessageType(
+      "error"
+    );
 
-  return;  
-}  
+    return;
+  }
 
-const rowToSave = {  
-  shift_id:  
-    shiftId,  
+  const rowToSave = {
+    shift_id:
+      shiftId,
 
-  description,  
+    description,
 
-  amount:  
-    roundMoney(  
-      amount  
-    ),  
+    amount:
+      roundMoney(
+        amount
+      ),
 
-  created_by:  
-    cashierId,  
+    created_by:
+      cashierId,
 
-  source_type:  
-    "MANUAL",  
+    source_type:
+      "MANUAL",
 
-  is_private:  
-    false,  
-};  
+    is_private:
+      false,
+  };
 
-try {  
-  setSavingExpenses(  
-    true  
-  );  
+  try {
+    setSavingExpenses(
+      true
+    );
 
-  setMessage(  
-    ""  
-  );  
+    setMessage(
+      ""
+    );
 
-  const response =  
-    await fetch(  
-      `${supabaseUrl}/rest/v1/expenses`,  
-      {  
-        method:  
-          "POST",  
+    const response =
+      await fetch(
+        `${supabaseUrl}/rest/v1/expenses`,
+        {
+          method:
+            "POST",
 
-        headers: {  
-          apikey:  
-            supabaseAnonKey,  
+          headers: {
+            apikey:
+              supabaseAnonKey,
 
-          Authorization:  
-            `Bearer ${accessToken}`,  
+            Authorization:
+              `Bearer ${accessToken}`,
 
-          "Content-Type":  
-            "application/json",  
+            "Content-Type":
+              "application/json",
 
-          Prefer:  
-            "return=representation",  
-        },  
+            Prefer:
+              "return=representation",
+          },
 
-        body:  
-          JSON.stringify(  
-            rowToSave  
-          ),  
-      }  
-    );  
+          body:
+            JSON.stringify(
+              rowToSave
+            ),
+        }
+      );
 
-  const result =  
-    await safeJson(  
-      response  
-    );  
+    const result =
+      await safeJson(
+        response
+      );
 
-  if (  
-    !response.ok  
-  ) {  
-    throw new Error(  
-      result?.message ||  
-        result?.details ||  
-        "Unable to save expense."  
-    );  
-  }  
+    if (
+      !response.ok
+    ) {
+      throw new Error(
+        result?.message ||
+          result?.details ||
+          "Unable to save expense."
+      );
+    }
 
-  const existingExpenseTotal =  
-    expenses.reduce(  
-      (  
-        sum,  
-        expense  
-      ) =>  
-        sum +  
-        Number(  
-          expense.amount ??  
-            0  
-        ),  
-      0  
-    );  
+    const existingExpenseTotal =
+      expenses.reduce(
+        (sum, expense) =>
+          sum +
+          Number(
+            expense.amount ?? 0
+          ),
+        0
+      );
 
-  const newExpenseTotal =  
-    roundMoney(  
-      existingExpenseTotal +  
-        amount  
-    );  
+    const newExpenseTotal =
+      roundMoney(
+        existingExpenseTotal +
+          amount
+      );
 
-  const shiftResponse =  
-    await fetch(  
-      `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(  
-        shiftId  
-      )}`,  
-      {  
-        method:  
-          "PATCH",  
+    const shiftResponse =
+      await fetch(
+        `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(
+          shiftId
+        )}`,
+        {
+          method:
+            "PATCH",
 
-        headers: {  
-          apikey:  
-            supabaseAnonKey,  
+          headers: {
+            apikey:
+              supabaseAnonKey,
 
-          Authorization:  
-            `Bearer ${accessToken}`,  
+            Authorization:
+              `Bearer ${accessToken}`,
 
-          "Content-Type":  
-            "application/json",  
-        },  
+            "Content-Type":
+              "application/json",
+          },
 
-        body:  
-          JSON.stringify({  
-            total_expenses:  
-              newExpenseTotal,  
-          }),  
-      }  
-    );  
+          body:
+            JSON.stringify({
+              total_expenses:
+                newExpenseTotal,
+            }),
+        }
+      );
 
-  if (  
-    !shiftResponse.ok  
-  ) {  
-    throw new Error(  
-      "Expense saved but shift total could not be updated."  
-    );  
-  }  
+    if (
+      !shiftResponse.ok
+    ) {
+      throw new Error(
+        "Expense saved but shift total could not be updated."
+      );
+    }
 
-  setMessage(  
-    nextIndex < 9  
-      ? `Expense ${  
-          nextIndex + 1  
-        } saved. Expense ${  
-          nextIndex + 2  
-        } is now available.`  
-      : "Expense 10 saved successfully."  
-  );  
+    setMessage(
+      nextIndex < 9
+        ? `Expense ${
+            nextIndex + 1
+          } saved. Expense ${
+            nextIndex + 2
+          } is now available.`
+        : "Expense 10 saved successfully."
+    );
 
-  setMessageType(  
-    "success"  
-  );  
+    setMessageType(
+      "success"
+    );
 
-  await refresh24HourReport();  
-} catch (error) {  
-  setMessage(  
-    error?.message ||  
-      "Unable to save expense."  
-  );  
+    await refresh24HourReport();
+  } catch (error) {
+    setMessage(
+      error?.message ||
+        "Unable to save expense."
+    );
 
-  setMessageType(  
-    "error"  
-  );  
-} finally {  
-  setSavingExpenses(  
-    false  
-  );  
-}
-
+    setMessageType(
+      "error"
+    );
+  } finally {
+    setSavingExpenses(
+      false
+    );
+  }
 }
 
 // ==================================================
@@ -1274,76 +1226,76 @@ try {
 // ==================================================
 
 const openingBalance =
-Number(
-shift?.opening_balance ??
-0
-);
+  Number(
+    shift?.opening_balance ??
+      0
+  );
 
 const totalOutput =
-Number(
-shift?.total_output ??
-0
-);
+  Number(
+    shift?.total_output ??
+      0
+  );
 
 const totalExpenses =
-Number(
-shift?.total_expenses ??
-0
-);
+  Number(
+    shift?.total_expenses ??
+      0
+  );
 
 const closingBalance =
-Number(
-shift?.closing_balance ??
-0
-);
+  Number(
+    shift?.closing_balance ??
+      0
+  );
 
 const totalAdded =
-roundMoney(
-openingBalance +
-companyTotal +
-mshwariTotal
-);
+  roundMoney(
+    openingBalance +
+      companyTotal +
+      mshwariTotal
+  );
 
 const totalSales =
-roundMoney(
-openingBalance +
-companyTotal +
-mshwariTotal +
-totalOutput
-);
+  roundMoney(
+    openingBalance +
+      companyTotal +
+      mshwariTotal +
+      totalOutput
+  );
 
 const reportDate =
-formatReportDate(
-shift?.opened_at ||
-new Date().toISOString()
-);
+  formatReportDate(
+    shift?.opened_at ||
+      new Date().toISOString()
+  );
 
 const reportDay =
-formatReportDay(
-shift?.opened_at ||
-new Date().toISOString()
-);
+  formatReportDay(
+    shift?.opened_at ||
+      new Date().toISOString()
+  );
 
 const shiftStatus =
-String(
-shift?.status ||
-"OPEN"
-).toUpperCase();
+  String(
+    shift?.status ||
+      "OPEN"
+  ).toUpperCase();
 
 const shiftName =
-normaliseShiftName(
-shift?.shift_name
-);
+  normaliseShiftName(
+    shift?.shift_name
+  );
 
 const shiftLabel =
-shiftName ===
-"SHIFT 1"
-? "SHIFT 1"
-: shiftName ===
-"SHIFT 2"
-? "SHIFT 2"
-: shift?.shift_name ||
-"24-HOUR SHIFT";
+  shiftName ===
+  "SHIFT 1"
+    ? "SHIFT 1"
+    : shiftName ===
+      "SHIFT 2"
+    ? "SHIFT 2"
+    : shift?.shift_name ||
+      "24-HOUR SHIFT";
 
 // ==================================================
 // GREETING
@@ -1386,934 +1338,886 @@ if (
   shiftGreeting =
     `Good Evening 🌙 — Welcome to Shift ${greetingShiftNumber}`;
 }
+
 // ==================================================
 // LOADING
 // ==================================================
 
 if (
-loading &&
-!shift
+  loading &&
+  !shift
 ) {
-return (
-<div
-style={
-loadingStyle
-}
->
-Loading 24-hour cashier report...
-</div>
-);
+  return (
+    <div
+      style={
+        loadingStyle
+      }
+    >
+      Loading 24-hour cashier report...
+    </div>
+  );
 }
 
 if (!shift) {
-return null;
+  return null;
 }
 
 // ==================================================
 // DISPLAY
+// Part 3 begins with the main return (
 // ==================================================
 
 return (
-<div
-style={
-pageStyle
-}
->
-<header
-style={
-topHeaderStyle
-}
->
-<div
-style={
-brandWrapStyle
-}
->
-<div
-style={
-crownStyle
-}
->
-♛
-</div>
-
-<div>  
-        <div  
-          style={  
-            brandStyle  
-          }  
-        >  
-          TEAM LEGEND  
-        </div>  
-
-        <div  
-          style={  
-            taglineStyle  
-          }  
-        >  
-          DISCIPLINE • FOCUS • RESULTS  
-        </div>  
-      </div>  
-    </div>  
-
-    <div  
-      style={  
-        headerRightStyle  
-      }  
-    >  
-      <div>  
-        Welcome,{" "}  
-        <strong>  
-          {cashierName.toUpperCase()}  
-        </strong>  
-
-        <div  
-          style={  
-            headerShopStyle  
-          }  
-        >  
-          {shopName.toUpperCase()}  
-        </div>  
-      </div>  
-
-      <button  
-        type="button"  
-        onClick={  
-          logout  
-        }  
-        style={  
-          logoutButtonStyle  
-        }  
-      >  
-        Logout  
-      </button>  
-   </div>
-  </header>
-
-  {/* SHARED LIVE FEED — ALL 12H & 24H SHOPS */}
-  <CashierLiveFeedPanel user={user} />
-
-  <div
-    style={
-      bodyStyle
-    }
-  >
-    <aside  
-      style={  
-        sidebarStyle  
-      }  
-    >  
-      <SidebarItem  
-        active  
-        icon="⌂"  
-        label="Cashier Report"  
-      />  
-
-      <SidebarItem  
-        icon="▤"  
-        label="View Reports"  
-      />  
-
-      <SidebarItem  
-        icon="▦"  
-        label="Accounts"  
-      />  
-
-      <SidebarItem  
-        icon="⚙"  
-        label="Settings"  
-      />  
-    </aside>  
-
-    <main  
-      style={  
-        mainStyle  
-      }  
-    >  
-      <div  
-        style={  
-          topGridStyle  
-        }  
-      >  
-        <TopCard  
-          title={  
-            shopName.toUpperCase()  
-          }  
-          subtitle="DAILY SALES REPORT"  
-          footer="24-HOUR SHOP"  
-        />  
-
-        <InfoCard  
-          title="CASHIER ON DUTY"  
-          value={  
-            cashierName  
-          }  
-          tone="brown"  
-        />  
-
-        <InfoCard  
-          title="DATE"  
-          value={  
-            reportDate  
-          }  
-        />  
-
-        <InfoCard  
-          title="DAY"  
-          value={  
-            reportDay  
-          }  
-        />  
-
-        <InfoCard  
-          title="SHIFT"  
-          value={  
-            shiftLabel  
-          }  
-          subvalue={`${displayTime(  
-            shift?.scheduled_start  
-          )} - ${displayTime(  
-            shift?.scheduled_end  
-          )}`}  
-          tone="green"  
-        />  
-
-        <InfoCard  
-          title="STATUS"  
-          value={  
-            shiftStatus  
-          }  
-          tone="green"  
-        />  
-      </div>  
-
-      <div  
-        style={{  
-          ...greetingBannerStyle,  
-
-          ...(shiftIsClosed  
-            ? greetingGoodbyeStyle  
-            : greetingWelcomeStyle),  
-        }}  
-      >  
-        {shiftGreeting}  
-      </div>  
-
-      <div  
-        style={  
-          shiftBannerStyle  
-        }  
-      >  
-        <strong>  
-          {shiftName ===  
-          "SHIFT 1"  
-            ? "SHIFT 1 — DAY SHIFT"  
-            : shiftName ===  
-              "SHIFT 2"  
-            ? "SHIFT 2 — NIGHT SHIFT"  
-            : "24-HOUR SHIFT"}  
-        </strong>  
-
-        <span>  
-          {shiftName ===  
-          "SHIFT 1"  
-            ? "9:00 AM – 9:00 PM"  
-            : shiftName ===  
-              "SHIFT 2"  
-            ? "9:00 PM – 9:00 AM"  
-            : ""}  
-        </span>  
-      </div>  
-{/* =========================================
-    TODAY'S DUTY / BENEFITS
-    24-HOUR SIGN-IN EXEMPT
-========================================= */}
-
-<CashierAttendancePanel
-  user={user}
-  currentShift={shift || currentShift}
-/>
-      {message && (  
-        <div  
-          style={{  
-            ...messageStyle,  
-
-            backgroundColor:  
-              messageType ===  
-              "success"  
-                ? "#ecfdf5"  
-                : "#fef2f2",  
-
-            color:  
-              messageType ===  
-              "success"  
-                ? "#166534"  
-                : "#991b1b",  
-          }}  
-        >  
-          {message}  
-        </div>  
-      )}  
-
-      <div  
-        style={  
-          upperGridStyle  
-        }  
-      >  
-        <section  
-          style={  
-            panelStyle  
-          }  
-        >  
-          <PanelTitle  
-            title="INCOME STATEMENT"  
-            tone="blue"  
-          />  
-
-          <div  
-            style={  
-              tableHeaderStyle  
-            }  
-          >  
-            <div>  
-              DESCRIPTION  
-            </div>  
-
-            <div>  
-              AMOUNT (KES)  
-            </div>  
-          </div>  
-
-          <IncomeDisplayRow  
-            label="Balance B/F (Previous Shift)"  
-            amount={  
-              openingBalance  
-            }  
-          />  
-
-          {companySlots.map(  
-            (  
-              entry,  
-              index  
-            ) => (  
-              <ReadOnlyCompanyFloatRow  
-                key={`company-${index}`}  
-                label={`Added Float ${  
-                  index +  
-                  1  
-                } From Company`}  
-                entry={  
-                  entry  
-                }  
-              />  
-            )  
-          )}  
-
-          {mshwariSlots.map(  
-            (  
-              entry,  
-              index  
-            ) => {  
-              const mshwariUnlocked =  
-                index ===  
-                  0 ||  
-                Boolean(  
-                  mshwariSlots[  
-                    index -  
-                      1  
-                  ]  
-                );  
-
-              return (  
-                <EditableFloatRow  
-                  key={`mshwari-${index}`}  
-                  label={`Added Float ${  
-                    index +  
-                    1  
-                  } From M-Shwari`}  
-                  savedEntry={  
-                    entry  
-                  }  
-                  value={  
-                    floatInputs  
-                      .mshwari[  
-                      index  
-                    ] ||  
-                    ""  
-                  }  
-                  disabled={  
-                    savingFloats ||  
-                    !mshwariUnlocked  
-                  }  
-                  onChange={(  
-                    value  
-                  ) => {  
-                    setFloatInputs(  
-                      (  
-                        previous  
-                      ) => {  
-                        const mshwari =  
-                          [  
-                            ...previous.mshwari,  
-                          ];  
-
-                        mshwari[  
-                          index  
-                        ] =  
-                          value;  
-
-                        return {  
-                          ...previous,  
-                          mshwari,  
-                        };  
-                      }  
-                    );  
-                  }}  
-                />  
-              );  
-            }  
-          )}  
-
-          <div  
-            style={  
-              incomeTotalStyle  
-            }  
-          >  
-            <strong>  
-              TOTAL ADDED  
-            </strong>  
-
-            <strong>  
-              {money(  
-                totalAdded  
-              )}  
-            </strong>  
-          </div>  
-
-          <div  
-            style={  
-              companyFloatNoticeStyle  
-            }  
-          >  
-            Company Float 1, 2 and 3 are read-only.  
-            They are posted automatically by Legend Accounts.  
-          </div>  
-
-          <div  
-            style={  
-              panelButtonWrapStyle  
-            }  
-          >  
-            <button  
-              type="button"  
-              onClick={  
-                saveFloats  
-              }  
-              disabled={  
-                savingFloats  
-              }  
-              style={{  
-                ...greenActionStyle,  
-
-                backgroundColor:  
-                  savingFloats  
-                    ? "#94a3b8"  
-                    : "#07912a",  
-              }}  
-            >  
-              {savingFloats  
-                ? "Saving..."  
-                : "Save M-Shwari Float"}  
-            </button>  
-          </div>  
-        </section>  
-
-        <section  
-          style={  
-            panelStyle  
-          }  
-        >  
-          <PanelTitle  
-            title="EXPENSES"  
-            tone="red"  
-          />  
-
-          <div  
-            style={  
-              expenseHeaderStyle  
-            }  
-          >  
-            <div>  
-              NO.  
-            </div>  
-
-            <div>  
-              DESCRIPTION  
-            </div>  
-
-            <div>  
-              AMOUNT (KES)  
-            </div>  
-          </div>  
-
-          {Array.from(  
-            {  
-              length:  
-                10,  
-            },  
-
-            (  
-              _,  
-              index  
-            ) => {  
-              const saved =  
-                manualExpenses[  
-                  index  
-                ];  
-
-              const rowUnlocked =  
-                index ===  
-                  0 ||  
-                Boolean(  
-                  manualExpenses[  
-                    index -  
-                      1  
-                  ]  
-                );  
-
-              const rowDisabled =  
-                savingExpenses ||  
-                !rowUnlocked;  
-
-              return (  
-                <div  
-                  key={  
-                    index  
-                  }  
-                  style={  
-                    expenseRowStyle  
-                  }  
-                >  
-                  <div>  
-                    {index +  
-                      1}  
-                  </div>  
-
-                  {saved ? (  
-                    <>  
-                      <div  
-                        style={  
-                          savedExpenseStyle  
-                        }  
-                      >  
-                        {  
-                          saved.description  
-                        }  
-                      </div>  
-
-                      <div  
-                        style={  
-                          savedExpenseStyle  
-                        }  
-                      >  
-                        {money(  
-                          saved.amount  
-                        )}{" "}  
-                        ✓  
-                      </div>  
-                    </>  
-                  ) : (  
-                    <>  
-                      <input  
-                        value={  
-                          expenseInputs[  
-                            index  
-                          ]  
-                            ?.description ||  
-                          ""  
-                        }  
-                        placeholder={  
-                          rowUnlocked  
-                            ? "Description"  
-                            : "Locked"  
-                        }  
-                        disabled={  
-                          rowDisabled  
-                        }  
-                        onChange={(  
-                          event  
-                        ) => {  
-                          const value =  
-                            event  
-                              .target  
-                              .value;  
-
-                          setExpenseInputs(  
-                            (  
-                              previous  
-                            ) => {  
-                              const next =  
-                                previous.map(  
-                                  (  
-                                    row  
-                                  ) => ({  
-                                    ...row,  
-                                  })  
-                                );  
-
-                              next[  
-                                index  
-                              ].description =  
-                                value;  
-
-                              return next;  
-                            }  
-                          );  
-                        }}  
-                        style={{  
-                          ...expenseInputStyle,  
-
-                          backgroundColor:  
-                            rowDisabled  
-                              ? "#f1f5f9"  
-                              : "white",  
-
-                          cursor:  
-                            rowDisabled  
-                              ? "not-allowed"  
-                              : "text",  
-                        }}  
-                      />  
-
-                      <input  
-                        type="number"  
-                        min="0"  
-                        step="0.01"  
-                        value={  
-                          expenseInputs[  
-                            index  
-                          ]  
-                            ?.amount ||  
-                          ""  
-                        }  
-                        placeholder={  
-                          rowUnlocked  
-                            ? "0.00"  
-                            : "Locked"  
-                        }  
-                        disabled={  
-                          rowDisabled  
-                        }  
-                        onChange={(  
-                          event  
-                        ) => {  
-                          const value =  
-                            event  
-                              .target  
-                              .value;  
-
-                          setExpenseInputs(  
-                            (  
-                              previous  
-                            ) => {  
-                              const next =  
-                                previous.map(  
-                                  (  
-                                    row  
-                                  ) => ({  
-                                    ...row,  
-                                  })  
-                                );  
-
-                              next[  
-                                index  
-                              ].amount =  
-                                value;  
-
-                              return next;  
-                            }  
-                          );  
-                        }}  
-                        style={{  
-                          ...expenseInputStyle,  
-
-                          backgroundColor:  
-                            rowDisabled  
-                              ? "#f1f5f9"  
-                              : "white",  
-
-                          cursor:  
-                            rowDisabled  
-                              ? "not-allowed"  
-                              : "text",  
-                        }}  
-                      />  
-                    </>  
-                  )}  
-                </div>  
-              );  
-            }  
-          )}  
-
-          <div  
-            style={  
-              expenseTotalStyle  
-            }  
-          >  
-            <strong>  
-              TOTAL EXPENSES  
-            </strong>  
-
-            <strong>  
-              {money(  
-                totalExpenses  
-              )}  
-            </strong>  
-          </div>  
-
-          <div  
-            style={  
-              automaticExpenseNoticeStyle  
-            }  
-          >  
-            Cashier → Legend Accounts transfers are added to  
-            Total Expenses automatically after Accounts confirms receipt.  
-          </div>  
-
-          <div  
-            style={  
-              panelButtonWrapStyle  
-            }  
-          >  
-            <button  
-              type="button"  
-              onClick={  
-                saveExpenses  
-              }  
-              disabled={  
-                savingExpenses ||  
-                manualExpenses.length >=  
-                  10  
-              }  
-              style={{  
-                ...redActionStyle,  
-
-                backgroundColor:  
-                  savingExpenses ||  
-                  manualExpenses.length >=  
-                    10  
-                    ? "#94a3b8"  
-                    : "#c50000",  
-              }}  
-            >  
-              {savingExpenses  
-                ? "Saving..."  
-                : manualExpenses.length >=  
-                  10  
-                ? "All Expenses Saved"  
-                : `Save Expense ${  
-                    manualExpenses.length +  
-                    1  
-                  }`}  
-            </button>  
-          </div>  
-        </section>  
+  <div style={pageStyle}>
+    <style>{`
+      .tl24-main {
+        box-sizing: border-box;
+      }
+
+      .tl24-main input:focus-visible,
+      .tl24-main button:focus-visible {
+        outline: 2px solid #2584BA;
+        outline-offset: 2px;
+      }
+
+      .tl24-main button {
+        transition: filter .12s ease;
+      }
+
+      .tl24-main button:hover:not(:disabled) {
+        filter: brightness(.96);
+      }
+
+      @media (max-width: 1250px) {
+        .tl24-top-grid {
+          grid-template-columns:
+            repeat(3, minmax(0, 1fr)) !important;
+        }
+
+        .tl24-top-grid > :first-child {
+          grid-column: span 3;
+        }
+
+        .tl24-operations-grid {
+          grid-template-columns:
+            minmax(0, 1fr) !important;
+        }
+      }
+
+      @media (max-width: 850px) {
+        .tl24-sidebar {
+          display: none !important;
+        }
+
+        .tl24-upper-grid {
+          grid-template-columns:
+            minmax(0, 1fr) !important;
+        }
+
+        .tl24-summary-grid {
+          grid-template-columns:
+            repeat(2, minmax(0, 1fr)) !important;
+        }
+      }
+
+      @media (max-width: 520px) {
+        .tl24-main {
+          padding: 10px !important;
+        }
+
+        .tl24-top-grid {
+          grid-template-columns:
+            repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        .tl24-top-grid > :first-child {
+          grid-column: span 2;
+        }
+
+        .tl24-summary-grid {
+          grid-template-columns:
+            minmax(0, 1fr) !important;
+        }
+      }
+    `}</style>
+
+    {/* =========================================
+        TOP HEADER
+    ========================================= */}
+
+    <header style={topHeaderStyle}>
+      <div style={brandWrapStyle}>
+        <div style={crownStyle}>
+          ♛
+        </div>
+
+        <div>
+          <div style={brandStyle}>
+            TEAM LEGEND
+          </div>
+
+          <div style={taglineStyle}>
+            DISCIPLINE • FOCUS • RESULTS
+          </div>
+        </div>
       </div>
 
-{/* =========================================
-    24-HOUR OPERATIONS LAYOUT
-========================================= */}
-<div  
-        style={  
-          operationsGridStyle  
-        }  
-      >  
-        <div  
-          style={  
-            platformColumnStyle  
-          }  
-        >  
-          <PlatformReadings24Hour  
-            user={  
-              user  
-            }  
-            currentShift={  
-              shift ||  
-              currentShift  
-            }  
-            refreshKey={  
-              refreshKey  
-            }  
-            onReadingsChanged={  
-              refresh24HourReport  
-            }  
-          />  
-        </div>  
+      <div style={headerRightStyle}>
+        <div>
+          Welcome,{" "}
+          <strong>
+            {cashierName.toUpperCase()}
+          </strong>
 
-        <div  
-          style={  
-            sidePanelsStyle  
-          }  
-        >  
-          <CashierSavingsPanel  
-            user={  
-              user  
-            }  
-            currentShift={  
-              shift ||  
-              currentShift  
-            }  
-          />  
+          <div style={headerShopStyle}>
+            {shopName.toUpperCase()}
+          </div>
+        </div>
 
-          <CashierSalaryPanel  
-            user={  
-              user  
-            }  
-            currentShift={  
-              shift ||  
-              currentShift  
-            }  
-            onSalaryPaid={  
-              refresh24HourReport  
-            }  
-          />  
+        <button
+          type="button"
+          onClick={logout}
+          style={logoutButtonStyle}
+        >
+          Logout
+        </button>
+      </div>
+    </header>
 
-          <CashierAccountsPanel  
-            user={  
-              user  
-            }  
-          />  
+    {/* =========================================
+        SHARED LIVE FEED
+    ========================================= */}
 
-          <CashierAccountsReturnPanel  
-            user={  
-              user  
-            }  
-            currentShift={  
-              shift ||  
-              currentShift  
-            }  
-            onReturnChanged={  
-              refresh24HourReport  
-            }  
-          />  
-        </div>  
-      </div>  
+    <CashierLiveFeedPanel user={user} />
 
-      <div  
-        style={  
-          summaryGridStyle  
-        }  
-      >  
-        <SummaryBox  
-          title="TOTAL OUTPUT"  
-          amount={  
-            totalOutput  
-          }  
-          tone="green"  
-        />  
+    <div
+      className="tl24-body"
+      style={bodyStyle}
+    >
+      {/* =========================================
+          SIDEBAR
+      ========================================= */}
 
-        <SummaryBox  
-          title="TOTAL SALES"  
-          amount={  
-            totalSales  
-          }  
-          tone="blue"  
-        />  
+      <aside
+        className="tl24-sidebar"
+        style={sidebarStyle}
+      >
+        <SidebarItem
+          active
+          icon="⌂"
+          label="Cashier Report"
+        />
 
-        <SummaryBox  
-          title="TOTAL EXPENSES"  
-          amount={  
-            totalExpenses  
-          }  
-          tone="red"  
-        />  
+        <SidebarItem
+          icon="▤"
+          label="View Reports"
+        />
 
-        <SummaryBox  
-          title="CLOSING BALANCE"  
-          amount={  
-            closingBalance  
-          }  
-          tone="navy"  
-        />  
-      </div>  
+        <SidebarItem
+          icon="▦"
+          label="Accounts"
+        />
 
-      <CloseShift24Hour  
-        user={  
-          user  
-        }  
-        currentShift={  
-          shift ||  
-          currentShift  
-        }  
-        refreshKey={  
-          refreshKey  
-        }  
-        onShiftClosed={() => {  
-          router.refresh();  
+        <SidebarItem
+          icon="⚙"
+          label="Settings"
+        />
+      </aside>
 
-          window.location.reload();  
-        }}  
-      />  
+      {/* =========================================
+          MAIN DASHBOARD
+      ========================================= */}
 
-      <section  
-        style={  
-          informationStyle  
-        }  
-      >  
-        <div  
-          style={  
-            informationTitleStyle  
-          }  
-        >  
-          IMPORTANT INFORMATION  
-        </div>  
+      <main
+        className="tl24-main"
+        style={mainStyle}
+      >
+        {/* =====================================
+            TOP INFORMATION CARDS
+        ===================================== */}
 
-        <div  
-          style={  
-            informationBodyStyle  
-          }  
-        >  
-          <div>  
-            1. Shift 1 runs from 9:00 AM to 9:00 PM.  
-          </div>  
+        <div
+          className="tl24-top-grid"
+          style={topGridStyle}
+        >
+          <TopCard
+            title={shopName.toUpperCase()}
+            subtitle="DAILY SALES REPORT"
+            footer="24-HOUR SHOP"
+          />
 
-          <div>  
-            2. Shift 2 runs from 9:00 PM to 9:00 AM.  
-          </div>  
+          <InfoCard
+            title="CASHIER ON DUTY"
+            value={cashierName}
+            tone="brown"
+          />
 
-          <div>  
-            3. Resettable platforms are recorded at 11:59 PM and reset to zero at midnight.  
-          </div>  
+          <InfoCard
+            title="DATE"
+            value={reportDate}
+          />
 
-          <div>  
-            4. TABLE does not reset at midnight and has no midnight reading.  
-          </div>  
+          <InfoCard
+            title="DAY"
+            value={reportDay}
+          />
 
-          <div>  
-            5. TABLE is handed over continuously at 9:00 AM and 9:00 PM.  
-          </div>  
+          <InfoCard
+            title="SHIFT"
+            value={shiftLabel}
+            subvalue={`${displayTime(
+              shift?.scheduled_start
+            )} - ${displayTime(
+              shift?.scheduled_end
+            )}`}
+            tone="green"
+          />
 
-          <div>  
-            6. Company Float 1, 2 and 3 are controlled by Legend Accounts and are read-only for the cashier.  
-          </div>  
+          <InfoCard
+            title="STATUS"
+            value={shiftStatus}
+            tone="green"
+          />
+        </div>
 
-          <div>  
-            7. Cashier → Legend Accounts returns automatically become expenses after Accounts confirms receipt.  
-          </div>  
+        {/* =====================================
+            GREETING BANNER
+        ===================================== */}
 
-          <div>  
-            8. Weekly salary payments automatically create a private expense after PIN confirmation.  
-          </div>  
+        <div
+          style={{
+            ...greetingBannerStyle,
+            ...(shiftIsClosed
+              ? greetingGoodbyeStyle
+              : greetingWelcomeStyle),
+          }}
+        >
+          {shiftGreeting}
+        </div>
 
-          <div>  
-            9. Cashier handover is only available during the authorised morning or evening handover window.  
-          </div>  
-        </div>  
-      </section>  
-    </main>  
-  </div>  
-</div>
+        {/* =====================================
+            SHIFT INFORMATION
+        ===================================== */}
 
+        <div style={shiftBannerStyle}>
+          <strong>
+            {shiftName === "SHIFT 1"
+              ? "SHIFT 1 — DAY SHIFT"
+              : shiftName === "SHIFT 2"
+              ? "SHIFT 2 — NIGHT SHIFT"
+              : "24-HOUR SHIFT"}
+          </strong>
+
+          <span>
+            {shiftName === "SHIFT 1"
+              ? "9:00 AM – 9:00 PM"
+              : shiftName === "SHIFT 2"
+              ? "9:00 PM – 9:00 AM"
+              : ""}
+          </span>
+        </div>
+
+        {/* =====================================
+            TODAY'S DUTY / BENEFITS
+            24-HOUR SIGN-IN EXEMPT
+        ===================================== */}
+
+        <CashierAttendancePanel
+          user={user}
+          currentShift={shift || currentShift}
+        />
+
+        {/* =====================================
+            STATUS MESSAGES
+        ===================================== */}
+
+        {message && (
+          <div
+            style={{
+              ...messageStyle,
+              backgroundColor:
+                messageType === "success"
+                  ? "#ecfdf5"
+                  : "#fef2f2",
+              color:
+                messageType === "success"
+                  ? "#166534"
+                  : "#991b1b",
+            }}
+          >
+            {message}
+          </div>
+        )}
+
+        {/* =====================================
+            INCOME AND EXPENSES GRID
+        ===================================== */}
+
+        <div
+          className="tl24-upper-grid"
+          style={upperGridStyle}
+        >
+          {/* ===================================
+              INCOME STATEMENT
+          =================================== */}
+
+          <section style={panelStyle}>
+            <PanelTitle
+              title="INCOME STATEMENT"
+              tone="blue"
+            />
+
+            <div style={tableHeaderStyle}>
+              <div>
+                DESCRIPTION
+              </div>
+
+              <div>
+                AMOUNT (KES)
+              </div>
+            </div>
+
+            <IncomeDisplayRow
+              label="Balance B/F (Previous Shift)"
+              amount={openingBalance}
+            />
+
+            {/* COMPANY FLOATS */}
+
+            {companySlots.map(
+              (entry, index) => (
+                <ReadOnlyCompanyFloatRow
+                  key={`company-${index}`}
+                  label={`Added Float ${
+                    index + 1
+                  } From Company`}
+                  entry={entry}
+                />
+              )
+            )}
+
+            {/* M-SHWARI FLOATS */}
+
+            {mshwariSlots.map(
+              (entry, index) => {
+                const mshwariUnlocked =
+                  index === 0 ||
+                  Boolean(
+                    mshwariSlots[index - 1]
+                  );
+
+                return (
+                  <EditableFloatRow
+                    key={`mshwari-${index}`}
+                    label={`Added Float ${
+                      index + 1
+                    } From M-Shwari`}
+                    savedEntry={entry}
+                    value={
+                      floatInputs.mshwari[
+                        index
+                      ] || ""
+                    }
+                    disabled={
+                      savingFloats ||
+                      !mshwariUnlocked
+                    }
+                    onChange={(value) => {
+                      setFloatInputs(
+                        (previous) => {
+                          const mshwari = [
+                            ...previous.mshwari,
+                          ];
+
+                          mshwari[index] =
+                            value;
+
+                          return {
+                            ...previous,
+                            mshwari,
+                          };
+                        }
+                      );
+                    }}
+                  />
+                );
+              }
+            )}
+
+            {/* TOTAL ADDED */}
+
+            <div style={incomeTotalStyle}>
+              <strong>
+                TOTAL ADDED
+              </strong>
+
+              <strong>
+                {money(totalAdded)}
+              </strong>
+            </div>
+
+            <div
+              style={companyFloatNoticeStyle}
+            >
+              Company Float 1, 2 and 3 are
+              read-only. They are posted
+              automatically by Legend Accounts.
+            </div>
+
+            {/* SAVE M-SHWARI */}
+
+            <div
+              style={panelButtonWrapStyle}
+            >
+              <button
+                type="button"
+                onClick={saveFloats}
+                disabled={savingFloats}
+                style={{
+                  ...greenActionStyle,
+                  backgroundColor:
+                    savingFloats
+                      ? "#94a3b8"
+                      : "#16804A",
+                }}
+              >
+                {savingFloats
+                  ? "Saving..."
+                  : "Save M-Shwari Float"}
+              </button>
+            </div>
+          </section>
+
+          {/* ===================================
+              EXPENSES
+          =================================== */}
+
+          <section style={panelStyle}>
+            <PanelTitle
+              title="EXPENSES"
+              tone="red"
+            />
+
+            <div style={expenseHeaderStyle}>
+              <div>
+                NO.
+              </div>
+
+              <div>
+                DESCRIPTION
+              </div>
+
+              <div>
+                AMOUNT (KES)
+              </div>
+            </div>
+
+            {/* EXPENSE ROWS */}
+
+            {Array.from(
+              {
+                length: 10,
+              },
+              (_, index) => {
+                const saved =
+                  manualExpenses[index];
+
+                const rowUnlocked =
+                  index === 0 ||
+                  Boolean(
+                    manualExpenses[
+                      index - 1
+                    ]
+                  );
+
+                const rowDisabled =
+                  savingExpenses ||
+                  !rowUnlocked;
+
+                return (
+                  <div
+                    key={index}
+                    style={expenseRowStyle}
+                  >
+                    <div>
+                      {index + 1}
+                    </div>
+
+                    {saved ? (
+                      <>
+                        <div
+                          style={savedExpenseStyle}
+                        >
+                          {saved.description}
+                        </div>
+
+                        <div
+                          style={savedExpenseStyle}
+                        >
+                          {money(saved.amount)}{" "}
+                          ✓
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {/* DESCRIPTION */}
+
+                        <input
+                          value={
+                            expenseInputs[
+                              index
+                            ]?.description || ""
+                          }
+                          placeholder={
+                            rowUnlocked
+                              ? "Description"
+                              : "Locked"
+                          }
+                          disabled={rowDisabled}
+                          onChange={(event) => {
+                            const value =
+                              event.target.value;
+
+                            setExpenseInputs(
+                              (previous) => {
+                                const next =
+                                  previous.map(
+                                    (row) => ({
+                                      ...row,
+                                    })
+                                  );
+
+                                next[
+                                  index
+                                ].description =
+                                  value;
+
+                                return next;
+                              }
+                            );
+                          }}
+                          style={{
+                            ...expenseInputStyle,
+                            backgroundColor:
+                              rowDisabled
+                                ? "#f1f5f9"
+                                : "white",
+                            cursor:
+                              rowDisabled
+                                ? "not-allowed"
+                                : "text",
+                          }}
+                        />
+
+                        {/* AMOUNT */}
+
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={
+                            expenseInputs[
+                              index
+                            ]?.amount || ""
+                          }
+                          placeholder={
+                            rowUnlocked
+                              ? "0.00"
+                              : "Locked"
+                          }
+                          disabled={rowDisabled}
+                          onChange={(event) => {
+                            const value =
+                              event.target.value;
+
+                            setExpenseInputs(
+                              (previous) => {
+                                const next =
+                                  previous.map(
+                                    (row) => ({
+                                      ...row,
+                                    })
+                                  );
+
+                                next[
+                                  index
+                                ].amount =
+                                  value;
+
+                                return next;
+                              }
+                            );
+                          }}
+                          style={{
+                            ...expenseInputStyle,
+                            backgroundColor:
+                              rowDisabled
+                                ? "#f1f5f9"
+                                : "white",
+                            cursor:
+                              rowDisabled
+                                ? "not-allowed"
+                                : "text",
+                          }}
+                        />
+                      </>
+                    )}
+                  </div>
+                );
+              }
+            )}
+
+            {/* TOTAL EXPENSES */}
+
+            <div style={expenseTotalStyle}>
+              <strong>
+                TOTAL EXPENSES
+              </strong>
+
+              <strong>
+                {money(totalExpenses)}
+              </strong>
+            </div>
+
+            <div
+              style={automaticExpenseNoticeStyle}
+            >
+              Cashier → Legend Accounts
+              transfers are added to Total
+              Expenses automatically after
+              Accounts confirms receipt.
+            </div>
+
+            {/* SAVE EXPENSE */}
+
+            <div
+              style={panelButtonWrapStyle}
+            >
+              <button
+                type="button"
+                onClick={saveExpenses}
+                disabled={
+                  savingExpenses ||
+                  manualExpenses.length >= 10
+                }
+                style={{
+                  ...redActionStyle,
+                  backgroundColor:
+                    savingExpenses ||
+                    manualExpenses.length >= 10
+                      ? "#94a3b8"
+                      : "#BF3443",
+                }}
+              >
+                {savingExpenses
+                  ? "Saving..."
+                  : manualExpenses.length >= 10
+                  ? "All Expenses Saved"
+                  : `Save Expense ${
+                      manualExpenses.length + 1
+                    }`}
+              </button>
+            </div>
+          </section>
+        </div>
+
+        {/* =====================================
+            PART 4 CONTINUES HERE
+            24-HOUR OPERATIONS LAYOUT
+        ===================================== */}
+
+        {/* =========================================
+            24-HOUR OPERATIONS LAYOUT
+        ========================================= */}
+
+        <div
+          className="tl24-operations-grid"
+          style={operationsGridStyle}
+        >
+          {/* =====================================
+              PLATFORM READINGS COLUMN
+          ===================================== */}
+
+          <div style={platformColumnStyle}>
+            <PlatformReadings24Hour
+              user={user}
+              currentShift={
+                shift || currentShift
+              }
+              refreshKey={refreshKey}
+              onReadingsChanged={
+                refresh24HourReport
+              }
+            />
+          </div>
+
+          {/* =====================================
+              RIGHT-SIDE FINANCIAL PANELS
+          ===================================== */}
+
+          <div style={sidePanelsStyle}>
+
+            {/* SAVINGS AND BANKING */}
+
+            <CashierSavingsPanel
+              user={user}
+              currentShift={
+                shift || currentShift
+              }
+            />
+
+            {/* WEEKLY SALARY */}
+
+            <CashierSalaryPanel
+              user={user}
+              currentShift={
+                shift || currentShift
+              }
+              onSalaryPaid={
+                refresh24HourReport
+              }
+            />
+
+            {/* ACCOUNTS INFORMATION */}
+
+            <CashierAccountsPanel
+              user={user}
+            />
+
+            {/* CASHIER FLOAT RETURNS */}
+
+            <CashierAccountsReturnPanel
+              user={user}
+              currentShift={
+                shift || currentShift
+              }
+              onReturnChanged={
+                refresh24HourReport
+              }
+            />
+          </div>
+        </div>
+
+        {/* =========================================
+            FINANCIAL SUMMARY
+        ========================================= */}
+
+        <div
+          className="tl24-summary-grid"
+          style={summaryGridStyle}
+        >
+          <SummaryBox
+            title="TOTAL OUTPUT"
+            amount={totalOutput}
+            tone="green"
+          />
+
+          <SummaryBox
+            title="TOTAL SALES"
+            amount={totalSales}
+            tone="blue"
+          />
+
+          <SummaryBox
+            title="TOTAL EXPENSES"
+            amount={totalExpenses}
+            tone="red"
+          />
+
+          <SummaryBox
+            title="CLOSING BALANCE"
+            amount={closingBalance}
+            tone="navy"
+          />
+        </div>
+
+        {/* =========================================
+            SHIFT CLOSING AND HANDOVER
+        ========================================= */}
+
+        <CloseShift24Hour
+          user={user}
+          currentShift={
+            shift || currentShift
+          }
+          refreshKey={refreshKey}
+          onShiftClosed={() => {
+            router.refresh();
+            window.location.reload();
+          }}
+        />
+
+        {/* =========================================
+            IMPORTANT INFORMATION
+        ========================================= */}
+
+        <section style={informationStyle}>
+          <div style={informationTitleStyle}>
+            IMPORTANT INFORMATION
+          </div>
+
+          <div style={informationBodyStyle}>
+            <div>
+              1. Shift 1 runs from 9:00 AM
+              to 9:00 PM.
+            </div>
+
+            <div>
+              2. Shift 2 runs from 9:00 PM
+              to 9:00 AM.
+            </div>
+
+            <div>
+              3. Resettable platforms are
+              recorded at 11:59 PM and reset
+              to zero at midnight.
+            </div>
+
+            <div>
+              4. TABLE does not reset at
+              midnight and has no midnight
+              reading.
+            </div>
+
+            <div>
+              5. TABLE is handed over
+              continuously at 9:00 AM
+              and 9:00 PM.
+            </div>
+
+            <div>
+              6. Company Float 1, 2 and 3
+              are controlled by Legend
+              Accounts and are read-only
+              for the cashier.
+            </div>
+
+            <div>
+              7. Cashier → Legend Accounts
+              returns automatically become
+              expenses after Accounts
+              confirms receipt.
+            </div>
+
+            <div>
+              8. Weekly salary payments
+              automatically create a
+              private expense after PIN
+              confirmation.
+            </div>
+
+            <div>
+              9. Cashier handover is only
+              available during the
+              authorised morning or
+              evening handover window.
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
 );
 }
 
@@ -2322,1373 +2226,952 @@ crownStyle
 // ==================================================
 
 function SidebarItem({
-icon,
-label,
-active,
+  icon,
+  label,
+  active,
 }) {
-return (
-<div
-style={{
-padding:
-"18px",
-
-display:  
-      "flex",  
-
-    gap:  
-      "12px",  
-
-    color:  
-      "white",  
-
-    backgroundColor:  
-      active  
-        ? "#1687ee"  
-        : "transparent",  
-  }}  
->  
-  <span>  
-    {icon}  
-  </span>  
-
-  <span>  
-    {label}  
-  </span>  
-</div>
-
-);
+  return (
+    <div
+      style={{
+        padding: "14px 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        color: active
+          ? "#ffffff"
+          : "#CBD5E1",
+        backgroundColor: active
+          ? "#175E8B"
+          : "transparent",
+        borderRadius: "9px",
+        fontSize: "13px",
+        fontWeight: active ? 700 : 500,
+      }}
+    >
+      <span>{icon}</span>
+      <span>{label}</span>
+    </div>
+  );
 }
 
 function TopCard({
-title,
-subtitle,
-footer,
+  title,
+  subtitle,
+  footer,
 }) {
-return (
-<div
-style={
-shopCardStyle
-}
->
-<div
-style={
-shopTitleStyle
-}
->
-{title}
-</div>
+  return (
+    <div style={shopCardStyle}>
+      <div style={shopTitleStyle}>
+        {title}
+      </div>
 
-<strong>  
-    {subtitle}  
-  </strong>  
+      <strong>
+        {subtitle}
+      </strong>
 
-  <div  
-    style={  
-      smallTextStyle  
-    }  
-  >  
-    {footer}  
-  </div>  
-</div>
-
-);
+      <div style={smallTextStyle}>
+        {footer}
+      </div>
+    </div>
+  );
 }
 
 function InfoCard({
-title,
-value,
-subvalue,
-tone,
+  title,
+  value,
+  subvalue,
+  tone,
 }) {
-const background =
-tone === "green"
-? "#07912a"
-: tone ===
-"brown"
-? "#99500d"
-: "#0873b9";
+  const accent =
+    tone === "green"
+      ? "#16A34A"
+      : tone === "brown"
+      ? "#B77936"
+      : "#2584BA";
 
-return (
-<div
-style={{
-backgroundColor:
-background,
+  return (
+    <div
+      style={{
+        backgroundColor: "#FFFFFF",
+        color: "#142B40",
+        border: "1px solid #DCE5EE",
+        borderTop: `3px solid ${accent}`,
+        borderRadius: "12px",
+        padding: "15px 12px",
+        textAlign: "center",
+        boxShadow:
+          "0 3px 12px rgba(15,39,65,0.04)",
+      }}
+    >
+      <strong
+        style={{
+          color: "#64748B",
+          fontSize: "11px",
+          letterSpacing: ".5px",
+        }}
+      >
+        {title}
+      </strong>
 
-color:  
-      "white",  
+      <div style={infoValueStyle}>
+        {value}
+      </div>
 
-    borderRadius:  
-      "8px",  
-
-    padding:  
-      "12px",  
-
-    textAlign:  
-      "center",  
-  }}  
->  
-  <strong>  
-    {title}  
-  </strong>  
-
-  <div  
-    style={  
-      infoValueStyle  
-    }  
-  >  
-    {value}  
-  </div>  
-
-  <small>  
-    {subvalue}  
-  </small>  
-</div>
-
-);
+      {subvalue && (
+        <small style={{ color: "#64748B" }}>
+          {subvalue}
+        </small>
+      )}
+    </div>
+  );
 }
 
 function PanelTitle({
-title,
-tone,
+  title,
+  tone,
 }) {
-const background =
-tone === "red"
-? "#b60000"
-: "#0873b9";
+  const accent =
+    tone === "red"
+      ? "#BF3443"
+      : "#176B9A";
 
-return (
-<div
-style={{
-backgroundColor:
-background,
-
-color:  
-      "white",  
-
-    padding:  
-      "9px",  
-
-    fontWeight:  
-      "bold",  
-  }}  
->  
-  {title}  
-</div>
-
-);
+  return (
+    <div
+      style={{
+        backgroundColor: "#FFFFFF",
+        color: "#142B40",
+        padding: "14px 16px",
+        fontSize: "14px",
+        fontWeight: 800,
+        borderBottom:
+          "1px solid #E2E8F0",
+        borderLeft:
+          `4px solid ${accent}`,
+        letterSpacing: ".4px",
+      }}
+    >
+      {title}
+    </div>
+  );
 }
 
 function IncomeDisplayRow({
-label,
-amount,
+  label,
+  amount,
 }) {
-return (
-<div
-style={
-incomeRowStyle
-}
->
-<div>
-{label}
-</div>
+  return (
+    <div style={incomeRowStyle}>
+      <div>{label}</div>
 
-<div  
-    style={  
-      amountBoxStyle  
-    }  
-  >  
-    {money(  
-      amount  
-    )}  
-  </div>  
-</div>
-
-);
+      <div style={amountBoxStyle}>
+        {money(amount)}
+      </div>
+    </div>
+  );
 }
 
 // ==================================================
-// COMPANY FLOAT - ALWAYS READ ONLY
+// COMPANY FLOAT — ALWAYS READ ONLY
 // ==================================================
 
 function ReadOnlyCompanyFloatRow({
-label,
-entry,
+  label,
+  entry,
 }) {
-return (
-<div
-style={
-incomeRowStyle
-}
->
-<div>
-{label}{" "}
+  return (
+    <div style={incomeRowStyle}>
+      <div>
+        {label}{" "}
 
-<span  
-      style={  
-        readOnlyInlineStyle  
-      }  
-    >  
-      {entry  
-        ? "✓"  
-        : "🔒"}  
-    </span>  
-  </div>  
+        <span style={readOnlyInlineStyle}>
+          {entry ? "✓" : "🔒"}
+        </span>
+      </div>
 
-  <div  
-    style={  
-      entry  
-        ? savedMoneyStyle  
-        : lockedMoneyStyle  
-    }  
-  >  
-    {entry  
-      ? money(  
-          entry.amount  
-        )  
-      : "0.00"}  
-  </div>  
-</div>
-
-);
+      <div
+        style={
+          entry
+            ? savedMoneyStyle
+            : lockedMoneyStyle
+        }
+      >
+        {entry
+          ? money(entry.amount)
+          : "0.00"}
+      </div>
+    </div>
+  );
 }
 
 function EditableFloatRow({
-label,
-savedEntry,
-value,
-onChange,
-disabled,
+  label,
+  savedEntry,
+  value,
+  onChange,
+  disabled,
 }) {
-const locked =
-Boolean(
-savedEntry
-) ||
-disabled;
+  const locked =
+    Boolean(savedEntry) ||
+    disabled;
 
-return (
-<div
-style={
-incomeRowStyle
-}
->
-<div>
-{label}{" "}
+  return (
+    <div style={incomeRowStyle}>
+      <div>
+        {label}{" "}
 
-{savedEntry && (  
-      <span  
-        style={  
-          savedInlineStyle  
-        }  
-      >  
-        ✓  
-      </span>  
-    )}  
-  </div>  
+        {savedEntry && (
+          <span style={savedInlineStyle}>
+            ✓
+          </span>
+        )}
+      </div>
 
-  {savedEntry ? (  
-    <div  
-      style={  
-        savedMoneyStyle  
-      }  
-    >  
-      {money(  
-        savedEntry.amount  
-      )}  
-    </div>  
-  ) : (  
-    <input  
-      type="number"  
-      min="0"  
-      step="0.01"  
-      value={  
-        value  
-      }  
-      disabled={  
-        disabled  
-      }  
-      placeholder={  
-        disabled  
-          ? "Locked"  
-          : "0.00"  
-      }  
-      onChange={(  
-        event  
-      ) =>  
-        onChange(  
-          event.target.value  
-        )  
-      }  
-      style={{  
-        ...moneyInputStyle,  
-
-        backgroundColor:  
-          locked  
-            ? "#f1f5f9"  
-            : "white",  
-
-        cursor:  
-          locked  
-            ? "not-allowed"  
-            : "text",  
-      }}  
-    />  
-  )}  
-</div>
-
-);
+      {savedEntry ? (
+        <div style={savedMoneyStyle}>
+          {money(savedEntry.amount)}
+        </div>
+      ) : (
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={value}
+          disabled={disabled}
+          placeholder={
+            disabled
+              ? "Locked"
+              : "0.00"
+          }
+          onChange={(event) =>
+            onChange(
+              event.target.value
+            )
+          }
+          style={{
+            ...moneyInputStyle,
+            backgroundColor: locked
+              ? "#F1F5F9"
+              : "#FFFFFF",
+            cursor: locked
+              ? "not-allowed"
+              : "text",
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 function SummaryBox({
-title,
-amount,
-tone,
+  title,
+  amount,
+  tone,
 }) {
-const background =
-tone === "red"
-? "#ef233c"
-: tone ===
-"navy"
-? "#075b95"
-: tone ===
-"green"
-? "#078a3b"
-: "#0789dd";
+  const accent =
+    tone === "red"
+      ? "#BF3443"
+      : tone === "navy"
+      ? "#183A59"
+      : tone === "green"
+      ? "#16804A"
+      : "#176B9A";
 
-return (
-<div
-style={{
-backgroundColor:
-background,
+  return (
+    <div
+      style={{
+        backgroundColor: "#FFFFFF",
+        color: "#142B40",
+        padding: "18px 14px",
+        borderRadius: "12px",
+        border: "1px solid #DCE5EE",
+        borderTop: `4px solid ${accent}`,
+        textAlign: "center",
+        boxShadow:
+          "0 3px 12px rgba(15,39,65,0.04)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "11px",
+          color: "#64748B",
+          fontWeight: 800,
+          letterSpacing: ".5px",
+        }}
+      >
+        {title}
+      </div>
 
-color:  
-      "white",  
-
-    padding:  
-      "13px",  
-
-    borderRadius:  
-      "7px",  
-
-    textAlign:  
-      "center",  
-
-    fontWeight:  
-      "bold",  
-  }}  
->  
-  {title}  
-
-  <div  
-    style={  
-      summaryValueStyle  
-    }  
-  >  
-    KES{" "}  
-    {money(  
-      amount  
-    )}  
-  </div>  
-</div>
-
-);
+      <div style={summaryValueStyle}>
+        KES {money(amount)}
+      </div>
+    </div>
+  );
 }
 
 // ==================================================
-// HELPERS
+// PART 5 BEGINS WITH HELPERS AND STYLE CONSTANTS
 // ==================================================
 
-function authHeaders(
-anonKey,
-accessToken
-) {
-return {
-apikey:
-anonKey,
+/* ==================================================
+   TEAM LEGEND — 24-HOUR CASHIER DASHBOARD
+   PART 5 — HELPERS AND PROFESSIONAL STYLES
+================================================== */
 
-Authorization:  
-  `Bearer ${accessToken}`,  
+// ==================================================
+// SUPABASE AUTHENTICATION HEADERS
+// ==================================================
 
-"Content-Type":  
-  "application/json",
+function authHeaders(anonKey, accessToken) {
+  return {
+    apikey: anonKey,
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+}
 
+// ==================================================
+// SAFE JSON RESPONSE
+// ==================================================
+
+async function safeJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+// ==================================================
+// MONEY FORMATTING
+// ==================================================
+
+function money(value) {
+  const numeric = Number(value ?? 0);
+
+  const safeValue = Number.isFinite(numeric)
+    ? numeric
+    : 0;
+
+  return safeValue.toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function roundMoney(value) {
+  return (
+    Math.round(
+      (Number(value) + Number.EPSILON) * 100
+    ) / 100
+  );
+}
+
+// ==================================================
+// NAIROBI REPORT DATE
+// ==================================================
+
+function formatReportDate(value) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+// ==================================================
+// NAIROBI REPORT DAY
+// ==================================================
+
+function formatReportDay(value) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    weekday: "long",
+  }).format(new Date(value));
+}
+
+// ==================================================
+// DISPLAY SHIFT TIME
+// ==================================================
+
+function displayTime(value) {
+  return String(value || "")
+    .split(".")[0]
+    .slice(0, 5);
+}
+
+// ==================================================
+// NORMALISE SHIFT NAME
+// ==================================================
+
+function normaliseShiftName(value) {
+  const text = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (text === "SHIFT 1" || text === "SHIFT1") {
+    return "SHIFT 1";
+  }
+
+  if (text === "SHIFT 2" || text === "SHIFT2") {
+    return "SHIFT 2";
+  }
+
+  return text;
+}
+
+// ==================================================
+// GET NAIROBI HOUR
+// ==================================================
+
+function getNairobiHour(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "Africa/Nairobi",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }
+  );
+
+  const parts = formatter.formatToParts(date);
+
+  const hourPart = parts.find(
+    (part) => part.type === "hour"
+  );
+
+  const hour = Number(hourPart?.value ?? 0);
+
+  return Number.isFinite(hour) ? hour : 0;
+}
+
+// ==================================================
+// PROFESSIONAL DESIGN COLOUR PALETTE
+// ==================================================
+
+const palette = {
+  navy: "#0B2E49",
+  blue: "#156B9A",
+  canvas: "#F2F5F9",
+  white: "#FFFFFF",
+  ink: "#172B45",
+  muted: "#687B91",
+  border: "#DEE6EF",
+  green: "#16804A",
+  red: "#BF3443",
 };
-}
 
-async function safeJson(
-response
-) {
-try {
-return await response.json();
-} catch {
-return null;
-}
-}
-
-function money(
-value
-) {
-const numeric =
-Number(
-value ?? 0
-);
-
-const safeValue =
-Number.isFinite(
-numeric
-)
-? numeric
-: 0;
-
-return safeValue.toLocaleString(
-"en-KE",
-{
-minimumFractionDigits:
-2,
-
-maximumFractionDigits:  
-    2,  
-}
-
-);
-}
-
-function roundMoney(
-value
-) {
-return (
-Math.round(
-(
-Number(
-value
-) +
-Number.EPSILON
-) *
-100
-) / 100
-);
-}
-
-function formatReportDate(
-value
-) {
-return new Intl.DateTimeFormat(
-"en-GB",
-{
-timeZone:
-"Africa/Nairobi",
-
-day:  
-    "2-digit",  
-
-  month:  
-    "short",  
-
-  year:  
-    "numeric",  
-}
-
-).format(
-new Date(
-value
-)
-);
-}
-
-function formatReportDay(
-value
-) {
-return new Intl.DateTimeFormat(
-"en-GB",
-{
-timeZone:
-"Africa/Nairobi",
-
-weekday:  
-    "long",  
-}
-
-).format(
-new Date(
-value
-)
-);
-}
-
-function displayTime(
-value
-) {
-return String(
-value ||
-""
-)
-.split(
-"."
-)[0]
-.slice(
-0,
-5
-);
-}
-
-function normaliseShiftName(
-value
-) {
-const text =
-String(
-value ||
-""
-)
-.trim()
-.toUpperCase()
-.replace(
-/[_-]+/g,
-" "
-)
-.replace(
-/\s+/g,
-" "
-);
-
-if (
-text ===
-"SHIFT 1" ||
-text ===
-"SHIFT1"
-) {
-return "SHIFT 1";
-}
-
-if (
-text ===
-"SHIFT 2" ||
-text ===
-"SHIFT2"
-) {
-return "SHIFT 2";
-}
-
-return text;
-}
-
-function getNairobiHour(
-date =
-new Date()
-) {
-const formatter =
-new Intl.DateTimeFormat(
-"en-GB",
-{
-timeZone:
-"Africa/Nairobi",
-
-hour:  
-      "2-digit",  
-
-    hourCycle:  
-      "h23",  
-  }  
-);
-
-const parts =
-formatter.formatToParts(
-date
-);
-
-const hourPart =
-parts.find(
-(
-part
-) =>
-part.type ===
-"hour"
-);
-
-const hour =
-Number(
-hourPart?.value ??
-0
-);
-
-return Number.isFinite(
-hour
-)
-? hour
-: 0;
-}
 // ==================================================
-// STYLES
+// PAGE
 // ==================================================
 
 const pageStyle = {
-minHeight:
-"100vh",
-
-backgroundColor:
-"#edf2f7",
-
-fontFamily:
-"Arial, sans-serif",
+  minHeight: "100vh",
+  backgroundColor: palette.canvas,
+  color: palette.ink,
+  fontFamily:
+    'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
 };
 
 const loadingStyle = {
-minHeight:
-"100vh",
-
-display:
-"flex",
-
-justifyContent:
-"center",
-
-alignItems:
-"center",
+  minHeight: "100vh",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  color: palette.navy,
+  fontWeight: 600,
 };
 
+// ==================================================
+// HEADER
+// ==================================================
+
 const topHeaderStyle = {
-backgroundColor:
-"#063c63",
-
-color:
-"white",
-
-padding:
-"12px 22px",
-
-display:
-"flex",
-
-justifyContent:
-"space-between",
-
-alignItems:
-"center",
+  backgroundColor: palette.navy,
+  color: "white",
+  padding: "16px 24px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "16px",
+  boxShadow: "0 2px 14px rgba(12,36,59,.10)",
 };
 
 const brandWrapStyle = {
-display:
-"flex",
-
-gap:
-"12px",
-
-alignItems:
-"center",
+  display: "flex",
+  gap: "12px",
+  alignItems: "center",
 };
 
 const crownStyle = {
-fontSize:
-"45px",
+  fontSize: "34px",
+  lineHeight: 1,
 };
 
 const brandStyle = {
-fontSize:
-"30px",
-
-fontWeight:
-"900",
+  fontSize: "24px",
+  fontWeight: 850,
+  letterSpacing: ".35px",
 };
 
 const taglineStyle = {
-fontSize:
-"10px",
-
-letterSpacing:
-"3px",
+  fontSize: "9px",
+  letterSpacing: "2.2px",
+  color: "#C3D8E7",
+  fontWeight: 700,
 };
 
 const headerRightStyle = {
-display:
-"flex",
-
-gap:
-"18px",
-
-alignItems:
-"center",
-
-textAlign:
-"right",
+  display: "flex",
+  gap: "16px",
+  alignItems: "center",
+  textAlign: "right",
+  fontSize: "12px",
 };
 
 const headerShopStyle = {
-fontSize:
-"12px",
+  fontSize: "10px",
+  marginTop: "4px",
+  color: "#BFD2E0",
+  fontWeight: 700,
+  letterSpacing: ".6px",
 };
 
 const logoutButtonStyle = {
-background:
-"transparent",
-
-color:
-"white",
-
-border:
-"1px solid white",
-
-padding:
-"8px 14px",
-
-borderRadius:
-"6px",
-
-cursor:
-"pointer",
+  background: "rgba(255,255,255,.07)",
+  color: "white",
+  border: "1px solid rgba(255,255,255,.32)",
+  padding: "9px 15px",
+  borderRadius: "9px",
+  fontWeight: 700,
+  cursor: "pointer",
 };
 
+// ==================================================
+// BODY AND SIDEBAR
+// ==================================================
+
 const bodyStyle = {
-display:
-"flex",
+  display: "flex",
+  minWidth: 0,
 };
 
 const sidebarStyle = {
-width:
-"190px",
-
-backgroundColor:
-"#073555",
-
-minHeight:
-"calc(100vh - 70px)",
+  width: "178px",
+  flexShrink: 0,
+  backgroundColor: "#103A59",
+  minHeight: "calc(100vh - 76px)",
+  borderRight: "1px solid rgba(255,255,255,.08)",
 };
 
 const mainStyle = {
-flex:
-1,
-
-padding:
-"12px",
-
-minWidth:
-0,
+  flex: 1,
+  padding: "18px",
+  minWidth: 0,
+  maxWidth: "100%",
 };
 
+// ==================================================
+// TOP INFORMATION CARDS
+// ==================================================
+
 const topGridStyle = {
-display:
-"grid",
-
-gridTemplateColumns:
-"2fr repeat(5,1fr)",
-
-gap:
-"7px",
-
-marginBottom:
-"10px",
+  display: "grid",
+  gridTemplateColumns:
+    "2fr repeat(5,minmax(0,1fr))",
+  gap: "10px",
+  marginBottom: "12px",
 };
 
 const shopCardStyle = {
-backgroundColor:
-"#08628f",
-
-color:
-"white",
-
-padding:
-"12px",
-
-borderRadius:
-"8px",
-
-textAlign:
-"center",
+  backgroundColor: palette.navy,
+  color: "white",
+  padding: "17px 14px",
+  borderRadius: "12px",
+  textAlign: "center",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  boxShadow: "0 2px 7px rgba(13,46,73,.09)",
 };
 
 const shopTitleStyle = {
-fontSize:
-"27px",
-
-fontWeight:
-"900",
+  fontSize: "25px",
+  fontWeight: 850,
+  letterSpacing: ".4px",
 };
 
 const smallTextStyle = {
-fontSize:
-"10px",
-
-marginTop:
-"4px",
+  fontSize: "10px",
+  marginTop: "6px",
+  opacity: 0.8,
+  letterSpacing: ".5px",
 };
 
 const infoValueStyle = {
-fontSize:
-"17px",
-
-fontWeight:
-"bold",
-
-marginTop:
-"8px",
+  fontSize: "16px",
+  fontWeight: 750,
+  marginTop: "9px",
+  overflowWrap: "anywhere",
 };
 
 // ==================================================
-// GREETING
+// GREETING AND SHIFT BANNERS
 // ==================================================
 
 const greetingBannerStyle = {
-width:
-"100%",
-
-boxSizing:
-"border-box",
-
-padding:
-"11px 14px",
-
-borderRadius:
-"7px",
-
-marginBottom:
-"10px",
-
-textAlign:
-"center",
-
-fontSize:
-"18px",
-
-fontWeight:
-"800",
-
-letterSpacing:
-"0.2px",
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "12px 16px",
+  borderRadius: "10px",
+  marginBottom: "10px",
+  textAlign: "center",
+  fontSize: "15px",
+  fontWeight: 750,
+  letterSpacing: ".1px",
 };
 
 const greetingWelcomeStyle = {
-backgroundColor:
-"#f0fdf4",
-
-color:
-"#166534",
-
-border:
-"1px solid #86efac",
+  backgroundColor: "#EAF8F0",
+  color: "#14633D",
+  border: "1px solid #BFE8CF",
 };
 
 const greetingGoodbyeStyle = {
-backgroundColor:
-"#fff7ed",
-
-color:
-"#9a3412",
-
-border:
-"1px solid #fdba74",
+  backgroundColor: "#FFF6E9",
+  color: "#975419",
+  border: "1px solid #F2D8B5",
 };
 
 const shiftBannerStyle = {
-backgroundColor:
-"#ecfdf5",
-
-color:
-"#166534",
-
-border:
-"1px solid #86efac",
-
-padding:
-"10px 14px",
-
-borderRadius:
-"7px",
-
-marginBottom:
-"10px",
-
-display:
-"flex",
-
-justifyContent:
-"space-between",
-
-gap:
-"10px",
+  backgroundColor: "#FFFFFF",
+  color: palette.navy,
+  border: `1px solid ${palette.border}`,
+  padding: "11px 15px",
+  borderRadius: "10px",
+  marginBottom: "12px",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "10px",
+  fontSize: "12px",
+  boxShadow: "0 1px 4px rgba(13,46,73,.03)",
 };
 
 // ==================================================
-// INCOME + EXPENSES
+// INCOME AND EXPENSES LAYOUT
 // ==================================================
 
 const upperGridStyle = {
-display:
-"grid",
-
-gridTemplateColumns:
-"minmax(0, 1fr) minmax(0, 1fr)",
-
-gap:
-"10px",
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(0,1fr) minmax(0,1fr)",
+  gap: "14px",
+  alignItems: "stretch",
 };
 
 const panelStyle = {
-backgroundColor:
-"white",
-
-borderRadius:
-"6px",
-
-overflow:
-"hidden",
+  backgroundColor: "white",
+  borderRadius: "12px",
+  overflow: "hidden",
+  border: `1px solid ${palette.border}`,
+  boxShadow: "0 4px 18px rgba(15,45,73,.045)",
 };
 
+// ==================================================
+// INCOME TABLE
+// ==================================================
+
 const tableHeaderStyle = {
-display:
-"grid",
-
-gridTemplateColumns:
-"1.6fr 1fr",
-
-padding:
-"9px",
-
-backgroundColor:
-"#eef4f8",
-
-fontSize:
-"11px",
-
-fontWeight:
-"bold",
+  display: "grid",
+  gridTemplateColumns: "1.6fr 1fr",
+  padding: "11px 13px",
+  backgroundColor: "#F2F6FA",
+  color: "#52677F",
+  fontSize: "10px",
+  letterSpacing: ".5px",
+  fontWeight: 800,
 };
 
 const incomeRowStyle = {
-display:
-"grid",
-
-gridTemplateColumns:
-"1.6fr 1fr",
-
-gap:
-"8px",
-
-padding:
-"5px 9px",
-
-alignItems:
-"center",
-
-fontSize:
-"11px",
+  display: "grid",
+  gridTemplateColumns: "1.6fr 1fr",
+  gap: "10px",
+  padding: "6px 13px",
+  alignItems: "center",
+  fontSize: "12px",
+  minHeight: "36px",
+  color: palette.ink,
 };
 
 const amountBoxStyle = {
-padding:
-"7px",
-
-border:
-"1px solid #ddd",
-
-textAlign:
-"right",
+  padding: "9px 10px",
+  border: `1px solid ${palette.border}`,
+  borderRadius: "7px",
+  backgroundColor: "#F8FAFC",
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
 };
 
 const moneyInputStyle = {
-width:
-"100%",
-
-boxSizing:
-"border-box",
-
-padding:
-"7px",
-
-border:
-"1px solid #94a3b8",
-
-borderRadius:
-"4px",
-
-textAlign:
-"right",
+  width: "100%",
+  boxSizing: "border-box",
+  minHeight: "35px",
+  padding: "8px 10px",
+  border: "1px solid #C9D5E2",
+  borderRadius: "7px",
+  textAlign: "right",
+  color: palette.ink,
+  fontSize: "12px",
+  fontVariantNumeric: "tabular-nums",
 };
 
 const savedMoneyStyle = {
-padding:
-"7px",
-
-border:
-"1px solid #86efac",
-
-backgroundColor:
-"#ecfdf5",
-
-borderRadius:
-"4px",
-
-textAlign:
-"right",
+  padding: "9px 10px",
+  border: "1px solid #BCE4CE",
+  backgroundColor: "#EFFAF4",
+  color: "#17653F",
+  borderRadius: "7px",
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
 };
 
 const lockedMoneyStyle = {
-padding:
-"7px",
-
-border:
-"1px solid #cbd5e1",
-
-backgroundColor:
-"#f1f5f9",
-
-color:
-"#64748b",
-
-borderRadius:
-"4px",
-
-textAlign:
-"right",
-
-fontWeight:
-"bold",
+  padding: "9px 10px",
+  border: `1px solid ${palette.border}`,
+  backgroundColor: "#F1F5F9",
+  color: "#728399",
+  borderRadius: "7px",
+  textAlign: "right",
+  fontWeight: 650,
 };
 
 const savedInlineStyle = {
-color:
-"#15803d",
-
-fontWeight:
-"bold",
+  color: palette.green,
+  fontWeight: 800,
 };
 
 const readOnlyInlineStyle = {
-color:
-"#1d4ed8",
-
-fontWeight:
-"bold",
+  color: palette.blue,
+  fontWeight: 800,
 };
 
 const incomeTotalStyle = {
-display:
-"flex",
-
-justifyContent:
-"space-between",
-
-padding:
-"11px",
-
-backgroundColor:
-"#dcfce7",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  padding: "13px 14px",
+  backgroundColor: "#EAF7F0",
+  color: "#14633D",
+  fontSize: "13px",
+  fontVariantNumeric: "tabular-nums",
 };
 
+// ==================================================
+// NOTICE BOXES
+// ==================================================
+
 const companyFloatNoticeStyle = {
-margin:
-"8px",
-
-padding:
-"8px",
-
-backgroundColor:
-"#eff6ff",
-
-color:
-"#1e40af",
-
-border:
-"1px solid #bfdbfe",
-
-borderRadius:
-"5px",
-
-fontSize:
-"9px",
-
-textAlign:
-"center",
+  margin: "10px 12px",
+  padding: "9px 12px",
+  backgroundColor: "#F2F7FC",
+  color: "#52677F",
+  border: `1px solid ${palette.border}`,
+  borderRadius: "8px",
+  fontSize: "10px",
+  textAlign: "center",
+  lineHeight: 1.5,
 };
 
 const automaticExpenseNoticeStyle = {
-margin:
-"8px",
-
-padding:
-"8px",
-
-backgroundColor:
-"#fff7ed",
-
-color:
-"#9a3412",
-
-border:
-"1px solid #fed7aa",
-
-borderRadius:
-"5px",
-
-fontSize:
-"9px",
-
-textAlign:
-"center",
+  margin: "10px 12px",
+  padding: "9px 12px",
+  backgroundColor: "#FFF8F0",
+  color: "#866143",
+  border: "1px solid #F3E5D2",
+  borderRadius: "8px",
+  fontSize: "10px",
+  textAlign: "center",
+  lineHeight: 1.5,
 };
 
+// ==================================================
+// ACTION BUTTONS
+// ==================================================
+
 const panelButtonWrapStyle = {
-padding:
-"8px",
+  padding: "8px 12px 13px",
 };
 
 const greenActionStyle = {
-width:
-"100%",
-
-padding:
-"9px",
-
-border:
-"none",
-
-backgroundColor:
-"#07912a",
-
-color:
-"white",
-
-borderRadius:
-"5px",
-
-fontWeight:
-"bold",
-
-cursor:
-"pointer",
+  width: "100%",
+  minHeight: "39px",
+  padding: "10px 12px",
+  border: "none",
+  backgroundColor: palette.green,
+  color: "white",
+  borderRadius: "8px",
+  fontWeight: 750,
+  fontSize: "12px",
+  cursor: "pointer",
 };
 
 const redActionStyle = {
-...greenActionStyle,
-
-backgroundColor:
-"#c50000",
+  ...greenActionStyle,
+  backgroundColor: palette.red,
 };
 
+// ==================================================
+// EXPENSE TABLE
+// ==================================================
+
 const expenseHeaderStyle = {
-display:
-"grid",
-
-gridTemplateColumns:
-"35px 1.5fr 1fr",
-
-padding:
-"8px",
-
-backgroundColor:
-"#fff0f0",
-
-fontSize:
-"10px",
-
-fontWeight:
-"bold",
+  display: "grid",
+  gridTemplateColumns:
+    "35px minmax(0,1.5fr) minmax(0,1fr)",
+  padding: "11px 12px",
+  backgroundColor: "#F9F2F3",
+  color: "#7D5360",
+  fontSize: "10px",
+  letterSpacing: ".4px",
+  fontWeight: 800,
 };
 
 const expenseRowStyle = {
-display:
-"grid",
-
-gridTemplateColumns:
-"35px 1.5fr 1fr",
-
-gap:
-"6px",
-
-padding:
-"4px 8px",
-
-alignItems:
-"center",
+  display: "grid",
+  gridTemplateColumns:
+    "35px minmax(0,1.5fr) minmax(0,1fr)",
+  gap: "7px",
+  padding: "5px 12px",
+  alignItems: "center",
+  minHeight: "36px",
+  fontSize: "12px",
 };
 
 const expenseInputStyle = {
-width:
-"100%",
-
-boxSizing:
-"border-box",
-
-padding:
-"6px",
-
-border:
-"1px solid #cbd5e1",
-
-borderRadius:
-"4px",
+  width: "100%",
+  boxSizing: "border-box",
+  minHeight: "34px",
+  padding: "8px 10px",
+  border: "1px solid #CCD8E4",
+  borderRadius: "7px",
+  color: palette.ink,
+  fontSize: "12px",
 };
 
 const savedExpenseStyle = {
-padding:
-"6px",
-
-border:
-"1px solid #86efac",
-
-backgroundColor:
-"#ecfdf5",
-
-borderRadius:
-"4px",
+  padding: "8px 10px",
+  border: "1px solid #BCE4CE",
+  backgroundColor: "#EFFAF4",
+  color: "#17653F",
+  borderRadius: "7px",
+  overflowWrap: "anywhere",
 };
 
 const expenseTotalStyle = {
-display:
-"flex",
-
-justifyContent:
-"space-between",
-
-padding:
-"10px",
-
-backgroundColor:
-"#c50000",
-
-color:
-"white",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "12px",
+  padding: "13px 14px",
+  backgroundColor: "#FDEEF0",
+  color: "#A72A39",
+  fontSize: "13px",
+  fontVariantNumeric: "tabular-nums",
 };
 
 // ==================================================
-// 24-HOUR OPERATIONS LAYOUT
+// 24-HOUR OPERATIONS GRID
 // ==================================================
 
 const operationsGridStyle = {
-display:
-"grid",
-
-gridTemplateColumns:
-"minmax(0, 1.22fr) minmax(0, 1fr)",
-
-gap:
-"12px",
-
-marginTop:
-"10px",
-
-alignItems:
-"start",
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(0,1.22fr) minmax(0,1fr)",
+  gap: "14px",
+  marginTop: "14px",
+  alignItems: "start",
 };
 
 const platformColumnStyle = {
-minWidth:
-0,
-
-width:
-"100%",
+  minWidth: 0,
+  width: "100%",
 };
 
 const sidePanelsStyle = {
-minWidth:
-0,
-
-width:
-"100%",
-
-display:
-"grid",
-
-gridTemplateColumns:
-"minmax(0, 1fr)",
-
-gap:
-"10px",
-
-alignContent:
-"start",
+  minWidth: 0,
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns: "minmax(0,1fr)",
+  gap: "12px",
+  alignContent: "start",
 };
 
 // ==================================================
-// SUMMARY
+// FINANCIAL SUMMARY
 // ==================================================
 
 const summaryGridStyle = {
-display:
-"grid",
-
-gridTemplateColumns:
-"repeat(4, minmax(0, 1fr))",
-
-gap:
-"10px",
-
-marginTop:
-"10px",
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(4,minmax(0,1fr))",
+  gap: "12px",
+  marginTop: "14px",
 };
 
 const summaryValueStyle = {
-marginTop:
-"8px",
-
-padding:
-"9px",
-
-backgroundColor:
-"white",
-
-color:
-"#111",
-
-borderRadius:
-"5px",
-
-fontSize:
-"20px",
+  marginTop: "12px",
+  padding: "4px 0",
+  color: palette.ink,
+  borderRadius: "6px",
+  fontSize: "21px",
+  fontWeight: 850,
+  fontVariantNumeric: "tabular-nums",
+  overflowWrap: "anywhere",
 };
 
 // ==================================================
-// MESSAGE + INFORMATION
+// STATUS MESSAGES
 // ==================================================
 
 const messageStyle = {
-padding:
-"9px",
-
-marginBottom:
-"8px",
-
-borderRadius:
-"5px",
+  padding: "12px 14px",
+  marginBottom: "12px",
+  borderRadius: "9px",
+  border: `1px solid ${palette.border}`,
+  fontSize: "12px",
+  fontWeight: 650,
 };
 
+// ==================================================
+// IMPORTANT INFORMATION
+// ==================================================
+
 const informationStyle = {
-backgroundColor:
-"white",
-
-marginTop:
-"12px",
-
-borderRadius:
-"7px",
-
-overflow:
-"hidden",
-
-border:
-"1px solid #cbd5e1",
+  backgroundColor: "white",
+  marginTop: "14px",
+  borderRadius: "12px",
+  overflow: "hidden",
+  border: `1px solid ${palette.border}`,
+  boxShadow: "0 3px 12px rgba(15,45,73,.04)",
 };
 
 const informationTitleStyle = {
-backgroundColor:
-"#063c63",
-
-color:
-"white",
-
-padding:
-"10px 14px",
-
-fontWeight:
-"bold",
+  backgroundColor: palette.navy,
+  color: "white",
+  padding: "13px 16px",
+  fontSize: "12px",
+  fontWeight: 800,
+  letterSpacing: ".4px",
 };
 
 const informationBodyStyle = {
-padding:
-"14px",
-
-fontSize:
-"12px",
-
-lineHeight:
-"1.9",
-
-color:
-"#334155",
+  padding: "14px 18px",
+  fontSize: "12px",
+  lineHeight: "2",
+  color: "#51657D",
 };
+
+// ==================================================
+// END OF CASHIER24HOURREPORT.JS
+// ==================================================
