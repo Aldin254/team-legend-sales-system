@@ -7,2430 +7,926 @@ import {
   useState,
 } from "react";
 
-const DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
-
-const navy = "#073b5c";
-
-const field = {
-  boxSizing: "border-box",
-  width: "100%",
-  padding: "9px 10px",
-  border: "1px solid #cbd5e1",
-  borderRadius: 7,
-  background: "#fff",
-  color: "#0f172a",
-  fontSize: 12,
-};
-
-const primary = {
-  padding: "8px 12px",
-  border: `1px solid ${navy}`,
-  borderRadius: 7,
-  background: navy,
-  color: "white",
-  fontSize: 12,
-  fontWeight: 750,
-  cursor: "pointer",
-};
-
-const secondary = {
-  ...primary,
-  background: "white",
-  color: navy,
-};
+const REFRESH_MS = 30000;
 
 // ==================================================
-// NAIROBI DATE AND TIME
+// TEAM LEGEND — SHARED CASHIER LIVE FEED
+// Admin announcements, OFF days, relief,
+// temporary Moves, Swaps and Half-Day duties.
 // ==================================================
 
-function currentNairobiDateTime() {
-  const parts = new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone: "Africa/Nairobi",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }
-  ).formatToParts(new Date());
-
-  const values = Object.fromEntries(
-    parts.map((part) => [
-      part.type,
-      part.value,
-    ])
-  );
-
-  return {
-    date:
-      `${values.year}-${values.month}-${values.day}`,
-    time:
-      `${values.hour}:${values.minute}`,
-  };
-}
-
-function todayNairobi() {
-  return currentNairobiDateTime().date;
-}
-
-function isMonday(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) {
-    return false;
-  }
-
-  const date = new Date(
-    `${value}T12:00:00Z`
-  );
-
-  return (
-    !Number.isNaN(date.getTime()) &&
-    date.getUTCDay() === 1 &&
-    date.toISOString().slice(0, 10) === value
-  );
-}
-
-function cycleDay(dateString, anchor) {
-  if (!dateString || !anchor) return null;
-
-  const one = Date.parse(
-    `${dateString}T12:00:00Z`
-  );
-
-  const two = Date.parse(
-    `${anchor}T12:00:00Z`
-  );
-
-  if (
-    !Number.isFinite(one) ||
-    !Number.isFinite(two)
-  ) {
-    return null;
-  }
-
-  const diff = Math.round(
-    (one - two) / 86400000
-  );
-
-  return ((diff % 14) + 14) % 14;
-}
-
-function readableTime(time) {
-  return String(time || "").slice(0, 5);
-}
-
-// ==================================================
-// ADMIN DUTY / ROTA PANEL
-// ==================================================
-
-export default function AdminDutyControlPanel({
-  supabaseUrl,
-  supabaseAnonKey,
-  accessToken,
-  onChanged,
+export default function CashierLiveFeedPanel({
+  user,
 }) {
-  const [week, setWeek] = useState(1);
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-  const [people, setPeople] = useState([]);
-  const [shops, setShops] = useState([]);
-  const [rules, setRules] = useState([]);
-  const [offs, setOffs] = useState([]);
-  const [halfDays, setHalfDays] = useState([]);
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const [version, setVersion] = useState(null);
+  const accessToken =
+    user?.access_token || null;
 
-  const [anchor, setAnchor] = useState("");
-  const [savedAnchor, setSavedAnchor] =
-    useState("");
+  const [feed, setFeed] = useState(null);
+  const [temporaryEvents, setTemporaryEvents] =
+    useState([]);
 
-  const [editor, setEditor] = useState(null);
-
-  const [reliever, setReliever] = useState("");
-  const [covered, setCovered] = useState("");
-  const [offEmployee, setOffEmployee] =
-    useState("");
-
-  const [mode, setMode] = useState("MOVE");
-
-  const [fromDate, setFromDate] =
-    useState(todayNairobi);
-
-  const [toDate, setToDate] =
-    useState(todayNairobi);
-
-  const [personA, setPersonA] = useState("");
-  const [target, setTarget] = useState("");
-
-  const [halfShop, setHalfShop] = useState("");
-  const [handover, setHandover] = useState("");
-
-  const [openTime, setOpenTime] =
-    useState("09:00");
-
-  const [handoverTime, setHandoverTime] =
-    useState("15:00");
-
-  const [closeTime, setCloseTime] =
-    useState("22:00");
-
-  const [reason, setReason] = useState("");
-  const [preview, setPreview] = useState(null);
-
-  const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [partialWarnings, setPartialWarnings] =
+    useState([]);
 
   // ==================================================
-  // AUTOMATIC TEMPORARY ASSIGNMENT EXPIRY
-  // Display only; database records are preserved.
+  // AUTH
   // ==================================================
 
-  const [nairobiNow, setNairobiNow] =
-    useState(currentNairobiDateTime);
-
-  useEffect(() => {
-    function refreshNairobiTime() {
-      const next = currentNairobiDateTime();
-
-      setNairobiNow((previous) =>
-        previous.date === next.date &&
-        previous.time === next.time
-          ? previous
-          : next
-      );
-
-      // Reset past dates when a new day begins.
-      setFromDate((previous) =>
-        previous < next.date
-          ? next.date
-          : previous
-      );
-
-      setToDate((previous) =>
-        previous < next.date
-          ? next.date
-          : previous
-      );
-
-      // Past-date previews stop appearing
-      // in the active Temporary section.
-      setPreview((previous) =>
-        previous && previous.date < next.date
-          ? null
-          : previous
-      );
-    }
-
-    refreshNairobiTime();
-
-    const timer = setInterval(
-      refreshNairobiTime,
-      15000
-    );
-
-    return () => clearInterval(timer);
-  }, []);
-
-  // Hide expired Half-Day changes from the
-  // current-date preview after closing time.
-  // The saved database records are not altered.
-
-  const visiblePreview = useMemo(() => {
-    if (!preview) return null;
-
-    if (preview.date < nairobiNow.date) {
-      return null;
-    }
-
-    if (preview.date > nairobiNow.date) {
-      return preview;
-    }
-
-    const activeChanges = (
-      preview.changes || []
-    ).filter((change) => {
-      if (change.kind !== "HALF_DAY") {
-        return true;
-      }
-
-      const entries = Array.isArray(
-        change.entries
-      )
-        ? change.entries
-        : [];
-
-      if (!entries.length) return true;
-
-      return entries.some((entry) => {
-        const closingTime =
-          readableTime(entry.close_time);
-
-        return (
-          !closingTime ||
-          closingTime > nairobiNow.time
-        );
-      });
-    });
-
-    return {
-      ...preview,
-      changes: activeChanges,
-    };
-  }, [preview, nairobiNow]);
-
-  // Keep the Upcoming Half-Days counter
-  // limited to arrangements not yet expired.
-
-  const upcomingHalfDays = useMemo(() => {
-    return halfDays.filter((entry) => {
-      const dutyDate = String(
-        entry.duty_date || ""
-      ).slice(0, 10);
-
-      if (!dutyDate) return false;
-
-      if (dutyDate > nairobiNow.date) {
-        return true;
-      }
-
-      if (dutyDate < nairobiNow.date) {
-        return false;
-      }
-
-      const closingTime =
-        readableTime(entry.close_time);
-
-      return (
-        !closingTime ||
-        closingTime > nairobiNow.time
-      );
-    });
-  }, [halfDays, nairobiNow]);
-
-  // ==================================================
-  // SUPABASE
-  // ==================================================
-
-  const baseUrl = useMemo(
-    () =>
-      String(supabaseUrl || "").replace(
-        /\/+$/,
-        ""
-      ),
-    [supabaseUrl]
+  const authHeaders = useCallback(
+    () => ({
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    }),
+    [supabaseAnonKey, accessToken]
   );
 
-  const rpc = useCallback(
-    async (name, args = {}, signal) => {
+  // ==================================================
+  // SUPABASE RPC
+  // ==================================================
+
+  const callRpc = useCallback(
+    async (functionName, body = {}, signal) => {
       if (
-        !baseUrl ||
+        !supabaseUrl ||
         !supabaseAnonKey ||
         !accessToken
       ) {
         throw new Error(
-          "Admin login required."
+          "Cashier session is incomplete."
         );
       }
 
       const response = await fetch(
-        `${baseUrl}/rest/v1/rpc/${name}`,
+        `${supabaseUrl}/rest/v1/rpc/${functionName}`,
         {
           method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify(body),
           cache: "no-store",
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization:
-              `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(args),
           ...(signal ? { signal } : {}),
         }
       );
 
-      const body = await response
-        .json()
-        .catch(() => null);
+      const result = await safeJson(response);
 
       if (!response.ok) {
         throw new Error(
-          body?.message ||
-            body?.details ||
-            `${name} failed (${response.status})`
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            `Unable to run ${functionName}.`
         );
       }
 
-      return body;
+      return result;
     },
     [
-      baseUrl,
+      supabaseUrl,
       supabaseAnonKey,
       accessToken,
+      authHeaders,
     ]
   );
 
   // ==================================================
-  // LOAD MASTER ROTA
-  // ==================================================
-
-  const load = useCallback(
-    async (signal) => {
-      const [
-        rota,
-        extras,
-        master,
-        shopOptions,
-      ] = await Promise.all([
-        rpc("tl_rota_relief_get", {}, signal),
-
-        rpc(
-          "tl_rota_extra_get",
-          {
-            p_start_date: todayNairobi(),
-            p_days: 62,
-          },
-          signal
-        ),
-
-        rpc(
-          "tl_admin_master_employee_list",
-          {},
-          signal
-        ),
-
-        rpc(
-          "tl_admin_master_employee_shops_v1",
-          {},
-          signal
-        ),
-      ]);
-
-      if (
-        !rota ||
-        !Array.isArray(rota.pairs) ||
-        !extras ||
-        !Array.isArray(extras.offs) ||
-        !Array.isArray(extras.half_days) ||
-        !Array.isArray(master) ||
-        !Array.isArray(shopOptions)
-      ) {
-        throw new Error(
-          "Master rota data unavailable."
-        );
-      }
-
-      if (signal?.aborted) return;
-
-      setRules(rota.pairs);
-      setOffs(extras.offs);
-      setHalfDays(extras.half_days);
-
-      setVersion(Number(rota.version));
-
-      setAnchor(rota.anchor_monday);
-      setSavedAnchor(rota.anchor_monday);
-
-      setPeople(master);
-      setShops(shopOptions);
-    },
-    [rpc]
-  );
-
-  // ==================================================
-  // INITIAL LOAD
+  // LOAD REGULAR + TEMPORARY LIVE FEED
+  // AUTOMATIC REFRESH EVERY 30 SECONDS
   // ==================================================
 
   useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
     const controller = new AbortController();
 
-    if (
-      !baseUrl ||
-      !supabaseAnonKey ||
-      !accessToken
-    ) {
+    if (!accessToken) {
+      setFeed(null);
+      setTemporaryEvents([]);
+      setPartialWarnings([]);
       setLoading(false);
+      setError("Cashier session unavailable.");
 
-      return () => controller.abort();
+      return () => {
+        controller.abort();
+      };
     }
 
     setLoading(true);
+    setError("");
 
-    load(controller.signal)
-      .catch((e) => {
-        if (
-          e?.name !== "AbortError"
-        ) {
-          setError(
-            e?.message || "Load failed."
+    async function loadFeed() {
+      if (cancelled || inFlight) return;
+
+      inFlight = true;
+
+      try {
+        const [regularResult, temporaryResult] =
+          await Promise.allSettled([
+            callRpc(
+              "tl_cashier_live_feed_snapshot",
+              {},
+              controller.signal
+            ),
+            callRpc(
+              "tl_cashier_live_feed_temporary",
+              {},
+              controller.signal
+            ),
+          ]);
+
+        if (cancelled) return;
+
+        const regularOK =
+          regularResult.status === "fulfilled" &&
+          regularResult.value?.success === true;
+
+        const temporaryOK =
+          temporaryResult.status === "fulfilled" &&
+          temporaryResult.value?.success === true &&
+          Array.isArray(
+            temporaryResult.value?.events
+          );
+
+        if (!regularOK) {
+          console.error(
+            "REGULAR LIVE FEED ERROR:",
+            regularResult.status === "rejected"
+              ? regularResult.reason
+              : regularResult.value
           );
         }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
+
+        if (!temporaryOK) {
+          console.error(
+            "TEMPORARY LIVE FEED ERROR:",
+            temporaryResult.status === "rejected"
+              ? temporaryResult.reason
+              : temporaryResult.value
+          );
+        }
+
+        if (!regularOK && !temporaryOK) {
+          throw new Error(
+            "Unable to load Live Feed."
+          );
+        }
+
+        setFeed(
+          regularOK
+            ? regularResult.value
+            : null
+        );
+
+        setTemporaryEvents(
+          temporaryOK
+            ? temporaryResult.value.events
+            : []
+        );
+
+        const warnings = [];
+
+        if (!regularOK) {
+          warnings.push(
+            "Regular Duty Rota updates unavailable."
+          );
+        }
+
+        if (!temporaryOK) {
+          warnings.push(
+            "Temporary Duty Rota updates unavailable."
+          );
+        }
+
+        setPartialWarnings(warnings);
+        setError("");
+      } catch (err) {
+        if (!cancelled) {
+          console.error(
+            "LIVE FEED ERROR:",
+            err
+          );
+
+          setError(
+            err?.message ||
+              "Unable to load Live Feed."
+          );
+        }
+      } finally {
+        inFlight = false;
+
+        if (!cancelled) {
           setLoading(false);
         }
-      });
-
-    return () => controller.abort();
-  }, [
-    baseUrl,
-    supabaseAnonKey,
-    accessToken,
-    load,
-  ]);
-
-  // ==================================================
-  // AUTO REFRESH MASTER EMPLOYEES
-  // ==================================================
-
-  useEffect(() => {
-    if (
-      !baseUrl ||
-      !supabaseAnonKey ||
-      !accessToken
-    ) {
-      return;
+      }
     }
+
+    void loadFeed();
 
     const timer = setInterval(() => {
-      rpc("tl_admin_master_employee_list")
-        .then((rows) => {
-          if (Array.isArray(rows)) {
-            setPeople(rows);
-          }
-        })
-        .catch(() => {});
-    }, 60000);
+      void loadFeed();
+    }, REFRESH_MS);
 
-    return () => clearInterval(timer);
-  }, [
-    baseUrl,
-    supabaseAnonKey,
-    accessToken,
-    rpc,
-  ]);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [accessToken, callRpc]);
 
   // ==================================================
-  // EMPLOYEE AND SHOP HELPERS
+  // BUILD MOVING FEED
   // ==================================================
 
-  const active = useMemo(
-    () =>
-      people
-        .filter(
-          (p) =>
-            p.employment_status === "ACTIVE"
-        )
-        .sort((a, b) =>
-          String(a.full_name).localeCompare(
-            String(b.full_name)
-          )
-        ),
-    [people]
-  );
+  const tickerItems = useMemo(() => {
+    const items = [];
 
-  const peopleById = useMemo(
-    () =>
-      new Map(
-        people.map((p) => [
-          p.employee_id,
-          p,
-        ])
-      ),
-    [people]
-  );
+    const today = feed?.today;
+    const tomorrow = feed?.tomorrow;
 
-  const shopById = useMemo(
-    () =>
-      new Map(
-        shops.map((s) => [
-          s.id,
-          s.name,
-        ])
-      ),
-    [shops]
-  );
+    const todayDate =
+      dateOnly(today?.date) ||
+      todayNairobi();
 
-  const category = (id) => {
-    const p = peopleById.get(id);
+    const tomorrowDate =
+      dateOnly(tomorrow?.date) ||
+      addDays(todayDate, 1);
 
-    if (!p) return "";
+    const announcements =
+      Array.isArray(feed?.announcements)
+        ? feed.announcements
+        : [];
 
-    if (p.shop_id) {
-      return (
-        shopById.get(p.shop_id) || "Shop"
-      );
+    const todayEvents =
+      Array.isArray(today?.events)
+        ? today.events
+        : [];
+
+    const tomorrowEvents =
+      Array.isArray(tomorrow?.events)
+        ? tomorrow.events
+        : [];
+
+    // ==================================================
+    // ADMIN ANNOUNCEMENTS FIRST
+    // ==================================================
+
+    for (const announcement of announcements) {
+      const title =
+        cleanText(announcement?.title);
+
+      const message =
+        cleanText(announcement?.message);
+
+      const important =
+        upper(announcement?.priority) ===
+        "IMPORTANT";
+
+      const pinned =
+        announcement?.is_pinned === true;
+
+      let text = "";
+
+      if (important) {
+        text += "IMPORTANT: ";
+      }
+
+      if (pinned) {
+        text += "PINNED: ";
+      }
+
+      if (title) {
+        text += `${title} — `;
+      }
+
+      text += message;
+
+      if (text.trim()) {
+        items.push(text.trim());
+      }
     }
 
-    if (p.job_title === "TEAM_LEADER") {
-      return "Team Leader";
-    }
+    // ==================================================
+    // PREPARE TEMPORARY ASSIGNMENTS
+    // ==================================================
 
-    if (p.job_title === "ACCOUNTANT") {
-      return "Accountant";
-    }
+    const sortedTemporary = [
+      ...temporaryEvents,
+    ]
+      .filter((event) => {
+        const date =
+          dateOnly(event?.duty_date);
 
-    return "Reliever";
-  };
+        const type =
+          upper(event?.type);
 
-  const name = (id) =>
-    peopleById.get(id)?.full_name ||
-    "Unknown";
-
-  const personOptions = active.map((p) => (
-    <option
-      key={p.employee_id}
-      value={p.employee_id}
-    >
-      {p.full_name} — {category(p.employee_id)}
-    </option>
-  ));
-
-  // ==================================================
-  // WEEKLY ROTA
-  // ==================================================
-
-  const byDay = useMemo(() => {
-    const days = Array.from(
-      { length: 7 },
-      () => ({
-        pairs: [],
-        offs: [],
+        return (
+          date >= todayDate &&
+          ["MOVE", "SWAP", "HALF_DAY"].includes(type)
+        );
       })
+      .sort((a, b) => {
+        const dateComparison =
+          dateOnly(a.duty_date).localeCompare(
+            dateOnly(b.duty_date)
+          );
+
+        if (dateComparison !== 0) {
+          return dateComparison;
+        }
+
+        return upper(a.type).localeCompare(
+          upper(b.type)
+        );
+      });
+
+    // The original Live Feed already includes
+    // some Moves. Avoid showing those twice.
+
+    const temporaryMoveKeys = new Set();
+
+    for (const event of sortedTemporary) {
+      if (
+        upper(event?.type) === "MOVE" &&
+        event?.change_id
+      ) {
+        temporaryMoveKeys.add(
+          eventKey(
+            event.duty_date,
+            event.change_id
+          )
+        );
+      }
+    }
+
+    const seenTemporary = new Set();
+
+    function addTemporaryForDate(date, label) {
+      for (const event of sortedTemporary) {
+        if (
+          dateOnly(event.duty_date) !== date
+        ) {
+          continue;
+        }
+
+        const key = [
+          dateOnly(event.duty_date),
+          upper(event.type),
+          cleanText(event.change_id) ||
+            cleanText(event.message),
+        ].join("|");
+
+        if (seenTemporary.has(key)) {
+          continue;
+        }
+
+        seenTemporary.add(key);
+
+        const type = upper(event.type);
+
+        const typeLabel =
+          type === "MOVE"
+            ? "TEMPORARY MOVE"
+            : type === "SWAP"
+              ? "TEMPORARY SWAP"
+              : "HALF-DAY";
+
+        const description =
+          cleanText(event.message);
+
+        if (!description) continue;
+
+        items.push(
+          `${label}: ${typeLabel} — ${description}`
+        );
+      }
+    }
+
+    // ==================================================
+    // NORMAL OFF DAYS AND RELIEF ASSIGNMENTS
+    // ==================================================
+
+    function addRegularEvents(events, label, date) {
+      for (const event of events) {
+        const action =
+          upper(event?.action_type);
+
+        const eventType =
+          upper(event?.event_type);
+
+        const isMove =
+          action === "MOVE" ||
+          action === "SHOP_MOVE" ||
+          eventType === "TEMPORARY_DUTY_CHANGE";
+
+        const changeId =
+          event?.change_group_id ||
+          event?.change_id;
+
+        // The same temporary Move is shown
+        // using the more informative new source.
+
+        if (
+          isMove &&
+          changeId &&
+          temporaryMoveKeys.has(
+            eventKey(
+              event?.duty_date || date,
+              changeId
+            )
+          )
+        ) {
+          continue;
+        }
+
+        const text =
+          buildDutyMessage(event, label);
+
+        if (text) {
+          items.push(text);
+        }
+      }
+    }
+
+    // ==================================================
+    // TODAY
+    // ==================================================
+
+    addTemporaryForDate(
+      todayDate,
+      "TODAY"
     );
 
-    for (const pair of rules) {
-      const index =
-        Number(pair.cycle_day) -
-        (week - 1) * 7;
+    addRegularEvents(
+      todayEvents,
+      "TODAY",
+      todayDate
+    );
 
-      if (index >= 0 && index < 7) {
-        days[index].pairs.push(pair);
-      }
+    // ==================================================
+    // TOMORROW
+    // ==================================================
+
+    addTemporaryForDate(
+      tomorrowDate,
+      "TOMORROW"
+    );
+
+    addRegularEvents(
+      tomorrowEvents,
+      "TOMORROW",
+      tomorrowDate
+    );
+
+    // ==================================================
+    // FUTURE TEMPORARY CHANGES
+    // DAYS 3–7
+    // ==================================================
+
+    const futureDates = [
+      ...new Set(
+        sortedTemporary
+          .map((event) =>
+            dateOnly(event.duty_date)
+          )
+          .filter(
+            (date) =>
+              date !== todayDate &&
+              date !== tomorrowDate
+          )
+      ),
+    ].sort();
+
+    for (const date of futureDates) {
+      addTemporaryForDate(
+        date,
+        futureDateLabel(date)
+      );
     }
 
-    for (const off of offs) {
-      const index =
-        Number(off.cycle_day) -
-        (week - 1) * 7;
+    // ==================================================
+    // SOURCE WARNINGS
+    // ==================================================
 
-      if (index >= 0 && index < 7) {
-        days[index].offs.push(off);
-      }
+    for (const warning of partialWarnings) {
+      items.push(warning);
     }
 
-    return days;
+    // ==================================================
+    // FALLBACK
+    // ==================================================
+
+    if (items.length === 0) {
+      items.push(
+        "No new Team Legend updates at the moment."
+      );
+    }
+
+    return items;
   }, [
-    rules,
-    offs,
-    week,
+    feed,
+    temporaryEvents,
+    partialWarnings,
   ]);
 
-  function beginEdit(day, kind, pair = null) {
-    setEditor({
-      day,
-      kind,
-      originalCovered:
-        pair?.covered_employee_id || null,
-    });
-
-    setReliever(
-      pair?.reliever_employee_id || ""
-    );
-
-    setCovered(
-      pair?.covered_employee_id || ""
-    );
-
-    setOffEmployee("");
-    setError("");
-    setNotice("");
-  }
-
-  function reasonOK() {
-    if (reason.trim().length >= 3) {
-      return true;
-    }
-
-    setError("Reason required.");
-    return false;
-  }
-
   // ==================================================
-  // SAVE
-  // ==================================================
-
-  async function save(
-    functionName,
-    args,
-    successMessage
-  ) {
-    if (busy || !reasonOK()) {
-      return false;
-    }
-
-    setBusy(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const response = await rpc(
-        functionName,
-        {
-          ...args,
-          p_reason: reason.trim(),
-          p_expected_version: version,
-        }
-      );
-
-      if (response?.success !== true) {
-        throw new Error(
-          "Save not confirmed."
-        );
-      }
-
-      await load();
-
-      setReason("");
-      setEditor(null);
-      setPreview(null);
-
-      setNotice(successMessage);
-
-      onChanged?.();
-
-      return true;
-    } catch (e) {
-      setError(
-        e?.message ||
-          "Save failed. Refresh and retry."
-      );
-
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // ==================================================
-  // RECURRING RELIEF
-  // ==================================================
-
-  async function savePair() {
-    if (
-      !editor ||
-      !reliever ||
-      !covered ||
-      reliever === covered
-    ) {
-      setError(
-        "Choose two different employees."
-      );
-      return;
-    }
-
-    const cycle =
-      (week - 1) * 7 + editor.day;
-
-    if (
-      offs.some(
-        (o) =>
-          Number(o.cycle_day) === cycle &&
-          [reliever, covered].includes(
-            o.employee_id
-          )
-      )
-    ) {
-      setError(
-        "Employee is OFF that day."
-      );
-      return;
-    }
-
-    await save(
-      "tl_rota_relief_set",
-      {
-        p_week: week,
-        p_day: editor.day + 1,
-        p_reliever_employee_id: reliever,
-        p_covered_employee_id: covered,
-      },
-      "Relief saved."
-    );
-  }
-
-  async function saveOff() {
-    if (
-      !editor ||
-      !offEmployee
-    ) {
-      setError("Choose employee.");
-      return;
-    }
-
-    await save(
-      "tl_rota_off_set",
-      {
-        p_week: week,
-        p_day: editor.day + 1,
-        p_employee_id: offEmployee,
-      },
-      "OFF saved."
-    );
-  }
-
-  async function removePair(day, pair) {
-    if (
-      !window.confirm(
-        `Remove ${name(
-          pair.reliever_employee_id
-        )} → ${name(
-          pair.covered_employee_id
-        )}?`
-      )
-    ) {
-      return;
-    }
-
-    await save(
-      "tl_rota_relief_remove",
-      {
-        p_week: week,
-        p_day: day + 1,
-        p_covered_employee_id:
-          pair.covered_employee_id,
-      },
-      "Relief removed."
-    );
-  }
-
-  async function removeOff(
-    day,
-    employeeId
-  ) {
-    if (
-      !window.confirm(
-        `Remove OFF for ${name(employeeId)}?`
-      )
-    ) {
-      return;
-    }
-
-    await save(
-      "tl_rota_off_remove",
-      {
-        p_week: week,
-        p_day: day + 1,
-        p_employee_id: employeeId,
-      },
-      "OFF removed."
-    );
-  }
-
-  // ==================================================
-  // CYCLE ANCHOR
-  // ==================================================
-
-  async function setMonday() {
-    if (!isMonday(anchor)) {
-      setError("Select Monday.");
-      return;
-    }
-
-    if (rules.length || offs.length) {
-      setError(
-        "Cycle start is locked."
-      );
-      return;
-    }
-
-    if (anchor === savedAnchor) {
-      return;
-    }
-
-    await save(
-      "tl_rota_relief_anchor_set",
-      {
-        p_anchor_monday: anchor,
-      },
-      "Start saved."
-    );
-  }
-
-  // ==================================================
-  // TEMPORARY MOVE / SWAP / HALF-DAY
-  // ==================================================
-
-  async function applyTemporary() {
-    if (
-      !fromDate ||
-      !toDate ||
-      fromDate > toDate ||
-      fromDate < todayNairobi()
-    ) {
-      setError("Check dates.");
-      return;
-    }
-
-    if (!personA) {
-      setError("Choose employee.");
-      return;
-    }
-
-    if (mode === "HALF") {
-      if (
-        !halfShop ||
-        !handover ||
-        personA === handover
-      ) {
-        setError(
-          "Choose shop and handover cashier."
-        );
-        return;
-      }
-
-      if (
-        !openTime ||
-        !handoverTime ||
-        !closeTime ||
-        !(
-          openTime < handoverTime &&
-          handoverTime < closeTime
-        )
-      ) {
-        setError(
-          "Check working times."
-        );
-        return;
-      }
-
-      if (
-        !window.confirm(
-          `Save temporary Half-Day ${fromDate} to ${toDate}?`
-        )
-      ) {
-        return;
-      }
-
-      await save(
-        "tl_rota_halfday_set",
-        {
-          p_start_date: fromDate,
-          p_end_date: toDate,
-          p_reliever_employee_id:
-            personA,
-          p_shop_id: halfShop,
-          p_handover_employee_id:
-            handover,
-          p_open_time: openTime,
-          p_handover_time:
-            handoverTime,
-          p_close_time: closeTime,
-        },
-        "Half-Day saved."
-      );
-
-    } else {
-      if (
-        !target ||
-        personA === target
-      ) {
-        setError(
-          "Choose two different employees."
-        );
-        return;
-      }
-
-      if (
-        !window.confirm(
-          `Apply ${mode} ${fromDate} to ${toDate}?`
-        )
-      ) {
-        return;
-      }
-
-      if (mode === "MOVE") {
-        await save(
-          "tl_rota_shop_move_set",
-          {
-            p_start_date: fromDate,
-            p_end_date: toDate,
-            p_moving_employee_id:
-              personA,
-            p_covered_employee_id:
-              target,
-          },
-          "Shop move saved."
-        );
-      } else {
-        await save(
-          "tl_rota_shop_swap_set",
-          {
-            p_start_date: fromDate,
-            p_end_date: toDate,
-            p_employee_a: personA,
-            p_employee_b: target,
-          },
-          "Shop swap saved."
-        );
-      }
-    }
-  }
-
-  // ==================================================
-  // VIEW DATE
-  // ==================================================
-
-  async function fetchDatePreview(date) {
-    const [
-      duty,
-      extra,
-      changes,
-      shopSwaps,
-      shopMoves,
-    ] = await Promise.all([
-      rpc(
-        "tl_rota_relief_preview",
-        {
-          p_start_date: date,
-          p_days: 1,
-        }
-      ),
-
-      rpc(
-        "tl_rota_extra_get",
-        {
-          p_start_date: date,
-          p_days: 1,
-        }
-      ),
-
-      rpc(
-        "tl_rota_temp_changes_get",
-        {
-          p_start_date: date,
-          p_days: 1,
-        }
-      ),
-
-      rpc(
-        "tl_rota_shop_swap_get",
-        {
-          p_start_date: date,
-          p_days: 1,
-        }
-      ),
-
-      rpc(
-        "tl_rota_shop_move_get",
-        {
-          p_start_date: date,
-          p_days: 1,
-        }
-      ),
-    ]);
-
-    if (
-      !Array.isArray(changes) ||
-      !Array.isArray(shopSwaps) ||
-      !Array.isArray(shopMoves)
-    ) {
-      throw new Error(
-        "Temporary changes could not be loaded."
-      );
-    }
-
-    // ==================================================
-    // GROUP SHOP SWAPS
-    // ==================================================
-
-    const swapGroups = new Map();
-
-    for (const swap of shopSwaps) {
-      if (!swapGroups.has(swap.change_id)) {
-        swapGroups.set(
-          swap.change_id,
-          {
-            kind: "SHOP_SWAP",
-            change_id:
-              swap.change_id,
-            entries: [],
-          }
-        );
-      }
-
-      swapGroups
-        .get(swap.change_id)
-        .entries.push(swap);
-    }
-
-    // ==================================================
-    // GROUP SHOP MOVES
-    // ==================================================
-
-    const moveGroups = new Map();
-
-    for (const move of shopMoves) {
-      if (!moveGroups.has(move.change_id)) {
-        moveGroups.set(
-          move.change_id,
-          {
-            kind: "SHOP_MOVE",
-            change_id:
-              move.change_id,
-            entries: [],
-          }
-        );
-      }
-
-      moveGroups
-        .get(move.change_id)
-        .entries.push(move);
-    }
-
-    // ==================================================
-    // TEMPORARY OFF COVER
-    // ==================================================
-
-    const dateOffs = (
-      extra.offs || []
-    ).filter(
-      (o) =>
-        Number(o.cycle_day) ===
-        cycleDay(
-          date,
-          savedAnchor
-        )
-    );
-
-    const offIds = new Set(
-      dateOffs.map(
-        (o) => o.employee_id
-      )
-    );
-
-    for (const move of shopMoves) {
-      if (
-        !offIds.has(
-          move.covered_employee_id
-        )
-      ) {
-        dateOffs.push({
-          employee_id:
-            move.covered_employee_id,
-          temporary: true,
-        });
-
-        offIds.add(
-          move.covered_employee_id
-        );
-      }
-    }
-
-    setPreview({
-      date,
-
-      duties:
-        Array.isArray(duty)
-          ? duty
-          : [],
-
-      offs: dateOffs,
-
-      changes: [
-        ...changes,
-        ...swapGroups.values(),
-        ...moveGroups.values(),
-      ],
-    });
-  }
-
-  async function viewDate() {
-    if (!fromDate) {
-      setError("Choose date.");
-      return;
-    }
-
-    if (busy) return;
-
-    setBusy(true);
-    setError("");
-
-    try {
-      await fetchDatePreview(
-        fromDate
-      );
-    } catch (e) {
-      setError(
-        e?.message ||
-          "Preview failed."
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // ==================================================
-  // MANUAL EARLY CANCELLATION
-  // ==================================================
-
-  async function cancelTemporary(
-    changeId,
-    kind
-  ) {
-    if (
-      busy ||
-      !changeId ||
-      !reasonOK()
-    ) {
-      return;
-    }
-
-    if (
-      !window.confirm(
-        "Cancel this change for all remaining future dates?"
-      )
-    ) {
-      return;
-    }
-
-    setBusy(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const cancelRpc =
-        kind === "SHOP_SWAP"
-          ? "tl_rota_shop_swap_cancel"
-          : kind === "SHOP_MOVE"
-            ? "tl_rota_shop_move_cancel"
-            : "tl_rota_temp_cancel";
-
-      const result = await rpc(
-        cancelRpc,
-        {
-          p_change_id: changeId,
-          p_reason: reason.trim(),
-          p_expected_version:
-            version,
-        }
-      );
-
-      if (result?.success !== true) {
-        throw new Error(
-          "Cancel not confirmed."
-        );
-      }
-
-      await load();
-      await fetchDatePreview(
-        fromDate
-      );
-
-      setReason("");
-
-      setNotice(
-        "Temporary change canceled. Original rota restored."
-      );
-
-      onChanged?.();
-    } catch (e) {
-      setError(
-        e?.message ||
-          "Cancel failed. Refresh and retry."
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // ==================================================
-  // TEMPORARY ROW DESCRIPTION
-  // ==================================================
-
-  function temporaryLine(
-    entry,
-    kind
-  ) {
-    if (kind === "SHOP_MOVE") {
-      const from =
-        shopById.get(
-          entry.from_shop_id
-        ) || "Original shop";
-
-      const to =
-        shopById.get(
-          entry.to_shop_id
-        ) || "Destination shop";
-
-      return (
-        `${name(
-          entry.moving_employee_id
-        )}: ${from} → ${to}` +
-        ` · ${name(
-          entry.covered_employee_id
-        )} — OFF` +
-        ` · ${from} — VACANT`
-      );
-    }
-
-    if (kind === "SHOP_SWAP") {
-      const shopA =
-        shopById.get(
-          entry.employee_a_destination_shop
-        ) || "Shop";
-
-      const shopB =
-        shopById.get(
-          entry.employee_b_destination_shop
-        ) || "Shop";
-
-      return (
-        `${name(
-          entry.employee_a_id
-        )} → ${shopA}` +
-        ` · ${name(
-          entry.employee_b_id
-        )} → ${shopB}`
-      );
-    }
-
-    if (kind === "HALF_DAY") {
-      return (
-        `${name(
-          entry.reliever_employee_id
-        )} → ` +
-        `${
-          shopById.get(
-            entry.shop_id
-          ) || "Shop"
-        }` +
-        ` · ${readableTime(
-          entry.open_time
-        )}` +
-        `–${readableTime(
-          entry.handover_time
-        )}` +
-        ` → ${name(
-          entry.handover_employee_id
-        )}` +
-        ` (until ${readableTime(
-          entry.close_time
-        )})`
-      );
-    }
-
-    return entry.reliever_employee_id
-      ? `${name(
-          entry.reliever_employee_id
-        )} relieves ${name(
-          entry.covered_employee_id
-        )}`
-      : `${name(
-          entry.covered_employee_id
-        )} · relief removed for this date`;
-  }
-
-  // ==================================================
-  // INITIAL DISPLAY
-  // ==================================================
-
-  if (
-    !baseUrl ||
-    !supabaseAnonKey ||
-    !accessToken
-  ) {
-    return (
-      <div role="alert">
-        Admin login required.
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div>
-        Loading rota...
-      </div>
-    );
-  }
-
-  // ==================================================
-  // DASHBOARD
+  // DISPLAY — ORIGINAL THEME PRESERVED
   // ==================================================
 
   return (
-    <section
-      style={{
-        border: "1px solid #cbd5e1",
-        borderRadius: 12,
-        background: "white",
-        overflow: "hidden",
-        color: "#0f172a",
-      }}
-    >
-      {/* ========================================== */}
-      {/* HEADER */}
-      {/* ========================================== */}
+    <>
+      <style>{`
+        @keyframes teamLegendLiveFeedScroll {
+          0% {
+            transform: translateX(100vw);
+          }
 
-      <div
-        style={{
-          padding: 14,
-          background: navy,
-          color: "white",
-          display: "flex",
-          gap: 9,
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <strong style={{ marginRight: 8 }}>
-          DUTY / ROTA
-        </strong>
+          100% {
+            transform: translateX(-100%);
+          }
+        }
 
-        {[1, 2].map((w) => (
-          <button
-            key={w}
-            type="button"
-            style={{
-              ...secondary,
-              background:
-                week === w
-                  ? "#a5f3fc"
-                  : "white",
-            }}
-            onClick={() => {
-              setWeek(w);
-              setEditor(null);
-            }}
-          >
-            Week {w}
-          </button>
-        ))}
+        .team-legend-live-feed-track {
+          display: inline-flex;
+          align-items: center;
+          width: max-content;
+          white-space: nowrap;
+          animation:
+            teamLegendLiveFeedScroll
+            120s linear infinite;
+          will-change: transform;
+        }
 
-        <div
-          style={{
-            marginLeft: "auto",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 12,
-          }}
-        >
-          <span>Start</span>
+        .team-legend-live-feed-track:hover {
+          animation-play-state: paused;
+        }
+      `}</style>
 
-          <input
-            type="date"
-            aria-label="Cycle start Monday"
-            style={{
-              ...field,
-              width: 150,
-            }}
-            value={anchor}
-            disabled={
-              busy ||
-              rules.length > 0 ||
-              offs.length > 0
-            }
-            onChange={(e) =>
-              setAnchor(e.target.value)
-            }
-          />
+      <section style={panelStyle}>
+        <div style={labelStyle}>
+          <span style={liveDotStyle} />
 
-          {!rules.length &&
-            !offs.length &&
-            anchor !== savedAnchor && (
-              <button
-                type="button"
-                style={secondary}
-                disabled={busy}
-                onClick={setMonday}
-              >
-                Set
-              </button>
-            )}
-
-          <button
-            type="button"
-            style={secondary}
-            disabled={busy}
-            onClick={() =>
-              load()
-                .then(() => {
-                  setError("");
-                  setNotice("Refreshed.");
-                })
-                .catch((e) =>
-                  setError(e.message)
-                )
-            }
-          >
-            ↻
-          </button>
+          <span>
+            LIVE FEED
+          </span>
         </div>
-      </div>
 
-      {/* ========================================== */}
-      {/* RECURRING WEEKLY ROTA */}
-      {/* ========================================== */}
-
-      <div
-        style={{
-          padding: 12,
-          display: "grid",
-          gap: 8,
-        }}
-      >
-        {DAYS.map((dayName, day) => (
-          <div
-            key={dayName}
-            style={{
-              border:
-                "1px solid #e2e8f0",
-              borderRadius: 9,
-              padding: "10px 12px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent:
-                  "space-between",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <strong>{dayName}</strong>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: 6,
-                }}
-              >
-                <button
-                  type="button"
-                  style={{
-                    ...secondary,
-                    padding: "4px 9px",
-                  }}
-                  disabled={busy}
-                  onClick={() =>
-                    beginEdit(
-                      day,
-                      "RELIEF"
-                    )
-                  }
-                >
-                  + Relief
-                </button>
-
-                <button
-                  type="button"
-                  style={{
-                    ...secondary,
-                    padding: "4px 9px",
-                  }}
-                  disabled={busy}
-                  onClick={() =>
-                    beginEdit(
-                      day,
-                      "OFF"
-                    )
-                  }
-                >
-                  + OFF
-                </button>
-              </div>
+        <div style={tickerWindowStyle}>
+          {loading ? (
+            <div style={staticMessageStyle}>
+              Loading live feed...
             </div>
-
-            {byDay[day].pairs.length ===
-              0 &&
-              byDay[day].offs.length ===
-                0 && (
-                <span
-                  style={{
-                    color: "#94a3b8",
-                    fontSize: 12,
-                  }}
-                >
-                  —
-                </span>
-              )}
-
-            {/* RECURRING RELIEF */}
-
-            {byDay[day].pairs.map(
-              (pair) => (
-                <div
-                  key={`relief-${pair.covered_employee_id}`}
-                  style={{
-                    display: "flex",
-                    gap: 7,
-                    alignItems:
-                      "center",
-                    marginTop: 7,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: 13,
-                    }}
-                  >
-                    <b>
-                      {name(
-                        pair.reliever_employee_id
-                      )}
-                    </b>
-                    {" "}relieves{" "}
-                    <b>
-                      {name(
-                        pair.covered_employee_id
-                      )}
-                    </b>
-
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: "#64748b",
-                      }}
-                    >
-                      {" "}·{" "}
-                      {category(
-                        pair.covered_employee_id
-                      )}
-                    </span>
-                  </span>
-
-                  <button
-                    type="button"
-                    style={{
-                      ...secondary,
-                      padding:
-                        "3px 8px",
-                    }}
-                    disabled={busy}
-                    onClick={() =>
-                      beginEdit(
-                        day,
-                        "RELIEF",
-                        pair
-                      )
-                    }
-                  >
-                    Edit
-                  </button>
-
-                  <button
-                    type="button"
-                    style={{
-                      ...secondary,
-                      padding:
-                        "3px 8px",
-                    }}
-                    disabled={busy}
-                    onClick={() =>
-                      removePair(
-                        day,
-                        pair
-                      )
-                    }
-                  >
-                    ×
-                  </button>
-                </div>
-              )
-            )}
-
-            {/* RECURRING OFF */}
-
-            {byDay[day].offs.map(
-              (off) => (
-                <div
-                  key={`off-${off.employee_id}`}
-                  style={{
-                    display: "flex",
-                    gap: 7,
-                    alignItems:
-                      "center",
-                    marginTop: 7,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: 13,
-                    }}
-                  >
-                    <b>
-                      {name(
-                        off.employee_id
-                      )}
-                    </b>{" "}
-                    <b
-                      style={{
-                        color: "#b91c1c",
-                      }}
-                    >
-                      — OFF
-                    </b>
-                  </span>
-
-                  <button
-                    type="button"
-                    style={{
-                      ...secondary,
-                      padding:
-                        "3px 8px",
-                    }}
-                    disabled={busy}
-                    onClick={() =>
-                      removeOff(
-                        day,
-                        off.employee_id
-                      )
-                    }
-                  >
-                    ×
-                  </button>
-                </div>
-              )
-            )}
-
-            {/* WEEKLY EDITOR */}
-
-            {editor?.day === day && (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fit,minmax(180px,1fr))",
-                  gap: 8,
-                  background:
-                    "#f8fafc",
-                  marginTop: 10,
-                  padding: 10,
-                  borderRadius: 8,
-                }}
-              >
-                {editor.kind ===
-                "RELIEF" ? (
-                  <>
-                    <label
-                      style={{
-                        fontSize: 12,
-                      }}
-                    >
-                      Reliever
-
-                      <select
-                        style={field}
-                        value={reliever}
-                        disabled={busy}
-                        onChange={(e) =>
-                          setReliever(
-                            e.target.value
-                          )
-                        }
-                      >
-                        <option value="">
-                          Choose employee
-                        </option>
-
-                        {personOptions}
-                      </select>
-                    </label>
-
-                    <label
-                      style={{
-                        fontSize: 12,
-                      }}
-                    >
-                      Relieves
-
-                      <select
-                        style={field}
-                        value={covered}
-                        disabled={
-                          busy ||
-                          !!editor.originalCovered
-                        }
-                        onChange={(e) =>
-                          setCovered(
-                            e.target.value
-                          )
-                        }
-                      >
-                        <option value="">
-                          Choose employee
-                        </option>
-
-                        {personOptions}
-                      </select>
-                    </label>
-                  </>
-                ) : (
-                  <label
-                    style={{
-                      fontSize: 12,
-                    }}
-                  >
-                    Employee OFF
-
-                    <select
-                      style={field}
-                      value={
-                        offEmployee
-                      }
-                      disabled={busy}
-                      onChange={(e) =>
-                        setOffEmployee(
-                          e.target.value
-                        )
-                      }
-                    >
-                      <option value="">
-                        Choose employee
-                      </option>
-
-                      {personOptions}
-                    </select>
-                  </label>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 6,
-                    alignItems: "end",
-                  }}
-                >
-                  <button
-                    type="button"
-                    style={primary}
-                    disabled={busy}
-                    onClick={
-                      editor.kind ===
-                      "OFF"
-                        ? saveOff
-                        : savePair
-                    }
-                  >
-                    Save
-                  </button>
-
-                  <button
-                    type="button"
-                    style={secondary}
-                    disabled={busy}
-                    onClick={() =>
-                      setEditor(null)
-                    }
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* ========================================== */}
-      {/* TEMPORARY MOVE / SWAP / HALF-DAY */}
-      {/* ========================================== */}
-
-      <div
-        style={{
-          borderTop:
-            "1px solid #e2e8f0",
-          padding: 14,
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: 7,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <strong>
-            Temporary
-          </strong>
-
-          {[
-            ["MOVE", "Move"],
-            ["SWAP", "Swap"],
-            ["HALF", "Half-Day"],
-          ].map(([key, label]) => (
-            <button
-              type="button"
-              key={key}
-              style={{
-                ...secondary,
-                background:
-                  mode === key
-                    ? "#cffafe"
-                    : "white",
-              }}
-              onClick={() => {
-                setMode(key);
-                setPreview(null);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* DATE AND EMPLOYEES */}
-
-        <div
-          style={{
-            display: "grid",
-            gap: 9,
-            gridTemplateColumns:
-              "repeat(auto-fit,minmax(180px,1fr))",
-          }}
-        >
-          <label
-            style={{
-              fontSize: 12,
-            }}
-          >
-            From
-
-            <input
-              type="date"
-              style={field}
-              value={fromDate}
-              min={nairobiNow.date}
-              onChange={(e) => {
-                setFromDate(
-                  e.target.value
-                );
-
-                if (
-                  e.target.value >
-                  toDate
-                ) {
-                  setToDate(
-                    e.target.value
-                  );
-                }
-
-                setPreview(null);
-              }}
-            />
-          </label>
-
-          <label
-            style={{
-              fontSize: 12,
-            }}
-          >
-            To
-
-            <input
-              type="date"
-              style={field}
-              value={toDate}
-              min={fromDate}
-              onChange={(e) => {
-                setToDate(
-                  e.target.value
-                );
-
-                setPreview(null);
-              }}
-            />
-          </label>
-
-          <label
-            style={{
-              fontSize: 12,
-            }}
-          >
-            {mode === "HALF"
-              ? "Opening employee"
-              : "Cashier"}
-
-            <select
-              style={field}
-              value={personA}
-              onChange={(e) =>
-                setPersonA(
-                  e.target.value
-                )
-              }
-            >
-              <option value="">
-                Choose employee
-              </option>
-
-              {personOptions}
-            </select>
-          </label>
-
-          {mode === "HALF" ? (
-            <>
-              <label
-                style={{
-                  fontSize: 12,
-                }}
-              >
-                Shop
-
-                <select
-                  style={field}
-                  value={halfShop}
-                  onChange={(e) =>
-                    setHalfShop(
-                      e.target.value
-                    )
-                  }
-                >
-                  <option value="">
-                    Choose shop
-                  </option>
-
-                  {shops.map((s) => (
-                    <option
-                      key={s.id}
-                      value={s.id}
-                    >
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label
-                style={{
-                  fontSize: 12,
-                }}
-              >
-                Handover cashier
-
-                <select
-                  style={field}
-                  value={handover}
-                  onChange={(e) =>
-                    setHandover(
-                      e.target.value
-                    )
-                  }
-                >
-                  <option value="">
-                    Choose employee
-                  </option>
-
-                  {personOptions}
-                </select>
-              </label>
-            </>
+          ) : error ? (
+            <div style={staticMessageStyle}>
+              Live Feed temporarily unavailable
+            </div>
           ) : (
-            <label
-              style={{
-                fontSize: 12,
-              }}
-            >
-              {mode === "MOVE"
-                ? "Moved to (relieve)"
-                : "Swapped with"}
+            <div className="team-legend-live-feed-track">
+              {tickerItems.map((item, index) => (
+                <TickerItem
+                  key={`${index}-${item}`}
+                  text={item}
+                />
+              ))}
 
-              <select
-                style={field}
-                value={target}
-                onChange={(e) =>
-                  setTarget(
-                    e.target.value
-                  )
-                }
-              >
-                <option value="">
-                  Choose employee
-                </option>
-
-                {personOptions}
-              </select>
-            </label>
+              {tickerItems.map((item, index) => (
+                <TickerItem
+                  key={`copy-${index}-${item}`}
+                  text={item}
+                />
+              ))}
+            </div>
           )}
         </div>
-
-        {/* HALF-DAY TIMES */}
-
-        {mode === "HALF" && (
-          <div
-            style={{
-              display: "grid",
-              gap: 9,
-              gridTemplateColumns:
-                "repeat(3,minmax(0,1fr))",
-            }}
-          >
-            <label
-              style={{
-                fontSize: 12,
-              }}
-            >
-              Open
-
-              <input
-                aria-label="Opening time"
-                type="time"
-                style={field}
-                value={openTime}
-                onChange={(e) =>
-                  setOpenTime(
-                    e.target.value
-                  )
-                }
-              />
-            </label>
-
-            <label
-              style={{
-                fontSize: 12,
-              }}
-            >
-              Handover
-
-              <input
-                aria-label="Handover time"
-                type="time"
-                style={field}
-                value={handoverTime}
-                onChange={(e) =>
-                  setHandoverTime(
-                    e.target.value
-                  )
-                }
-              />
-            </label>
-
-            <label
-              style={{
-                fontSize: 12,
-              }}
-            >
-              Close
-
-              <input
-                aria-label="Closing time"
-                type="time"
-                style={field}
-                value={closeTime}
-                onChange={(e) =>
-                  setCloseTime(
-                    e.target.value
-                  )
-                }
-              />
-            </label>
-          </div>
-        )}
-
-        {/* ACTIONS */}
-
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            type="button"
-            style={primary}
-            disabled={busy}
-            onClick={
-              applyTemporary
-            }
-          >
-            Apply{" "}
-            {mode === "HALF"
-              ? "Half-Day"
-              : mode === "MOVE"
-                ? "Move"
-                : "Swap"}
-          </button>
-
-          <button
-            type="button"
-            style={secondary}
-            disabled={busy}
-            onClick={viewDate}
-          >
-            View date
-          </button>
-        </div>
-
-        {/* ====================================== */}
-        {/* ACTIVE DATE PREVIEW */}
-        {/* ====================================== */}
-
-        {visiblePreview && (
-          <div
-            style={{
-              background:
-                "#f8fafc",
-              padding: 10,
-              borderRadius: 8,
-              display: "grid",
-              gap: 7,
-              fontSize: 12,
-            }}
-          >
-            <strong>
-              {visiblePreview.date}
-            </strong>
-
-            {visiblePreview.duties.map(
-              (p, i) => (
-                <div key={`d-${i}`}>
-                  {name(
-                    p.reliever_employee_id
-                  )}{" "}
-                  relieves{" "}
-                  {name(
-                    p.covered_employee_id
-                  )}
-
-                  {p.temporary
-                    ? " · Temporary"
-                    : ""}
-                </div>
-              )
-            )}
-
-            {visiblePreview.offs.map(
-              (o) => (
-                <div
-                  key={`o-${o.employee_id}`}
-                >
-                  {name(
-                    o.employee_id
-                  )}{" "}
-                  — OFF
-
-                  {o.temporary
-                    ? " · Temporary"
-                    : ""}
-                </div>
-              )
-            )}
-
-            {/* SAVED TEMPORARY CHANGES */}
-
-            {visiblePreview.changes.length >
-            0 ? (
-              <div
-                style={{
-                  borderTop:
-                    "1px solid #cbd5e1",
-                  paddingTop: 9,
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                <strong>
-                  Saved temporary changes
-                </strong>
-
-                {visiblePreview.changes.map(
-                  (change) => (
-                    <div
-                      key={`${change.kind}-${change.change_id}`}
-                      style={{
-                        display: "flex",
-                        alignItems:
-                          "center",
-                        justifyContent:
-                          "space-between",
-                        flexWrap: "wrap",
-                        gap: 8,
-                        border:
-                          "1px solid #e2e8f0",
-                        background:
-                          "white",
-                        padding: 8,
-                        borderRadius: 7,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "grid",
-                          gap: 3,
-                          flex: 1,
-                        }}
-                      >
-                        <b>
-                          {change.kind ===
-                          "HALF_DAY"
-                            ? "Half-Day"
-                            : change.kind ===
-                                "SHOP_SWAP"
-                              ? "Shop Swap"
-                              : change.kind ===
-                                  "SHOP_MOVE"
-                                ? "Shop Move"
-                                : "Relief Move / Swap"}
-                        </b>
-
-                        {(change.entries || []).map(
-                          (
-                            entry,
-                            index
-                          ) => (
-                            <span
-                              key={
-                                index
-                              }
-                            >
-                              {temporaryLine(
-                                entry,
-                                change.kind
-                              )}
-                            </span>
-                          )
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        style={{
-                          ...secondary,
-                          padding:
-                            "5px 10px",
-                        }}
-                        disabled={
-                          busy ||
-                          visiblePreview.date <
-                            nairobiNow.date
-                        }
-                        onClick={() =>
-                          cancelTemporary(
-                            change.change_id,
-                            change.kind
-                          )
-                        }
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )
-                )}
-              </div>
-            ) : (
-              <span
-                style={{
-                  color: "#64748b",
-                }}
-              >
-                No active temporary changes for this date.
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* UPCOMING HALF-DAYS */}
-
-        {!!upcomingHalfDays.length && (
-          <span
-            style={{
-              color: "#64748b",
-              fontSize: 11,
-            }}
-          >
-            Upcoming Half-Days:{" "}
-            {upcomingHalfDays.length}
-          </span>
-        )}
-      </div>
-
-      {/* ========================================== */}
-      {/* SHARED REASON FIELD */}
-      {/* ========================================== */}
-
-      <div
-        style={{
-          borderTop:
-            "1px solid #e2e8f0",
-          padding: 14,
-          display: "grid",
-          gap: 8,
-        }}
-      >
-        <label
-          htmlFor="rota-reason"
-          style={{
-            fontSize: 12,
-            fontWeight: 800,
-          }}
-        >
-          Reason
-        </label>
-
-        <textarea
-          id="rota-reason"
-          rows={2}
-          style={{
-            ...field,
-            resize: "vertical",
-          }}
-          placeholder="Reason for change"
-          value={reason}
-          disabled={busy}
-          onChange={(e) =>
-            setReason(
-              e.target.value
-            )
-          }
-        />
-
-        {notice && (
-          <span
-            role="status"
-            style={{
-              color: "#15803d",
-              fontSize: 12,
-            }}
-          >
-            {notice}
-          </span>
-        )}
-
-        {error && (
-          <span
-            role="alert"
-            style={{
-              color: "#b91c1c",
-              fontSize: 12,
-            }}
-          >
-            {error}
-          </span>
-        )}
-      </div>
-    </section>
+      </section>
+    </>
   );
 }
+
+// ==================================================
+// TICKER ITEM
+// ==================================================
+
+function TickerItem({ text }) {
+  return (
+    <div style={tickerItemStyle}>
+      <span style={separatorStyle}>
+        ◆
+      </span>
+
+      <span>
+        {text}
+      </span>
+    </div>
+  );
+}
+
+// ==================================================
+// BUILD REGULAR DUTY MESSAGE
+// ==================================================
+
+function buildDutyMessage(event, dayLabel) {
+  const source =
+    upper(event?.source);
+
+  const eventType =
+    upper(event?.event_type);
+
+  const actionType =
+    upper(event?.action_type);
+
+  const effectiveStatus =
+    upper(event?.effective_status);
+
+  const employeeName =
+    cleanText(
+      event?.employee_off ||
+        event?.employee_name
+    );
+
+  const reliefName =
+    cleanText(event?.relief_employee);
+
+  const shopName =
+    cleanText(event?.shop_name);
+
+  const reason =
+    cleanText(event?.reason_text);
+
+  const temporary =
+    source === "TEMPORARY_OVERRIDE";
+
+  const isOff =
+    effectiveStatus === "OFF_DUTY" ||
+    [
+      "RELIEF_COVER",
+      "EMPLOYEE_OFF",
+      "TEMPORARY_OFF",
+      "TEMPORARY_OFF_WITH_RELIEF",
+    ].includes(eventType);
+
+  const isMove =
+    [
+      "MOVE",
+      "SHOP_MOVE",
+    ].includes(actionType) ||
+    eventType === "TEMPORARY_DUTY_CHANGE";
+
+  const isSwap =
+    actionType === "SWAP" ||
+    eventType === "TEMPORARY_SWAP";
+
+  let message = `${dayLabel}: `;
+
+  if (temporary) {
+    message += "ADMIN CHANGE — ";
+  }
+
+  if (isOff && reliefName) {
+    message +=
+      `${employeeName || "Employee"} OFF`;
+
+    if (shopName) {
+      message += ` at ${shopName}`;
+    }
+
+    message +=
+      ` • ${reliefName} covering`;
+
+    if (shopName) {
+      message += ` ${shopName}`;
+    }
+  } else if (isOff) {
+    message +=
+      `${employeeName || "Employee"} OFF`;
+
+    if (shopName) {
+      message += ` at ${shopName}`;
+    }
+  } else if (isSwap) {
+    message +=
+      `${employeeName || "Employee"} duty swap`;
+
+    if (shopName) {
+      message += ` at ${shopName}`;
+    }
+  } else if (isMove) {
+    message +=
+      `${employeeName || "Employee"} moved`;
+
+    if (shopName) {
+      message += ` to ${shopName}`;
+    }
+  } else {
+    message +=
+      `${employeeName || "Employee"} duty update`;
+
+    if (shopName) {
+      message += ` at ${shopName}`;
+    }
+  }
+
+  if (reason) {
+    message += ` • ${reason}`;
+  }
+
+  return message;
+}
+
+// ==================================================
+// DATE HELPERS
+// ==================================================
+
+function todayNairobi() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone: "Africa/Nairobi",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }
+    ).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts
+      .filter(
+        (part) => part.type !== "literal"
+      )
+      .map((part) => [
+        part.type,
+        part.value,
+      ])
+  );
+
+  return (
+    `${values.year}-` +
+    `${values.month}-` +
+    `${values.day}`
+  );
+}
+
+function dateOnly(value) {
+  return String(value || "").slice(0, 10);
+}
+
+function addDays(dateString, days) {
+  const date = new Date(
+    `${dateString}T12:00:00Z`
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
+  date.setUTCDate(
+    date.getUTCDate() + days
+  );
+
+  return date.toISOString().slice(0, 10);
+}
+
+function futureDateLabel(dateString) {
+  const date = new Date(
+    `${dateString}T12:00:00Z`
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "UTC",
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+    }
+  )
+    .format(date)
+    .toUpperCase();
+}
+
+function eventKey(date, changeId) {
+  return (
+    `${dateOnly(date)}|` +
+    `${cleanText(changeId)}`
+  );
+}
+
+// ==================================================
+// GENERAL HELPERS
+// ==================================================
+
+function upper(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase();
+}
+
+function cleanText(value) {
+  return String(value ?? "").trim();
+}
+
+async function safeJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+// ==================================================
+// LIVE FEED STYLES — UNCHANGED
+// ==================================================
+
+const panelStyle = {
+  width: "100%",
+  minHeight: "60px",
+  boxSizing: "border-box",
+  display: "flex",
+  alignItems: "stretch",
+  backgroundColor: "#111C30",
+  borderTop:
+    "1px solid rgba(255,255,255,0.12)",
+  borderBottom:
+    "1px solid rgba(255,255,255,0.12)",
+  overflow: "hidden",
+  color: "#FFFFFF",
+};
+
+const labelStyle = {
+  flexShrink: 0,
+  minWidth: "135px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "8px",
+  padding: "0 16px",
+  backgroundColor: "#111C30",
+  color: "#FFFFFF",
+  borderRight:
+    "1px solid rgba(255,255,255,0.18)",
+  fontSize: "13px",
+  fontWeight: 900,
+  letterSpacing: "0.8px",
+  zIndex: 2,
+};
+
+const liveDotStyle = {
+  width: "9px",
+  height: "9px",
+  borderRadius: "50%",
+  backgroundColor: "#22C55E",
+  boxShadow:
+    "0 0 9px rgba(34,197,94,0.85)",
+  flexShrink: 0,
+};
+
+const tickerWindowStyle = {
+  flex: 1,
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  overflow: "hidden",
+  position: "relative",
+  backgroundColor: "#111C30",
+  color: "#FFFFFF",
+};
+
+const tickerItemStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "12px",
+  paddingRight: "42px",
+  color: "#FFFFFF",
+  fontSize: "14px",
+  fontWeight: 800,
+  letterSpacing: "0.2px",
+  whiteSpace: "nowrap",
+};
+
+const separatorStyle = {
+  color: "#FFFFFF",
+  fontSize: "8px",
+  opacity: 0.8,
+};
+
+const staticMessageStyle = {
+  width: "100%",
+  padding: "0 18px",
+  color: "#FFFFFF",
+  fontSize: "14px",
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+};
