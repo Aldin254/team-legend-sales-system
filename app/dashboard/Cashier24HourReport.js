@@ -1361,8 +1361,22 @@ export default function Cashier24HourReport({
   // DASHBOARD
   // ==================================================
 
-  return (
-    <div style={pageStyle}>
+ return (
+  <div className="cashier-24hour" style={pageStyle}>
+
+    <style>{`
+      .cashier-24hour input[type="number"]::-webkit-inner-spin-button,
+      .cashier-24hour input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+
+      .cashier-24hour input[type="number"] {
+        -webkit-appearance: textfield;
+        -moz-appearance: textfield;
+        appearance: textfield;
+      }
+    `}</style>
       <header style={topHeaderStyle}>
         <div style={brandWrapStyle}>
           <div style={crownStyle}>♛</div>
