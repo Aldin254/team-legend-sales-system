@@ -4,6 +4,250 @@ import { useEffect, useMemo, useState } from "react";
 
 const TABLE_NAME = "TABLE";
 
+// ==================================================
+// TEAM LEGEND PROFESSIONAL DARK THEME
+// ==================================================
+
+const THEME = {
+  background: "#101e2d",
+  backgroundDeep: "#0b1725",
+  backgroundRaised: "#16283a",
+  backgroundInput: "#0b1928",
+  border: "#304255",
+  borderSoft: "#25394d",
+
+  text: "#f0f4f8",
+  secondary: "#c3cfdb",
+  muted: "#95a8ba",
+
+  gold: "#e0bd70",
+  green: "#37c99c",
+  greenDark: "#176b56",
+  greenBackground: "#102e2a",
+
+  red: "#fb94a0",
+  redBackground: "#39232d",
+
+  blue: "#7cb9f4",
+  blueBackground: "#132d43",
+};
+
+const shellStyle = {
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
+  padding: "clamp(12px, 1.6vw, 22px)",
+
+  background:
+    "linear-gradient(145deg, #142538 0%, #0e1c2b 100%)",
+
+  color: THEME.text,
+
+  border: `1px solid ${THEME.border}`,
+  borderRadius: 11,
+
+  fontFamily:
+    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+
+  fontSize: 12,
+  lineHeight: 1.6,
+
+  boxShadow: "0 8px 26px rgba(0,0,0,0.15)",
+};
+
+const headerStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  flexWrap: "wrap",
+  gap: 14,
+
+  paddingBottom: 15,
+  marginBottom: 15,
+
+  borderBottom: `1px solid ${THEME.border}`,
+};
+
+const headingStyle = {
+  margin: 0,
+  fontSize: "clamp(14px,1.4vw,18px)",
+  fontWeight: 850,
+  color: THEME.gold,
+  letterSpacing: ".025em",
+};
+
+const shiftLabelStyle = {
+  marginTop: 7,
+  fontSize: 11,
+  fontWeight: 750,
+  color: THEME.text,
+};
+
+const dateLabelStyle = {
+  marginTop: 4,
+  fontSize: 10,
+  color: THEME.muted,
+};
+
+const outputBadgeStyle = {
+  padding: "10px 13px",
+
+  background: THEME.greenBackground,
+  border: "1px solid #286b59",
+  borderLeft: `3px solid ${THEME.green}`,
+
+  borderRadius: 8,
+  color: "#a8ebd1",
+
+  fontSize: 12,
+  fontWeight: 800,
+  fontVariantNumeric: "tabular-nums",
+
+  overflowWrap: "anywhere",
+};
+
+const stageStyle = {
+  marginBottom: 14,
+  padding: "clamp(11px,1.4vw,17px)",
+
+  background: THEME.backgroundDeep,
+
+  border: `1px solid ${THEME.border}`,
+  borderRadius: 9,
+
+  boxShadow: "0 4px 15px rgba(0,0,0,.08)",
+};
+
+const stageHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: 10,
+
+  paddingBottom: 9,
+  marginBottom: 9,
+
+  borderBottom: `1px solid ${THEME.borderSoft}`,
+};
+
+const stageTitleStyle = {
+  fontSize: 12,
+  fontWeight: 850,
+  color: THEME.gold,
+};
+
+const stageDescriptionStyle = {
+  color: THEME.muted,
+  fontSize: 11,
+  lineHeight: 1.6,
+  marginBottom: 13,
+};
+
+const platformRowStyle = {
+  display: "grid",
+
+  gridTemplateColumns:
+    "minmax(0,1fr) minmax(100px,38%)",
+
+  gap: 9,
+  alignItems: "center",
+
+  padding: "7px 0",
+  borderBottom: `1px solid ${THEME.borderSoft}`,
+};
+
+const platformNameStyle = {
+  color: THEME.secondary,
+  fontSize: 11,
+  fontWeight: 750,
+  overflowWrap: "anywhere",
+};
+
+const readingInputStyle = {
+  width: "100%",
+  minWidth: 0,
+  minHeight: 35,
+  boxSizing: "border-box",
+
+  padding: "8px 10px",
+
+  background: THEME.backgroundInput,
+  color: THEME.text,
+
+  border: `1px solid ${THEME.border}`,
+  borderRadius: 6,
+
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 700,
+
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
+  outlineColor: THEME.gold,
+};
+
+const saveButtonStyle = {
+  display: "block",
+  width: "100%",
+  boxSizing: "border-box",
+
+  marginTop: 15,
+  padding: "11px 14px",
+
+  border: "1px solid #36b991",
+  borderRadius: 7,
+
+  background:
+    "linear-gradient(90deg, #239979 0%, #27bd86 100%)",
+
+  color: "#ffffff",
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 850,
+
+  cursor: "pointer",
+  textAlign: "center",
+
+  boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
+};
+
+const warningStyle = {
+  padding: "11px 13px",
+  marginBottom: 14,
+
+  background: THEME.redBackground,
+  color: THEME.red,
+
+  border: "1px solid #724353",
+  borderLeft: `3px solid ${THEME.red}`,
+  borderRadius: 7,
+
+  fontSize: 11,
+  lineHeight: 1.6,
+};
+
+const resetNoticeStyle = {
+  padding: "11px 13px",
+  margin: "14px 0",
+
+  background: THEME.blueBackground,
+
+  color: "#a9cff4",
+
+  border: "1px solid #315572",
+  borderLeft: `3px solid ${THEME.blue}`,
+  borderRadius: 7,
+
+  fontSize: 11,
+  fontWeight: 700,
+  lineHeight: 1.6,
+};
+
+// ==================================================
+// MAIN COMPONENT
+// ==================================================
+
 export default function PlatformReadings24Hour({
   user,
   currentShift,
@@ -13,17 +257,30 @@ export default function PlatformReadings24Hour({
   const [platforms, setPlatforms] = useState([]);
   const [rows, setRows] = useState({});
   const [values, setValues] = useState({});
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
+
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
+
   const [now, setNow] = useState(() => new Date());
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // ==================================================
+  // SUPABASE
+  // ==================================================
+
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   const shopId =
-    currentShift?.shop_id || user?.shop_id || user?.shopId || null;
+    currentShift?.shop_id ||
+    user?.shop_id ||
+    user?.shopId ||
+    null;
 
   const cashierId =
     user?.profile_id ||
@@ -33,12 +290,20 @@ export default function PlatformReadings24Hour({
     null;
 
   const accessToken = user?.access_token || null;
+
   const shiftId = currentShift?.id || null;
-  const shiftName = normaliseShiftName(currentShift?.shift_name);
+
+  const shiftName = normaliseShiftName(
+    currentShift?.shift_name
+  );
+
   const isShift1 = shiftName === "SHIFT 1";
   const isShift2 = shiftName === "SHIFT 2";
+
   const isOpen =
-    String(currentShift?.status || "").trim().toUpperCase() === "OPEN";
+    String(currentShift?.status || "")
+      .trim()
+      .toUpperCase() === "OPEN";
 
   const requestHeaders = {
     apikey: supabaseAnonKey,
@@ -61,12 +326,17 @@ export default function PlatformReadings24Hour({
     return () => clearInterval(timer);
   }, []);
 
-  // Reset unsaved inputs when the selected shift changes.
+  // ==================================================
+  // RESET INPUTS ON SHIFT CHANGE
+  // ==================================================
+
   useEffect(() => {
     setPlatforms([]);
     setRows({});
     setValues({});
+
     setLoading(true);
+
     setMessage("");
     setMessageType("");
   }, [shiftId]);
@@ -91,39 +361,43 @@ export default function PlatformReadings24Hour({
 
     async function loadData() {
       try {
-        const [platformResponse, readingResponse] =
-          await Promise.all([
-            fetch(
-              `${supabaseUrl}/rest/v1/shop_platforms` +
-                `?shop_id=eq.${encodeURIComponent(shopId)}` +
-                `&is_active=eq.true` +
-                `&select=id,shop_id,platform_name,reading_type,display_order,is_active` +
-                `&order=display_order.asc`,
-              {
-                method: "GET",
-                headers: requestHeaders,
-                cache: "no-store",
-              }
-            ),
+        const [
+          platformResponse,
+          readingResponse,
+        ] = await Promise.all([
+          fetch(
+            `${supabaseUrl}/rest/v1/shop_platforms` +
+              `?shop_id=eq.${encodeURIComponent(shopId)}` +
+              `&is_active=eq.true` +
+              `&select=id,shop_id,platform_name,reading_type,display_order,is_active` +
+              `&order=display_order.asc`,
+            {
+              method: "GET",
+              headers: requestHeaders,
+              cache: "no-store",
+            }
+          ),
 
-            fetch(
-              `${supabaseUrl}/rest/v1/platform_readings` +
-                `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-                `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
-                `&order=recorded_at.asc`,
-              {
-                method: "GET",
-                headers: requestHeaders,
-                cache: "no-store",
-              }
-            ),
-          ]);
+          fetch(
+            `${supabaseUrl}/rest/v1/platform_readings` +
+              `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+              `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
+              `&order=recorded_at.asc`,
+            {
+              method: "GET",
+              headers: requestHeaders,
+              cache: "no-store",
+            }
+          ),
+        ]);
 
-        const [platformData, readingData] =
-          await Promise.all([
-            safeJson(platformResponse),
-            safeJson(readingResponse),
-          ]);
+        const [
+          platformData,
+          readingData,
+        ] = await Promise.all([
+          safeJson(platformResponse),
+          safeJson(readingResponse),
+        ]);
 
         if (!platformResponse.ok) {
           throw new Error(
@@ -150,7 +424,10 @@ export default function PlatformReadings24Hour({
             ? readingData
             : []
         ) {
-          if (!row.platform_id || !row.reading_kind) {
+          if (
+            !row.platform_id ||
+            !row.reading_kind
+          ) {
             continue;
           }
 
@@ -158,16 +435,23 @@ export default function PlatformReadings24Hour({
             readingMap[row.platform_id] = {};
           }
 
-          readingMap[row.platform_id][row.reading_kind] = row;
+          readingMap[row.platform_id][
+            row.reading_kind
+          ] = row;
         }
 
         setPlatforms(
-          Array.isArray(platformData) ? platformData : []
+          Array.isArray(platformData)
+            ? platformData
+            : []
         );
 
         setRows(readingMap);
       } catch (error) {
-        console.error("24H PLATFORM LOAD ERROR:", error);
+        console.error(
+          "24H PLATFORM LOAD ERROR:",
+          error
+        );
 
         if (!cancelled) {
           setMessage(
@@ -203,7 +487,10 @@ export default function PlatformReadings24Hour({
   // ==================================================
 
   const resettablePlatforms = useMemo(
-    () => platforms.filter((platform) => !isTable(platform)),
+    () =>
+      platforms.filter(
+        (platform) => !isTable(platform)
+      ),
     [platforms]
   );
 
@@ -239,29 +526,46 @@ export default function PlatformReadings24Hour({
 
   // ==================================================
   // DATE-AWARE VISIBILITY
-  // Once a stage opens, it never expires by time alone.
+  //
+  // Once a stage opens, it stays available.
   // ==================================================
 
   const showShift1Handover =
     isShift1 &&
     (
       shift1HandoverSaved ||
-      isStageAvailable(currentShift, "HANDOVER_9PM", now)
+      isStageAvailable(
+        currentShift,
+        "HANDOVER_9PM",
+        now
+      )
     );
 
   const showMidnightStage =
     isShift2 &&
     (
       midnightSaved ||
-      isStageAvailable(currentShift, "MIDNIGHT_CLOSE", now)
+      isStageAvailable(
+        currentShift,
+        "MIDNIGHT_CLOSE",
+        now
+      )
     );
 
   const showClosing9amStage =
     isShift2 &&
     (
       closing9amSaved ||
-      isStageAvailable(currentShift, "CLOSING_9AM", now)
+      isStageAvailable(
+        currentShift,
+        "CLOSING_9AM",
+        now
+      )
     );
+
+  // ==================================================
+  // TOTAL OUTPUT
+  // ==================================================
 
   const totalOutput = useMemo(
     () =>
@@ -274,10 +578,14 @@ export default function PlatformReadings24Hour({
   );
 
   // ==================================================
-  // INPUT
+  // INPUT UPDATE
   // ==================================================
 
-  function updateValue(platformId, readingKind, value) {
+  function updateValue(
+    platformId,
+    readingKind,
+    value
+  ) {
     if (
       !isOpen ||
       rows[platformId]?.[readingKind]?.id
@@ -287,6 +595,7 @@ export default function PlatformReadings24Hour({
 
     setValues((old) => ({
       ...old,
+
       [platformId]: {
         ...(old[platformId] || {}),
         [readingKind]: value,
@@ -298,14 +607,20 @@ export default function PlatformReadings24Hour({
   }
 
   // ==================================================
-  // SAVE A READING STAGE
+  // SAVE READING STAGE
   // ==================================================
 
   async function saveStage(readingKind) {
     if (saving) return;
 
-    if (!shiftId || !cashierId || !accessToken) {
-      setMessage("Shift or login information is missing.");
+    if (
+      !shiftId ||
+      !cashierId ||
+      !accessToken
+    ) {
+      setMessage(
+        "Shift or login information is missing."
+      );
       setMessageType("error");
       return;
     }
@@ -319,7 +634,10 @@ export default function PlatformReadings24Hour({
     }
 
     const allowedKind =
-      (isShift1 && readingKind === "HANDOVER_9PM") ||
+      (
+        isShift1 &&
+        readingKind === "HANDOVER_9PM"
+      ) ||
       (
         isShift2 &&
         (
@@ -337,20 +655,26 @@ export default function PlatformReadings24Hour({
       )
     ) {
       setMessage(
-        `${stageLabel(readingKind)} is not yet available for this shift.`
+        `${stageLabel(
+          readingKind
+        )} is not yet available for this shift.`
       );
+
       setMessageType("error");
       return;
     }
 
-    // TABLE does not receive a midnight reading.
+    // TABLE never receives a midnight reading.
+
     const stagePlatforms =
       readingKind === "MIDNIGHT_CLOSE"
         ? resettablePlatforms
         : platforms;
 
     if (stagePlatforms.length === 0) {
-      setMessage("No platforms are available for this stage.");
+      setMessage(
+        "No platforms are available for this stage."
+      );
       setMessageType("error");
       return;
     }
@@ -362,8 +686,11 @@ export default function PlatformReadings24Hour({
 
     if (unsaved.length === 0) {
       setMessage(
-        `${stageLabel(readingKind)} readings are already saved.`
+        `${stageLabel(
+          readingKind
+        )} readings are already saved.`
       );
+
       setMessageType("success");
       return;
     }
@@ -371,7 +698,8 @@ export default function PlatformReadings24Hour({
     const pendingRecords = [];
 
     for (const platform of unsaved) {
-      const raw = values[platform.id]?.[readingKind];
+      const raw =
+        values[platform.id]?.[readingKind];
 
       if (
         raw === "" ||
@@ -379,19 +707,24 @@ export default function PlatformReadings24Hour({
         raw === undefined
       ) {
         setMessage(
-          `Enter ${stageLabel(readingKind)} for ${platform.platform_name}.`
+          `Enter ${stageLabel(
+            readingKind
+          )} for ${platform.platform_name}.`
         );
+
         setMessageType("error");
         return;
       }
 
       const numericValue = Number(raw);
 
-      // Negative, zero and positive readings are valid.
+      // Negative, zero and positive values valid.
+
       if (!Number.isFinite(numericValue)) {
         setMessage(
           `Enter a valid reading for ${platform.platform_name}.`
         );
+
         setMessageType("error");
         return;
       }
@@ -422,7 +755,8 @@ export default function PlatformReadings24Hour({
     let readingsWereSaved = false;
 
     try {
-      // Recheck the shift before saving.
+      // Verify shift status again before saving.
+
       const freshResponse = await fetch(
         `${supabaseUrl}/rest/v1/shifts` +
           `?id=eq.${encodeURIComponent(shiftId)}` +
@@ -434,7 +768,8 @@ export default function PlatformReadings24Hour({
         }
       );
 
-      const freshData = await safeJson(freshResponse);
+      const freshData =
+        await safeJson(freshResponse);
 
       if (!freshResponse.ok) {
         throw new Error(
@@ -449,7 +784,8 @@ export default function PlatformReadings24Hour({
 
       if (
         !freshShift ||
-        String(freshShift.status).toUpperCase() !== "OPEN"
+        String(freshShift.status).toUpperCase() !==
+          "OPEN"
       ) {
         throw new Error(
           "This shift is no longer OPEN. Contact Admin."
@@ -457,7 +793,8 @@ export default function PlatformReadings24Hour({
       }
 
       if (
-        String(freshShift.shop_id) !== String(shopId)
+        String(freshShift.shop_id) !==
+        String(shopId)
       ) {
         throw new Error(
           "This shift does not belong to the selected shop."
@@ -476,20 +813,24 @@ export default function PlatformReadings24Hour({
         );
       }
 
-      const recordedAt = new Date().toISOString();
+      const recordedAt =
+        new Date().toISOString();
 
       const payload = pendingRecords.map(
         ({ platform, numericValue }) => ({
           shift_id: shiftId,
           platform_id: platform.id,
           reading_kind: readingKind,
-          reading_value: roundMoney(numericValue),
+          reading_value: roundMoney(
+            numericValue
+          ),
           recorded_at: recordedAt,
           recorded_by: cashierId,
         })
       );
 
-      // Save all unsaved platform readings in one request.
+      // Save all readings in one request.
+
       const response = await fetch(
         `${supabaseUrl}/rest/v1/platform_readings`,
         {
@@ -528,7 +869,9 @@ export default function PlatformReadings24Hour({
 
       for (const savedRow of result) {
         newRows[savedRow.platform_id] = {
-          ...(newRows[savedRow.platform_id] || {}),
+          ...(newRows[savedRow.platform_id] ||
+            {}),
+
           [readingKind]: savedRow,
         };
       }
@@ -544,16 +887,23 @@ export default function PlatformReadings24Hour({
       await syncShiftTotalOutput(newOutput);
 
       setMessage(
-        `${stageLabel(readingKind)} readings saved and locked successfully.`
+        `${stageLabel(
+          readingKind
+        )} readings saved and locked successfully.`
       );
+
       setMessageType("success");
     } catch (error) {
-      console.error("24H READING SAVE ERROR:", error);
+      console.error(
+        "24H READING SAVE ERROR:",
+        error
+      );
 
       setMessage(
         readingsWereSaved
           ? `Readings were saved, but the shift output could not be confirmed: ${
-              error?.message || "Refresh and contact Admin."
+              error?.message ||
+              "Refresh and contact Admin."
             }`
           : error?.message ||
               "Unable to save platform readings."
@@ -580,10 +930,12 @@ export default function PlatformReadings24Hour({
   }
 
   // ==================================================
-  // UPDATE SHIFT TOTAL OUTPUT
+  // SYNC SHIFT OUTPUT
   // ==================================================
 
-  async function syncShiftTotalOutput(totalOutputValue) {
+  async function syncShiftTotalOutput(
+    totalOutputValue
+  ) {
     const response = await fetch(
       `${supabaseUrl}/rest/v1/shifts` +
         `?id=eq.${encodeURIComponent(shiftId)}` +
@@ -595,7 +947,9 @@ export default function PlatformReadings24Hour({
           Prefer: "return=representation",
         },
         body: JSON.stringify({
-          total_output: roundMoney(totalOutputValue),
+          total_output: roundMoney(
+            totalOutputValue
+          ),
         }),
       }
     );
@@ -619,6 +973,7 @@ export default function PlatformReadings24Hour({
       );
     }
   }
+
   // ==================================================
   // DISPLAY
   // ==================================================
@@ -636,68 +991,28 @@ export default function PlatformReadings24Hour({
   }
 
   return (
-    <div
-      style={{
-        marginTop: 0,
-        width: "100%",
-        boxSizing: "border-box",
-        backgroundColor: "white",
-        padding: 25,
-        borderRadius: 12,
-        boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-      }}
-    >
+    <div style={shellStyle}>
       {/* HEADER */}
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 20,
-          flexWrap: "wrap",
-          marginBottom: 20,
-        }}
-      >
+      <div style={headerStyle}>
         <div>
-          <h2
-            style={{
-              margin: "0 0 6px 0",
-            }}
-          >
-            Platform Sales – 24-Hour Shift System
+          <h2 style={headingStyle}>
+            PLATFORM SALES — 24-HOUR SHIFT
           </h2>
 
-          <div
-            style={{
-              color: "#64748b",
-            }}
-          >
+          <div style={shiftLabelStyle}>
             {shiftName || "24-Hour Shift"}
           </div>
 
-          <div
-            style={{
-              color: "#64748b",
-              fontSize: 12,
-              marginTop: 4,
-            }}
-          >
+          <div style={dateLabelStyle}>
             Business date:{" "}
             {currentShift.business_date || "—"}
           </div>
         </div>
 
-        <div
-          style={{
-            padding: "12px 18px",
-            backgroundColor: "#ecfdf5",
-            color: "#166534",
-            borderRadius: 8,
-            fontWeight: "bold",
-          }}
-        >
-          Current Shift Output: KES {money(totalOutput)}
+        <div style={outputBadgeStyle}>
+          Current Shift Output: KES{" "}
+          {money(totalOutput)}
         </div>
       </div>
 
@@ -705,8 +1020,9 @@ export default function PlatformReadings24Hour({
 
       {!isOpen && (
         <div style={warningStyle}>
-          This shift is CLOSED. Readings are view-only
-          until Admin authorizes recovery.
+          This shift is CLOSED. Readings are
+          view-only until Admin authorizes
+          recovery.
         </div>
       )}
 
@@ -719,20 +1035,32 @@ export default function PlatformReadings24Hour({
         </div>
       )}
 
-      {/* MESSAGES */}
+      {/* SUCCESS AND ERROR MESSAGES */}
 
       {message && (
         <div
           style={{
             ...warningStyle,
-            backgroundColor:
+
+            background:
               messageType === "success"
-                ? "#ecfdf5"
-                : "#fef2f2",
+                ? THEME.greenBackground
+                : THEME.redBackground,
+
             color:
               messageType === "success"
-                ? "#166534"
-                : "#991b1b",
+                ? "#a8ebd1"
+                : THEME.red,
+
+            border:
+              messageType === "success"
+                ? "1px solid #286b59"
+                : "1px solid #724353",
+
+            borderLeft:
+              messageType === "success"
+                ? `3px solid ${THEME.green}`
+                : `3px solid ${THEME.red}`,
           }}
         >
           {message}
@@ -740,14 +1068,24 @@ export default function PlatformReadings24Hour({
       )}
 
       {platforms.length === 0 ? (
-        <div>
-          No active platforms are assigned to this shop.
+        <div
+          style={{
+            padding: 14,
+            background: THEME.backgroundDeep,
+            border: `1px solid ${THEME.border}`,
+            borderRadius: 7,
+            color: THEME.muted,
+            fontSize: 11,
+          }}
+        >
+          No active platforms are assigned to
+          this shop.
         </div>
       ) : (
         <>
-          {/* ======================================
+          {/* =====================================
               SHIFT 1
-          ====================================== */}
+          ===================================== */}
 
           {isShift1 && (
             <>
@@ -782,9 +1120,9 @@ export default function PlatformReadings24Hour({
             </>
           )}
 
-          {/* ======================================
+          {/* =====================================
               SHIFT 2
-          ====================================== */}
+          ===================================== */}
 
           {isShift2 && (
             <>
@@ -821,24 +1159,17 @@ export default function PlatformReadings24Hour({
 
               {/* MIDNIGHT RESET NOTICE */}
 
-              {(midnightSaved || showClosing9amStage) && (
-                <div
-                  style={{
-                    padding: 14,
-                    margin: "18px 0",
-                    backgroundColor: "#eff6ff",
-                    color: "#1e3a8a",
-                    borderRadius: 8,
-                    fontWeight: "bold",
-                  }}
-                >
-                  12:00 AM — resetting platforms start
-                  again from 0. TABLE continues unchanged
-                  and has no midnight reading.
+              {(midnightSaved ||
+                showClosing9amStage) && (
+                <div style={resetNoticeStyle}>
+                  12:00 AM — resetting platforms
+                  start again from 0. TABLE
+                  continues unchanged and has no
+                  midnight reading.
                 </div>
               )}
 
-              {/* 9 AM HANDOVER */}
+              {/* 9:00 AM HANDOVER */}
 
               {showClosing9amStage && (
                 <Stage
@@ -882,7 +1213,9 @@ function Stage({
 }) {
   const savedCount = platforms.filter(
     (platform) =>
-      Boolean(rows[platform.id]?.[readingKind]?.id)
+      Boolean(
+        rows[platform.id]?.[readingKind]?.id
+      )
   ).length;
 
   const allSaved =
@@ -890,31 +1223,22 @@ function Stage({
     savedCount === platforms.length;
 
   return (
-    <div
-      style={{
-        border: "1px solid #e2e8f0",
-        borderRadius: 10,
-        padding: 18,
-        marginBottom: 18,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 15,
-          marginBottom: 6,
-        }}
-      >
-        <strong>
+    <div style={stageStyle}>
+      {/* STAGE HEADER */}
+
+      <div style={stageHeaderStyle}>
+        <strong style={stageTitleStyle}>
           {title}
         </strong>
 
         <span
           style={{
-            color: allSaved ? "#15803d" : "#64748b",
-            fontSize: 13,
-            fontWeight: "bold",
+            color: allSaved
+              ? THEME.green
+              : THEME.muted,
+
+            fontSize: 11,
+            fontWeight: 850,
           }}
         >
           {savedCount} / {platforms.length}
@@ -922,17 +1246,13 @@ function Stage({
         </span>
       </div>
 
-      <div
-        style={{
-          color: "#64748b",
-          fontSize: 13,
-          marginBottom: 15,
-        }}
-      >
+      {/* DESCRIPTION */}
+
+      <div style={stageDescriptionStyle}>
         {description}
       </div>
 
-      {/* INDIVIDUAL PLATFORM INPUTS */}
+      {/* PLATFORM READINGS */}
 
       {platforms.map((platform) => {
         const savedRow =
@@ -947,25 +1267,15 @@ function Stage({
 
         const displayValue = saved
           ? savedRow.reading_value ?? ""
-          : values[platform.id]?.[readingKind] ?? "";
+          : values[platform.id]?.[readingKind] ??
+            "";
 
         return (
           <div
             key={platform.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "minmax(120px,1fr) minmax(150px,220px)",
-              gap: 12,
-              alignItems: "center",
-              marginBottom: 10,
-            }}
+            style={platformRowStyle}
           >
-            <div
-              style={{
-                fontWeight: "bold",
-              }}
-            >
+            <div style={platformNameStyle}>
               {platform.platform_name}
             </div>
 
@@ -985,16 +1295,28 @@ function Stage({
                 )
               }
               style={{
-                width: "100%",
-                boxSizing: "border-box",
-                padding: 11,
+                ...readingInputStyle,
+
                 border: readOnly
-                  ? "1px solid #86efac"
-                  : "1px solid #cbd5e1",
-                borderRadius: 7,
-                backgroundColor: readOnly
-                  ? "#f0fdf4"
-                  : "white",
+                  ? "1px solid #2e6b57"
+                  : `1px solid ${THEME.border}`,
+
+                background: readOnly
+                  ? THEME.greenBackground
+                  : THEME.backgroundInput,
+
+                color: readOnly
+                  ? "#a8ebd1"
+                  : THEME.text,
+
+                cursor: readOnly
+                  ? "not-allowed"
+                  : "text",
+
+                opacity: 1,
+                WebkitTextFillColor: readOnly
+                  ? "#a8ebd1"
+                  : THEME.text,
               }}
             />
           </div>
@@ -1011,16 +1333,16 @@ function Stage({
             onClick={() => onSave(readingKind)}
             disabled={Boolean(saving)}
             style={{
-              width: "100%",
-              marginTop: 8,
-              padding: 12,
-              border: "none",
-              borderRadius: 7,
-              backgroundColor: saving
-                ? "#94a3b8"
-                : "#168d32",
-              color: "white",
-              fontWeight: "bold",
+              ...saveButtonStyle,
+
+              background: saving
+                ? "#46576a"
+                : saveButtonStyle.background,
+
+              borderColor: saving
+                ? "#526478"
+                : "#36b991",
+
               cursor: saving
                 ? "not-allowed"
                 : "pointer",
@@ -1034,13 +1356,14 @@ function Stage({
     </div>
   );
 }
+
 // ==================================================
 // VALIDATE READING SEQUENCE
 //
-// 11:59 PM readings must actually be SAVED
-// before the 9 AM readings.
+// 11:59 PM readings must be saved before
+// the 9:00 AM readings.
 //
-// Negative, zero and positive figures remain valid.
+// Negative, zero and positive readings valid.
 // ==================================================
 
 function validateReading({
@@ -1076,7 +1399,7 @@ function validateReading({
 // SHIFT 2 TABLE:
 // 9 AM - 9 PM opening
 //
-// Signed arithmetic preserved.
+// SIGNED ARITHMETIC PRESERVED
 // ==================================================
 
 function calculateShiftOutput({
@@ -1087,7 +1410,8 @@ function calculateShiftOutput({
   let total = 0;
 
   for (const platform of platforms) {
-    const platformRows = rows[platform.id] || {};
+    const platformRows =
+      rows[platform.id] || {};
 
     const opening = numericOrNull(
       platformRows.OPENING?.reading_value
@@ -1113,6 +1437,8 @@ function calculateShiftOutput({
         platformRows.CLOSING_9AM?.reading_value
       );
 
+      // TABLE is continuous.
+
       if (isTable(platform)) {
         if (
           opening !== null &&
@@ -1124,8 +1450,11 @@ function calculateShiftOutput({
         continue;
       }
 
+      // Resettable platforms.
+
       const midnight = numericOrNull(
-        platformRows.MIDNIGHT_CLOSE?.reading_value
+        platformRows.MIDNIGHT_CLOSE
+          ?.reading_value
       );
 
       if (
@@ -1133,7 +1462,10 @@ function calculateShiftOutput({
         midnight !== null &&
         closing9am !== null
       ) {
-        total += midnight - opening + closing9am;
+        total +=
+          midnight -
+          opening +
+          closing9am;
       }
     }
   }
@@ -1166,7 +1498,7 @@ function isStageCompletelySaved({
 }
 
 // ==================================================
-// DATE-AWARE NAIROBI STAGE UNLOCKS
+// NAIROBI STAGE UNLOCKS
 //
 // SHIFT 1:
 // 9 PM on business date
@@ -1175,7 +1507,7 @@ function isStageCompletelySaved({
 // 11:59 PM on business date
 // 9 AM on following day
 //
-// Once unlocked, the stage stays available.
+// Stage availability never expires by time.
 // ==================================================
 
 function isStageAvailable(
@@ -1192,7 +1524,9 @@ function isStageAvailable(
   ).slice(0, 10);
 
   if (
-    !/^\d{4}-\d{2}-\d{2}$/.test(businessDate)
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      businessDate
+    )
   ) {
     return false;
   }
@@ -1203,18 +1537,23 @@ function isStageAvailable(
     name === "SHIFT 1" &&
     readingKind === "HANDOVER_9PM"
   ) {
-    unlockAt = `${businessDate}T21:00:00`;
+    unlockAt =
+      `${businessDate}T21:00:00`;
   } else if (
     name === "SHIFT 2" &&
     readingKind === "MIDNIGHT_CLOSE"
   ) {
-    unlockAt = `${businessDate}T23:59:00`;
+    unlockAt =
+      `${businessDate}T23:59:00`;
   } else if (
     name === "SHIFT 2" &&
     readingKind === "CLOSING_9AM"
   ) {
     unlockAt =
-      `${addStageDays(businessDate, 1)}T09:00:00`;
+      `${addStageDays(
+        businessDate,
+        1
+      )}T09:00:00`;
   } else {
     return false;
   }
@@ -1239,7 +1578,10 @@ function isStageAvailable(
 // ADD DAYS WITHOUT TIMEZONE DRIFT
 // ==================================================
 
-function addStageDays(dateString, days) {
+function addStageDays(
+  dateString,
+  days
+) {
   const [year, month, day] = dateString
     .split("-")
     .map(Number);
@@ -1295,7 +1637,7 @@ function getNairobiTimeParts(
 }
 
 // ==================================================
-// HELPERS
+// TABLE CHECK
 // ==================================================
 
 function isTable(platform) {
@@ -1307,6 +1649,10 @@ function isTable(platform) {
       .toUpperCase() === TABLE_NAME
   );
 }
+
+// ==================================================
+// NORMALISE SHIFT NAME
+// ==================================================
 
 function normaliseShiftName(value) {
   const text = String(value || "")
@@ -1332,6 +1678,10 @@ function normaliseShiftName(value) {
   return text;
 }
 
+// ==================================================
+// STAGE LABEL
+// ==================================================
+
 function stageLabel(kind) {
   if (kind === "OPENING") {
     return "Opening";
@@ -1352,6 +1702,10 @@ function stageLabel(kind) {
   return kind;
 }
 
+// ==================================================
+// NUMBER HELPER
+// ==================================================
+
 function numericOrNull(value) {
   if (
     value === "" ||
@@ -1368,6 +1722,10 @@ function numericOrNull(value) {
     : null;
 }
 
+// ==================================================
+// ROUND MONEY
+// ==================================================
+
 function roundMoney(value) {
   return (
     Math.round(
@@ -1375,6 +1733,10 @@ function roundMoney(value) {
     ) / 100
   );
 }
+
+// ==================================================
+// MONEY FORMAT
+// ==================================================
 
 function money(value) {
   const numeric = Number(value);
@@ -1389,6 +1751,10 @@ function money(value) {
   });
 }
 
+// ==================================================
+// SAFE JSON
+// ==================================================
+
 async function safeJson(response) {
   try {
     return await response.json();
@@ -1397,25 +1763,26 @@ async function safeJson(response) {
   }
 }
 
+// ==================================================
+// LOADING PANEL
+// ==================================================
+
 function Panel({ children }) {
   return (
     <div
       style={{
-        marginTop: 24,
-        padding: 25,
-        backgroundColor: "white",
-        borderRadius: 12,
+        ...shellStyle,
+
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+
+        minHeight: 120,
+        color: THEME.secondary,
+        fontSize: 12,
       }}
     >
       {children}
     </div>
   );
 }
-
-const warningStyle = {
-  padding: 12,
-  marginBottom: 18,
-  borderRadius: 8,
-  backgroundColor: "#fef2f2",
-  color: "#991b1b",
-};
