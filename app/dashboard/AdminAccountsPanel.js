@@ -1,104 +1,35 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-// ==================================================
-// TEAM LEGEND / NYIKA
-// ADMIN ACCOUNTS INFORMATION
-//
-// EXISTING FUNCTIONS PRESERVED:
-// - Select shop
-// - Account descriptions
-// - Account numbers
-// - Paybill / Till
-// - Bank / Provider
-// - Fixed RENT / WIFI / DSTV amounts
-// - Fixed amount change reasons
-// - Fixed amount audit history
-// - Active / Inactive accounts
-//
-// NEW:
-// - Due date administration
-// - RENT: 1st of every month
-// - BANKING: Every Monday
-// - WIFI / DSTV / ELECTRICITY: Admin date
-//
-// Due dates are informational only.
-// No savings, payment or expense logic changed.
-// ==================================================
-
-const ACCOUNT_TYPES = [
-  "RENT",
-  "WIFI",
-  "DSTV",
-  "ELECTRICITY",
-  "BANKING",
-];
-
-const FIXED_AMOUNT_TYPES = new Set([
-  "RENT",
-  "WIFI",
-  "DSTV",
-]);
-
-const MANUAL_DUE_TYPES = new Set([
-  "WIFI",
-  "DSTV",
-  "ELECTRICITY",
-]);
+const ACCOUNT_TYPES = ["RENT", "WIFI", "DSTV", "ELECTRICITY", "BANKING"];
+const FIXED_TYPES = new Set(["RENT", "WIFI", "DSTV"]);
+const EDITABLE_DUE_TYPES = new Set(["WIFI", "DSTV", "ELECTRICITY"]);
+const MONTHLY_TYPES = new Set(["WIFI", "DSTV"]);
 
 const ACCOUNT_COLUMNS =
-  "100px minmax(125px,1fr) " +
-  "minmax(135px,1.15fr) " +
-  "minmax(110px,1fr) " +
-  "minmax(110px,1fr) " +
-  "145px 135px minmax(165px,1.2fr) 70px";
-
-// ==================================================
-// MAIN COMPONENT
-// ==================================================
+  "110px minmax(160px,1.2fr) minmax(145px,1fr) " +
+  "minmax(145px,1fr) 205px 145px minmax(185px,1.2fr) 80px";
 
 export default function AdminAccountsPanel({ user }) {
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const accessToken =
-    user?.access_token || null;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const accessToken = user?.access_token || null;
 
   const [shops, setShops] = useState([]);
-  const [selectedShopId, setSelectedShopId] =
-    useState("");
-
+  const [selectedShopId, setSelectedShopId] = useState("");
   const [accounts, setAccounts] = useState([]);
-  const [auditHistory, setAuditHistory] =
-    useState([]);
-
+  const [auditHistory, setAuditHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingAccounts, setLoadingAccounts] =
-    useState(false);
-  const [loadingHistory, setLoadingHistory] =
-    useState(false);
-
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] =
-    useState("");
+  const [messageType, setMessageType] = useState("");
+  const [editingDue, setEditingDue] = useState({});
 
   const accountRequestRef = useRef(0);
   const historyRequestRef = useRef(0);
-
-  // ==================================================
-  // AUTH HEADERS
-  // ==================================================
 
   const authHeaders = useCallback(
     () => ({
@@ -109,16 +40,8 @@ export default function AdminAccountsPanel({ user }) {
     [supabaseAnonKey, accessToken]
   );
 
-  // ==================================================
-  // LOAD SHOPS
-  // ==================================================
-
   const loadShops = useCallback(async () => {
-    if (
-      !supabaseUrl ||
-      !supabaseAnonKey ||
-      !accessToken
-    ) {
+    if (!supabaseUrl || !supabaseAnonKey || !accessToken) {
       setLoading(false);
       return;
     }
@@ -128,9 +51,8 @@ export default function AdminAccountsPanel({ user }) {
 
       const response = await fetch(
         `${supabaseUrl}/rest/v1/shops` +
-          `?is_active=eq.true` +
-          `&select=id,shop_name,shop_type,is_active` +
-          `&order=shop_name.asc`,
+          "?is_active=eq.true&select=id,shop_name,shop_type,is_active" +
+          "&order=shop_name.asc",
         {
           method: "GET",
           headers: authHeaders(),
@@ -142,61 +64,32 @@ export default function AdminAccountsPanel({ user }) {
 
       if (!response.ok) {
         throw new Error(
-          result?.message ||
-            result?.details ||
-            "Unable to load shops."
+          result?.message || result?.details || "Unable to load shops."
         );
       }
 
-      const rows = Array.isArray(result)
-        ? result
-        : [];
-
+      const rows = Array.isArray(result) ? result : [];
       setShops(rows);
 
-      setSelectedShopId((previous) => {
-        if (
-          previous &&
-          rows.some((shop) => shop.id === previous)
-        ) {
-          return previous;
-        }
-
-        return rows[0]?.id || "";
-      });
+      setSelectedShopId((previous) =>
+        previous && rows.some((shop) => shop.id === previous)
+          ? previous
+          : rows[0]?.id || ""
+      );
     } catch (error) {
-      console.error(
-        "ADMIN ACCOUNTS SHOPS ERROR:",
-        error
-      );
-
-      setMessage(
-        error?.message || "Unable to load shops."
-      );
+      console.error("ADMIN ACCOUNTS SHOPS ERROR:", error);
+      setMessage(error?.message || "Unable to load shops.");
       setMessageType("error");
     } finally {
       setLoading(false);
     }
-  }, [
-    supabaseUrl,
-    supabaseAnonKey,
-    accessToken,
-    authHeaders,
-  ]);
-
-  // ==================================================
-  // LOAD SHOP ACCOUNTS
-  // ==================================================
+  }, [supabaseUrl, supabaseAnonKey, accessToken, authHeaders]);
 
   const loadAccounts = useCallback(
     async (shopId) => {
       const requestId = ++accountRequestRef.current;
 
-      if (
-        !shopId ||
-        !supabaseUrl ||
-        !accessToken
-      ) {
+      if (!shopId || !supabaseUrl || !accessToken) {
         setAccounts(makeBlankAccounts(shopId));
         setLoadingAccounts(false);
         return;
@@ -208,10 +101,10 @@ export default function AdminAccountsPanel({ user }) {
         const response = await fetch(
           `${supabaseUrl}/rest/v1/shop_accounts` +
             `?shop_id=eq.${encodeURIComponent(shopId)}` +
-            `&select=id,shop_id,account_type,description,` +
-            `account_number,paybill_till,bank,is_active,` +
-            `obligation_amount,obligation_change_reason,due_date` +
-            `&order=account_type.asc`,
+            "&select=id,shop_id,account_type,description," +
+            "account_number,paybill_till,bank,is_active," +
+            "obligation_amount,obligation_change_reason,due_date" +
+            "&order=account_type.asc",
           {
             method: "GET",
             headers: authHeaders(),
@@ -229,25 +122,18 @@ export default function AdminAccountsPanel({ user }) {
           );
         }
 
-        if (requestId !== accountRequestRef.current) {
-          return;
-        }
+        if (requestId !== accountRequestRef.current) return;
 
-        const existing = Array.isArray(result)
-          ? result
-          : [];
+        const existing = Array.isArray(result) ? result : [];
 
         const merged = ACCOUNT_TYPES.map((type) => {
           const found = existing.find(
             (item) =>
-              String(item.account_type || "")
-                .trim()
-                .toUpperCase() === type
+              String(item.account_type || "").trim().toUpperCase() === type
           );
 
-          const obligation =
-            found?.obligation_amount === null ||
-            found?.obligation_amount === undefined
+          const amount =
+            found?.obligation_amount == null
               ? ""
               : String(found.obligation_amount);
 
@@ -255,56 +141,28 @@ export default function AdminAccountsPanel({ user }) {
             id: found?.id || null,
             shop_id: shopId,
             account_type: type,
-
-            description:
-              found?.description || type,
-
-            account_number:
-              found?.account_number || "",
-
-            paybill_till:
-              found?.paybill_till || "",
-
-            bank:
-              found?.bank || "",
-
-            is_active:
-              found?.is_active !== false,
-
-            obligation_amount: obligation,
-
-            original_obligation_amount:
-              obligation,
-
+            description: found?.description || type,
+            account_number: found?.account_number || "",
+            paybill_till: found?.paybill_till || "",
+            bank: found?.bank || "",
+            is_active: found?.is_active !== false,
+            obligation_amount: amount,
+            original_obligation_amount: amount,
             change_reason: "",
-
-            // NEW: saved calendar date.
-            // Automatic categories use their
-            // recurring rules for display.
-            due_date:
-              found?.due_date
-                ? String(found.due_date).slice(0, 10)
-                : "",
+            due_date: found?.due_date
+              ? String(found.due_date).slice(0, 10)
+              : "",
           };
         });
 
         setAccounts(merged);
+        setEditingDue({});
       } catch (error) {
-        if (requestId !== accountRequestRef.current) {
-          return;
-        }
+        if (requestId !== accountRequestRef.current) return;
 
-        console.error(
-          "ADMIN SHOP ACCOUNTS ERROR:",
-          error
-        );
-
+        console.error("ADMIN SHOP ACCOUNTS ERROR:", error);
         setAccounts(makeBlankAccounts(shopId));
-
-        setMessage(
-          error?.message ||
-            "Unable to load shop accounts."
-        );
+        setMessage(error?.message || "Unable to load shop accounts.");
         setMessageType("error");
       } finally {
         if (requestId === accountRequestRef.current) {
@@ -312,27 +170,16 @@ export default function AdminAccountsPanel({ user }) {
         }
       }
     },
-    [
-      supabaseUrl,
-      accessToken,
-      authHeaders,
-    ]
+    [supabaseUrl, accessToken, authHeaders]
   );
-
-  // ==================================================
-  // LOAD FIXED AMOUNT AUDIT HISTORY
-  // ==================================================
 
   const loadAuditHistory = useCallback(
     async (shopId) => {
       const requestId = ++historyRequestRef.current;
 
-      if (
-        !shopId ||
-        !supabaseUrl ||
-        !accessToken
-      ) {
+      if (!shopId || !supabaseUrl || !accessToken) {
         setAuditHistory([]);
+        setLoadingHistory(false);
         return;
       }
 
@@ -344,9 +191,7 @@ export default function AdminAccountsPanel({ user }) {
           {
             method: "POST",
             headers: authHeaders(),
-            body: JSON.stringify({
-              p_shop_id: shopId,
-            }),
+            body: JSON.stringify({ p_shop_id: shopId }),
             cache: "no-store",
           }
         );
@@ -361,23 +206,13 @@ export default function AdminAccountsPanel({ user }) {
           );
         }
 
-        if (requestId !== historyRequestRef.current) {
-          return;
-        }
+        if (requestId !== historyRequestRef.current) return;
 
-        setAuditHistory(
-          Array.isArray(result) ? result : []
-        );
+        setAuditHistory(Array.isArray(result) ? result : []);
       } catch (error) {
-        if (requestId !== historyRequestRef.current) {
-          return;
-        }
+        if (requestId !== historyRequestRef.current) return;
 
-        console.error(
-          "ACCOUNT AMOUNT AUDIT ERROR:",
-          error
-        );
-
+        console.error("ACCOUNT AMOUNT AUDIT ERROR:", error);
         setAuditHistory([]);
       } finally {
         if (requestId === historyRequestRef.current) {
@@ -385,24 +220,12 @@ export default function AdminAccountsPanel({ user }) {
         }
       }
     },
-    [
-      supabaseUrl,
-      accessToken,
-      authHeaders,
-    ]
+    [supabaseUrl, accessToken, authHeaders]
   );
-
-  // ==================================================
-  // INITIAL LOAD
-  // ==================================================
 
   useEffect(() => {
     loadShops();
   }, [loadShops]);
-
-  // ==================================================
-  // SHOP CHANGED
-  // ==================================================
 
   useEffect(() => {
     if (!selectedShopId) return;
@@ -412,37 +235,21 @@ export default function AdminAccountsPanel({ user }) {
 
     loadAccounts(selectedShopId);
     loadAuditHistory(selectedShopId);
-  }, [
-    selectedShopId,
-    loadAccounts,
-    loadAuditHistory,
-  ]);
-
-  // ==================================================
-  // SELECTED SHOP
-  // ==================================================
+  }, [selectedShopId, loadAccounts, loadAuditHistory]);
 
   const selectedShop = useMemo(
     () =>
       shops.find(
-        (shop) =>
-          String(shop.id) === String(selectedShopId)
+        (shop) => String(shop.id) === String(selectedShopId)
       ) || null,
     [shops, selectedShopId]
   );
-
-  // ==================================================
-  // UPDATE ACCOUNT FIELD
-  // ==================================================
 
   function updateAccount(type, field, value) {
     setAccounts((previous) =>
       previous.map((account) =>
         account.account_type === type
-          ? {
-              ...account,
-              [field]: value,
-            }
+          ? { ...account, [field]: value }
           : account
       )
     );
@@ -450,10 +257,6 @@ export default function AdminAccountsPanel({ user }) {
     setMessage("");
     setMessageType("");
   }
-
-  // ==================================================
-  // VALIDATE AND SAVE ALL ACCOUNTS
-  // ==================================================
 
   async function saveAccounts() {
     if (
@@ -465,78 +268,50 @@ export default function AdminAccountsPanel({ user }) {
       return;
     }
 
-    // ----------------------------------------------
-    // VERIFY FIXED AMOUNTS AND CHANGE REASONS
-    // ----------------------------------------------
-
     for (const account of accounts) {
-      if (!FIXED_AMOUNT_TYPES.has(account.account_type)) {
-        continue;
-      }
+      const type = account.account_type;
 
-      const raw = cleanValue(
-        account.obligation_amount
-      );
-
-      if (raw !== "") {
-        const amount = Number(raw);
+      if (FIXED_TYPES.has(type)) {
+        const raw = cleanValue(account.obligation_amount);
 
         if (
-          !Number.isFinite(amount) ||
-          amount < 0
+          raw !== "" &&
+          (!Number.isFinite(Number(raw)) || Number(raw) < 0)
+        ) {
+          setMessage(`Enter a valid fixed amount for ${type}.`);
+          setMessageType("error");
+          return;
+        }
+
+        const changed = !amountsEqual(
+          account.original_obligation_amount,
+          account.obligation_amount
+        );
+
+        const hadExistingAmount =
+          cleanValue(account.original_obligation_amount) !== "";
+
+        if (
+          changed &&
+          hadExistingAmount &&
+          !cleanValue(account.change_reason)
         ) {
           setMessage(
-            `Enter a valid fixed amount for ${account.account_type}.`
+            `Enter the reason for changing the ${type} fixed amount.`
           );
           setMessageType("error");
           return;
         }
       }
 
-      const changed = !amountsEqual(
-        account.original_obligation_amount,
-        account.obligation_amount
-      );
+      if (EDITABLE_DUE_TYPES.has(type)) {
+        const date = cleanValue(account.due_date);
 
-      const hadExistingAmount =
-        cleanValue(
-          account.original_obligation_amount
-        ) !== "";
-
-      if (
-        changed &&
-        hadExistingAmount &&
-        cleanValue(account.change_reason) === ""
-      ) {
-        setMessage(
-          `Enter the reason for changing the ${account.account_type} fixed amount.`
-        );
-        setMessageType("error");
-        return;
-      }
-    }
-
-    // ----------------------------------------------
-    // VALIDATE MANUAL DUE DATES
-    // ----------------------------------------------
-
-    for (const account of accounts) {
-      if (!MANUAL_DUE_TYPES.has(account.account_type)) {
-        continue;
-      }
-
-      const dueDate = cleanValue(account.due_date);
-
-      // An empty date is permitted.
-      // Cashier will display NOT SET.
-      if (dueDate === "") continue;
-
-      if (!isValidDateKey(dueDate)) {
-        setMessage(
-          `Select a valid due date for ${account.account_type}.`
-        );
-        setMessageType("error");
-        return;
+        if (date && !isValidDateKey(date)) {
+          setMessage(`Select a valid due date for ${type}.`);
+          setMessageType("error");
+          return;
+        }
       }
     }
 
@@ -544,10 +319,10 @@ export default function AdminAccountsPanel({ user }) {
       `Save account information for ${
         selectedShop?.shop_name || "this shop"
       }?\n\n` +
-        "WiFi, DStv and Electricity due dates will be updated.\n" +
-        "Rent remains due on the 1st of each month.\n" +
-        "Banking remains due every Monday.\n\n" +
-        "Existing account details and fixed amounts will also be saved."
+        "WiFi and DStv repeat every month on the day you select.\n" +
+        "Changing that date updates future months.\n" +
+        "Rent stays on the 1st, Banking stays on Monday.\n" +
+        "Electricity has a manually selected due date."
     );
 
     if (!confirmed) return;
@@ -560,9 +335,7 @@ export default function AdminAccountsPanel({ user }) {
       setMessageType("");
 
       for (const account of accounts) {
-        const fixed = FIXED_AMOUNT_TYPES.has(
-          account.account_type
-        );
+        const fixed = FIXED_TYPES.has(account.account_type);
 
         const changed =
           fixed &&
@@ -571,31 +344,19 @@ export default function AdminAccountsPanel({ user }) {
             account.obligation_amount
           );
 
-        const amountText = cleanValue(
-          account.obligation_amount
-        );
+        const amountText = cleanValue(account.obligation_amount);
 
         const obligationAmount =
           fixed && amountText !== ""
             ? roundMoney(Number(amountText))
             : null;
 
-        const isManualDue = MANUAL_DUE_TYPES.has(
-          account.account_type
-        );
-
-        const dueDate = cleanValue(
-          account.due_date
-        );
-
         const payload = {
           shop_id: selectedShopId,
-
           account_type: account.account_type,
 
           description:
-            cleanValue(account.description) ||
-            account.account_type,
+            cleanValue(account.description) || account.account_type,
 
           account_number:
             cleanValue(account.account_number) || null,
@@ -615,24 +376,18 @@ export default function AdminAccountsPanel({ user }) {
               ? cleanValue(account.change_reason) || null
               : null,
 
-          // WiFi, DStv and Electricity are editable.
-          // Preserve any existing stored value for
-          // Rent / Banking; their displayed dates
-          // are calculated automatically.
-          due_date:
-            isManualDue
-              ? dueDate || null
-              : dueDate || null,
+          due_date: cleanValue(account.due_date) || null,
         };
 
         const existing = Boolean(account.id);
 
-        const url = existing
-          ? `${supabaseUrl}/rest/v1/shop_accounts` +
-            `?id=eq.${encodeURIComponent(account.id)}`
+        const endpoint = existing
+          ? `${supabaseUrl}/rest/v1/shop_accounts?id=eq.${encodeURIComponent(
+              account.id
+            )}`
           : `${supabaseUrl}/rest/v1/shop_accounts`;
 
-        const response = await fetch(url, {
+        const response = await fetch(endpoint, {
           method: existing ? "PATCH" : "POST",
           headers: {
             ...authHeaders(),
@@ -663,7 +418,7 @@ export default function AdminAccountsPanel({ user }) {
       }
 
       setMessage(
-        `${selectedShop?.shop_name || "Shop"} account information and due dates saved successfully.`
+        `${selectedShop?.shop_name || "Shop"} account information saved.`
       );
       setMessageType("success");
 
@@ -672,56 +427,34 @@ export default function AdminAccountsPanel({ user }) {
         loadAuditHistory(selectedShopId),
       ]);
     } catch (error) {
-      console.error(
-        "SAVE SHOP ACCOUNTS ERROR:",
-        error
-      );
+      console.error("SAVE SHOP ACCOUNTS ERROR:", error);
 
       setMessage(
         savedCount > 0
-          ? `Saving stopped after ${savedCount} account(s). Review the shop before retrying. ${error?.message || ""}`
-          : error?.message ||
-              "Unable to save account information."
+          ? `Saving stopped after ${savedCount} account(s). Review before retrying. ${
+              error?.message || ""
+            }`
+          : error?.message || "Unable to save account information."
       );
-
       setMessageType("error");
     } finally {
       setSaving(false);
     }
   }
 
-  // ==================================================
-  // DISPLAY
-  // ==================================================
-
   if (loading) {
-    return (
-      <div style={loadingStyle}>
-        Loading shop accounts...
-      </div>
-    );
+    return <div style={loadingStyle}>Loading shop accounts...</div>;
   }
 
   return (
     <section style={wrapperStyle}>
-      {/* SHOP SELECTOR */}
-
       <div style={controlPanelStyle}>
-        <div>
-          <div style={controlTitleStyle}>
-            SHOP ACCOUNT INFORMATION
-          </div>
-
-          <div style={controlSubtitleStyle}>
-            Manage account details, fixed payment
-            amounts and due dates.
-          </div>
+        <div style={controlTitleStyle}>
+          SHOP ACCOUNT INFORMATION
         </div>
 
         <div style={shopControlStyle}>
-          <label style={labelStyle}>
-            SELECT SHOP
-          </label>
+          <label style={labelStyle}>SELECT SHOP</label>
 
           <select
             value={selectedShopId}
@@ -734,9 +467,7 @@ export default function AdminAccountsPanel({ user }) {
             style={shopSelectStyle}
           >
             {shops.length === 0 ? (
-              <option value="">
-                No active shops
-              </option>
+              <option value="">No active shops</option>
             ) : (
               shops.map((shop) => (
                 <option key={shop.id} value={shop.id}>
@@ -748,31 +479,16 @@ export default function AdminAccountsPanel({ user }) {
         </div>
       </div>
 
-      {/* SELECTED SHOP */}
-
-      {selectedShop && (
-        <div style={selectedShopStyle}>
-          Editing account information for{" "}
-          <strong>{selectedShop.shop_name}</strong>
-        </div>
-      )}
-
-      {/* STATUS */}
-
       {message && (
         <div
           role="status"
           style={
-            messageType === "success"
-              ? successStyle
-              : errorStyle
+            messageType === "success" ? successStyle : errorStyle
           }
         >
           {message}
         </div>
       )}
-
-      {/* ACCOUNT TABLE */}
 
       <div style={panelStyle}>
         <div style={tableTitleStyle}>
@@ -781,10 +497,9 @@ export default function AdminAccountsPanel({ user }) {
 
         <div style={headerRowStyle}>
           <div>TYPE</div>
-          <div>DESCRIPTION</div>
           <div>ACCOUNT NUMBER</div>
           <div>PAYBILL / TILL</div>
-          <div>BANK</div>
+          <div>BANK / PROVIDER</div>
           <div>DUE DATE</div>
           <div>FIXED AMOUNT</div>
           <div>CHANGE REASON</div>
@@ -798,12 +513,8 @@ export default function AdminAccountsPanel({ user }) {
         ) : (
           accounts.map((account) => {
             const type = account.account_type;
-
-            const fixed =
-              FIXED_AMOUNT_TYPES.has(type);
-
-            const manualDue =
-              MANUAL_DUE_TYPES.has(type);
+            const fixed = FIXED_TYPES.has(type);
+            const monthly = MONTHLY_TYPES.has(type);
 
             const amountChanged =
               fixed &&
@@ -812,53 +523,23 @@ export default function AdminAccountsPanel({ user }) {
                 account.obligation_amount
               );
 
+            const today = todayNairobi();
+
+            const due =
+              type === "RENT"
+                ? nextRentDue(today)
+                : type === "BANKING"
+                ? nextBankingDue(today)
+                : monthly
+                ? nextMonthlyDue(account.due_date, today)
+                : account.due_date;
+
+            const editMonthly =
+              Boolean(editingDue[type]) || !account.due_date;
+
             return (
-              <div
-                key={type}
-                style={accountRowStyle}
-              >
-                {/* TYPE */}
-
-                <div style={accountTypeStyle}>
-                  {type}
-
-                  {fixed && (
-                    <div style={fixedBadgeStyle}>
-                      FIXED
-                    </div>
-                  )}
-
-                  {type === "ELECTRICITY" && (
-                    <div style={variableBadgeStyle}>
-                      VARIABLE
-                    </div>
-                  )}
-
-                  {type === "BANKING" && (
-                    <div style={variableBadgeStyle}>
-                      EMPLOYEE
-                    </div>
-                  )}
-                </div>
-
-                {/* DESCRIPTION */}
-
-                <input
-                  type="text"
-                  value={account.description}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateAccount(
-                      type,
-                      "description",
-                      event.target.value
-                    )
-                  }
-                  placeholder={type}
-                  style={inputStyle}
-                />
-
-                {/* ACCOUNT NUMBER */}
+              <div key={type} style={accountRowStyle}>
+                <div style={accountTypeStyle}>{type}</div>
 
                 <input
                   type="text"
@@ -875,8 +556,6 @@ export default function AdminAccountsPanel({ user }) {
                   style={inputStyle}
                 />
 
-                {/* PAYBILL / TILL */}
-
                 <input
                   type="text"
                   value={account.paybill_till}
@@ -891,10 +570,7 @@ export default function AdminAccountsPanel({ user }) {
                   placeholder="PayBill / Till"
                   style={inputStyle}
                 />
-
-                {/* BANK */}
-
-                <input
+                    <input
                   type="text"
                   value={account.bank}
                   disabled={saving}
@@ -909,29 +585,58 @@ export default function AdminAccountsPanel({ user }) {
                   style={inputStyle}
                 />
 
-                {/* DUE DATE — NEW */}
-
-                {manualDue ? (
-                  <div style={dueDateWrapStyle}>
-                    <input
-                      type="date"
-                      aria-label={`${type} due date`}
-                      value={account.due_date || ""}
-                      disabled={saving}
-                      onChange={(event) =>
-                        updateAccount(
-                          type,
-                          "due_date",
-                          event.target.value
-                        )
-                      }
-                      style={dueDateInputStyle}
-                    />
-
-                    <div style={dueDateHintStyle}>
-                      ADMIN SET DATE
+                {monthly ? (
+                  <div style={monthlyDueStyle}>
+                    <div style={dueValueStyle}>
+                      {due ? formatDateKey(due) : "NOT SET"}
                     </div>
+
+                    {editMonthly ? (
+                      <input
+                        type="date"
+                        aria-label={`${type} monthly due date`}
+                        value={account.due_date || ""}
+                        disabled={saving}
+                        onChange={(event) =>
+                          updateAccount(
+                            type,
+                            "due_date",
+                            event.target.value
+                          )
+                        }
+                        style={dueDateInputStyle}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() =>
+                          setEditingDue((previous) => ({
+                            ...previous,
+                            [type]: true,
+                          }))
+                        }
+                        style={editDueButtonStyle}
+                      >
+                        Change date
+                      </button>
+                    )}
                   </div>
+                ) : type === "ELECTRICITY" ? (
+                  <input
+                    type="date"
+                    aria-label="Electricity due date"
+                    value={account.due_date || ""}
+                    disabled={saving}
+                    onChange={(event) =>
+                      updateAccount(
+                        type,
+                        "due_date",
+                        event.target.value
+                      )
+                    }
+                    style={dueDateInputStyle}
+                  />
                 ) : (
                   <div style={automaticDueStyle}>
                     <strong>
@@ -940,28 +645,13 @@ export default function AdminAccountsPanel({ user }) {
                         : "EVERY MONDAY"}
                     </strong>
 
-                    <span>
-                      Next:{" "}
-                      {type === "RENT"
-                        ? formatDateKey(
-                            nextRentDue(todayNairobi())
-                          )
-                        : formatDateKey(
-                            nextBankingDue(todayNairobi())
-                          )}
-                    </span>
-
-                    <small>AUTOMATIC</small>
+                    <span>{formatDateKey(due)}</span>
                   </div>
                 )}
 
-                {/* FIXED AMOUNT */}
-
                 {fixed ? (
                   <div style={amountWrapStyle}>
-                    <span style={currencyStyle}>
-                      KES
-                    </span>
+                    <span style={currencyStyle}>KES</span>
 
                     <input
                       type="number"
@@ -981,20 +671,14 @@ export default function AdminAccountsPanel({ user }) {
                     />
                   </div>
                 ) : (
-                  <div style={variableAmountStyle}>
-                    {type === "ELECTRICITY"
-                      ? "VARIABLE"
-                      : "NO FIXED AMOUNT"}
-                  </div>
+                  <div style={notApplicableStyle}>—</div>
                 )}
 
-                {/* FIXED AMOUNT CHANGE REASON */}
-
-                {fixed ? (
+                {fixed && amountChanged ? (
                   <input
                     type="text"
                     value={account.change_reason}
-                    disabled={!amountChanged || saving}
+                    disabled={saving}
                     onChange={(event) =>
                       updateAccount(
                         type,
@@ -1002,26 +686,12 @@ export default function AdminAccountsPanel({ user }) {
                         event.target.value
                       )
                     }
-                    placeholder={
-                      amountChanged
-                        ? "Why is amount changing?"
-                        : "Only needed when amount changes"
-                    }
-                    style={{
-                      ...inputStyle,
-                      backgroundColor:
-                        amountChanged
-                          ? "white"
-                          : "#f8fafc",
-                    }}
+                    placeholder="Reason for change"
+                    style={inputStyle}
                   />
                 ) : (
-                  <div style={notApplicableStyle}>
-                    —
-                  </div>
+                  <div style={notApplicableStyle}>—</div>
                 )}
-
-                {/* ACTIVE */}
 
                 <label style={activeWrapStyle}>
                   <input
@@ -1045,18 +715,7 @@ export default function AdminAccountsPanel({ user }) {
             );
           })
         )}
-
-        <div style={noteStyle}>
-          Rent is due on the 1st of every month.
-          Banking is due every Monday.
-          Admin selects calendar due dates for
-          WiFi, DStv and Electricity.
-          Due dates do not automatically create payments
-          or change expenses.
-        </div>
       </div>
-
-      {/* SAVE BUTTON */}
 
       <button
         type="button"
@@ -1070,9 +729,7 @@ export default function AdminAccountsPanel({ user }) {
         style={{
           ...saveButtonStyle,
           opacity:
-            saving ||
-            !selectedShopId ||
-            loadingAccounts
+            saving || !selectedShopId || loadingAccounts
               ? 0.6
               : 1,
         }}
@@ -1081,8 +738,6 @@ export default function AdminAccountsPanel({ user }) {
           ? "SAVING..."
           : "SAVE ACCOUNT INFORMATION"}
       </button>
-
-      {/* EXISTING FIXED AMOUNT HISTORY */}
 
       <div style={historyPanelStyle}>
         <div style={historyTitleStyle}>
@@ -1095,8 +750,7 @@ export default function AdminAccountsPanel({ user }) {
           </div>
         ) : auditHistory.length === 0 ? (
           <div style={historyEmptyStyle}>
-            No fixed amount changes recorded
-            for this shop yet.
+            No history yet.
           </div>
         ) : (
           <>
@@ -1109,22 +763,17 @@ export default function AdminAccountsPanel({ user }) {
             </div>
 
             {auditHistory.slice(0, 20).map((item) => (
-              <div
-                key={item.id}
-                style={historyRowStyle}
-              >
+              <div key={item.id} style={historyRowStyle}>
                 <strong>{item.account_type}</strong>
 
                 <div>
-                  {item.old_amount === null ||
-                  item.old_amount === undefined
+                  {item.old_amount == null
                     ? "—"
                     : `KES ${money(item.old_amount)}`}
                 </div>
 
                 <div>
-                  {item.new_amount === null ||
-                  item.new_amount === undefined
+                  {item.new_amount == null
                     ? "—"
                     : `KES ${money(item.new_amount)}`}
                 </div>
@@ -1146,7 +795,7 @@ export default function AdminAccountsPanel({ user }) {
 }
 
 // ==================================================
-// INITIAL ACCOUNT ROWS
+// DATA AND DATE HELPERS
 // ==================================================
 
 function makeBlankAccounts(shopId = "") {
@@ -1166,63 +815,46 @@ function makeBlankAccounts(shopId = "") {
   }));
 }
 
-// ==================================================
-// AMOUNT HELPERS
-// ==================================================
-
 function cleanValue(value) {
   return String(value ?? "").trim();
 }
 
 function normalizedAmount(value) {
-  const cleaned = cleanValue(value);
+  const clean = cleanValue(value);
 
-  if (cleaned === "") return null;
+  if (clean === "") return null;
 
-  const numeric = Number(cleaned);
+  const numeric = Number(clean);
 
   return Number.isFinite(numeric)
     ? roundMoney(numeric)
     : null;
 }
 
-function amountsEqual(first, second) {
-  return normalizedAmount(first) ===
-    normalizedAmount(second);
+function amountsEqual(a, b) {
+  return normalizedAmount(a) === normalizedAmount(b);
 }
 
 function roundMoney(value) {
-  return (
-    Math.round(
-      (Number(value) + Number.EPSILON) * 100
-    ) / 100
-  );
+  return Math.round(
+    (Number(value) + Number.EPSILON) * 100
+  ) / 100;
 }
 
 function money(value) {
-  return Number(value || 0).toLocaleString(
-    "en-KE",
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }
-  );
+  return Number(value || 0).toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
-// ==================================================
-// NAIROBI DUE DATE HELPERS
-// ==================================================
-
 function todayNairobi() {
-  const parts = new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone: "Africa/Nairobi",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }
-  ).formatToParts(new Date());
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
 
   const result = {};
 
@@ -1232,9 +864,7 @@ function todayNairobi() {
     }
   }
 
-  return (
-    `${result.year}-${result.month}-${result.day}`
-  );
+  return `${result.year}-${result.month}-${result.day}`;
 }
 
 function isValidDateKey(value) {
@@ -1253,9 +883,62 @@ function isValidDateKey(value) {
 }
 
 function parseDateKey(value) {
-  if (!isValidDateKey(value)) return null;
+  return isValidDateKey(value)
+    ? new Date(`${value}T12:00:00Z`)
+    : null;
+}
 
-  return new Date(`${value}T12:00:00Z`);
+function monthDate(year, monthIndex, day) {
+  const lastDay = new Date(
+    Date.UTC(year, monthIndex + 1, 0)
+  ).getUTCDate();
+
+  return new Date(
+    Date.UTC(year, monthIndex, Math.min(day, lastDay))
+  )
+    .toISOString()
+    .slice(0, 10);
+}
+
+// WIFI / DSTV: recurring monthly dates.
+// For example, 16 Nov -> 16 Dec -> 16 Jan.
+// The last day is used in months that are too short.
+
+function nextMonthlyDue(anchor, today) {
+  const start = parseDateKey(anchor);
+  const current = parseDateKey(today);
+
+  if (!start || !current) return null;
+
+  if (anchor >= today) return anchor;
+
+  const anchorDay = start.getUTCDate();
+
+  let year = current.getUTCFullYear();
+  let month = current.getUTCMonth();
+
+  let candidate = monthDate(
+    year,
+    month,
+    anchorDay
+  );
+
+  if (candidate < today) {
+    month += 1;
+
+    if (month >= 12) {
+      year += 1;
+      month = 0;
+    }
+
+    candidate = monthDate(
+      year,
+      month,
+      anchorDay
+    );
+  }
+
+  return candidate;
 }
 
 function nextRentDue(today) {
@@ -1298,36 +981,26 @@ function formatDateKey(value) {
 
   if (!date) return "—";
 
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone: "UTC",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
 }
-
-// ==================================================
-// OTHER HELPERS
-// ==================================================
 
 function formatDateTime(value) {
   if (!value) return "";
 
   try {
-    return new Intl.DateTimeFormat(
-      "en-KE",
-      {
-        timeZone: "Africa/Nairobi",
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }
-    ).format(new Date(value));
+    return new Intl.DateTimeFormat("en-KE", {
+      timeZone: "Africa/Nairobi",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
   } catch {
     return "";
   }
@@ -1342,7 +1015,7 @@ async function safeJson(response) {
 }
 
 // ==================================================
-// EXISTING ADMIN STYLES
+// PROFESSIONAL ACCOUNT STYLES
 // ==================================================
 
 const wrapperStyle = {
@@ -1364,14 +1037,8 @@ const controlPanelStyle = {
 };
 
 const controlTitleStyle = {
-  fontSize: "15px",
+  fontSize: "17px",
   fontWeight: "900",
-};
-
-const controlSubtitleStyle = {
-  marginTop: "4px",
-  fontSize: "9px",
-  color: "#ccfbf1",
 };
 
 const shopControlStyle = {
@@ -1381,26 +1048,18 @@ const shopControlStyle = {
 const labelStyle = {
   display: "block",
   marginBottom: "5px",
-  fontSize: "9px",
+  fontSize: "12px",
   fontWeight: "bold",
 };
 
 const shopSelectStyle = {
   width: "100%",
-  padding: "9px",
+  padding: "10px",
   border: "1px solid #cbd5e1",
   borderRadius: "5px",
   backgroundColor: "white",
   color: "#0f172a",
-};
-
-const selectedShopStyle = {
-  padding: "10px",
-  backgroundColor: "#ecfeff",
-  border: "1px solid #a5f3fc",
-  borderRadius: "5px",
-  color: "#155e75",
-  fontSize: "10px",
+  fontSize: "13px",
 };
 
 const panelStyle = {
@@ -1413,20 +1072,20 @@ const panelStyle = {
 const tableTitleStyle = {
   backgroundColor: "#0873b9",
   color: "white",
-  padding: "10px 12px",
-  fontSize: "13px",
+  padding: "11px 12px",
+  fontSize: "15px",
   fontWeight: "900",
 };
 
 const headerRowStyle = {
   display: "grid",
   gridTemplateColumns: ACCOUNT_COLUMNS,
-  minWidth: "1460px",
-  gap: "6px",
-  padding: "8px",
+  minWidth: "1340px",
+  gap: "7px",
+  padding: "10px 8px",
   backgroundColor: "#eef4f8",
   color: "#475569",
-  fontSize: "8px",
+  fontSize: "11px",
   fontWeight: "bold",
   textAlign: "center",
 };
@@ -1434,46 +1093,26 @@ const headerRowStyle = {
 const accountRowStyle = {
   display: "grid",
   gridTemplateColumns: ACCOUNT_COLUMNS,
-  minWidth: "1460px",
-  gap: "6px",
+  minWidth: "1340px",
+  gap: "7px",
   alignItems: "center",
-  padding: "8px",
+  padding: "10px 8px",
   borderTop: "1px solid #e2e8f0",
 };
 
 const accountTypeStyle = {
   color: "#0f172a",
   fontWeight: "900",
-  fontSize: "10px",
-};
-
-const fixedBadgeStyle = {
-  display: "inline-block",
-  marginTop: "3px",
-  padding: "2px 4px",
-  borderRadius: "3px",
-  backgroundColor: "#dbeafe",
-  color: "#1d4ed8",
-  fontSize: "7px",
-};
-
-const variableBadgeStyle = {
-  display: "inline-block",
-  marginTop: "3px",
-  padding: "2px 4px",
-  borderRadius: "3px",
-  backgroundColor: "#fef3c7",
-  color: "#92400e",
-  fontSize: "7px",
+  fontSize: "13px",
 };
 
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "8px",
+  padding: "9px",
   border: "1px solid #94a3b8",
   borderRadius: "4px",
-  fontSize: "10px",
+  fontSize: "13px",
   color: "#0f172a",
   backgroundColor: "white",
 };
@@ -1488,10 +1127,10 @@ const amountWrapStyle = {
 };
 
 const currencyStyle = {
-  padding: "8px 6px",
+  padding: "9px 7px",
   backgroundColor: "#f1f5f9",
   color: "#475569",
-  fontSize: "8px",
+  fontSize: "11px",
   fontWeight: "bold",
 };
 
@@ -1499,27 +1138,17 @@ const amountInputStyle = {
   width: "100%",
   minWidth: 0,
   boxSizing: "border-box",
-  padding: "8px",
+  padding: "9px",
   border: "none",
   outline: "none",
   textAlign: "right",
-  fontSize: "10px",
-};
-
-const variableAmountStyle = {
-  padding: "8px",
-  backgroundColor: "#f8fafc",
-  border: "1px solid #cbd5e1",
-  borderRadius: "4px",
-  color: "#64748b",
-  textAlign: "center",
-  fontSize: "8px",
-  fontWeight: "bold",
+  fontSize: "13px",
 };
 
 const notApplicableStyle = {
   textAlign: "center",
   color: "#94a3b8",
+  fontSize: "13px",
 };
 
 const activeWrapStyle = {
@@ -1527,49 +1156,40 @@ const activeWrapStyle = {
   justifyContent: "center",
   alignItems: "center",
   gap: "5px",
-  fontSize: "9px",
+  fontSize: "12px",
   fontWeight: "bold",
   color: "#0f172a",
 };
 
-const noteStyle = {
-  padding: "10px",
-  borderTop: "1px solid #e2e8f0",
-  backgroundColor: "#f8fafc",
-  color: "#64748b",
-  textAlign: "center",
-  fontSize: "9px",
-  lineHeight: 1.5,
-};
-
 const saveButtonStyle = {
   width: "100%",
-  padding: "11px",
+  padding: "12px",
   border: "none",
   borderRadius: "5px",
   backgroundColor: "#15803d",
   color: "white",
+  fontSize: "13px",
   fontWeight: "900",
   cursor: "pointer",
 };
 
 const successStyle = {
-  padding: "10px",
+  padding: "11px",
   backgroundColor: "#f0fdf4",
   border: "1px solid #86efac",
   borderRadius: "5px",
   color: "#166534",
-  fontSize: "10px",
+  fontSize: "12px",
   fontWeight: "bold",
 };
 
 const errorStyle = {
-  padding: "10px",
+  padding: "11px",
   backgroundColor: "#fef2f2",
   border: "1px solid #fecaca",
   borderRadius: "5px",
   color: "#991b1b",
-  fontSize: "10px",
+  fontSize: "12px",
   fontWeight: "bold",
 };
 
@@ -1580,62 +1200,70 @@ const loadingStyle = {
   borderRadius: "7px",
   color: "#64748b",
   textAlign: "center",
+  fontSize: "13px",
 };
 
 const emptyStyle = {
-  minWidth: "1460px",
+  minWidth: "1340px",
   padding: "25px",
   boxSizing: "border-box",
   color: "#64748b",
   textAlign: "center",
-  fontSize: "10px",
-};
-
-// ==================================================
-// NEW DUE DATE STYLES
-// ==================================================
-
-const dueDateWrapStyle = {
-  display: "grid",
-  gap: "4px",
-  minWidth: 0,
+  fontSize: "13px",
 };
 
 const dueDateInputStyle = {
   width: "100%",
   minWidth: 0,
   boxSizing: "border-box",
-  padding: "7px 5px",
+  padding: "9px 5px",
   border: "1px solid #94a3b8",
   borderRadius: "4px",
   backgroundColor: "white",
   color: "#0f172a",
-  fontSize: "10px",
+  fontSize: "12px",
 };
 
-const dueDateHintStyle = {
-  color: "#64748b",
-  fontSize: "8px",
-  fontWeight: "bold",
+const monthlyDueStyle = {
+  display: "grid",
+  gap: "4px",
+  minWidth: 0,
+  padding: "6px",
+  border: "1px solid #99f6e4",
+  borderRadius: "5px",
+  backgroundColor: "#f0fdfa",
+};
+
+const dueValueStyle = {
+  color: "#115e59",
+  fontSize: "13px",
+  fontWeight: "900",
   textAlign: "center",
+};
+
+const editDueButtonStyle = {
+  border: "1px solid #99f6e4",
+  borderRadius: "4px",
+  padding: "5px 8px",
+  backgroundColor: "white",
+  color: "#115e59",
+  fontSize: "11px",
+  fontWeight: "bold",
+  cursor: "pointer",
 };
 
 const automaticDueStyle = {
   display: "grid",
   gap: "3px",
-  padding: "6px",
+  padding: "7px",
   backgroundColor: "#f0fdfa",
   border: "1px solid #99f6e4",
   borderRadius: "5px",
   textAlign: "center",
   color: "#115e59",
-  fontSize: "9px",
+  fontSize: "12px",
   lineHeight: 1.4,
 };
-
-// ==================================================
-// EXISTING HISTORY STYLES
-// ==================================================
 
 const historyPanelStyle = {
   backgroundColor: "white",
@@ -1645,41 +1273,41 @@ const historyPanelStyle = {
 };
 
 const historyTitleStyle = {
-  padding: "10px 12px",
+  padding: "11px 12px",
   backgroundColor: "#7c3aed",
   color: "white",
-  fontSize: "12px",
+  fontSize: "14px",
   fontWeight: "900",
 };
 
 const historyHeaderStyle = {
   display: "grid",
   gridTemplateColumns:
-    "100px 130px 130px 1fr 180px",
-  minWidth: "800px",
+    "110px 145px 145px 1fr 180px",
+  minWidth: "850px",
   gap: "8px",
-  padding: "8px",
+  padding: "10px 8px",
   backgroundColor: "#f5f3ff",
   color: "#5b21b6",
-  fontSize: "8px",
+  fontSize: "11px",
   fontWeight: "bold",
 };
 
 const historyRowStyle = {
   display: "grid",
   gridTemplateColumns:
-    "100px 130px 130px 1fr 180px",
-  minWidth: "800px",
+    "110px 145px 145px 1fr 180px",
+  minWidth: "850px",
   gap: "8px",
   alignItems: "center",
-  padding: "8px",
+  padding: "10px 8px",
   borderTop: "1px solid #e2e8f0",
-  fontSize: "9px",
+  fontSize: "12px",
 };
 
 const historyEmptyStyle = {
   padding: "20px",
   color: "#64748b",
   textAlign: "center",
-  fontSize: "9px",
+  fontSize: "12px",
 };
