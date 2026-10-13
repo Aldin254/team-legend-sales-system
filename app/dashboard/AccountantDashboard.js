@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 const INACTIVITY_MS = 30000;
 const PREPARED_TIMEOUT_MS = 30000;
+const SECTION_COLLAPSE_MS = 30000;
 
 export default function AccountantDashboard({ user }) {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function AccountantDashboard({ user }) {
   const [recipients, setRecipients] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [expenses, setExpenses] = useState([]);
+
   const [savingsPaymentSnapshot, setSavingsPaymentSnapshot] = useState({
     pending_requests: [],
     recent_requests: [],
@@ -34,6 +36,7 @@ export default function AccountantDashboard({ user }) {
     useState(null);
   const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
     useState(null);
+
   const [floatSendMethod, setFloatSendMethod] = useState("MPESA_TO_MPESA");
   const [selectedRecipientId, setSelectedRecipientId] = useState("");
   const [sendAmount, setSendAmount] = useState("");
@@ -42,6 +45,7 @@ export default function AccountantDashboard({ user }) {
   const [sendReceipt, setSendReceipt] = useState("");
   const [completingSend, setCompletingSend] = useState(false);
   const [preparedSecondsLeft, setPreparedSecondsLeft] = useState(30);
+
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [savingExpense, setSavingExpense] = useState(false);
@@ -49,6 +53,13 @@ export default function AccountantDashboard({ user }) {
   const [cancellingTransactionId, setCancellingTransactionId] = useState(null);
   const [closingDay, setClosingDay] = useState(false);
 
+  const [showSavingsPayments, setShowSavingsPayments] = useState(true);
+  const [showTransactionHistory, setShowTransactionHistory] = useState(true);
+  const [showAllExpenses, setShowAllExpenses] = useState(false);
+
+  const savingsCollapseTimerRef = useRef(null);
+  const historyCollapseTimerRef = useRef(null);
+  const savingsHasFocusRef = useRef(false);
   const inactivityTimerRef = useRef(null);
   const preparedTimeoutRef = useRef(null);
   const preparedIntervalRef = useRef(null);
@@ -84,6 +95,7 @@ export default function AccountantDashboard({ user }) {
       if (!supabaseUrl || !supabaseAnonKey || !accessToken) {
         throw new Error("Account session is incomplete.");
       }
+
       const response = await fetch(
         `${supabaseUrl}/rest/v1/rpc/${functionName}`,
         {
@@ -94,6 +106,7 @@ export default function AccountantDashboard({ user }) {
         }
       );
       const result = await safeJson(response);
+
       if (!response.ok) {
         throw new Error(
           result?.message ||
@@ -109,9 +122,10 @@ export default function AccountantDashboard({ user }) {
 
   const loadFloatSendMethod = useCallback(async () => {
     if (!supabaseUrl || !supabaseAnonKey || !accessToken) return null;
+
     const response = await fetch(
       `${supabaseUrl}/rest/v1/payment_system_settings` +
-        `?id=eq.1&select=float_send_method&limit=1`,
+        "?id=eq.1&select=float_send_method&limit=1",
       {
         method: "GET",
         headers: authHeaders(),
@@ -119,25 +133,30 @@ export default function AccountantDashboard({ user }) {
       }
     );
     const result = await safeJson(response);
+
     if (!response.ok) {
       throw new Error(
-        result?.message ||
-          result?.details ||
-          "Unable to load payment route."
+        result?.message || result?.details || "Unable to load payment route."
       );
     }
+
     const row = Array.isArray(result) ? result[0] : null;
-    if (!row?.float_send_method) return null;
-    return normalizeFloatSendMethod(row.float_send_method);
+    return row?.float_send_method
+      ? normalizeFloatSendMethod(row.float_send_method)
+      : null;
   }, [supabaseUrl, supabaseAnonKey, accessToken, authHeaders]);
 
   const loadShops = useCallback(async () => {
     const response = await fetch(
       `${supabaseUrl}/rest/v1/shops` +
-        `?is_active=eq.true` +
-        `&select=id,shop_name,shop_type,is_active` +
-        `&order=shop_name.asc`,
-      { method: "GET", headers: authHeaders(), cache: "no-store" }
+        "?is_active=eq.true" +
+        "&select=id,shop_name,shop_type,is_active" +
+        "&order=shop_name.asc",
+      {
+        method: "GET",
+        headers: authHeaders(),
+        cache: "no-store",
+      }
     );
     const result = await safeJson(response);
     if (!response.ok) {
@@ -151,10 +170,14 @@ export default function AccountantDashboard({ user }) {
   const loadRecipients = useCallback(async () => {
     const response = await fetch(
       `${supabaseUrl}/rest/v1/mpesa_cashier_recipients` +
-        `?is_active=eq.true` +
-        `&select=id,shop_id,slot_number,recipient_name,phone_number,linked_profile_id,is_active` +
-        `&order=shop_id.asc,slot_number.asc`,
-      { method: "GET", headers: authHeaders(), cache: "no-store" }
+        "?is_active=eq.true" +
+        "&select=id,shop_id,slot_number,recipient_name,phone_number,linked_profile_id,is_active" +
+        "&order=shop_id.asc,slot_number.asc",
+      {
+        method: "GET",
+        headers: authHeaders(),
+        cache: "no-store",
+      }
     );
     const result = await safeJson(response);
     if (!response.ok) {
@@ -170,8 +193,12 @@ export default function AccountantDashboard({ user }) {
   const loadTransactions = useCallback(async () => {
     const response = await fetch(
       `${supabaseUrl}/rest/v1/accountant_transactions` +
-        `?select=*&order=created_at.desc&limit=300`,
-      { method: "GET", headers: authHeaders(), cache: "no-store" }
+        "?select=*&order=created_at.desc&limit=300",
+      {
+        method: "GET",
+        headers: authHeaders(),
+        cache: "no-store",
+      }
     );
     const result = await safeJson(response);
     if (!response.ok) {
@@ -187,11 +214,16 @@ export default function AccountantDashboard({ user }) {
   const loadExpenses = useCallback(
     async (reportId) => {
       if (!reportId) return [];
+
       const response = await fetch(
         `${supabaseUrl}/rest/v1/accountant_expenses` +
           `?accountant_report_id=eq.${encodeURIComponent(reportId)}` +
-          `&select=*&order=slot_number.asc`,
-        { method: "GET", headers: authHeaders(), cache: "no-store" }
+          "&select=*&order=slot_number.asc",
+        {
+          method: "GET",
+          headers: authHeaders(),
+          cache: "no-store",
+        }
       );
       const result = await safeJson(response);
       if (!response.ok) {
@@ -229,8 +261,10 @@ export default function AccountantDashboard({ user }) {
     async (options = {}) => {
       const silent = options?.silent === true;
       if (!silent) setRefreshing(true);
+
       try {
         setMessage("");
+
         const [
           loadedShops,
           loadedRecipients,
@@ -273,12 +307,14 @@ export default function AccountantDashboard({ user }) {
 
         let loadedReport = null;
         let openError = "";
+
         try {
           loadedReport = await openToday();
         } catch (error) {
           openError =
             error?.message || "Unable to open today's Accountant report.";
         }
+
         setReportOpenError(openError);
         setReport(loadedReport);
 
@@ -286,7 +322,9 @@ export default function AccountantDashboard({ user }) {
         setExpenses(loadedExpenses);
       } catch (error) {
         console.error("ACCOUNTANT REFRESH ERROR:", error);
-        setMessage(error?.message || "Unable to load Accountant dashboard.");
+        setMessage(
+          error?.message || "Unable to load Accountant dashboard."
+        );
       } finally {
         if (!silent) setRefreshing(false);
         setLoading(false);
@@ -316,14 +354,17 @@ export default function AccountantDashboard({ user }) {
 
   useEffect(() => {
     let disposed = false;
+
     const clearTimer = () => {
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
         inactivityTimerRef.current = null;
       }
     };
+
     const runInactivityRefresh = async () => {
       if (disposed) return;
+
       if (!preparedSend && !preparingSend && !completingSend) {
         setSelectedRecipientId("");
         setSendAmount("");
@@ -331,8 +372,10 @@ export default function AccountantDashboard({ user }) {
         setDeclinedSendMessage("");
         setMessage("");
       }
+
       await refreshData({ silent: true });
     };
+
     const armTimer = () => {
       clearTimer();
       inactivityTimerRef.current = setTimeout(async () => {
@@ -340,11 +383,15 @@ export default function AccountantDashboard({ user }) {
         if (!disposed) armTimer();
       }, INACTIVITY_MS);
     };
+
     const activityHandler = () => armTimer();
+
     window.addEventListener("pointerdown", activityHandler);
     window.addEventListener("keydown", activityHandler);
     window.addEventListener("touchstart", activityHandler);
+
     armTimer();
+
     return () => {
       disposed = true;
       clearTimer();
@@ -360,7 +407,7 @@ export default function AccountantDashboard({ user }) {
     if (
       !preparedSend?.transaction_id ||
       completingSend ||
-      cancellingTransactionId === preparedSend?.transaction_id
+      cancellingTransactionId === preparedSend.transaction_id
     ) {
       setPreparedSecondsLeft(30);
       return;
@@ -368,6 +415,7 @@ export default function AccountantDashboard({ user }) {
 
     const transactionId = preparedSend.transaction_id;
     const startedAt = Date.now();
+
     setPreparedSecondsLeft(30);
 
     preparedIntervalRef.current = setInterval(() => {
@@ -383,6 +431,7 @@ export default function AccountantDashboard({ user }) {
       if (autoCancelInFlightRef.current) return;
       autoCancelInFlightRef.current = true;
       clearPreparedTimers();
+
       try {
         await callRpc("tl_accountant_cancel_pending_transaction", {
           p_transaction_id: transactionId,
@@ -393,6 +442,7 @@ export default function AccountantDashboard({ user }) {
             ? null
             : previous
         );
+
         setSelectedRecipientId("");
         setSendAmount("");
         setSendReceipt("");
@@ -405,7 +455,10 @@ export default function AccountantDashboard({ user }) {
       } catch (error) {
         console.error("AUTO CANCEL PREPARED FLOAT ERROR:", error);
 
-        const text = String(error?.message || "").trim().toLowerCase();
+        const text = String(error?.message || "")
+          .trim()
+          .toLowerCase();
+
         const statusChanged =
           text.includes("already changed") ||
           text.includes("no longer") ||
@@ -444,9 +497,81 @@ export default function AccountantDashboard({ user }) {
   useEffect(() => {
     return () => {
       clearPreparedTimers();
-      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
     };
   }, [clearPreparedTimers]);
+
+  // ==================================================
+  // 30-SECOND SECTION COLLAPSE
+  // ==================================================
+
+  const clearSavingsCollapseTimer = useCallback(() => {
+    if (savingsCollapseTimerRef.current) {
+      clearTimeout(savingsCollapseTimerRef.current);
+      savingsCollapseTimerRef.current = null;
+    }
+  }, []);
+
+  const armSavingsCollapseTimer = useCallback(() => {
+    clearSavingsCollapseTimer();
+
+    if (
+      savingsHasFocusRef.current ||
+      confirmingSavingsPaymentId ||
+      rejectingSavingsPaymentId
+    ) {
+      return;
+    }
+
+    savingsCollapseTimerRef.current = setTimeout(() => {
+      setShowSavingsPayments(false);
+    }, SECTION_COLLAPSE_MS);
+  }, [
+    clearSavingsCollapseTimer,
+    confirmingSavingsPaymentId,
+    rejectingSavingsPaymentId,
+  ]);
+
+  const clearHistoryCollapseTimer = useCallback(() => {
+    if (historyCollapseTimerRef.current) {
+      clearTimeout(historyCollapseTimerRef.current);
+      historyCollapseTimerRef.current = null;
+    }
+  }, []);
+
+  const armHistoryCollapseTimer = useCallback(() => {
+    clearHistoryCollapseTimer();
+
+    historyCollapseTimerRef.current = setTimeout(() => {
+      setShowTransactionHistory(false);
+    }, SECTION_COLLAPSE_MS);
+  }, [clearHistoryCollapseTimer]);
+
+  useEffect(() => {
+    if (showSavingsPayments) armSavingsCollapseTimer();
+    else clearSavingsCollapseTimer();
+    return clearSavingsCollapseTimer;
+  }, [
+    showSavingsPayments,
+    armSavingsCollapseTimer,
+    clearSavingsCollapseTimer,
+  ]);
+
+  useEffect(() => {
+    if (showTransactionHistory) armHistoryCollapseTimer();
+    else clearHistoryCollapseTimer();
+    return clearHistoryCollapseTimer;
+  }, [
+    showTransactionHistory,
+    armHistoryCollapseTimer,
+    clearHistoryCollapseTimer,
+  ]);
+
+  // ==================================================
+  // DERIVED DATA
+  // ==================================================
 
   const shopMap = useMemo(() => {
     const map = new Map();
@@ -460,6 +585,7 @@ export default function AccountantDashboard({ user }) {
       const shopB = String(shopMap.get(b.shop_id)?.shop_name || "");
       const shopCompare = shopA.localeCompare(shopB);
       if (shopCompare !== 0) return shopCompare;
+
       return Number(a.slot_number || 0) - Number(b.slot_number || 0);
     });
   }, [recipients, shopMap]);
@@ -520,11 +646,13 @@ export default function AccountantDashboard({ user }) {
         .filter(
           (tx) =>
             tx.flow === "CASHIER_TO_ACCOUNTANT" &&
-            (tx.status === "CREATED" ||
-              tx.status === "PENDING_MANUAL_SEND" ||
-              tx.status === "AWAITING_ACCOUNTANT_CONFIRMATION" ||
-              tx.status === "PENDING_MPESA" ||
-              tx.status === "CHECKING")
+            [
+              "CREATED",
+              "PENDING_MANUAL_SEND",
+              "AWAITING_ACCOUNTANT_CONFIRMATION",
+              "PENDING_MPESA",
+              "CHECKING",
+            ].includes(tx.status)
         )
         .sort(
           (a, b) =>
@@ -540,10 +668,12 @@ export default function AccountantDashboard({ user }) {
         .filter(
           (tx) =>
             tx.flow === "ACCOUNTANT_TO_CASHIER" &&
-            (tx.status === "CREATED" ||
-              tx.status === "PENDING_MANUAL_SEND" ||
-              tx.status === "PENDING_MPESA" ||
-              tx.status === "CHECKING")
+            [
+              "CREATED",
+              "PENDING_MANUAL_SEND",
+              "PENDING_MPESA",
+              "CHECKING",
+            ].includes(tx.status)
         )
         .sort(
           (a, b) =>
@@ -581,7 +711,9 @@ export default function AccountantDashboard({ user }) {
   const hasCarriedForward = carriedForwardTransactions.length > 0;
 
   const nextExpenseSlot = useMemo(() => {
-    const used = new Set(expenses.map((expense) => Number(expense.slot_number)));
+    const used = new Set(
+      expenses.map((expense) => Number(expense.slot_number))
+    );
     for (let slot = 1; slot <= 20; slot += 1) {
       if (!used.has(slot)) return slot;
     }
@@ -592,6 +724,10 @@ export default function AccountantDashboard({ user }) {
     String(report?.status || "").trim().toUpperCase() === "CLOSED";
 
   const newActivityLocked = hasCarriedForward || reportClosed || !report;
+
+  // ==================================================
+  // FLOAT TRANSFER ACTIONS
+  // ==================================================
 
   async function prepareFloatSend() {
     if (preparingSend || preparedSend) return;
@@ -628,6 +764,7 @@ export default function AccountantDashboard({ user }) {
       setDeclinedSendMessage("");
 
       let routeAtPrepare = floatSendMethod;
+
       try {
         const latestMethod = await loadFloatSendMethod();
         if (latestMethod) {
@@ -655,7 +792,9 @@ export default function AccountantDashboard({ user }) {
         returnedSlot > 3
       ) {
         throw new Error(
-          result?.message || result?.error || "The float transfer was declined."
+          result?.message ||
+            result?.error ||
+            "The float transfer was declined."
         );
       }
 
@@ -677,7 +816,11 @@ export default function AccountantDashboard({ user }) {
       setPreparedSecondsLeft(30);
       setDeclinedSendMessage("");
 
-      const route = getAccountantSendRoute(prepared, preparedRouteCode);
+      const route = getAccountantSendRoute(
+        prepared,
+        preparedRouteCode
+      );
+
       setSuccessMessage(
         route.isIm
           ? `Transfer prepared for Company Float ${returnedSlot}. Send from I&M to the cashier's M-Pesa number, then enter the transaction reference.`
@@ -687,14 +830,19 @@ export default function AccountantDashboard({ user }) {
       await refreshData({ silent: true });
     } catch (error) {
       console.error("PREPARE FLOAT ERROR:", error);
-      const errorMessage = error?.message || "Unable to prepare float transfer.";
+
+      const errorMessage =
+        error?.message || "Unable to prepare float transfer.";
+
       setPreparedSend(null);
       setSendReceipt("");
       setSuccessMessage("");
       setMessage("");
+
       setDeclinedSendMessage(
         `DECLINED — ${errorMessage} No float was approved or posted. Do not send the money.`
       );
+
       await refreshData({ silent: true });
     } finally {
       setPreparingSend(false);
@@ -705,7 +853,10 @@ export default function AccountantDashboard({ user }) {
     if (!preparedSend?.transaction_id || completingSend) return;
 
     const receipt = String(sendReceipt || "").trim().toUpperCase();
-    const route = getAccountantSendRoute(preparedSend, floatSendMethod);
+    const route = getAccountantSendRoute(
+      preparedSend,
+      floatSendMethod
+    );
 
     if (!receipt) {
       setMessage(
@@ -727,6 +878,7 @@ export default function AccountantDashboard({ user }) {
     );
 
     if (!confirmSend) return;
+
     clearPreparedTimers();
 
     try {
@@ -754,10 +906,13 @@ export default function AccountantDashboard({ user }) {
           result?.company_float_slot || ""
         }.`
       );
+
       await refreshData({ silent: true });
     } catch (error) {
       console.error("COMPLETE FLOAT ERROR:", error);
-      setMessage(error?.message || "Unable to complete float transfer.");
+      setMessage(
+        error?.message || "Unable to complete float transfer."
+      );
     } finally {
       setCompletingSend(false);
     }
@@ -767,12 +922,14 @@ export default function AccountantDashboard({ user }) {
     if (!preparedSend?.transaction_id || cancellingTransactionId) return;
 
     const transactionId = preparedSend.transaction_id;
+
     const confirmed = window.confirm(
       `Cancel transaction ${preparedSend.transaction_no || ""}?\n\n` +
         `Cashier: ${preparedSend.recipient_name || "-"}\n` +
         `Amount: KES ${money(preparedSend.amount)}\n\n` +
         "Only cancel if the money was NOT sent."
     );
+
     if (!confirmed) return;
 
     clearPreparedTimers();
@@ -783,9 +940,10 @@ export default function AccountantDashboard({ user }) {
       setSuccessMessage("");
       setDeclinedSendMessage("");
 
-      const result = await callRpc("tl_accountant_cancel_pending_transaction", {
-        p_transaction_id: transactionId,
-      });
+      const result = await callRpc(
+        "tl_accountant_cancel_pending_transaction",
+        { p_transaction_id: transactionId }
+      );
 
       setPreparedSend(null);
       setSelectedRecipientId("");
@@ -802,7 +960,9 @@ export default function AccountantDashboard({ user }) {
       await refreshData({ silent: true });
     } catch (error) {
       console.error("CANCEL PREPARED FLOAT ERROR:", error);
-      setMessage(error?.message || "Unable to cancel the prepared transfer.");
+      setMessage(
+        error?.message || "Unable to cancel the prepared transfer."
+      );
     } finally {
       setCancellingTransactionId(null);
     }
@@ -821,6 +981,7 @@ export default function AccountantDashboard({ user }) {
         transaction.manual_receipt_no || "-"
       }\n\nAfter confirmation, the cashier expense will be posted automatically.`
     );
+
     if (!confirmed) return;
 
     try {
@@ -828,14 +989,19 @@ export default function AccountantDashboard({ user }) {
       setMessage("");
       setSuccessMessage("");
 
-      const result = await callRpc("tl_accountant_confirm_manual_return", {
-        p_transaction_id: transaction.id,
-      });
+      const result = await callRpc(
+        "tl_accountant_confirm_manual_return",
+        { p_transaction_id: transaction.id }
+      );
+
       setSuccessMessage(
         `Return confirmed. Accountant received KES ${money(
           result?.amount_received_by_accountant
-        )}; cashier expense posted KES ${money(result?.cashier_total_expense)}.`
+        )}; cashier expense posted KES ${money(
+          result?.cashier_total_expense
+        )}.`
       );
+
       await refreshData();
     } catch (error) {
       console.error("CONFIRM RETURN ERROR:", error);
@@ -859,6 +1025,7 @@ export default function AccountantDashboard({ user }) {
         `Amount: KES ${money(transaction.amount)}\n\n` +
         "Only cancel this transaction if the money was NOT sent."
     );
+
     if (!confirmed) return;
 
     try {
@@ -866,35 +1033,52 @@ export default function AccountantDashboard({ user }) {
       setMessage("");
       setSuccessMessage("");
 
-      const result = await callRpc("tl_accountant_cancel_pending_transaction", {
-        p_transaction_id: transaction.id,
-      });
+      const result = await callRpc(
+        "tl_accountant_cancel_pending_transaction",
+        { p_transaction_id: transaction.id }
+      );
+
       setSuccessMessage(
         `Transaction ${
           result?.transaction_no || transaction.transaction_no
         } cancelled successfully.`
       );
+
       await refreshData({ silent: true });
     } catch (error) {
       console.error("CANCEL TRANSACTION ERROR:", error);
-      setMessage(error?.message || "Unable to cancel transaction.");
+      setMessage(
+        error?.message || "Unable to cancel transaction."
+      );
     } finally {
       setCancellingTransactionId(null);
     }
   }
+
+  // ==================================================
+  // SAVINGS / BANKING PAYMENTS
+  // ==================================================
 
   async function confirmSavingsPayment(request) {
     if (
       !request?.id ||
       confirmingSavingsPaymentId ||
       rejectingSavingsPaymentId
-    ) return;
+    ) {
+      return;
+    }
 
     const form = savingsPaymentForms[request.id] || {};
     const provider = String(
-      form.provider || (floatSendMethod === "IM_TO_MPESA" ? "I&M" : "M-PESA")
-    ).trim().toUpperCase();
-    const reference = String(form.reference || "").trim().toUpperCase();
+      form.provider ||
+        (floatSendMethod === "IM_TO_MPESA" ? "I&M" : "M-PESA")
+    )
+      .trim()
+      .toUpperCase();
+
+    const reference = String(form.reference || "")
+      .trim()
+      .toUpperCase();
     const externalId = String(form.externalId || "").trim();
     const fee = Number(form.fee || 0);
 
@@ -902,10 +1086,12 @@ export default function AccountantDashboard({ user }) {
       setMessage("Select M-Pesa or I&M as the payment source.");
       return;
     }
+
     if (!reference && !externalId) {
       setMessage(`Enter the payment reference for ${request.category}.`);
       return;
     }
+
     if (!Number.isFinite(fee) || fee < 0) {
       setMessage("Enter a valid transaction fee. Use 0 if there was no fee.");
       return;
@@ -921,6 +1107,7 @@ export default function AccountantDashboard({ user }) {
         "This will deduct the principal from the saved balance. " +
         "It will NOT create another cashier expense."
     );
+
     if (!confirmed) return;
 
     try {
@@ -928,21 +1115,25 @@ export default function AccountantDashboard({ user }) {
       setMessage("");
       setSuccessMessage("");
 
-      const result = await callRpc("tl_accountant_confirm_savings_payment", {
-        p_request_id: request.id,
-        p_payment_method:
-          provider === "I&M" ? "IM_TO_PAYBILL" : "MPESA_TO_PAYBILL",
-        p_payment_provider: provider,
-        p_payment_reference: reference,
-        p_external_transaction_id: externalId || null,
-        p_transaction_fee: roundMoney(fee),
-      });
+      const result = await callRpc(
+        "tl_accountant_confirm_savings_payment",
+        {
+          p_request_id: request.id,
+          p_payment_method:
+            provider === "I&M" ? "IM_TO_PAYBILL" : "MPESA_TO_PAYBILL",
+          p_payment_provider: provider,
+          p_payment_reference: reference,
+          p_external_transaction_id: externalId || null,
+          p_transaction_fee: roundMoney(fee),
+        }
+      );
 
       setSavingsPaymentForms((previous) => {
         const next = { ...previous };
         delete next[request.id];
         return next;
       });
+
       setSuccessMessage(
         `${request.category} payment confirmed. KES ${money(
           result?.amount_paid ?? request.amount
@@ -950,10 +1141,13 @@ export default function AccountantDashboard({ user }) {
           result?.balance_after
         )}.`
       );
+
       await refreshData({ silent: true });
     } catch (error) {
       console.error("CONFIRM SAVINGS PAYMENT ERROR:", error);
-      setMessage(error?.message || "Unable to confirm the Savings payment.");
+      setMessage(
+        error?.message || "Unable to confirm the Savings payment."
+      );
     } finally {
       setConfirmingSavingsPaymentId(null);
     }
@@ -964,7 +1158,9 @@ export default function AccountantDashboard({ user }) {
       !request?.id ||
       confirmingSavingsPaymentId ||
       rejectingSavingsPaymentId
-    ) return;
+    ) {
+      return;
+    }
 
     const form = savingsPaymentForms[request.id] || {};
     const reason = String(form.rejectionReason || "").trim();
@@ -982,6 +1178,7 @@ export default function AccountantDashboard({ user }) {
         `Reason: ${reason}\n\n` +
         "No Savings, Expense or Float balance will change."
     );
+
     if (!confirmed) return;
 
     try {
@@ -999,20 +1196,29 @@ export default function AccountantDashboard({ user }) {
         delete next[request.id];
         return next;
       });
+
       setSuccessMessage(
         `${request.category} payment request rejected. No money was moved.`
       );
+
       await refreshData({ silent: true });
     } catch (error) {
       console.error("REJECT SAVINGS PAYMENT ERROR:", error);
-      setMessage(error?.message || "Unable to reject the Savings payment.");
+      setMessage(
+        error?.message || "Unable to reject the Savings payment."
+      );
     } finally {
       setRejectingSavingsPaymentId(null);
     }
   }
 
+  // ==================================================
+  // EXPENSES AND DAY CLOSING
+  // ==================================================
+
   async function addExpense() {
     if (savingExpense) return;
+
     if (hasCarriedForward) {
       setMessage(
         "Resolve all carried-forward transactions before entering today's expenses."
@@ -1027,6 +1233,7 @@ export default function AccountantDashboard({ user }) {
       setMessage("Enter the expense description.");
       return;
     }
+
     if (!Number.isFinite(amount) || amount <= 0) {
       setMessage("Enter a valid expense amount.");
       return;
@@ -1044,11 +1251,17 @@ export default function AccountantDashboard({ user }) {
 
       setExpenseDescription("");
       setExpenseAmount("");
-      setSuccessMessage(`Expense ${result?.slot_number || ""} saved and locked.`);
+
+      setSuccessMessage(
+        `Expense ${result?.slot_number || ""} saved and locked.`
+      );
+
       await refreshData();
     } catch (error) {
       console.error("ACCOUNTANT EXPENSE ERROR:", error);
-      setMessage(error?.message || "Unable to save Accountant expense.");
+      setMessage(
+        error?.message || "Unable to save Accountant expense."
+      );
     } finally {
       setSavingExpense(false);
     }
@@ -1056,6 +1269,7 @@ export default function AccountantDashboard({ user }) {
 
   async function closeAccountantDay() {
     if (closingDay || !report?.report_date) return;
+
     if (hasCarriedForward) {
       setMessage(
         "Resolve all carried-forward transactions before closing today's Accountant report."
@@ -1064,10 +1278,11 @@ export default function AccountantDashboard({ user }) {
     }
 
     const confirmed = window.confirm(
-      `Close Accountant report for ${report.report_date}?\n\nClosing Balance: KES ${money(
-        report.closing_balance
-      )}\n\nAfter closing, today's Accountant entries will be locked.`
+      `Close Accountant report for ${report.report_date}?\n\n` +
+        `Closing Balance: KES ${money(report.closing_balance)}\n\n` +
+        "After closing, today's Accountant entries will be locked."
     );
+
     if (!confirmed) return;
 
     try {
@@ -1078,22 +1293,30 @@ export default function AccountantDashboard({ user }) {
       const result = await callRpc("tl_accountant_close_day", {
         p_report_date: report.report_date,
       });
+
       setSuccessMessage(
         `Accountant day closed. Closing Balance: KES ${money(
           result?.closing_balance
         )}.`
       );
+
       await refreshData();
     } catch (error) {
       console.error("CLOSE ACCOUNTANT DAY ERROR:", error);
-      setMessage(error?.message || "Unable to close Accountant day.");
+      setMessage(
+        error?.message || "Unable to close Accountant day."
+      );
     } finally {
       setClosingDay(false);
     }
   }
 
   if (loading) {
-    return <div style={loadingStyle}>Loading Legend Accounts...</div>;
+    return (
+      <div style={loadingStyle}>
+        Loading Legend Accounts...
+      </div>
+    );
   }
 
   return (
@@ -1101,7 +1324,9 @@ export default function AccountantDashboard({ user }) {
       <header style={headerStyle}>
         <div>
           <div style={brandStyle}>TEAM LEGEND ACCOUNTS</div>
-          <div style={sloganStyle}>FLOAT • REFUNDS • EXPENSES • CONTROL</div>
+          <div style={sloganStyle}>
+            FLOAT • REFUNDS • EXPENSES • CONTROL
+          </div>
         </div>
 
         <div style={headerRightStyle}>
@@ -1109,26 +1334,47 @@ export default function AccountantDashboard({ user }) {
             <small>SIGNED IN</small>
             <strong>{accountantName}</strong>
           </div>
-          <button type="button" onClick={() => refreshData()}
-            disabled={refreshing} style={refreshButtonStyle}>
+
+          <button
+            type="button"
+            onClick={() => refreshData()}
+            disabled={refreshing}
+            style={refreshButtonStyle}
+          >
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
-          <button type="button" onClick={logout} style={logoutButtonStyle}>
+
+          <button
+            type="button"
+            onClick={logout}
+            style={logoutButtonStyle}
+          >
             Logout
           </button>
         </div>
       </header>
 
       <div style={contentStyle}>
-        {message && <div style={errorStyle}>{message}</div>}
-        {successMessage && <div style={successStyle}>{successMessage}</div>}
+        {message && (
+          <div style={errorStyle}>{message}</div>
+        )}
+
+        {successMessage && (
+          <div style={successStyle}>{successMessage}</div>
+        )}
 
         {reportOpenError && (
           <div style={warningStyle}>
-            <strong>Today's Accountant report could not be opened.</strong>
-            <div style={warningTextStyle}>{reportOpenError}</div>
+            <strong>
+              Today's Accountant report could not be opened.
+            </strong>
+            <div style={warningTextStyle}>
+              {reportOpenError}
+            </div>
           </div>
         )}
+
+        {/* CARRIED FORWARD TRANSACTIONS */}
 
         {hasCarriedForward && (
           <section style={carriedForwardPanelStyle}>
@@ -1139,11 +1385,14 @@ export default function AccountantDashboard({ user }) {
                 </div>
                 <div style={carriedForwardSubtitleStyle}>
                   {carriedForwardTransactions.length} unresolved transaction
-                  {carriedForwardTransactions.length === 1 ? "" : "s"} from a
-                  previous day.
+                  {carriedForwardTransactions.length === 1 ? "" : "s"} from
+                  a previous day.
                 </div>
               </div>
-              <div style={carriedForwardBadgeStyle}>RESOLVE FIRST</div>
+
+              <div style={carriedForwardBadgeStyle}>
+                RESOLVE FIRST
+              </div>
             </div>
 
             <div style={carriedForwardNoticeStyle}>
@@ -1167,36 +1416,44 @@ export default function AccountantDashboard({ user }) {
                     <TableHead>Action</TableHead>
                   </tr>
                 </thead>
+
                 <tbody>
                   {carriedForwardTransactions.map((transaction) => (
                     <tr key={transaction.id}>
                       <TableCell>
                         {formatDateTime(transaction.created_at)}
                       </TableCell>
-                      <TableCell>{transaction.transaction_no}</TableCell>
+                      <TableCell>
+                        {transaction.transaction_no}
+                      </TableCell>
                       <TableCell>
                         {transaction.flow === "ACCOUNTANT_TO_CASHIER"
                           ? "TO CASHIER"
                           : "FROM CASHIER"}
                       </TableCell>
                       <TableCell>
-                        {shopMap.get(transaction.shop_id)?.shop_name || "Shop"}
+                        {shopMap.get(transaction.shop_id)?.shop_name ||
+                          "Shop"}
                       </TableCell>
                       <TableCell>
                         {transaction.recipient_name_snapshot ||
-                          transaction.cashier_name || "-"}
+                          transaction.cashier_name ||
+                          "-"}
                       </TableCell>
                       <TableCell right>
                         KES {money(transaction.amount)}
                       </TableCell>
                       <TableCell right>
-                        KES {money(
-                          transaction.actual_fee ?? transaction.estimated_fee
+                        KES{" "}
+                        {money(
+                          transaction.actual_fee ??
+                            transaction.estimated_fee
                         )}
                       </TableCell>
                       <TableCell>
                         {transaction.mpesa_receipt_number ||
-                          transaction.manual_receipt_no || "-"}
+                          transaction.manual_receipt_no ||
+                          "-"}
                       </TableCell>
                       <TableCell>
                         <StatusText status={transaction.status} />
@@ -1206,8 +1463,12 @@ export default function AccountantDashboard({ user }) {
                         "AWAITING_ACCOUNTANT_CONFIRMATION" ? (
                           <button
                             type="button"
-                            onClick={() => confirmCashierReturn(transaction)}
-                            disabled={confirmingTransactionId === transaction.id}
+                            onClick={() =>
+                              confirmCashierReturn(transaction)
+                            }
+                            disabled={
+                              confirmingTransactionId === transaction.id
+                            }
                             style={smallConfirmButtonStyle}
                           >
                             {confirmingTransactionId === transaction.id
@@ -1217,8 +1478,12 @@ export default function AccountantDashboard({ user }) {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => cancelPendingTransaction(transaction)}
-                            disabled={cancellingTransactionId === transaction.id}
+                            onClick={() =>
+                              cancelPendingTransaction(transaction)
+                            }
+                            disabled={
+                              cancellingTransactionId === transaction.id
+                            }
                             style={cancelTransactionButtonStyle}
                           >
                             {cancellingTransactionId === transaction.id
@@ -1235,11 +1500,14 @@ export default function AccountantDashboard({ user }) {
           </section>
         )}
 
+        {/* DAILY ACCOUNTANT REPORT */}
+
         <section style={panelStyle}>
           <div style={panelHeaderStyle}>
-            <div>
-              <div style={panelTitleStyle}>DAILY ACCOUNTANT REPORT</div>
+            <div style={panelTitleStyle}>
+              DAILY ACCOUNTANT REPORT
             </div>
+
             <div
               style={{
                 ...statusBadgeStyle,
@@ -1255,28 +1523,48 @@ export default function AccountantDashboard({ user }) {
           </div>
 
           <div style={summaryGridStyle}>
-            <SummaryCard label="REPORT DATE" value={report?.report_date || "-"} />
-            <SummaryCard label="BALANCE B/F"
-              value={`KES ${money(report?.opening_balance)}`} />
-            <SummaryCard label="FLOAT SENT"
-              value={`KES ${money(report?.total_float_sent)}`} />
-            <SummaryCard label="FLOAT RECEIVED"
-              value={`KES ${money(report?.total_float_received)}`} />
-            <SummaryCard label="TRANSACTION FEES"
-              value={`KES ${money(report?.total_transaction_fees)}`} />
-            <SummaryCard label="ACCOUNTANT EXPENSES"
-              value={`KES ${money(report?.total_expenses)}`} />
-            <SummaryCard label="CLOSING BALANCE"
-              value={`KES ${money(report?.closing_balance)}`} strong />
+            <SummaryCard
+              label="REPORT DATE"
+              value={report?.report_date || "-"}
+            />
+            <SummaryCard
+              label="BALANCE B/F"
+              value={`KES ${money(report?.opening_balance)}`}
+            />
+            <SummaryCard
+              label="FLOAT SENT"
+              value={`KES ${money(report?.total_float_sent)}`}
+            />
+            <SummaryCard
+              label="FLOAT RECEIVED"
+              value={`KES ${money(report?.total_float_received)}`}
+            />
+            <SummaryCard
+              label="TRANSACTION FEES"
+              value={`KES ${money(report?.total_transaction_fees)}`}
+            />
+            <SummaryCard
+              label="ACCOUNTANT EXPENSES"
+              value={`KES ${money(report?.total_expenses)}`}
+            />
+            <SummaryCard
+              label="CLOSING BALANCE"
+              value={`KES ${money(report?.closing_balance)}`}
+              strong
+            />
           </div>
         </section>
 
+        {/* SEND FLOAT TO CASHIER */}
+
         <section style={panelStyle}>
           <div style={panelHeaderStyle}>
-            <div>
-              <div style={panelTitleStyle}>SEND FLOAT TO CASHIER</div>
+            <div style={panelTitleStyle}>
+              SEND FLOAT TO CASHIER
             </div>
-            <div style={routeBadgeStyle}>{currentSendRoute.routeTitle}</div>
+            <div style={routeBadgeStyle}>
+              {currentSendRoute.routeTitle}
+            </div>
           </div>
 
           {hasCarriedForward && (
@@ -1299,13 +1587,17 @@ export default function AccountantDashboard({ user }) {
                 }}
                 style={inputStyle}
               >
-                <option value="">Select approved recipient</option>
+                <option value="">
+                  Select approved recipient
+                </option>
+
                 {sortedRecipients.map((recipient) => {
                   const shop = shopMap.get(recipient.shop_id);
                   return (
                     <option key={recipient.id} value={recipient.id}>
-                      {shop?.shop_name || "Shop"} — {recipient.recipient_name}
-                      {" — "}{maskPhone(recipient.phone_number)}
+                      {shop?.shop_name || "Shop"} —{" "}
+                      {recipient.recipient_name} —{" "}
+                      {maskPhone(recipient.phone_number)}
                     </option>
                   );
                 })}
@@ -1315,7 +1607,10 @@ export default function AccountantDashboard({ user }) {
             <div>
               <label style={labelStyle}>Float Amount</label>
               <input
-                type="number" min="1" step="0.01" value={sendAmount}
+                type="number"
+                min="1"
+                step="0.01"
+                value={sendAmount}
                 disabled={newActivityLocked || Boolean(preparedSend)}
                 onChange={(event) => {
                   setSendAmount(event.target.value);
@@ -1332,18 +1627,21 @@ export default function AccountantDashboard({ user }) {
             <div style={recipientPreviewStyle}>
               <strong>Selected authorized recipient:</strong>{" "}
               {selectedRecipient.recipient_name} •{" "}
-              {shopMap.get(selectedRecipient.shop_id)?.shop_name || "Shop"} •{" "}
-              {maskPhone(selectedRecipient.phone_number)}
+              {shopMap.get(selectedRecipient.shop_id)?.shop_name ||
+                "Shop"}{" "}
+              • {maskPhone(selectedRecipient.phone_number)}
             </div>
           )}
 
           {declinedSendMessage && (
             <div style={declinedTransferStyle}>
-              <div style={declinedTransferTitleStyle}>TRANSFER DECLINED</div>
+              <div style={declinedTransferTitleStyle}>
+                TRANSFER DECLINED
+              </div>
               <div>{declinedSendMessage}</div>
             </div>
           )}
-{!preparedSend && (
+          {!preparedSend && (
             <button
               type="button"
               onClick={prepareFloatSend}
@@ -1403,8 +1701,9 @@ export default function AccountantDashboard({ user }) {
               <div style={sendInstructionStyle}>
                 {preparedSendRoute.isIm ? (
                   <>
-                    Send exactly <strong>KES {money(preparedSend.amount)}</strong>
-                    {" "}from <strong>I&M</strong> to cashier M-Pesa{" "}
+                    Send exactly{" "}
+                    <strong>KES {money(preparedSend.amount)}</strong>{" "}
+                    from <strong>I&M</strong> to cashier M-Pesa{" "}
                     <strong>
                       {formatPhoneForDisplay(preparedSend.phone_number)}
                     </strong>
@@ -1412,8 +1711,9 @@ export default function AccountantDashboard({ user }) {
                   </>
                 ) : (
                   <>
-                    Send exactly <strong>KES {money(preparedSend.amount)}</strong>
-                    {" "}to M-Pesa{" "}
+                    Send exactly{" "}
+                    <strong>KES {money(preparedSend.amount)}</strong>{" "}
+                    to M-Pesa{" "}
                     <strong>
                       {formatPhoneForDisplay(preparedSend.phone_number)}
                     </strong>
@@ -1471,8 +1771,8 @@ export default function AccountantDashboard({ user }) {
 
               <div style={preparedSafetyNoteStyle}>
                 If no receipt/reference is entered for 30 seconds,
-                this unfinished prepared transfer is automatically cancelled
-                so it does not remain as an unfinished transaction.
+                this unfinished prepared transfer is automatically
+                cancelled.
               </div>
             </div>
           )}
@@ -1480,17 +1780,20 @@ export default function AccountantDashboard({ user }) {
           {pendingAccountantSends.length > 0 && !preparedSend && (
             <div style={pendingNoticeStyle}>
               <strong>
-                {pendingAccountantSends.length} unfinished Accountant float
-                transfer(s)
+                {pendingAccountantSends.length} unfinished Accountant
+                float transfer(s)
               </strong>
 
               <div style={pendingNoticeTextStyle}>
-                If these were tests and no money was sent, cancel them below.
+                If no money was sent, cancel the transaction below.
               </div>
 
               <div style={pendingSendListStyle}>
                 {pendingAccountantSends.map((transaction) => (
-                  <div key={transaction.id} style={pendingSendRowStyle}>
+                  <div
+                    key={transaction.id}
+                    style={pendingSendRowStyle}
+                  >
                     <div>
                       <strong>
                         {transaction.transaction_no || "Transaction"}
@@ -1502,10 +1805,15 @@ export default function AccountantDashboard({ user }) {
                         • KES {money(transaction.amount)}
                       </div>
                     </div>
+
                     <button
                       type="button"
-                      onClick={() => cancelPendingTransaction(transaction)}
-                      disabled={cancellingTransactionId === transaction.id}
+                      onClick={() =>
+                        cancelPendingTransaction(transaction)
+                      }
+                      disabled={
+                        cancellingTransactionId === transaction.id
+                      }
                       style={cancelSmallButtonStyle}
                     >
                       {cancellingTransactionId === transaction.id
@@ -1519,15 +1827,16 @@ export default function AccountantDashboard({ user }) {
           )}
         </section>
 
-        {/* CASHIER FLOAT RETURNS */}
+        {/* ==================================================
+            FLOAT RECEIVED FROM CASHIERS
+        ================================================== */}
 
         <section style={panelStyle}>
           <div style={panelHeaderStyle}>
-            <div>
-              <div style={panelTitleStyle}>
-                FLOAT RECEIVED FROM CASHIERS
-              </div>
+            <div style={panelTitleStyle}>
+              FLOAT RECEIVED FROM CASHIERS
             </div>
+
             <div style={countBadgeStyle}>
               {pendingReturns.length} PENDING
             </div>
@@ -1553,6 +1862,7 @@ export default function AccountantDashboard({ user }) {
                     <TableHead>Action</TableHead>
                   </tr>
                 </thead>
+
                 <tbody>
                   {pendingReturns.map((transaction) => (
                     <tr key={transaction.id}>
@@ -1563,7 +1873,8 @@ export default function AccountantDashboard({ user }) {
                         {transaction.transaction_no}
                       </TableCell>
                       <TableCell>
-                        {shopMap.get(transaction.shop_id)?.shop_name || "Shop"}
+                        {shopMap.get(transaction.shop_id)?.shop_name ||
+                          "Shop"}
                       </TableCell>
                       <TableCell>
                         {transaction.cashier_name || "-"}
@@ -1572,8 +1883,10 @@ export default function AccountantDashboard({ user }) {
                         KES {money(transaction.amount)}
                       </TableCell>
                       <TableCell right>
-                        KES {money(
-                          transaction.actual_fee ?? transaction.estimated_fee
+                        KES{" "}
+                        {money(
+                          transaction.actual_fee ??
+                            transaction.estimated_fee
                         )}
                       </TableCell>
                       <TableCell>
@@ -1589,8 +1902,12 @@ export default function AccountantDashboard({ user }) {
                         "AWAITING_ACCOUNTANT_CONFIRMATION" ? (
                           <button
                             type="button"
-                            onClick={() => confirmCashierReturn(transaction)}
-                            disabled={confirmingTransactionId === transaction.id}
+                            onClick={() =>
+                              confirmCashierReturn(transaction)
+                            }
+                            disabled={
+                              confirmingTransactionId === transaction.id
+                            }
                             style={smallConfirmButtonStyle}
                           >
                             {confirmingTransactionId === transaction.id
@@ -1611,307 +1928,418 @@ export default function AccountantDashboard({ user }) {
           )}
         </section>
 
-        {/* SAVINGS / BANKING PAYMENTS */}
+        {/* ==================================================
+            SAVINGS / BANKING PAYMENTS — COLLAPSIBLE
+        ================================================== */}
 
-        <section style={savingsPaymentPanelStyle}>
+        <section
+          style={savingsPaymentPanelStyle}
+          onFocusCapture={(event) => {
+            const tag = event.target?.tagName;
+            if (
+              tag === "INPUT" ||
+              tag === "TEXTAREA" ||
+              tag === "SELECT"
+            ) {
+              savingsHasFocusRef.current = true;
+              clearSavingsCollapseTimer();
+            }
+          }}
+          onBlurCapture={(event) => {
+            const tag = event.target?.tagName;
+            if (
+              tag === "INPUT" ||
+              tag === "TEXTAREA" ||
+              tag === "SELECT"
+            ) {
+              const next = event.relatedTarget;
+              if (
+                next &&
+                event.currentTarget.contains(next) &&
+                ["INPUT", "TEXTAREA", "SELECT"].includes(next.tagName)
+              ) {
+                return;
+              }
+              savingsHasFocusRef.current = false;
+              if (showSavingsPayments) armSavingsCollapseTimer();
+            }
+          }}
+          onPointerDownCapture={() => {
+            if (showSavingsPayments) armSavingsCollapseTimer();
+          }}
+          onScrollCapture={() => {
+            if (showSavingsPayments) armSavingsCollapseTimer();
+          }}
+          onWheelCapture={() => {
+            if (showSavingsPayments) armSavingsCollapseTimer();
+          }}
+          onTouchMoveCapture={() => {
+            if (showSavingsPayments) armSavingsCollapseTimer();
+          }}
+        >
           <div style={panelHeaderStyle}>
-            <div>
-              <div style={panelTitleStyle}>
-                SAVINGS / BANKING PAYMENTS
+            <div style={panelTitleStyle}>
+              SAVINGS / BANKING PAYMENTS
+            </div>
+
+            <div style={sectionHeaderActionsStyle}>
+              <div style={savingsPendingBadgeStyle}>
+                {pendingSavingsPayments.length} PENDING
               </div>
-            </div>
-            <div style={savingsPendingBadgeStyle}>
-              {pendingSavingsPayments.length} PENDING
+
+              <button
+                type="button"
+                style={sectionToggleStyle}
+                aria-expanded={showSavingsPayments}
+                onClick={() =>
+                  setShowSavingsPayments((current) => !current)
+                }
+              >
+                {showSavingsPayments ? "Hide ▲" : "Show ▼"}
+              </button>
             </div>
           </div>
 
-          <div style={savingsPaymentRuleStyle}>
-            The principal was already posted to the cashier's Expenses
-            when it was saved. Confirming a payment here only deducts
-            that amount from the saved balance.
-          </div>
+          {showSavingsPayments && (
+            <>
+              <div style={savingsPaymentRuleStyle}>
+                The principal was already posted to the cashier's
+                Expenses when it was saved. Confirming payment here
+                deducts the amount from the saved balance.
+              </div>
 
-          {pendingSavingsPayments.length === 0 ? (
-            <div style={emptyStyle}>
-              No Savings / Banking payments waiting for confirmation.
-            </div>
-          ) : (
-            <div style={savingsRequestListStyle}>
-              {pendingSavingsPayments.map((request) => {
-                const form = savingsPaymentForms[request.id] || {};
-                const provider =
-                  form.provider ||
-                  (floatSendMethod === "IM_TO_MPESA" ? "I&M" : "M-PESA");
-                const confirming =
-                  confirmingSavingsPaymentId === request.id;
-                const rejecting =
-                  rejectingSavingsPaymentId === request.id;
-                const busy = confirming || rejecting;
+              {pendingSavingsPayments.length === 0 ? (
+                <div style={emptyStyle}>
+                  No Savings / Banking payments waiting for confirmation.
+                </div>
+              ) : (
+                <div style={savingsRequestListStyle}>
+                  {pendingSavingsPayments.map((request) => {
+                    const form = savingsPaymentForms[request.id] || {};
+                    const provider =
+                      form.provider ||
+                      (floatSendMethod === "IM_TO_MPESA"
+                        ? "I&M"
+                        : "M-PESA");
 
-                return (
-                  <div key={request.id} style={savingsRequestCardStyle}>
-                    <div style={savingsRequestHeaderStyle}>
-                      <div>
-                        <div style={savingsCategoryStyle}>
-                          {request.category}
-                        </div>
-                        <div style={savingsMetaStyle}>
-                          {request.shop_name || "Shop"} •{" "}
-                          {request.employee_name || "Cashier"} •{" "}
-                          {formatDateTime(request.requested_at)}
-                        </div>
-                      </div>
-                      <div style={savingsAmountStyle}>
-                        KES {money(request.amount)}
-                      </div>
-                    </div>
+                    const confirming =
+                      confirmingSavingsPaymentId === request.id;
+                    const rejecting =
+                      rejectingSavingsPaymentId === request.id;
+                    const busy = confirming || rejecting;
 
-                    <div style={savingsBalanceGridStyle}>
-                      <div style={savingsMiniCardStyle}>
-                        <span>Saved Balance</span>
-                        <strong>
-                          KES {money(request.saved_balance)}
-                        </strong>
-                      </div>
-                      <div style={savingsMiniCardStyle}>
-                        <span>Total Reserved</span>
-                        <strong>
-                          KES {money(request.total_reserved)}
-                        </strong>
-                      </div>
-                      <div style={savingsMiniCardStyle}>
-                        <span>Status</span>
-                        <SavingsStatusText status={request.status} />
-                      </div>
-                    </div>
-
-                    <div style={savingsDestinationStyle}>
-                      <div style={savingsDestinationTitleStyle}>
-                        PAYMENT DESTINATION
-                      </div>
-                      <div style={savingsDestinationGridStyle}>
-                        <TransactionDetail
-                          label="Name"
-                          value={request.destination_name || "-"}
-                        />
-                        <TransactionDetail
-                          label="Account"
-                          value={request.destination_account || "-"}
-                        />
-                        <TransactionDetail
-                          label="PayBill / Till"
-                          value={request.destination_paybill_till || "-"}
-                        />
-                        <TransactionDetail
-                          label="Bank / Provider"
-                          value={request.destination_bank || "-"}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={savingsPaymentFormStyle}>
-                      <div>
-                        <label style={labelStyle}>Payment Source</label>
-                        <select
-                          value={provider}
-                          disabled={busy}
-                          onChange={(event) =>
-                            updateSavingsPaymentForm(
-                              request.id,
-                              "provider",
-                              event.target.value
-                            )
-                          }
-                          style={inputStyle}
-                        >
-                          <option value="M-PESA">M-PESA</option>
-                          <option value="I&M">I&M</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label style={labelStyle}>
-                          Payment Reference *
-                        </label>
-                        <input
-                          type="text"
-                          value={form.reference || ""}
-                          disabled={busy}
-                          onChange={(event) =>
-                            updateSavingsPaymentForm(
-                              request.id,
-                              "reference",
-                              event.target.value
-                            )
-                          }
-                          placeholder={
-                            provider === "I&M"
-                              ? "I&M transaction reference"
-                              : "M-Pesa receipt / reference"
-                          }
-                          style={inputStyle}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={labelStyle}>
-                          External / API ID
-                        </label>
-                        <input
-                          type="text"
-                          value={form.externalId || ""}
-                          disabled={busy}
-                          onChange={(event) =>
-                            updateSavingsPaymentForm(
-                              request.id,
-                              "externalId",
-                              event.target.value
-                            )
-                          }
-                          placeholder="Optional now / API later"
-                          style={inputStyle}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={labelStyle}>Fee (KES)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={form.fee ?? "0"}
-                          disabled={busy}
-                          onChange={(event) =>
-                            updateSavingsPaymentForm(
-                              request.id,
-                              "fee",
-                              event.target.value
-                            )
-                          }
-                          style={inputStyle}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={savingsPaymentActionsStyle}>
-                      <button
-                        type="button"
-                        onClick={() => confirmSavingsPayment(request)}
-                        disabled={busy}
-                        style={savingsConfirmButtonStyle}
+                    return (
+                      <div
+                        key={request.id}
+                        style={savingsRequestCardStyle}
                       >
-                        {confirming
-                          ? "Confirming..."
-                          : `Confirm ${request.category} Paid`}
-                      </button>
+                        <div style={savingsRequestHeaderStyle}>
+                          <div>
+                            <div style={savingsCategoryStyle}>
+                              {request.category}
+                            </div>
 
-                      <input
-                        type="text"
-                        value={form.rejectionReason || ""}
-                        disabled={busy}
-                        onChange={(event) =>
-                          updateSavingsPaymentForm(
-                            request.id,
-                            "rejectionReason",
-                            event.target.value
-                          )
-                        }
-                        placeholder="Reason if rejecting"
-                        style={savingsRejectReasonStyle}
-                      />
+                            <div style={savingsMetaStyle}>
+                              {request.shop_name || "Shop"} •{" "}
+                              {request.employee_name || "Cashier"} •{" "}
+                              {formatDateTime(request.requested_at)}
+                            </div>
+                          </div>
 
-                      <button
-                        type="button"
-                        onClick={() => rejectSavingsPayment(request)}
-                        disabled={busy}
-                        style={savingsRejectButtonStyle}
-                      >
-                        {rejecting ? "Rejecting..." : "Reject"}
-                      </button>
-                    </div>
+                          <div style={savingsAmountStyle}>
+                            KES {money(request.amount)}
+                          </div>
+                        </div>
+
+                        <div style={savingsBalanceGridStyle}>
+                          <div style={savingsMiniCardStyle}>
+                            <span>Saved Balance</span>
+                            <strong>
+                              KES {money(request.saved_balance)}
+                            </strong>
+                          </div>
+
+                          <div style={savingsMiniCardStyle}>
+                            <span>Total Reserved</span>
+                            <strong>
+                              KES {money(request.total_reserved)}
+                            </strong>
+                          </div>
+
+                          <div style={savingsMiniCardStyle}>
+                            <span>Status</span>
+                            <SavingsStatusText status={request.status} />
+                          </div>
+                        </div>
+
+                        <div style={savingsDestinationStyle}>
+                          <div style={savingsDestinationTitleStyle}>
+                            PAYMENT DESTINATION
+                          </div>
+
+                          <div style={savingsDestinationGridStyle}>
+                            <TransactionDetail
+                              label="Name"
+                              value={request.destination_name || "-"}
+                            />
+                            <TransactionDetail
+                              label="Account"
+                              value={request.destination_account || "-"}
+                            />
+                            <TransactionDetail
+                              label="PayBill / Till"
+                              value={
+                                request.destination_paybill_till || "-"
+                              }
+                            />
+                            <TransactionDetail
+                              label="Bank / Provider"
+                              value={request.destination_bank || "-"}
+                            />
+                          </div>
+                        </div>
+
+                        <div style={savingsPaymentFormStyle}>
+                          <div>
+                            <label style={labelStyle}>
+                              Payment Source
+                            </label>
+                            <select
+                              value={provider}
+                              disabled={busy}
+                              onChange={(event) =>
+                                updateSavingsPaymentForm(
+                                  request.id,
+                                  "provider",
+                                  event.target.value
+                                )
+                              }
+                              style={inputStyle}
+                            >
+                              <option value="M-PESA">
+                                M-PESA
+                              </option>
+                              <option value="I&M">
+                                I&M
+                              </option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label style={labelStyle}>
+                              Payment Reference *
+                            </label>
+                            <input
+                              type="text"
+                              value={form.reference || ""}
+                              disabled={busy}
+                              onChange={(event) =>
+                                updateSavingsPaymentForm(
+                                  request.id,
+                                  "reference",
+                                  event.target.value
+                                )
+                              }
+                              placeholder={
+                                provider === "I&M"
+                                  ? "I&M transaction reference"
+                                  : "M-Pesa receipt / reference"
+                              }
+                              style={inputStyle}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={labelStyle}>
+                              External / API ID
+                            </label>
+                            <input
+                              type="text"
+                              value={form.externalId || ""}
+                              disabled={busy}
+                              onChange={(event) =>
+                                updateSavingsPaymentForm(
+                                  request.id,
+                                  "externalId",
+                                  event.target.value
+                                )
+                              }
+                              placeholder="Optional now / API later"
+                              style={inputStyle}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={labelStyle}>
+                              Fee (KES)
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={form.fee ?? "0"}
+                              disabled={busy}
+                              onChange={(event) =>
+                                updateSavingsPaymentForm(
+                                  request.id,
+                                  "fee",
+                                  event.target.value
+                                )
+                              }
+                              style={inputStyle}
+                            />
+                          </div>
+                        </div>
+
+                        <div style={savingsPaymentActionsStyle}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              confirmSavingsPayment(request)
+                            }
+                            disabled={busy}
+                            style={savingsConfirmButtonStyle}
+                          >
+                            {confirming
+                              ? "Confirming..."
+                              : `Confirm ${request.category} Paid`}
+                          </button>
+
+                          <input
+                            type="text"
+                            value={form.rejectionReason || ""}
+                            disabled={busy}
+                            onChange={(event) =>
+                              updateSavingsPaymentForm(
+                                request.id,
+                                "rejectionReason",
+                                event.target.value
+                              )
+                            }
+                            placeholder="Reason if rejecting"
+                            style={savingsRejectReasonStyle}
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              rejectSavingsPayment(request)
+                            }
+                            disabled={busy}
+                            style={savingsRejectButtonStyle}
+                          >
+                            {rejecting ? "Rejecting..." : "Reject"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div style={savingsRecentWrapStyle}>
+                <div style={savingsRecentTitleStyle}>
+                  RECENT SAVINGS / BANKING PAYMENT RESULTS
+                </div>
+
+                {recentSavingsPayments.length === 0 ? (
+                  <div style={mutedSmallStyle}>
+                    No completed or rejected Savings payments yet.
                   </div>
-                );
-              })}
-            </div>
+                ) : (
+                  <div style={tableWrapStyle}>
+                    <table style={tableStyle}>
+                      <thead>
+                        <tr>
+                          <TableHead>Date / Time</TableHead>
+                          <TableHead>Category</TableHead>
+                          <TableHead>Shop</TableHead>
+                          <TableHead>Employee</TableHead>
+                          <TableHead right>Amount</TableHead>
+                          <TableHead>Route</TableHead>
+                          <TableHead>Reference</TableHead>
+                          <TableHead>Status</TableHead>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {recentSavingsPayments
+                          .slice(0, 20)
+                          .map((request) => (
+                            <tr key={request.id}>
+                              <TableCell>
+                                {formatDateTime(
+                                  request.confirmed_at ||
+                                    request.rejected_at ||
+                                    request.requested_at
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {request.category}
+                              </TableCell>
+                              <TableCell>
+                                {request.shop_name || "Shop"}
+                              </TableCell>
+                              <TableCell>
+                                {request.employee_name || "-"}
+                              </TableCell>
+                              <TableCell right>
+                                KES {money(request.amount)}
+                              </TableCell>
+                              <TableCell>
+                                {request.payment_provider ||
+                                  request.payment_method ||
+                                  "-"}
+                              </TableCell>
+                              <TableCell>
+                                {request.payment_reference ||
+                                  request.external_transaction_id ||
+                                  request.rejection_reason ||
+                                  "-"}
+                              </TableCell>
+                              <TableCell>
+                                <SavingsStatusText
+                                  status={request.status}
+                                />
+                              </TableCell>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
           )}
-
-          <div style={savingsRecentWrapStyle}>
-            <div style={savingsRecentTitleStyle}>
-              RECENT SAVINGS / BANKING PAYMENT RESULTS
-            </div>
-
-            {recentSavingsPayments.length === 0 ? (
-              <div style={mutedSmallStyle}>
-                No completed or rejected Savings payments yet.
-              </div>
-            ) : (
-              <div style={tableWrapStyle}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr>
-                      <TableHead>Date / Time</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Shop</TableHead>
-                      <TableHead>Employee</TableHead>
-                      <TableHead right>Amount</TableHead>
-                      <TableHead>Route</TableHead>
-                      <TableHead>Reference</TableHead>
-                      <TableHead>Status</TableHead>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {recentSavingsPayments.slice(0, 20).map((request) => (
-                      <tr key={request.id}>
-                        <TableCell>
-                          {formatDateTime(
-                            request.confirmed_at ||
-                              request.rejected_at ||
-                              request.requested_at
-                          )}
-                        </TableCell>
-                        <TableCell>{request.category}</TableCell>
-                        <TableCell>{request.shop_name || "Shop"}</TableCell>
-                        <TableCell>
-                          {request.employee_name || "-"}
-                        </TableCell>
-                        <TableCell right>
-                          KES {money(request.amount)}
-                        </TableCell>
-                        <TableCell>
-                          {request.payment_provider ||
-                            request.payment_method ||
-                            "-"}
-                        </TableCell>
-                        <TableCell>
-                          {request.payment_reference ||
-                            request.external_transaction_id ||
-                            request.rejection_reason ||
-                            "-"}
-                        </TableCell>
-                        <TableCell>
-                          <SavingsStatusText status={request.status} />
-                        </TableCell>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
         </section>
 
-        {/* ACCOUNTANT EXPENSES */}
+        {/* ==================================================
+            ACCOUNTANT EXPENSES — NEXT ROW ONLY
+        ================================================== */}
 
         <section style={panelStyle}>
           <div style={panelHeaderStyle}>
-            <div>
-              <div style={panelTitleStyle}>
-                ACCOUNTANT EXPENSES
-              </div>
+            <div style={panelTitleStyle}>
+              ACCOUNTANT EXPENSES
             </div>
-            <div style={countBadgeStyle}>
-              {expenses.length}/20
+
+            <div style={sectionHeaderActionsStyle}>
+              <div style={countBadgeStyle}>
+                {expenses.length}/20
+              </div>
+
+              <button
+                type="button"
+                style={sectionToggleStyle}
+                aria-expanded={showAllExpenses}
+                onClick={() =>
+                  setShowAllExpenses((current) => !current)
+                }
+              >
+                {showAllExpenses
+                  ? "Show Current ▲"
+                  : "Show All 20 ▼"}
+              </button>
             </div>
           </div>
 
@@ -1923,11 +2351,24 @@ export default function AccountantDashboard({ user }) {
           )}
 
           <div style={expensesGridStyle}>
-            {Array.from({ length: 20 }).map((_, index) => {
-              const slot = index + 1;
+            {(showAllExpenses
+              ? Array.from({ length: 20 }, (_, index) => index + 1)
+              : [
+                  nextExpenseSlot ??
+                    (expenses.length
+                      ? Math.max(
+                          ...expenses.map(
+                            (expense) =>
+                              Number(expense.slot_number) || 1
+                          )
+                        )
+                      : 1),
+                ]
+            ).map((slot) => {
               const saved = expenses.find(
                 (expense) => Number(expense.slot_number) === slot
               );
+
               const active =
                 !saved &&
                 nextExpenseSlot === slot &&
@@ -1969,6 +2410,7 @@ export default function AccountantDashboard({ user }) {
                         placeholder="Description"
                         style={expenseInputStyle}
                       />
+
                       <input
                         type="number"
                         min="1"
@@ -1980,6 +2422,7 @@ export default function AccountantDashboard({ user }) {
                         placeholder="Amount"
                         style={expenseAmountInputStyle}
                       />
+
                       <button
                         type="button"
                         onClick={addExpense}
@@ -2000,94 +2443,132 @@ export default function AccountantDashboard({ user }) {
           </div>
         </section>
 
-        {/* TRANSACTION HISTORY */}
+        {/* ==================================================
+            TRANSACTION HISTORY — COLLAPSIBLE
+        ================================================== */}
 
-        <section style={panelStyle}>
+        <section
+          style={panelStyle}
+          onScrollCapture={() => {
+            if (showTransactionHistory) armHistoryCollapseTimer();
+          }}
+          onWheelCapture={() => {
+            if (showTransactionHistory) armHistoryCollapseTimer();
+          }}
+          onTouchMoveCapture={() => {
+            if (showTransactionHistory) armHistoryCollapseTimer();
+          }}
+          onPointerDownCapture={() => {
+            if (showTransactionHistory) armHistoryCollapseTimer();
+          }}
+        >
           <div style={panelHeaderStyle}>
-            <div>
-              <div style={panelTitleStyle}>
-                TRANSACTION HISTORY
+            <div style={panelTitleStyle}>
+              TRANSACTION HISTORY
+            </div>
+
+            <div style={sectionHeaderActionsStyle}>
+              <div style={countBadgeStyle}>
+                {transactions.length} RECORDS
               </div>
+
+              <button
+                type="button"
+                style={sectionToggleStyle}
+                aria-expanded={showTransactionHistory}
+                onClick={() =>
+                  setShowTransactionHistory((current) => !current)
+                }
+              >
+                {showTransactionHistory ? "Hide ▲" : "Show ▼"}
+              </button>
             </div>
           </div>
 
-          {transactions.length === 0 ? (
-            <div style={emptyStyle}>
-              No transactions recorded yet.
-            </div>
-          ) : (
-            <div style={tableWrapStyle}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <TableHead>Date / Time</TableHead>
-                    <TableHead>Transaction</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Shop</TableHead>
-                    <TableHead>Cashier</TableHead>
-                    <TableHead right>Amount</TableHead>
-                    <TableHead right>Fee</TableHead>
-                    <TableHead>Receipt</TableHead>
-                    <TableHead>Status</TableHead>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.map((transaction) => (
-                    <tr key={transaction.id}>
-                      <TableCell>
-                        {formatDateTime(transaction.created_at)}
-                      </TableCell>
-                      <TableCell>
-                        {transaction.transaction_no}
-                      </TableCell>
-                      <TableCell>
-                        {transaction.flow === "ACCOUNTANT_TO_CASHIER"
-                          ? "SENT"
-                          : "RECEIVED"}
-                      </TableCell>
-                      <TableCell>
-                        {shopMap.get(transaction.shop_id)?.shop_name ||
-                          "Shop"}
-                      </TableCell>
-                      <TableCell>
-                        {transaction.recipient_name_snapshot ||
-                          transaction.cashier_name ||
-                          "-"}
-                      </TableCell>
-                      <TableCell right>
-                        KES {money(transaction.amount)}
-                      </TableCell>
-                      <TableCell right>
-                        KES {money(
-                          transaction.actual_fee ?? transaction.estimated_fee
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {transaction.mpesa_receipt_number ||
-                          transaction.manual_receipt_no ||
-                          "-"}
-                      </TableCell>
-                      <TableCell>
-                        <StatusText status={transaction.status} />
-                      </TableCell>
+          {showTransactionHistory &&
+            (transactions.length === 0 ? (
+              <div style={emptyStyle}>
+                No transactions recorded yet.
+              </div>
+            ) : (
+              <div style={tableWrapStyle}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <TableHead>Date / Time</TableHead>
+                      <TableHead>Transaction</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Shop</TableHead>
+                      <TableHead>Cashier</TableHead>
+                      <TableHead right>Amount</TableHead>
+                      <TableHead right>Fee</TableHead>
+                      <TableHead>Receipt</TableHead>
+                      <TableHead>Status</TableHead>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+
+                  <tbody>
+                    {transactions.map((transaction) => (
+                      <tr key={transaction.id}>
+                        <TableCell>
+                          {formatDateTime(transaction.created_at)}
+                        </TableCell>
+                        <TableCell>
+                          {transaction.transaction_no}
+                        </TableCell>
+                        <TableCell>
+                          {transaction.flow === "ACCOUNTANT_TO_CASHIER"
+                            ? "SENT"
+                            : "RECEIVED"}
+                        </TableCell>
+                        <TableCell>
+                          {shopMap.get(transaction.shop_id)?.shop_name ||
+                            "Shop"}
+                        </TableCell>
+                        <TableCell>
+                          {transaction.recipient_name_snapshot ||
+                            transaction.cashier_name ||
+                            "-"}
+                        </TableCell>
+                        <TableCell right>
+                          KES {money(transaction.amount)}
+                        </TableCell>
+                        <TableCell right>
+                          KES{" "}
+                          {money(
+                            transaction.actual_fee ??
+                              transaction.estimated_fee
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {transaction.mpesa_receipt_number ||
+                            transaction.manual_receipt_no ||
+                            "-"}
+                        </TableCell>
+                        <TableCell>
+                          <StatusText status={transaction.status} />
+                        </TableCell>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
         </section>
 
-        {/* ACCOUNTANT DAY CLOSING */}
+        {/* ==================================================
+            ACCOUNTANT DAY CLOSING
+        ================================================== */}
 
         <section style={closingPanelStyle}>
           <div>
             <div style={closingTitleStyle}>
               ACCOUNTANT DAY CLOSING
             </div>
+
             <div style={closingTextStyle}>
-              Carried-forward and today's unresolved float transactions
-              must be completed before the day can close.
+              Carried-forward and today's unresolved float
+              transactions must be completed before the day can close.
             </div>
           </div>
 
@@ -2163,7 +2644,9 @@ function TransactionDetail({ label, value, strong = false }) {
   return (
     <div style={transactionDetailStyle}>
       <span>{label}</span>
-      <strong style={strong ? transactionStrongStyle : undefined}>
+      <strong
+        style={strong ? transactionStrongStyle : undefined}
+      >
         {value}
       </strong>
     </div>
@@ -2226,7 +2709,13 @@ function StatusText({ status }) {
   }
 
   return (
-    <span style={{ ...statusTextStyle, backgroundColor, color }}>
+    <span
+      style={{
+        ...statusTextStyle,
+        backgroundColor,
+        color,
+      }}
+    >
       {friendlyStatus(normalized)}
     </span>
   );
@@ -2254,7 +2743,13 @@ function SavingsStatusText({ status }) {
   }
 
   return (
-    <span style={{ ...statusTextStyle, backgroundColor, color }}>
+    <span
+      style={{
+        ...statusTextStyle,
+        backgroundColor,
+        color,
+      }}
+    >
       {normalized || "PENDING"}
     </span>
   );
@@ -2268,7 +2763,10 @@ function normalizeFloatSendMethod(value) {
   const clean = String(value || "").trim().toUpperCase();
   const compact = clean.replace(/[^A-Z0-9]/g, "");
 
-  if (clean === "IM_TO_MPESA" || compact === "IMTOMPESA") {
+  if (
+    clean === "IM_TO_MPESA" ||
+    compact === "IMTOMPESA"
+  ) {
     return "IM_TO_MPESA";
   }
 
@@ -2320,20 +2818,28 @@ function money(value) {
 }
 
 function roundMoney(value) {
-  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  return Math.round(
+    (Number(value) + Number.EPSILON) * 100
+  ) / 100;
 }
 
 function maskPhone(value) {
   const phone = String(value || "");
   if (phone.length < 8) return "****";
+
   return phone.slice(0, 5) + "****" + phone.slice(-3);
 }
 
 function formatPhoneForDisplay(value) {
   const phone = String(value || "");
-  if (phone.startsWith("254") && phone.length === 12) {
+
+  if (
+    phone.startsWith("254") &&
+    phone.length === 12
+  ) {
     return "0" + phone.slice(3);
   }
+
   return phone || "-";
 }
 
@@ -2366,9 +2872,15 @@ function nairobiDateKey(value) {
       day: "2-digit",
     }).formatToParts(new Date(value));
 
-    const year = parts.find((part) => part.type === "year")?.value;
-    const month = parts.find((part) => part.type === "month")?.value;
-    const day = parts.find((part) => part.type === "day")?.value;
+    const year = parts.find(
+      (part) => part.type === "year"
+    )?.value;
+    const month = parts.find(
+      (part) => part.type === "month"
+    )?.value;
+    const day = parts.find(
+      (part) => part.type === "day"
+    )?.value;
 
     if (!year || !month || !day) return "";
     return `${year}-${month}-${day}`;
@@ -2403,7 +2915,7 @@ function friendlyStatus(value) {
 }
 
 // ==================================================
-// PROFESSIONAL STYLES — SLIGHTLY LARGER FONTS
+// PROFESSIONAL STYLES
 // ==================================================
 
 const pageStyle = {
@@ -2508,6 +3020,7 @@ const panelHeaderStyle = {
   alignItems: "center",
   gap: "12px",
   marginBottom: "14px",
+  flexWrap: "wrap",
 };
 
 const panelTitleStyle = {
@@ -2516,10 +3029,23 @@ const panelTitleStyle = {
   color: "#0f172a",
 };
 
-const panelSubtitleStyle = {
-  marginTop: "3px",
+const sectionHeaderActionsStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  flexWrap: "wrap",
+};
+
+const sectionToggleStyle = {
+  border: "1px solid #94a3b8",
+  backgroundColor: "#f8fafc",
+  color: "#0f172a",
+  borderRadius: "5px",
+  padding: "7px 11px",
   fontSize: "12px",
-  color: "#64748b",
+  fontWeight: "bold",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 
 const routeBadgeStyle = {
@@ -2585,16 +3111,6 @@ const summaryStrongValueStyle = {
   fontSize: "18px",
 };
 
-const bfNoticeStyle = {
-  marginTop: "12px",
-  padding: "9px",
-  backgroundColor: "#f8fafc",
-  color: "#64748b",
-  borderRadius: "5px",
-  fontSize: "12px",
-  textAlign: "center",
-};
-
 const formGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))",
@@ -2626,15 +3142,6 @@ const recipientPreviewStyle = {
   border: "1px solid #99f6e4",
   borderRadius: "5px",
   fontSize: "12px",
-};
-
-const idleNoteStyle = {
-  marginTop: "8px",
-  padding: "7px 9px",
-  backgroundColor: "#f8fafc",
-  color: "#64748b",
-  borderRadius: "5px",
-  fontSize: "11px",
 };
 
 const declinedTransferStyle = {
@@ -2981,7 +3488,8 @@ const savingsPaymentFormStyle = {
 
 const savingsPaymentActionsStyle = {
   display: "grid",
-  gridTemplateColumns: "minmax(180px,0.8fr) minmax(220px,1fr) 120px",
+  gridTemplateColumns:
+    "minmax(180px,0.8fr) minmax(220px,1fr) 120px",
   gap: "8px",
   alignItems: "center",
 };
