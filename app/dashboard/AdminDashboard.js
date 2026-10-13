@@ -15,13 +15,12 @@ import AdminSavingsPanel from "./AdminSavingsPanel";
 import AdminDutyControlPanel from "./AdminDutyControlPanel";
 import AdminLiveFeedPanel from "./AdminLiveFeedPanel";
 import Admin24HourShiftDisplay from "./Admin24HourShiftDisplay";
+import AdminMealsBonusPanel from "./AdminMealsBonusPanel";
 
 // TEAM LEGEND / NYIKA — Admin Dashboard
-// Editable Master Employee List with circular total
-// and circular row numbering on the left.
-//
-// Existing Duty/Rota, Live Feed, Salary, Attendance,
-// and other Admin panels remain unchanged.
+// Master Employee, Salary, Rota, Banking and other existing
+// panels remain unchanged.
+// Meals / Bonus added as a separate Admin section.
 
 const menuItems = [
   { id: "DASHBOARD", label: "Dashboard", icon: "▦" },
@@ -32,6 +31,7 @@ const menuItems = [
   { id: "DUTY_ROTA", label: "Duty / Rota", icon: "📅" },
   { id: "MASTER_EMPLOYEES", label: "Master Employee List", icon: "👥" },
   { id: "LIVE_FEED", label: "Live Feed", icon: "●" },
+  { id: "MEALS_BONUS", label: "Meals / Bonus", icon: "🍽" },
   { id: "SALARY", label: "Employee Salary", icon: "💰" },
   { id: "ACCOUNTANT", label: "Accountant Control", icon: "₭" },
   { id: "MPESA_RATES", label: "M-Pesa Rates", icon: "M" },
@@ -44,7 +44,6 @@ export default function AdminDashboard({ user }) {
   const accessToken = user?.access_token || null;
 
   const router = useRouter();
-
   const [activeSection, setActiveSection] = useState("DASHBOARD");
 
   const adminName =
@@ -63,7 +62,9 @@ export default function AdminDashboard({ user }) {
       <header style={headerStyle}>
         <div>
           <div style={brandStyle}>♛ TEAM LEGEND ADMIN</div>
-          <div style={sloganStyle}>DISCIPLINE • FOCUS • RESULTS</div>
+          <div style={sloganStyle}>
+            DISCIPLINE • FOCUS • RESULTS
+          </div>
         </div>
 
         <div style={headerRightStyle}>
@@ -98,7 +99,9 @@ export default function AdminDashboard({ user }) {
                   : {}),
               }}
             >
-              <span style={menuIconStyle}>{item.icon}</span>
+              <span style={menuIconStyle}>
+                {item.icon}
+              </span>
               <span>{item.label}</span>
             </button>
           ))}
@@ -169,11 +172,12 @@ export default function AdminDashboard({ user }) {
                 supabaseAnonKey={supabaseAnonKey}
                 accessToken={accessToken}
               />
-                  <Admin24HourShiftDisplay
-  supabaseUrl={supabaseUrl}
-  supabaseAnonKey={supabaseAnonKey}
-  accessToken={accessToken}
-/>
+
+              <Admin24HourShiftDisplay
+                supabaseUrl={supabaseUrl}
+                supabaseAnonKey={supabaseAnonKey}
+                accessToken={accessToken}
+              />
             </>
           )}
 
@@ -193,6 +197,12 @@ export default function AdminDashboard({ user }) {
               />
               <AdminLiveFeedPanel user={user} />
             </>
+          )}
+
+          {/* MEALS / BONUS — NEW ADMIN CARD */}
+
+          {activeSection === "MEALS_BONUS" && (
+            <AdminMealsBonusPanel user={user} />
           )}
 
           {activeSection === "SALARY" && (
@@ -236,22 +246,7 @@ export default function AdminDashboard({ user }) {
 
 // ==================================================
 // MASTER EMPLOYEES
-//
-// Employee Name
-// Shop / Category
-// Weekly Salary
-// Unique Employee ID
-// Add Employee
-// One Reason for Edit at bottom
-//
-// New layout:
-// - Total employees in large circle on LEFT
-// - Row numbering in circles on LEFT
-//
-// Existing Supabase functions:
-// tl_admin_master_employee_list
-// tl_admin_master_employee_shops_v1
-// tl_admin_master_employee_save_v1
+// Existing Supabase RPCs and edit flow preserved.
 // ==================================================
 
 function masterCategory(employee) {
@@ -336,10 +331,6 @@ function AdminMasterEmployeeList({
     [supabaseUrl]
   );
 
-  // ==================================================
-  // SUPABASE RPC
-  // ==================================================
-
   const rpc = useCallback(
     async (functionName, payload = {}, signal) => {
       if (
@@ -385,15 +376,11 @@ function AdminMasterEmployeeList({
 
       return body;
     },
-    [
-      baseUrl,
-      supabaseAnonKey,
-      accessToken,
-    ]
+    [baseUrl, supabaseAnonKey, accessToken]
   );
 
   // ==================================================
-  // LOAD EMPLOYEES AND SHOPS
+  // LOAD MASTER EMPLOYEES
   // ==================================================
 
   useEffect(() => {
@@ -436,7 +423,6 @@ function AdminMasterEmployeeList({
         setEmployees(current);
         setDrafts(current);
         setShops(shopOptions);
-
       } catch (err) {
         if (
           mounted &&
@@ -462,10 +448,6 @@ function AdminMasterEmployeeList({
     };
   }, [rpc, reload]);
 
-  // ==================================================
-  // ORIGINAL VALUES
-  // ==================================================
-
   const originals = useMemo(
     () =>
       new Map(
@@ -477,10 +459,6 @@ function AdminMasterEmployeeList({
     [employees]
   );
 
-  // ==================================================
-  // CHANGED EMPLOYEES ONLY
-  // ==================================================
-
   const pending = useMemo(
     () =>
       drafts.filter((e) =>
@@ -491,10 +469,6 @@ function AdminMasterEmployeeList({
       ),
     [drafts, originals]
   );
-
-  // ==================================================
-  // UPDATE EMPLOYEE DRAFT
-  // ==================================================
 
   const updateDraft = (key, field, value) => {
     setDrafts((current) =>
@@ -511,10 +485,6 @@ function AdminMasterEmployeeList({
     setError("");
     setNotice("");
   };
-
-  // ==================================================
-  // ADD NEW EMPLOYEE
-  // ==================================================
 
   function addEmployee() {
     setDrafts((current) => [
@@ -533,10 +503,6 @@ function AdminMasterEmployeeList({
     setError("");
   }
 
-  // ==================================================
-  // CANCEL UNSAVED NEW EMPLOYEE
-  // ==================================================
-
   function discardNew(key) {
     setDrafts((current) =>
       current.filter((row) => row.key !== key)
@@ -546,7 +512,7 @@ function AdminMasterEmployeeList({
   }
 
   // ==================================================
-  // SAVE CHANGES
+  // SAVE MASTER EMPLOYEE CHANGES
   // ==================================================
 
   async function saveChanges() {
@@ -564,11 +530,8 @@ function AdminMasterEmployeeList({
       setError(
         "Enter one reason for the changes at the bottom before saving."
       );
-
       return;
     }
-
-    // Validate all changes before saving.
 
     for (const entry of pending) {
       if (
@@ -577,17 +540,13 @@ function AdminMasterEmployeeList({
         setError(
           "Inactive employees cannot be edited with this Save function."
         );
-
         return;
       }
 
-      if (
-        entry.full_name.trim().length < 2
-      ) {
+      if (entry.full_name.trim().length < 2) {
         setError(
           "Every employee must have a name of at least 2 characters."
         );
-
         return;
       }
 
@@ -597,7 +556,6 @@ function AdminMasterEmployeeList({
             entry.full_name || "the new employee"
           }.`
         );
-
         return;
       }
 
@@ -612,7 +570,6 @@ function AdminMasterEmployeeList({
         setError(
           `Enter a valid weekly salary (KES) for ${entry.full_name}.`
         );
-
         return;
       }
     }
@@ -671,11 +628,6 @@ function AdminMasterEmployeeList({
 
   return (
     <section style={masterPanelStyle}>
-
-      {/* ========================================= */}
-      {/* HEADER / TOTAL EMPLOYEES ON LEFT */}
-      {/* ========================================= */}
-
       <div style={masterPanelHeaderStyle}>
         <strong
           style={{
@@ -696,10 +648,6 @@ function AdminMasterEmployeeList({
           </strong>
         </div>
       </div>
-
-      {/* ========================================= */}
-      {/* ERROR / SUCCESS MESSAGES */}
-      {/* ========================================= */}
 
       {error && (
         <div
@@ -725,18 +673,10 @@ function AdminMasterEmployeeList({
         </div>
       ) : (
         <div style={masterPanelBodyStyle}>
-
-          {/* ===================================== */}
-          {/* EMPLOYEE TABLE */}
-          {/* ===================================== */}
-
           <div style={masterTableContainerStyle}>
             <table style={masterTableStyle}>
               <thead>
                 <tr>
-
-                  {/* NUMBER COLUMN ON FAR LEFT */}
-
                   <th
                     style={{
                       ...masterThStyle,
@@ -768,15 +708,10 @@ function AdminMasterEmployeeList({
                   const isNew = !row.employee_id;
 
                   const original =
-                    originals.get(
-                      row.employee_id
-                    );
+                    originals.get(row.employee_id);
 
                   const changed =
-                    masterRowChanged(
-                      row,
-                      original
-                    );
+                    masterRowChanged(row, original);
 
                   const readOnly =
                     saving ||
@@ -791,9 +726,6 @@ function AdminMasterEmployeeList({
                           : "white",
                       }}
                     >
-
-                      {/* CIRCULAR EMPLOYEE NUMBER */}
-
                       <td
                         style={{
                           ...masterTdStyle,
@@ -805,8 +737,6 @@ function AdminMasterEmployeeList({
                           {index + 1}
                         </span>
                       </td>
-
-                      {/* EMPLOYEE NAME */}
 
                       <td style={masterTdStyle}>
                         <input
@@ -825,8 +755,6 @@ function AdminMasterEmployeeList({
                           placeholder="Employee full name"
                         />
                       </td>
-
-                      {/* SHOP / CATEGORY */}
 
                       <td style={masterTdStyle}>
                         <select
@@ -869,8 +797,6 @@ function AdminMasterEmployeeList({
                         </select>
                       </td>
 
-                      {/* WEEKLY SALARY */}
-
                       <td style={masterTdStyle}>
                         <input
                           type="number"
@@ -891,8 +817,6 @@ function AdminMasterEmployeeList({
                           placeholder="KES"
                         />
                       </td>
-
-                      {/* PERMANENT UNIQUE EMPLOYEE ID */}
 
                       <td style={masterTdStyle}>
                         {isNew ? (
@@ -945,10 +869,6 @@ function AdminMasterEmployeeList({
             </table>
           </div>
 
-          {/* ===================================== */}
-          {/* ADD NEW EMPLOYEE */}
-          {/* ===================================== */}
-
           <button
             type="button"
             style={masterAddButtonStyle}
@@ -957,10 +877,6 @@ function AdminMasterEmployeeList({
           >
             + Add Employee
           </button>
-
-          {/* ===================================== */}
-          {/* REASON FOR EDIT AT BOTTOM */}
-          {/* ===================================== */}
 
           <div style={masterBottomStyle}>
             <label
@@ -993,7 +909,6 @@ function AdminMasterEmployeeList({
               type="button"
               style={{
                 ...masterSaveButtonStyle,
-
                 opacity:
                   !hasPending || saving
                     ? 0.5
@@ -1071,7 +986,13 @@ function DashboardHome({
       "Open Live Feed",
       "LIVE_FEED",
     ],
-   
+    [
+      "MEALS / BONUS",
+      "Set Lunch, Supper, Monday and Friday bonuses for each Master Employee.",
+      "#b45309",
+      "Manage Meals / Bonus",
+      "MEALS_BONUS",
+    ],
     [
       "EMPLOYEE SALARY",
       "Manage employee salaries, 4-digit Salary PINs, advances, deductions and salary access.",
@@ -1336,10 +1257,6 @@ function SettingsPanel({ user }) {
     </>
   );
 }
-
-// ==================================================
-// SETTING ROW
-// ==================================================
 
 function SettingRow({
   label,
@@ -1662,8 +1579,6 @@ const masterPanelStyle = {
   boxShadow: "0 2px 8px rgba(15,23,42,.04)",
 };
 
-// Header aligned to LEFT.
-
 const masterPanelHeaderStyle = {
   background: "linear-gradient(90deg,#052d4b,#064b6b)",
   padding: 17,
@@ -1674,8 +1589,6 @@ const masterPanelHeaderStyle = {
   flexWrap: "wrap",
   gap: 20,
 };
-
-// Total employees circle.
 
 const masterTotalWrapStyle = {
   display: "flex",
@@ -1706,8 +1619,6 @@ const masterTotalLabelStyle = {
   letterSpacing: ".4px",
   color: "#ffffff",
 };
-
-// Employee numbering circle on far-left column.
 
 const masterNumberBadgeStyle = {
   width: 34,
