@@ -8,51 +8,36 @@ import {
 
 const REFRESH_MS = 15000;
 
-export default function AdminLiveFeedPanel({
-  user,
-}) {
+// ==================================================
+// TEAM LEGEND — ADMIN LIVE FEED
+// PROFESSIONAL CLEAN THEME
+// ==================================================
+
+export default function AdminLiveFeedPanel({ user }) {
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
 
   const supabaseAnonKey =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const accessToken =
-    user?.access_token ||
-    null;
+  const accessToken = user?.access_token || null;
 
-  const [title, setTitle] =
-    useState("");
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [priority, setPriority] = useState("NORMAL");
+  const [isPinned, setIsPinned] = useState(false);
+  const [expiresAt, setExpiresAt] = useState("");
 
-  const [message, setMessage] =
-    useState("");
-
-  const [priority, setPriority] =
-    useState("NORMAL");
-
-  const [isPinned, setIsPinned] =
-    useState(false);
-
-  const [expiresAt, setExpiresAt] =
-    useState("");
-
-  const [editingId, setEditingId] =
-    useState(null);
-
+  const [editingId, setEditingId] = useState(null);
   const [editingStartsAt, setEditingStartsAt] =
     useState(null);
 
   const [announcements, setAnnouncements] =
     useState([]);
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [busyId, setBusyId] =
-    useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState(null);
 
   const [statusMessage, setStatusMessage] =
     useState("");
@@ -64,184 +49,122 @@ export default function AdminLiveFeedPanel({
   // AUTH
   // ==================================================
 
-  const authHeaders =
-    useCallback(
-      () => ({
-        apikey:
-          supabaseAnonKey,
-
-        Authorization:
-          `Bearer ${accessToken}`,
-
-        "Content-Type":
-          "application/json",
-      }),
-      [
-        supabaseAnonKey,
-        accessToken,
-      ]
-    );
+  const authHeaders = useCallback(
+    () => ({
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    }),
+    [supabaseAnonKey, accessToken]
+  );
 
   // ==================================================
   // RPC
   // ==================================================
 
-  const callRpc =
-    useCallback(
-      async (
-        functionName,
-        body = {}
-      ) => {
-        if (
-          !supabaseUrl ||
-          !supabaseAnonKey ||
-          !accessToken
-        ) {
-          throw new Error(
-            "Admin session is incomplete. Please log in again."
-          );
+  const callRpc = useCallback(
+    async (functionName, body = {}) => {
+      if (
+        !supabaseUrl ||
+        !supabaseAnonKey ||
+        !accessToken
+      ) {
+        throw new Error(
+          "Admin session is incomplete. Please log in again."
+        );
+      }
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/rpc/${functionName}`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify(body),
+          cache: "no-store",
         }
+      );
 
-        const response =
-          await fetch(
-            `${supabaseUrl}/rest/v1/rpc/${functionName}`,
-            {
-              method:
-                "POST",
+      const result = await safeJson(response);
 
-              headers:
-                authHeaders(),
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            `Unable to run ${functionName}.`
+        );
+      }
 
-              body:
-                JSON.stringify(
-                  body
-                ),
-
-              cache:
-                "no-store",
-            }
-          );
-
-        const result =
-          await safeJson(
-            response
-          );
-
-        if (
-          !response.ok
-        ) {
-          throw new Error(
-            result?.message ||
-              result?.details ||
-              result?.hint ||
-              `Unable to run ${functionName}.`
-          );
-        }
-
-        return result;
-      },
-      [
-        supabaseUrl,
-        supabaseAnonKey,
-        accessToken,
-        authHeaders,
-      ]
-    );
+      return result;
+    },
+    [
+      supabaseUrl,
+      supabaseAnonKey,
+      accessToken,
+      authHeaders,
+    ]
+  );
 
   // ==================================================
   // LOAD ANNOUNCEMENTS
   // ==================================================
 
-  const loadAnnouncements =
-    useCallback(
-      async ({
-        silent = false,
-      } = {}) => {
-        if (
-          !accessToken
-        ) {
-          setAnnouncements([]);
+  const loadAnnouncements = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!accessToken) {
+        setAnnouncements([]);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        if (!silent) {
+          setLoading(true);
+        }
+
+        const result = await callRpc(
+          "tl_admin_live_feed_announcements_snapshot",
+          {}
+        );
+
+        setAnnouncements(
+          Array.isArray(result) ? result : []
+        );
+      } catch (error) {
+        console.error(
+          "ADMIN LIVE FEED LOAD ERROR:",
+          error
+        );
+
+        if (!silent) {
+          setStatusMessage(
+            error?.message ||
+              "Unable to load Live Feed announcements."
+          );
+          setStatusType("error");
+        }
+      } finally {
+        if (!silent) {
           setLoading(false);
-
-          return;
         }
-
-        try {
-          if (
-            !silent
-          ) {
-            setLoading(true);
-          }
-
-          const result =
-            await callRpc(
-              "tl_admin_live_feed_announcements_snapshot",
-              {}
-            );
-
-          setAnnouncements(
-            Array.isArray(result)
-              ? result
-              : []
-          );
-        } catch (error) {
-          console.error(
-            "ADMIN LIVE FEED LOAD ERROR:",
-            error
-          );
-
-          if (
-            !silent
-          ) {
-            setStatusMessage(
-              error?.message ||
-                "Unable to load Live Feed announcements."
-            );
-
-            setStatusType(
-              "error"
-            );
-          }
-        } finally {
-          if (
-            !silent
-          ) {
-            setLoading(false);
-          }
-        }
-      },
-      [
-        accessToken,
-        callRpc,
-      ]
-    );
+      }
+    },
+    [accessToken, callRpc]
+  );
 
   // ==================================================
-  // INITIAL + AUTO REFRESH
+  // INITIAL LOAD AND AUTO REFRESH
   // ==================================================
 
   useEffect(() => {
     loadAnnouncements();
 
-    const timer =
-      setInterval(
-        () => {
-          loadAnnouncements({
-            silent:
-              true,
-          });
-        },
-        REFRESH_MS
-      );
+    const timer = setInterval(() => {
+      loadAnnouncements({ silent: true });
+    }, REFRESH_MS);
 
-    return () => {
-      clearInterval(
-        timer
-      );
-    };
-  }, [
-    loadAnnouncements,
-  ]);
+    return () => clearInterval(timer);
+  }, [loadAnnouncements]);
 
   // ==================================================
   // RESET FORM
@@ -250,195 +173,110 @@ export default function AdminLiveFeedPanel({
   function resetForm() {
     setTitle("");
     setMessage("");
-    setPriority(
-      "NORMAL"
-    );
-    setIsPinned(
-      false
-    );
+    setPriority("NORMAL");
+    setIsPinned(false);
     setExpiresAt("");
-    setEditingId(
-      null
-    );
-    setEditingStartsAt(
-      null
-    );
+    setEditingId(null);
+    setEditingStartsAt(null);
   }
 
   // ==================================================
-  // SAVE / UPDATE
+  // PUBLISH / UPDATE ANNOUNCEMENT
   // ==================================================
 
   async function saveAnnouncement() {
-    const cleanTitle =
-      String(
-        title || ""
-      ).trim();
+    if (saving) return;
 
-    const cleanMessage =
-      String(
-        message || ""
-      ).trim();
+    const cleanTitle = String(title || "").trim();
+    const cleanMessage = String(message || "").trim();
 
-    if (
-      cleanMessage ===
-      ""
-    ) {
+    if (!cleanMessage) {
       setStatusMessage(
         "Enter the announcement message."
       );
-
-      setStatusType(
-        "error"
-      );
-
+      setStatusType("error");
       return;
     }
 
-    if (
-      cleanTitle.length >
-      120
-    ) {
+    if (cleanTitle.length > 120) {
       setStatusMessage(
         "Title cannot exceed 120 characters."
       );
-
-      setStatusType(
-        "error"
-      );
-
+      setStatusType("error");
       return;
     }
 
-    if (
-      cleanMessage.length >
-      1000
-    ) {
+    if (cleanMessage.length > 1000) {
       setStatusMessage(
         "Message cannot exceed 1000 characters."
       );
-
-      setStatusType(
-        "error"
-      );
-
+      setStatusType("error");
       return;
     }
 
-    let expiryIso =
-      null;
+    let expiryIso = null;
 
-    if (
-      expiresAt
-    ) {
-      const expiryDate =
-        new Date(
-          expiresAt
-        );
+    if (expiresAt) {
+      const expiryDate = new Date(expiresAt);
 
-      if (
-        Number.isNaN(
-          expiryDate.getTime()
-        )
-      ) {
+      if (Number.isNaN(expiryDate.getTime())) {
         setStatusMessage(
           "Expiry date/time is invalid."
         );
-
-        setStatusType(
-          "error"
-        );
-
+        setStatusType("error");
         return;
       }
 
-      expiryIso =
-        expiryDate.toISOString();
+      expiryIso = expiryDate.toISOString();
     }
 
     try {
-      setSaving(
-        true
-      );
-
+      setSaving(true);
       setStatusMessage("");
       setStatusType("");
 
-      if (
-        editingId
-      ) {
+      if (editingId) {
         await callRpc(
           "tl_admin_live_feed_update_announcement",
           {
-            p_announcement_id:
-              editingId,
-
-            p_title:
-              cleanTitle ||
-              null,
-
-            p_message:
-              cleanMessage,
-
-            p_priority:
-              priority,
-
-            p_is_pinned:
-              isPinned,
-
+            p_announcement_id: editingId,
+            p_title: cleanTitle || null,
+            p_message: cleanMessage,
+            p_priority: priority,
+            p_is_pinned: isPinned,
             p_starts_at:
               editingStartsAt ||
-              new Date()
-                .toISOString(),
-
-            p_expires_at:
-              expiryIso,
+              new Date().toISOString(),
+            p_expires_at: expiryIso,
           }
         );
 
         setStatusMessage(
-          "Live Feed announcement updated."
+          "Announcement updated successfully."
         );
       } else {
         await callRpc(
           "tl_admin_live_feed_create_announcement",
           {
-            p_title:
-              cleanTitle ||
-              null,
-
-            p_message:
-              cleanMessage,
-
-            p_priority:
-              priority,
-
-            p_is_pinned:
-              isPinned,
-
-            p_starts_at:
-              null,
-
-            p_expires_at:
-              expiryIso,
+            p_title: cleanTitle || null,
+            p_message: cleanMessage,
+            p_priority: priority,
+            p_is_pinned: isPinned,
+            p_starts_at: null,
+            p_expires_at: expiryIso,
           }
         );
 
         setStatusMessage(
-          "Announcement published to the shared Live Feed."
+          "Announcement published successfully."
         );
       }
 
-      setStatusType(
-        "success"
-      );
+      setStatusType("success");
 
       resetForm();
 
-      await loadAnnouncements({
-        silent:
-          true,
-      });
+      await loadAnnouncements({ silent: true });
     } catch (error) {
       console.error(
         "SAVE LIVE FEED ANNOUNCEMENT ERROR:",
@@ -449,136 +287,88 @@ export default function AdminLiveFeedPanel({
         error?.message ||
           "Unable to save announcement."
       );
-
-      setStatusType(
-        "error"
-      );
+      setStatusType("error");
     } finally {
-      setSaving(
-        false
-      );
+      setSaving(false);
     }
   }
 
   // ==================================================
-  // EDIT
+  // EDIT ANNOUNCEMENT
   // ==================================================
 
-  function beginEdit(
-    item
-  ) {
-    setEditingId(
-      item.id
-    );
+  function beginEdit(item) {
+    setEditingId(item.id);
 
     setEditingStartsAt(
-      item.starts_at ||
-        null
+      item.starts_at || null
     );
 
-    setTitle(
-      item.title ||
-        ""
-    );
-
-    setMessage(
-      item.message ||
-        ""
-    );
+    setTitle(item.title || "");
+    setMessage(item.message || "");
 
     setPriority(
-      String(
-        item.priority ||
-          "NORMAL"
-      )
+      String(item.priority || "NORMAL")
         .trim()
         .toUpperCase()
     );
 
-    setIsPinned(
-      Boolean(
-        item.is_pinned
-      )
-    );
+    setIsPinned(Boolean(item.is_pinned));
 
     setExpiresAt(
-      toLocalDateTimeInput(
-        item.expires_at
-      )
+      toLocalDateTimeInput(item.expires_at)
     );
 
     setStatusMessage("");
     setStatusType("");
 
-    if (
-      typeof window !==
-      "undefined"
-    ) {
+    if (typeof window !== "undefined") {
       window.scrollTo({
-        top:
-          0,
-        behavior:
-          "smooth",
+        top: 0,
+        behavior: "smooth",
       });
     }
   }
 
   // ==================================================
-  // ACTIVE / INACTIVE
+  // ACTIVATE / DEACTIVATE
   // ==================================================
 
   async function setAnnouncementActive(
     item,
     nextActive
   ) {
-    if (
-      !item?.id ||
-      busyId
-    ) {
-      return;
-    }
+    if (!item?.id || busyId) return;
 
     try {
-      setBusyId(
-        item.id
-      );
-
+      setBusyId(item.id);
       setStatusMessage("");
       setStatusType("");
 
       await callRpc(
         "tl_admin_live_feed_set_active",
         {
-          p_announcement_id:
-            item.id,
-
-          p_is_active:
-            nextActive,
+          p_announcement_id: item.id,
+          p_is_active: nextActive,
         }
       );
 
       setStatusMessage(
         nextActive
           ? "Announcement reactivated."
-          : "Announcement removed from the cashier Live Feed."
+          : "Announcement deactivated."
       );
 
-      setStatusType(
-        "success"
-      );
+      setStatusType("success");
 
       if (
-        editingId ===
-        item.id &&
+        editingId === item.id &&
         !nextActive
       ) {
         resetForm();
       }
 
-      await loadAnnouncements({
-        silent:
-          true,
-      });
+      await loadAnnouncements({ silent: true });
     } catch (error) {
       console.error(
         "LIVE FEED STATUS ERROR:",
@@ -589,265 +379,141 @@ export default function AdminLiveFeedPanel({
         error?.message ||
           "Unable to change announcement status."
       );
-
-      setStatusType(
-        "error"
-      );
+      setStatusType("error");
     } finally {
-      setBusyId(
-        null
-      );
+      setBusyId(null);
     }
   }
+
   // ==================================================
-  // DISPLAY
+  // DASHBOARD
   // ==================================================
 
   return (
-    <section
-      style={
-        panelStyle
-      }
-    >
-      <div
-        style={
-          panelHeaderStyle
-        }
-      >
-        <div>
-          <div
-            style={
-              panelTitleStyle
-            }
-          >
-            LIVE FEED CONTROL
-          </div>
+    <section style={panelStyle}>
 
-          <div
-            style={
-              panelSubtitleStyle
-            }
-          >
-            Messages published here appear in the shared cashier ticker.
-          </div>
+      {/* HEADER */}
+
+      <div style={panelHeaderStyle}>
+        <div style={panelTitleStyle}>
+          LIVE FEED CONTROL
         </div>
 
-        <div
-          style={
-            liveBadgeStyle
-          }
-        >
-          ● SHARED LIVE FEED
+        <div style={liveBadgeStyle}>
+          ● LIVE FEED
         </div>
       </div>
 
-      <div
-        style={
-          formGridStyle
-        }
-      >
-        <div
-          style={
-            formCardStyle
-          }
-        >
-          <div
-            style={
-              formHeadingStyle
-            }
-          >
+      {/* EDITOR AND PREVIEW */}
+
+      <div style={formGridStyle}>
+
+        {/* ANNOUNCEMENT EDITOR */}
+
+        <div style={formCardStyle}>
+
+          <div style={formHeadingStyle}>
             {editingId
               ? "EDIT ANNOUNCEMENT"
               : "NEW ANNOUNCEMENT"}
           </div>
 
-          <label
-            style={
-              labelStyle
-            }
-          >
-            Title — Optional
+          {/* TITLE */}
+
+          <label style={labelStyle}>
+            TITLE
           </label>
 
           <input
             type="text"
-            maxLength={
-              120
+            maxLength={120}
+            value={title}
+            onChange={(event) =>
+              setTitle(event.target.value)
             }
-            value={
-              title
-            }
-            onChange={(
-              event
-            ) =>
-              setTitle(
-                event
-                  .target
-                  .value
-              )
-            }
-            placeholder="e.g. Weekly Banking"
-            style={
-              inputStyle
-            }
+            placeholder="Announcement title (optional)"
+            style={inputStyle}
           />
 
-          <label
-            style={
-              labelStyle
-            }
-          >
-            Message
+          {/* MESSAGE */}
+
+          <label style={labelStyle}>
+            MESSAGE
           </label>
 
           <textarea
-            maxLength={
-              1000
+            maxLength={1000}
+            value={message}
+            onChange={(event) =>
+              setMessage(event.target.value)
             }
-            value={
-              message
-            }
-            onChange={(
-              event
-            ) =>
-              setMessage(
-                event
-                  .target
-                  .value
-              )
-            }
-            placeholder="Type the message all cashiers should see..."
-            rows={
-              4
-            }
-            style={
-              textareaStyle
-            }
+            placeholder="Enter announcement..."
+            rows={4}
+            style={textareaStyle}
           />
 
-          <div
-            style={
-              counterStyle
-            }
-          >
-            {message.length}/1000
-          </div>
+          {/* PRIORITY AND EXPIRY */}
 
-          <div
-            style={
-              optionsGridStyle
-            }
-          >
+          <div style={optionsGridStyle}>
             <div>
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                Priority
+              <label style={labelStyle}>
+                PRIORITY
               </label>
 
               <select
-                value={
-                  priority
+                value={priority}
+                onChange={(event) =>
+                  setPriority(event.target.value)
                 }
-                onChange={(
-                  event
-                ) =>
-                  setPriority(
-                    event
-                      .target
-                      .value
-                  )
-                }
-                style={
-                  inputStyle
-                }
+                style={inputStyle}
               >
-                <option
-                  value="NORMAL"
-                >
+                <option value="NORMAL">
                   NORMAL
                 </option>
 
-                <option
-                  value="IMPORTANT"
-                >
+                <option value="IMPORTANT">
                   IMPORTANT
                 </option>
               </select>
             </div>
 
             <div>
-              <label
-                style={
-                  labelStyle
-                }
-              >
-                Expiry — Optional
+              <label style={labelStyle}>
+                EXPIRY
               </label>
 
               <input
                 type="datetime-local"
-                value={
-                  expiresAt
+                value={expiresAt}
+                onChange={(event) =>
+                  setExpiresAt(event.target.value)
                 }
-                onChange={(
-                  event
-                ) =>
-                  setExpiresAt(
-                    event
-                      .target
-                      .value
-                  )
-                }
-                style={
-                  inputStyle
-                }
+                style={inputStyle}
               />
             </div>
           </div>
 
-          <label
-            style={
-              checkboxRowStyle
-            }
-          >
+          {/* PIN */}
+
+          <label style={checkboxRowStyle}>
             <input
               type="checkbox"
-              checked={
-                isPinned
-              }
-              onChange={(
-                event
-              ) =>
-                setIsPinned(
-                  event
-                    .target
-                    .checked
-                )
+              checked={isPinned}
+              onChange={(event) =>
+                setIsPinned(event.target.checked)
               }
             />
 
-            <span>
-              PIN THIS MESSAGE
-            </span>
+            <span>PIN MESSAGE</span>
           </label>
 
-          <div
-            style={
-              hintStyle
-            }
-          >
-            Pinned or Important announcements appear before normal rota
-            messages in the cashier ticker.
-          </div>
+          {/* STATUS */}
 
           {statusMessage && (
             <div
+              role="status"
               style={
-                statusType ===
-                "success"
+                statusType === "success"
                   ? successStyle
                   : errorStyle
               }
@@ -856,31 +522,19 @@ export default function AdminLiveFeedPanel({
             </div>
           )}
 
-          <div
-            style={
-              actionRowStyle
-            }
-          >
+          {/* PUBLISH */}
+
+          <div style={actionRowStyle}>
             <button
               type="button"
-              onClick={
-                saveAnnouncement
-              }
-              disabled={
-                saving
-              }
+              onClick={saveAnnouncement}
+              disabled={saving}
               style={{
                 ...publishButtonStyle,
-
-                opacity:
-                  saving
-                    ? 0.55
-                    : 1,
-
-                cursor:
-                  saving
-                    ? "not-allowed"
-                    : "pointer",
+                opacity: saving ? 0.55 : 1,
+                cursor: saving
+                  ? "not-allowed"
+                  : "pointer",
               }}
             >
               {saving
@@ -893,51 +547,31 @@ export default function AdminLiveFeedPanel({
             {editingId && (
               <button
                 type="button"
-                onClick={
-                  resetForm
-                }
-                disabled={
-                  saving
-                }
-                style={
-                  cancelButtonStyle
-                }
+                onClick={resetForm}
+                disabled={saving}
+                style={cancelButtonStyle}
               >
                 CANCEL EDIT
               </button>
             )}
           </div>
+
         </div>
 
-        <div
-          style={
-            previewCardStyle
-          }
-        >
-          <div
-            style={
-              formHeadingStyle
-            }
-          >
+        {/* TICKER PREVIEW */}
+
+        <div style={previewCardStyle}>
+          <div style={formHeadingStyle}>
             TICKER PREVIEW
           </div>
 
-          <div
-            style={
-              tickerPreviewStyle
-            }
-          >
-            <span>
+          <div style={tickerPreviewStyle}>
+            <span style={previewLiveStyle}>
               ● LIVE FEED
             </span>
 
-            <div
-              style={
-                previewMessageStyle
-              }
-            >
-              {priority ===
-                "IMPORTANT" &&
+            <div style={previewMessageStyle}>
+              {priority === "IMPORTANT" &&
                 "IMPORTANT: "}
 
               {isPinned &&
@@ -947,95 +581,48 @@ export default function AdminLiveFeedPanel({
                 `${title.trim()} — `}
 
               {message.trim() ||
-                "Your announcement will appear here."}
+                "Preview"}
             </div>
-          </div>
-
-          <div
-            style={
-              previewNoteStyle
-            }
-          >
-            Cashier ticker background: #111C30 • Text: white
           </div>
         </div>
       </div>
 
-      <div
-        style={
-          existingSectionStyle
-        }
-      >
-        <div
-          style={
-            existingHeaderStyle
-          }
-        >
-          <div>
-            ANNOUNCEMENTS
-          </div>
+      {/* EXISTING ANNOUNCEMENTS */}
 
-          <div
-            style={
-              countBadgeStyle
-            }
-          >
+      <div style={existingSectionStyle}>
+
+        <div style={existingHeaderStyle}>
+          <span>ANNOUNCEMENTS</span>
+
+          <span style={countBadgeStyle}>
             {announcements.length}
-          </div>
+          </span>
         </div>
 
         {loading ? (
-          <div
-            style={
-              emptyStyle
-            }
-          >
+          <div style={emptyStyle}>
             Loading announcements...
           </div>
-        ) : announcements.length ===
-          0 ? (
-          <div
-            style={
-              emptyStyle
-            }
-          >
-            No Live Feed announcements yet.
+        ) : announcements.length === 0 ? (
+          <div style={emptyStyle}>
+            No announcements.
           </div>
         ) : (
-          <div
-            style={
-              announcementListStyle
-            }
-          >
-            {announcements.map(
-              (
-                item
-              ) => (
-                <AdminAnnouncementRow
-                  key={
-                    item.id
-                  }
-                  item={
-                    item
-                  }
-                  busy={
-                    busyId ===
-                    item.id
-                  }
-                  onEdit={() =>
-                    beginEdit(
-                      item
-                    )
-                  }
-                  onToggle={() =>
-                    setAnnouncementActive(
-                      item,
-                      !item.is_active
-                    )
-                  }
-                />
-              )
-            )}
+          <div style={announcementListStyle}>
+            {announcements.map((item) => (
+              <AdminAnnouncementRow
+                key={item.id}
+                item={item}
+                busy={busyId === item.id}
+                onEdit={() => beginEdit(item)}
+                onToggle={() =>
+                  setAnnouncementActive(
+                    item,
+                    !item.is_active
+                  )
+                }
+              />
+            ))}
           </div>
         )}
       </div>
@@ -1053,158 +640,94 @@ function AdminAnnouncementRow({
   onEdit,
   onToggle,
 }) {
-  const active =
-    Boolean(
-      item?.is_active
-    );
+  const active = Boolean(item?.is_active);
 
-  const priority =
-    String(
-      item?.priority ||
-        "NORMAL"
-    )
-      .trim()
-      .toUpperCase();
+  const priority = String(
+    item?.priority || "NORMAL"
+  )
+    .trim()
+    .toUpperCase();
 
-  const expired =
-    Boolean(
-      item?.expires_at &&
-      new Date(
-        item.expires_at
-      ).getTime() <=
+  const expired = Boolean(
+    item?.expires_at &&
+      new Date(item.expires_at).getTime() <=
         Date.now()
-    );
+  );
 
-  let statusText =
-    "ACTIVE";
+  let statusText = "ACTIVE";
 
-  if (
-    !active
-  ) {
-    statusText =
-      "INACTIVE";
-  } else if (
-    expired
-  ) {
-    statusText =
-      "EXPIRED";
+  if (!active) {
+    statusText = "INACTIVE";
+  } else if (expired) {
+    statusText = "EXPIRED";
   }
 
   return (
-    <div
-      style={
-        announcementRowStyle
-      }
-    >
-      <div
-        style={
-          rowTopStyle
-        }
-      >
-        <div
-          style={
-            rowTitleWrapStyle
-          }
-        >
+    <div style={announcementRowStyle}>
+
+      <div style={rowTopStyle}>
+
+        <div style={rowTitleWrapStyle}>
           {item.is_pinned && (
-            <span
-              style={
-                miniBadgeStyle
-              }
-            >
+            <span style={miniBadgeStyle}>
               PINNED
             </span>
           )}
 
-          {priority ===
-            "IMPORTANT" && (
-            <span
-              style={
-                importantBadgeStyle
-              }
-            >
+          {priority === "IMPORTANT" && (
+            <span style={importantBadgeStyle}>
               IMPORTANT
             </span>
           )}
 
           <strong>
-            {item.title ||
-              "ADMIN MESSAGE"}
+            {item.title || "ADMIN MESSAGE"}
           </strong>
         </div>
 
         <span
           style={{
             ...statusBadgeStyle,
-
             opacity:
-              active &&
-              !expired
-                ? 1
-                : 0.55,
+              active && !expired ? 1 : 0.6,
           }}
         >
           {statusText}
         </span>
       </div>
 
-      <div
-        style={
-          rowMessageStyle
-        }
-      >
+      <div style={rowMessageStyle}>
         {item.message}
       </div>
 
-      <div
-        style={
-          rowMetaStyle
-        }
-      >
+      <div style={rowMetaStyle}>
         <span>
           Created{" "}
-          {formatDateTime(
-            item.created_at
-          )}
+          {formatDateTime(item.created_at)}
         </span>
 
-        <span>
-          {item.expires_at
-            ? `Expires ${formatDateTime(
-                item.expires_at
-              )}`
-            : "No expiry"}
-        </span>
+        {item.expires_at && (
+          <span>
+            Expires{" "}
+            {formatDateTime(item.expires_at)}
+          </span>
+        )}
       </div>
 
-      <div
-        style={
-          rowActionsStyle
-        }
-      >
+      <div style={rowActionsStyle}>
         <button
           type="button"
-          onClick={
-            onEdit
-          }
-          disabled={
-            busy
-          }
-          style={
-            editButtonStyle
-          }
+          onClick={onEdit}
+          disabled={busy}
+          style={editButtonStyle}
         >
           EDIT
         </button>
 
         <button
           type="button"
-          onClick={
-            onToggle
-          }
-          disabled={
-            busy
-          }
+          onClick={onToggle}
+          disabled={busy}
           style={
             active
               ? deactivateButtonStyle
@@ -1226,9 +749,7 @@ function AdminAnnouncementRow({
 // HELPERS
 // ==================================================
 
-async function safeJson(
-  response
-) {
+async function safeJson(response) {
   try {
     return await response.json();
   } catch {
@@ -1236,981 +757,407 @@ async function safeJson(
   }
 }
 
-function toLocalDateTimeInput(
-  value
-) {
-  if (
-    !value
-  ) {
+function toLocalDateTimeInput(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
     return "";
   }
 
-  const date =
-    new Date(
-      value
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "";
-  }
-
-  const pad =
-    (number) =>
-      String(
-        number
-      ).padStart(
-        2,
-        "0"
-      );
+  const pad = (number) =>
+    String(number).padStart(2, "0");
 
   return (
     `${date.getFullYear()}-` +
-    `${pad(
-      date.getMonth() +
-        1
-    )}-` +
-    `${pad(
-      date.getDate()
-    )}T` +
-    `${pad(
-      date.getHours()
-    )}:` +
-    `${pad(
-      date.getMinutes()
-    )}`
+    `${pad(date.getMonth() + 1)}-` +
+    `${pad(date.getDate())}T` +
+    `${pad(date.getHours())}:` +
+    `${pad(date.getMinutes())}`
   );
 }
 
-function formatDateTime(
-  value
-) {
-  if (
-    !value
-  ) {
-    return "-";
-  }
+function formatDateTime(value) {
+  if (!value) return "-";
 
   try {
     return new Intl.DateTimeFormat(
       "en-KE",
       {
-        timeZone:
-          "Africa/Nairobi",
-
-        day:
-          "2-digit",
-
-        month:
-          "short",
-
-        year:
-          "numeric",
-
-        hour:
-          "2-digit",
-
-        minute:
-          "2-digit",
-
-        hourCycle:
-          "h23",
+        timeZone: "Africa/Nairobi",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
       }
-    ).format(
-      new Date(
-        value
-      )
-    );
+    ).format(new Date(value));
   } catch {
     return "-";
   }
 }
+
 // ==================================================
-// STYLES
+// PROFESSIONAL DARK NAVY STYLES
 // ==================================================
 
 const panelStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  backgroundColor:
-    "#0F172A",
-
-  border:
-    "1px solid #263650",
-
-  borderRadius:
-    "14px",
-
-  overflow:
-    "hidden",
-
-  color:
-    "#FFFFFF",
+  width: "100%",
+  boxSizing: "border-box",
+  backgroundColor: "#0F172A",
+  border: "1px solid #263650",
+  borderRadius: "14px",
+  overflow: "hidden",
+  color: "#FFFFFF",
 };
-
 
 const panelHeaderStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
-
-  gap:
-    "12px",
-
-  padding:
-    "15px",
-
-  backgroundColor:
-    "#111C30",
-
-  borderBottom:
-    "1px solid rgba(255,255,255,0.12)",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  padding: "15px",
+  backgroundColor: "#111C30",
+  borderBottom: "1px solid rgba(255,255,255,0.12)",
 };
-
 
 const panelTitleStyle = {
-  fontSize:
-    "15px",
-
-  fontWeight:
-    950,
-
-  color:
-    "#FFFFFF",
-
-  letterSpacing:
-    "0.6px",
+  fontSize: "16px",
+  fontWeight: 950,
+  color: "#FFFFFF",
+  letterSpacing: "0.6px",
 };
-
-
-const panelSubtitleStyle = {
-  marginTop:
-    "4px",
-
-  color:
-    "#FFFFFF",
-
-  opacity:
-    0.72,
-
-  fontSize:
-    "10px",
-};
-
 
 const liveBadgeStyle = {
-  padding:
-    "6px 9px",
-
-  border:
-    "1px solid rgba(255,255,255,0.30)",
-
-  borderRadius:
-    "9px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    900,
-
-  whiteSpace:
-    "nowrap",
+  padding: "6px 10px",
+  border: "1px solid rgba(255,255,255,0.30)",
+  borderRadius: "9px",
+  color: "#FFFFFF",
+  fontSize: "11px",
+  fontWeight: 900,
+  whiteSpace: "nowrap",
 };
-
 
 const formGridStyle = {
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "minmax(0, 1.6fr) minmax(260px, 1fr)",
-
-  gap:
-    "12px",
-
-  padding:
-    "12px",
+  gap: "12px",
+  padding: "12px",
 };
-
 
 const formCardStyle = {
-  minWidth:
-    0,
-
-  padding:
-    "12px",
-
-  backgroundColor:
-    "#111C30",
-
-  border:
-    "1px solid #263650",
-
-  borderRadius:
-    "10px",
+  minWidth: 0,
+  padding: "14px",
+  backgroundColor: "#111C30",
+  border: "1px solid #263650",
+  borderRadius: "10px",
 };
-
 
 const previewCardStyle = {
-  minWidth:
-    0,
-
-  padding:
-    "12px",
-
-  backgroundColor:
-    "#111C30",
-
-  border:
-    "1px solid #263650",
-
-  borderRadius:
-    "10px",
+  minWidth: 0,
+  padding: "14px",
+  backgroundColor: "#111C30",
+  border: "1px solid #263650",
+  borderRadius: "10px",
 };
-
 
 const formHeadingStyle = {
-  marginBottom:
-    "10px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "11px",
-
-  fontWeight:
-    950,
-
-  letterSpacing:
-    "0.5px",
+  marginBottom: "12px",
+  color: "#FFFFFF",
+  fontSize: "13px",
+  fontWeight: 950,
+  letterSpacing: "0.5px",
 };
-
 
 const labelStyle = {
-  display:
-    "block",
-
-  marginBottom:
-    "5px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    800,
+  display: "block",
+  marginBottom: "6px",
+  color: "#FFFFFF",
+  fontSize: "12px",
+  fontWeight: 800,
 };
-
 
 const inputStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  minHeight:
-    "39px",
-
-  padding:
-    "9px 10px",
-
-  marginBottom:
-    "10px",
-
-  backgroundColor:
-    "#0A121F",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #354763",
-
-  borderRadius:
-    "7px",
-
-  outline:
-    "none",
-
-  fontSize:
-    "11px",
+  width: "100%",
+  boxSizing: "border-box",
+  minHeight: "42px",
+  padding: "10px 11px",
+  marginBottom: "12px",
+  backgroundColor: "#0A121F",
+  color: "#FFFFFF",
+  border: "1px solid #354763",
+  borderRadius: "7px",
+  outline: "none",
+  fontSize: "13px",
+  fontFamily: "inherit",
 };
-
 
 const textareaStyle = {
   ...inputStyle,
-
-  minHeight:
-    "95px",
-
-  resize:
-    "vertical",
-
-  fontFamily:
-    "inherit",
-
-  lineHeight:
-    1.5,
+  minHeight: "105px",
+  resize: "vertical",
+  fontFamily: "inherit",
+  lineHeight: 1.6,
 };
-
-
-const counterStyle = {
-  marginTop:
-    "-7px",
-
-  marginBottom:
-    "10px",
-
-  textAlign:
-    "right",
-
-  color:
-    "#FFFFFF",
-
-  opacity:
-    0.55,
-
-  fontSize:
-    "8px",
-};
-
 
 const optionsGridStyle = {
-  display:
-    "grid",
-
+  display: "grid",
   gridTemplateColumns:
     "repeat(2,minmax(0,1fr))",
-
-  gap:
-    "10px",
+  gap: "12px",
 };
-
 
 const checkboxRowStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "8px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    850,
-
-  cursor:
-    "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  color: "#FFFFFF",
+  fontSize: "12px",
+  fontWeight: 850,
+  cursor: "pointer",
 };
-
-
-const hintStyle = {
-  marginTop:
-    "8px",
-
-  padding:
-    "8px",
-
-  backgroundColor:
-    "#0A121F",
-
-  border:
-    "1px solid #263650",
-
-  borderRadius:
-    "7px",
-
-  color:
-    "#FFFFFF",
-
-  opacity:
-    0.75,
-
-  fontSize:
-    "9px",
-
-  lineHeight:
-    1.45,
-};
-
 
 const actionRowStyle = {
-  display:
-    "flex",
-
-  gap:
-    "8px",
-
-  marginTop:
-    "10px",
+  display: "flex",
+  gap: "10px",
+  marginTop: "16px",
 };
-
 
 const publishButtonStyle = {
-  flex:
-    1,
-
-  minHeight:
-    "40px",
-
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#111C30",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid rgba(255,255,255,0.42)",
-
-  borderRadius:
-    "7px",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    950,
+  flex: 1,
+  minHeight: "43px",
+  padding: "11px",
+  backgroundColor: "#111C30",
+  color: "#FFFFFF",
+  border: "1px solid rgba(255,255,255,0.42)",
+  borderRadius: "7px",
+  fontSize: "12px",
+  fontWeight: 950,
+  cursor: "pointer",
 };
-
 
 const cancelButtonStyle = {
-  minHeight:
-    "40px",
-
-  padding:
-    "10px 13px",
-
-  backgroundColor:
-    "#0A121F",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #354763",
-
-  borderRadius:
-    "7px",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    900,
-
-  cursor:
-    "pointer",
+  minHeight: "43px",
+  padding: "11px 14px",
+  backgroundColor: "#0A121F",
+  color: "#FFFFFF",
+  border: "1px solid #354763",
+  borderRadius: "7px",
+  fontSize: "12px",
+  fontWeight: 900,
+  cursor: "pointer",
 };
 
-
 // ==================================================
-// PREVIEW
+// TICKER PREVIEW
 // ==================================================
 
 const tickerPreviewStyle = {
-  minHeight:
-    "58px",
-
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "16px",
-
-  overflow:
-    "hidden",
-
-  padding:
-    "0 12px",
-
-  backgroundColor:
-    "#111C30",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid rgba(255,255,255,0.20)",
-
-  borderRadius:
-    "7px",
-
-  fontSize:
-    "11px",
-
-  fontWeight:
-    850,
+  minHeight: "64px",
+  display: "flex",
+  alignItems: "center",
+  gap: "15px",
+  overflow: "hidden",
+  padding: "0 14px",
+  backgroundColor: "#111C30",
+  color: "#FFFFFF",
+  border: "1px solid rgba(255,255,255,0.20)",
+  borderRadius: "7px",
+  fontSize: "13px",
+  fontWeight: 850,
 };
 
+const previewLiveStyle = {
+  whiteSpace: "nowrap",
+  color: "#FFFFFF",
+  fontWeight: 900,
+  fontSize: "12px",
+};
 
 const previewMessageStyle = {
-  color:
-    "#FFFFFF",
-
-  whiteSpace:
-    "nowrap",
-
-  overflow:
-    "hidden",
-
-  textOverflow:
-    "ellipsis",
+  color: "#FFFFFF",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
 };
-
-
-const previewNoteStyle = {
-  marginTop:
-    "8px",
-
-  color:
-    "#FFFFFF",
-
-  opacity:
-    0.55,
-
-  fontSize:
-    "8px",
-};
-
 
 // ==================================================
 // STATUS
 // ==================================================
 
 const successStyle = {
-  marginTop:
-    "10px",
-
-  padding:
-    "9px",
-
-  backgroundColor:
-    "#10261A",
-
-  border:
-    "1px solid #2F6B47",
-
-  borderRadius:
-    "7px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "9px",
+  marginTop: "12px",
+  padding: "11px",
+  backgroundColor: "#10261A",
+  border: "1px solid #2F6B47",
+  borderRadius: "7px",
+  color: "#FFFFFF",
+  fontSize: "12px",
 };
-
 
 const errorStyle = {
-  marginTop:
-    "10px",
-
-  padding:
-    "9px",
-
-  backgroundColor:
-    "#2C1619",
-
-  border:
-    "1px solid #79363C",
-
-  borderRadius:
-    "7px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "9px",
+  marginTop: "12px",
+  padding: "11px",
+  backgroundColor: "#2C1619",
+  border: "1px solid #79363C",
+  borderRadius: "7px",
+  color: "#FFFFFF",
+  fontSize: "12px",
 };
-
 
 // ==================================================
 // EXISTING ANNOUNCEMENTS
 // ==================================================
 
 const existingSectionStyle = {
-  padding:
-    "0 12px 12px",
+  padding: "0 12px 12px",
 };
-
 
 const existingHeaderStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  gap:
-    "8px",
-
-  marginBottom:
-    "8px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    950,
+  display: "flex",
+  alignItems: "center",
+  gap: "9px",
+  marginBottom: "10px",
+  color: "#FFFFFF",
+  fontSize: "13px",
+  fontWeight: 950,
 };
-
 
 const countBadgeStyle = {
-  minWidth:
-    "22px",
-
-  padding:
-    "3px 6px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#111C30",
-
-  border:
-    "1px solid #354763",
-
-  borderRadius:
-    "10px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "8px",
+  minWidth: "25px",
+  padding: "4px 8px",
+  textAlign: "center",
+  backgroundColor: "#111C30",
+  border: "1px solid #354763",
+  borderRadius: "10px",
+  color: "#FFFFFF",
+  fontSize: "11px",
 };
-
 
 const announcementListStyle = {
-  display:
-    "grid",
-
-  gap:
-    "8px",
+  display: "grid",
+  gap: "10px",
 };
-
 
 const announcementRowStyle = {
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#111C30",
-
-  border:
-    "1px solid #263650",
-
-  borderRadius:
-    "8px",
-
-  color:
-    "#FFFFFF",
+  padding: "13px",
+  backgroundColor: "#111C30",
+  border: "1px solid #263650",
+  borderRadius: "8px",
+  color: "#FFFFFF",
 };
-
 
 const rowTopStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  alignItems:
-    "center",
-
-  gap:
-    "10px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "10px",
 };
-
 
 const rowTitleWrapStyle = {
-  display:
-    "flex",
-
-  alignItems:
-    "center",
-
-  flexWrap:
-    "wrap",
-
-  gap:
-    "6px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "10px",
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: "7px",
+  color: "#FFFFFF",
+  fontSize: "13px",
 };
-
 
 const miniBadgeStyle = {
-  padding:
-    "3px 5px",
-
-  border:
-    "1px solid rgba(255,255,255,0.32)",
-
-  borderRadius:
-    "5px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "7px",
-
-  fontWeight:
-    900,
+  padding: "4px 7px",
+  border: "1px solid rgba(255,255,255,0.32)",
+  borderRadius: "5px",
+  color: "#FFFFFF",
+  fontSize: "10px",
+  fontWeight: 900,
 };
-
 
 const importantBadgeStyle = {
-  padding:
-    "3px 5px",
-
-  backgroundColor:
-    "#2B1D13",
-
-  border:
-    "1px solid #7A512D",
-
-  borderRadius:
-    "5px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "7px",
-
-  fontWeight:
-    900,
+  padding: "4px 7px",
+  backgroundColor: "#2B1D13",
+  border: "1px solid #7A512D",
+  borderRadius: "5px",
+  color: "#FFFFFF",
+  fontSize: "10px",
+  fontWeight: 900,
 };
-
 
 const statusBadgeStyle = {
-  padding:
-    "4px 7px",
-
-  border:
-    "1px solid rgba(255,255,255,0.30)",
-
-  borderRadius:
-    "8px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "7px",
-
-  fontWeight:
-    900,
-
-  whiteSpace:
-    "nowrap",
+  padding: "5px 8px",
+  border: "1px solid rgba(255,255,255,0.30)",
+  borderRadius: "8px",
+  color: "#FFFFFF",
+  fontSize: "10px",
+  fontWeight: 900,
+  whiteSpace: "nowrap",
 };
-
 
 const rowMessageStyle = {
-  marginTop:
-    "8px",
-
-  color:
-    "#FFFFFF",
-
-  fontSize:
-    "10px",
-
-  lineHeight:
-    1.5,
-
-  whiteSpace:
-    "pre-wrap",
+  marginTop: "10px",
+  color: "#FFFFFF",
+  fontSize: "13px",
+  lineHeight: 1.6,
+  whiteSpace: "pre-wrap",
 };
-
 
 const rowMetaStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  flexWrap:
-    "wrap",
-
-  gap:
-    "6px",
-
-  marginTop:
-    "8px",
-
-  color:
-    "#FFFFFF",
-
-  opacity:
-    0.55,
-
-  fontSize:
-    "8px",
+  display: "flex",
+  justifyContent: "space-between",
+  flexWrap: "wrap",
+  gap: "8px",
+  marginTop: "10px",
+  color: "#CBD5E1",
+  fontSize: "11px",
 };
-
 
 const rowActionsStyle = {
-  display:
-    "flex",
-
-  gap:
-    "7px",
-
-  marginTop:
-    "9px",
+  display: "flex",
+  gap: "8px",
+  marginTop: "12px",
 };
-
 
 const editButtonStyle = {
-  padding:
-    "7px 10px",
-
-  backgroundColor:
-    "#0A121F",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #354763",
-
-  borderRadius:
-    "6px",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    900,
-
-  cursor:
-    "pointer",
+  padding: "9px 13px",
+  backgroundColor: "#0A121F",
+  color: "#FFFFFF",
+  border: "1px solid #354763",
+  borderRadius: "6px",
+  fontSize: "11px",
+  fontWeight: 900,
+  cursor: "pointer",
 };
-
 
 const deactivateButtonStyle = {
-  padding:
-    "7px 10px",
-
-  backgroundColor:
-    "#2C1619",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #79363C",
-
-  borderRadius:
-    "6px",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    900,
-
-  cursor:
-    "pointer",
+  padding: "9px 13px",
+  backgroundColor: "#2C1619",
+  color: "#FFFFFF",
+  border: "1px solid #79363C",
+  borderRadius: "6px",
+  fontSize: "11px",
+  fontWeight: 900,
+  cursor: "pointer",
 };
-
 
 const activateButtonStyle = {
-  padding:
-    "7px 10px",
-
-  backgroundColor:
-    "#10261A",
-
-  color:
-    "#FFFFFF",
-
-  border:
-    "1px solid #2F6B47",
-
-  borderRadius:
-    "6px",
-
-  fontSize:
-    "8px",
-
-  fontWeight:
-    900,
-
-  cursor:
-    "pointer",
+  padding: "9px 13px",
+  backgroundColor: "#10261A",
+  color: "#FFFFFF",
+  border: "1px solid #2F6B47",
+  borderRadius: "6px",
+  fontSize: "11px",
+  fontWeight: 900,
+  cursor: "pointer",
 };
 
-
 const emptyStyle = {
-  padding:
-    "14px",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "#111C30",
-
-  border:
-    "1px solid #263650",
-
-  borderRadius:
-    "8px",
-
-  color:
-    "#FFFFFF",
-
-  opacity:
-    0.75,
-
-  fontSize:
-    "9px",
+  padding: "16px",
+  textAlign: "center",
+  backgroundColor: "#111C30",
+  border: "1px solid #263650",
+  borderRadius: "8px",
+  color: "#CBD5E1",
+  fontSize: "12px",
 };
