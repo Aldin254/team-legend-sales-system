@@ -9,7 +9,7 @@ import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
 import CashierLiveFeedPanel from "./CashierLiveFeedPanel";
-
+import CashierMealsRotaPanel from "./CashierMealsRotaPanel";
 import {
   pageStyle, loadingStyle, topHeaderStyle, brandWrapStyle,
   crownStyle, brandStyle, taglineStyle, headerRightStyle,
