@@ -648,363 +648,105 @@ export default function Cashier24HourReport({
     user?.shopName ||
     "SHOP";
 
-  CREATE OR REPLACE FUNCTION public.tl_cashier_rota_display(
-  p_shift_id uuid
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $function$
-DECLARE
-  v_shift public.shifts%ROWTYPE;
-  v_shop_type text;
-  v_anchor date;
-  v_cycle integer;
-  v_week integer;
-  v_period text;
-  v_local_time time;
-  v_half public.tl_rota_relief_halfday%ROWTYPE;
-  v_half_employee uuid;
-  v_names text[];
-  v_name text;
-BEGIN
-
-  -- Verify the OPEN shift.
-
-  SELECT *
-  INTO v_shift
-  FROM public.shifts
-  WHERE id = p_shift_id
-    AND status = 'OPEN'
-  LIMIT 1;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'OPEN_SHIFT_NOT_FOUND';
-  END IF;
-
-  -- Cashiers may only see their own shop.
-
-  IF auth.uid() IS NULL OR NOT EXISTS (
-    SELECT 1
-    FROM public.profiles p
-    WHERE p.auth_user_id = auth.uid()
-      AND p.is_active IS TRUE
-      AND upper(btrim(p.role::text)) = 'CASHIER'
-      AND p.shop_id = v_shift.shop_id
-  ) THEN
-    RAISE EXCEPTION 'SHOP_ACCESS_DENIED'
-      USING ERRCODE = '42501';
-  END IF;
-
-  SELECT upper(btrim(s.shop_type))
-  INTO v_shop_type
-  FROM public.shops s
-  WHERE s.id = v_shift.shop_id
-    AND s.is_active IS TRUE;
-
-  IF v_shop_type NOT IN ('12_HOUR', '24_HOUR') THEN
-    RAISE EXCEPTION 'INVALID_SHOP_TYPE';
-  END IF;
-
-  -- Use the shift business date.
-  -- SHIFT 2 retains its original date after midnight.
-
-  SELECT c.anchor_monday
-  INTO v_anchor
-  FROM public.tl_rota_relief_config c
-  WHERE c.id = 1;
-
-  IF v_anchor IS NULL THEN
-    RAISE EXCEPTION 'ROTA_ANCHOR_MISSING';
-  END IF;
-
-  v_cycle :=
-    ((v_shift.business_date - v_anchor) % 14 + 14) % 14;
-
-  v_week := CASE
-    WHEN v_cycle < 7 THEN 1
-    ELSE 2
-  END;
-
-  v_local_time :=
-    (clock_timestamp() AT TIME ZONE 'Africa/Nairobi')::time;
-
-  v_period := CASE
-    WHEN v_shop_type = '12_HOUR' THEN 'DAY'
-    WHEN upper(btrim(v_shift.shift_name)) = 'SHIFT 1'
-      THEN 'DAY'
-    WHEN upper(btrim(v_shift.shift_name)) = 'SHIFT 2'
-      THEN 'NIGHT'
-    ELSE 'UNKNOWN'
-  END;
-
-  -- Handle a 12-hour half-day handover.
-
-  IF v_shop_type = '12_HOUR' THEN
-
-    SELECT *
-    INTO v_half
-    FROM public.tl_rota_relief_halfday h
-    WHERE h.duty_date = v_shift.business_date
-      AND h.shop_id = v_shift.shop_id
-    ORDER BY h.change_id
-    LIMIT 1;
-
-    IF FOUND THEN
-
-      v_half_employee := CASE
-        WHEN v_local_time >= v_half.open_time
-         AND v_local_time < v_half.handover_time
-          THEN v_half.reliever_employee_id
-
-        WHEN v_local_time >= v_half.handover_time
-         AND v_local_time < v_half.close_time
-          THEN v_half.handover_employee_id
-
-        ELSE NULL
-      END;
-
-      SELECT m.full_name
-      INTO v_name
-      FROM public.tl_master_employees m
-      WHERE m.id = v_half_employee
-        AND m.employment_status = 'ACTIVE';
-
-      RETURN jsonb_build_object(
-        'display_name',
-          coalesce(v_name, 'NOT ASSIGNED'),
-        'shop_id', v_shift.shop_id,
-        'business_date', v_shift.business_date,
-        'shift_period', v_period,
-        'source', 'HALFDAY_ROTA'
-      );
-
-    END IF;
-  END IF;
-
-  -- Main effective rota:
-  -- permanent positions, relief, OFF days,
-  -- temporary shop moves and shop swaps.
-
-  WITH relief_pairs AS (
-    SELECT
-      r.covered_employee_id,
-      CASE
-        WHEN t.covered_employee_id IS NOT NULL
-          THEN t.reliever_employee_id
-        ELSE r.reliever_employee_id
-      END AS reliever_employee_id
-    FROM public.tl_rota_relief_rules r
-
-    LEFT JOIN public.tl_rota_relief_temporary t
-      ON t.covered_employee_id = r.covered_employee_id
-     AND t.duty_date = v_shift.business_date
-
-    WHERE r.cycle_day = v_cycle
-
-    UNION ALL
-
-    SELECT
-      t.covered_employee_id,
-      t.reliever_employee_id
-    FROM public.tl_rota_relief_temporary t
-    WHERE t.duty_date = v_shift.business_date
-      AND NOT EXISTS (
-        SELECT 1
-        FROM public.tl_rota_relief_rules r
-        WHERE r.cycle_day = v_cycle
-          AND r.covered_employee_id =
-              t.covered_employee_id
-      )
-  ),
-
-  effective AS (
-    SELECT
-      m.full_name,
-
-      CASE
-        WHEN mv.moving_employee_id IS NOT NULL
-          THEN mv.to_shop_id
-
-        WHEN sw.employee_a_id = m.id
-          THEN sw.home_shop_b_id
-
-        WHEN sw.employee_b_id = m.id
-          THEN sw.home_shop_a_id
+ // ==================================================
+  // CASHIER NAME FROM DUTY ROTA
+  // ==================================================
+
+  const [dutyCashierName, setDutyCashierName] =
+    useState("LOADING ROTA...");
+
+  const cashierName = dutyCashierName;
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadingDuty = false;
+
+    async function loadDutyCashier() {
+      if (loadingDuty) return;
+
+      if (
+        !shiftId ||
+        !accessToken ||
+        !supabaseUrl ||
+        !supabaseAnonKey
+      ) {
+        if (!cancelled) {
+          setDutyCashierName("ROTA UNAVAILABLE");
+        }
+        return;
+      }
+
+      loadingDuty = true;
+
+      try {
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/rpc/tl_cashier_rota_display`,
+          {
+            method: "POST",
+            headers: {
+              apikey: supabaseAnonKey,
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              p_shift_id: shiftId,
+            }),
+            cache: "no-store",
+          }
+        );
+
+        const result = await safeJson(response);
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              "Unable to load Duty Rota."
+          );
+        }
+
+        if (
+          !result ||
+          typeof result.display_name !== "string"
+        ) {
+          throw new Error(
+            "Invalid Duty Rota response."
+          );
+        }
+
+        if (!cancelled) {
+          setDutyCashierName(
+            result.display_name.trim() ||
+              "NOT ASSIGNED"
+          );
+        }
+      } catch (error) {
+        console.error("DUTY ROTA ERROR:", error);
+
+        if (!cancelled) {
+          setDutyCashierName("ROTA UNAVAILABLE");
+        }
+      } finally {
+        loadingDuty = false;
+      }
+    }
+
+    void loadDutyCashier();
+
+    const timer = setInterval(() => {
+      void loadDutyCashier();
+    }, 60000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [
+    shiftId,
+    accessToken,
+    supabaseUrl,
+    supabaseAnonKey,
+  ]);
 
-        WHEN rel.covered_employee_id IS NOT NULL
-          THEN relief_pos.shop_id
-
-        ELSE home_pos.shop_id
-      END AS effective_shop,
-
-      CASE
-        WHEN mv.moving_employee_id IS NOT NULL
-          THEN move_pos.slot_number
-
-        WHEN sw.change_id IS NOT NULL
-          THEN swap_pos.slot_number
-
-        WHEN rel.covered_employee_id IS NOT NULL
-          THEN relief_pos.slot_number
-
-        ELSE home_pos.slot_number
-      END::integer AS duty_group,
-
-      (
-        mv.moving_employee_id IS NOT NULL
-        OR rel.covered_employee_id IS NOT NULL
-      ) AS is_covering,
-
-      (mv.moving_employee_id IS NOT NULL)
-        AS has_move,
-
-      (sw.change_id IS NOT NULL)
-        AS has_swap,
-
-      (moved_out.covered_employee_id IS NOT NULL)
-        AS is_moved_out,
-
-      (relieved.covered_employee_id IS NOT NULL)
-        AS is_relieved,
-
-      (offday.employee_id IS NOT NULL)
-        AS is_off
-
-    FROM public.tl_master_employees m
-
-    LEFT JOIN public.tl_master_employee_positions home_pos
-      ON home_pos.id = m.position_id
-
-    LEFT JOIN public.tl_rota_shop_moves mv
-      ON mv.duty_date = v_shift.business_date
-     AND mv.moving_employee_id = m.id
-
-    LEFT JOIN public.tl_rota_shop_moves moved_out
-      ON moved_out.duty_date = v_shift.business_date
-     AND moved_out.covered_employee_id = m.id
-
-    LEFT JOIN public.tl_master_employees move_covered
-      ON move_covered.id = mv.covered_employee_id
-
-    LEFT JOIN public.tl_master_employee_positions move_pos
-      ON move_pos.id = move_covered.position_id
-
-    LEFT JOIN public.tl_rota_shop_swaps sw
-      ON sw.duty_date = v_shift.business_date
-     AND (
-       sw.employee_a_id = m.id
-       OR sw.employee_b_id = m.id
-     )
-
-    LEFT JOIN public.tl_master_employees swap_other
-      ON swap_other.id = CASE
-        WHEN sw.employee_a_id = m.id
-          THEN sw.employee_b_id
-        ELSE sw.employee_a_id
-      END
-
-    LEFT JOIN public.tl_master_employee_positions swap_pos
-      ON swap_pos.id = swap_other.position_id
-
-    LEFT JOIN relief_pairs rel
-      ON rel.reliever_employee_id = m.id
-
-    LEFT JOIN relief_pairs relieved
-      ON relieved.covered_employee_id = m.id
-
-    LEFT JOIN public.tl_master_employees relief_covered
-      ON relief_covered.id = rel.covered_employee_id
-
-    LEFT JOIN public.tl_master_employee_positions relief_pos
-      ON relief_pos.id = relief_covered.position_id
-
-    LEFT JOIN public.tl_rota_relief_off offday
-      ON offday.cycle_day = v_cycle
-     AND offday.employee_id = m.id
-
-    WHERE m.employment_status = 'ACTIVE'
-  ),
-
-  assigned AS (
-    SELECT e.full_name
-    FROM effective e
-    WHERE e.effective_shop = v_shift.shop_id
-
-      AND e.is_moved_out IS FALSE
-      AND e.is_relieved IS FALSE
-
-      AND NOT (
-        e.is_off
-        AND NOT e.has_move
-        AND NOT e.has_swap
-      )
-
-      AND (
-        v_shop_type = '12_HOUR'
-
-        OR (
-          v_shop_type = '24_HOUR'
-          AND (
-            (
-              v_period = 'NIGHT'
-              AND (
-                (v_week = 1 AND e.duty_group = 2)
-                OR
-                (v_week = 2 AND e.duty_group = 1)
-              )
-            )
-
-            OR
-
-            (
-              v_period = 'DAY'
-              AND (
-                (v_week = 1 AND e.duty_group = 1)
-                OR
-                (v_week = 2 AND e.duty_group = 2)
-              )
-              AND (
-                extract(isodow FROM v_shift.business_date) <> 1
-                OR e.is_covering
-              )
-            )
-          )
-        )
-      )
-  )
-
-  SELECT array_agg(
-    DISTINCT full_name ORDER BY full_name
-  )
-  INTO v_names
-  FROM assigned
-  WHERE nullif(btrim(full_name), '') IS NOT NULL;
-
-  v_name := coalesce(
-    nullif(array_to_string(v_names, ' / '), ''),
-    'NOT ASSIGNED'
-  );
-
-  RETURN jsonb_build_object(
-    'display_name', v_name,
-    'shop_id', v_shift.shop_id,
-    'business_date', v_shift.business_date,
-    'shift_period', v_period,
-    'source', 'MASTER_DUTY_ROTA'
-  );
-
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION
-  public.tl_cashier_rota_display(uuid)
-FROM PUBLIC, anon, authenticated;
-
-GRANT EXECUTE ON FUNCTION
-  public.tl_cashier_rota_display(uuid)
-TO authenticated;
   // ==================================================
   // NAIROBI CLOCK
   // ==================================================
