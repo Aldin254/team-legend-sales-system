@@ -1,92 +1,71 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 
-export default function AdminShopManagementPanel({
-  user,
-}) {
-  const [shops, setShops] =
-    useState([]);
+export default function AdminShopManagementPanel({ user }) {
+  const [shops, setShops] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [newShop, setNewShop] = useState({
+    shop_name: "",
+    shop_type: "12_HOUR",
+  });
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [savingId, setSavingId] =
-    useState(null);
-
-  const [message, setMessage] =
-    useState("");
-
-  const [error, setError] =
-    useState("");
-
-  const [newShop, setNewShop] =
-    useState({
-      shop_name: "",
-      shop_type: "12_HOUR",
-    });
-
-  const accessToken =
-    user?.access_token || "";
+  const accessToken = user?.access_token || "";
 
   // ==================================================
   // LOAD SHOPS
   // ==================================================
 
-  useEffect(() => {
-    loadShops();
-  }, []);
-
-  async function loadShops() {
+  const loadShops = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
 
-      const response =
-        await fetch(
-          "/api/admin/shops",
-          {
-            method: "GET",
+      const response = await fetch("/api/admin/shops", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        cache: "no-store",
+      });
 
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
-            },
+      const data = await response.json();
 
-            cache: "no-store",
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
-          data?.message ||
-            "Unable to load shops."
+          data?.message || "Unable to load shops."
         );
       }
 
       setShops(
-        Array.isArray(data.shops)
-          ? data.shops
-          : []
+        Array.isArray(data.shops) ? data.shops : []
       );
     } catch (err) {
       setError(
-        err?.message ||
-          "Unable to load shops."
+        err?.message || "Unable to load shops."
       );
     } finally {
       setLoading(false);
     }
-  }
+  }, [accessToken]);
+
+  useEffect(() => {
+    loadShops();
+  }, [loadShops]);
+
+  // Success messages disappear after 5 seconds.
+  useEffect(() => {
+    if (!message) return;
+
+    const timer = setTimeout(() => {
+      setMessage("");
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [message]);
 
   // ==================================================
   // CREATE SHOP
@@ -97,10 +76,9 @@ export default function AdminShopManagementPanel({
       setError("");
       setMessage("");
 
-      const shopName =
-        String(
-          newShop.shop_name || ""
-        ).trim();
+      const shopName = String(
+        newShop.shop_name || ""
+      ).trim();
 
       if (!shopName) {
         throw new Error(
@@ -110,41 +88,23 @@ export default function AdminShopManagementPanel({
 
       setSavingId("CREATE");
 
-      const response =
-        await fetch(
-          "/api/admin/shops",
-          {
-            method: "POST",
+      const response = await fetch("/api/admin/shops", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          shop_name: shopName,
+          shop_type: newShop.shop_type,
+        }),
+      });
 
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
+      const data = await response.json();
 
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                shop_name:
-                  shopName,
-
-                shop_type:
-                  newShop.shop_type,
-              }),
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
-          data?.message ||
-            "Unable to create shop."
+          data?.message || "Unable to create shop."
         );
       }
 
@@ -153,15 +113,11 @@ export default function AdminShopManagementPanel({
         shop_type: "12_HOUR",
       });
 
-      setMessage(
-        "Shop created successfully."
-      );
-
+      setMessage("Shop created successfully.");
       await loadShops();
     } catch (err) {
       setError(
-        err?.message ||
-          "Unable to create shop."
+        err?.message || "Unable to create shop."
       );
     } finally {
       setSavingId(null);
@@ -169,25 +125,16 @@ export default function AdminShopManagementPanel({
   }
 
   // ==================================================
-  // UPDATE LOCAL ROW
+  // UPDATE LOCAL SHOP
   // ==================================================
 
-  function updateRow(
-    shopId,
-    field,
-    value
-  ) {
-    setShops(
-      (current) =>
-        current.map(
-          (shop) =>
-            shop.id === shopId
-              ? {
-                  ...shop,
-                  [field]: value,
-                }
-              : shop
-        )
+  function updateRow(shopId, field, value) {
+    setShops((current) =>
+      current.map((shop) =>
+        shop.id === shopId
+          ? { ...shop, [field]: value }
+          : shop
+      )
     );
   }
 
@@ -195,61 +142,33 @@ export default function AdminShopManagementPanel({
   // SAVE SHOP
   // ==================================================
 
-  async function saveShop(
-    shop
-  ) {
+  async function saveShop(shop) {
     try {
       setError("");
       setMessage("");
-
       setSavingId(shop.id);
 
-      const response =
-        await fetch(
-          "/api/admin/shops",
-          {
-            method: "PATCH",
+      const response = await fetch("/api/admin/shops", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          shop_id: shop.id,
+          shop_name: String(
+            shop.shop_name || ""
+          ).trim(),
+          shop_type: shop.shop_type,
+          is_active: Boolean(shop.is_active),
+        }),
+      });
 
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
+      const data = await response.json();
 
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                shop_id:
-                  shop.id,
-
-                shop_name:
-                  String(
-                    shop.shop_name ||
-                      ""
-                  ).trim(),
-
-                shop_type:
-                  shop.shop_type,
-
-                is_active:
-                  Boolean(
-                    shop.is_active
-                  ),
-              }),
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
-          data?.message ||
-            "Unable to update shop."
+          data?.message || "Unable to update shop."
         );
       }
 
@@ -260,8 +179,7 @@ export default function AdminShopManagementPanel({
       await loadShops();
     } catch (err) {
       setError(
-        err?.message ||
-          "Unable to update shop."
+        err?.message || "Unable to update shop."
       );
     } finally {
       setSavingId(null);
@@ -272,35 +190,27 @@ export default function AdminShopManagementPanel({
   // ACTIVATE / DEACTIVATE
   // ==================================================
 
-  async function toggleShop(
-    shop
-  ) {
-    const newStatus =
-      !shop.is_active;
+  async function toggleShop(shop) {
+    const newStatus = !shop.is_active;
 
-    const action =
-      newStatus
-        ? "REACTIVATE"
-        : "DEACTIVATE";
+    const action = newStatus
+      ? "REACTIVATE"
+      : "DEACTIVATE";
 
-    const confirmed =
-      window.confirm(
-        `${action} SHOP?\n\n${shop.shop_name}`
-      );
+    const confirmed = window.confirm(
+      `${action} SHOP?\n\n${shop.shop_name}`
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     await saveShop({
       ...shop,
-      is_active:
-        newStatus,
+      is_active: newStatus,
     });
   }
 
   // ==================================================
-  // UI
+  // DISPLAY
   // ==================================================
 
   return (
@@ -309,26 +219,19 @@ export default function AdminShopManagementPanel({
         SHOP MANAGEMENT
       </div>
 
-      <div style={noticeStyle}>
-        Only Admin can create,
-        rename, change type or
-        activate/deactivate shops.
-        Historical shops are preserved.
-      </div>
-
       {error && (
-        <div style={errorStyle}>
+        <div role="alert" style={errorStyle}>
           {error}
         </div>
       )}
 
       {message && (
-        <div style={successStyle}>
+        <div role="status" style={successStyle}>
           {message}
         </div>
       )}
 
-      {/* CREATE */}
+      {/* CREATE NEW SHOP */}
 
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>
@@ -342,14 +245,11 @@ export default function AdminShopManagementPanel({
             </span>
 
             <input
-              value={
-                newShop.shop_name
-              }
+              value={newShop.shop_name}
               onChange={(e) =>
                 setNewShop({
                   ...newShop,
-                  shop_name:
-                    e.target.value,
+                  shop_name: e.target.value,
                 })
               }
               placeholder="Example: Corridor"
@@ -363,14 +263,11 @@ export default function AdminShopManagementPanel({
             </span>
 
             <select
-              value={
-                newShop.shop_type
-              }
+              value={newShop.shop_type}
               onChange={(e) =>
                 setNewShop({
                   ...newShop,
-                  shop_type:
-                    e.target.value,
+                  shop_type: e.target.value,
                 })
               }
               style={inputStyle}
@@ -393,10 +290,10 @@ export default function AdminShopManagementPanel({
             <input
               value="Africa/Nairobi"
               disabled
+              readOnly
               style={{
                 ...inputStyle,
-                backgroundColor:
-                  "#e2e8f0",
+                backgroundColor: "#e2e8f0",
               }}
             />
           </label>
@@ -405,9 +302,7 @@ export default function AdminShopManagementPanel({
         <button
           type="button"
           onClick={createShop}
-          disabled={
-            savingId === "CREATE"
-          }
+          disabled={savingId === "CREATE"}
           style={createButtonStyle}
         >
           {savingId === "CREATE"
@@ -416,7 +311,7 @@ export default function AdminShopManagementPanel({
         </button>
       </div>
 
-      {/* EXISTING */}
+      {/* EXISTING SHOPS */}
 
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>
@@ -459,124 +354,110 @@ export default function AdminShopManagementPanel({
               </thead>
 
               <tbody>
-                {shops.map(
-                  (shop) => (
-                    <tr key={shop.id}>
-                      <td style={tdStyle}>
-                        <input
-                          value={
-                            shop.shop_name ||
-                            ""
-                          }
-                          onChange={(e) =>
-                            updateRow(
-                              shop.id,
-                              "shop_name",
-                              e.target.value
-                            )
-                          }
-                          style={compactInputStyle}
-                        />
-                      </td>
+                {shops.map((shop) => (
+                  <tr key={shop.id}>
+                    <td style={tdStyle}>
+                      <input
+                        value={shop.shop_name || ""}
+                        onChange={(e) =>
+                          updateRow(
+                            shop.id,
+                            "shop_name",
+                            e.target.value
+                          )
+                        }
+                        style={compactInputStyle}
+                      />
+                    </td>
 
-                      <td style={tdStyle}>
-                        <select
-                          value={
-                            shop.shop_type
+                    <td style={tdStyle}>
+                      <select
+                        value={shop.shop_type}
+                        onChange={(e) =>
+                          updateRow(
+                            shop.id,
+                            "shop_type",
+                            e.target.value
+                          )
+                        }
+                        style={compactInputStyle}
+                      >
+                        <option value="12_HOUR">
+                          12_HOUR
+                        </option>
+
+                        <option value="24_HOUR">
+                          24_HOUR
+                        </option>
+                      </select>
+                    </td>
+
+                    <td style={tdStyle}>
+                      <div style={timezoneStyle}>
+                        {shop.timezone ||
+                          "Africa/Nairobi"}
+                      </div>
+                    </td>
+
+                    <td style={tdStyle}>
+                      <div
+                        style={{
+                          ...statusStyle,
+                          backgroundColor:
+                            shop.is_active
+                              ? "#dcfce7"
+                              : "#fee2e2",
+                          color:
+                            shop.is_active
+                              ? "#166534"
+                              : "#991b1b",
+                        }}
+                      >
+                        {shop.is_active
+                          ? "ACTIVE"
+                          : "INACTIVE"}
+                      </div>
+                    </td>
+
+                    <td style={tdStyle}>
+                      <div style={actionStyle}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            saveShop(shop)
                           }
-                          onChange={(e) =>
-                            updateRow(
-                              shop.id,
-                              "shop_type",
-                              e.target.value
-                            )
+                          disabled={
+                            savingId === shop.id
                           }
-                          style={compactInputStyle}
+                          style={saveButtonStyle}
                         >
-                          <option value="12_HOUR">
-                            12_HOUR
-                          </option>
+                          {savingId === shop.id
+                            ? "SAVING..."
+                            : "SAVE"}
+                        </button>
 
-                          <option value="24_HOUR">
-                            24_HOUR
-                          </option>
-                        </select>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <div style={timezoneStyle}>
-                          {shop.timezone ||
-                            "Africa/Nairobi"}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <div
-                          style={{
-                            ...statusStyle,
-
-                            backgroundColor:
-                              shop.is_active
-                                ? "#dcfce7"
-                                : "#fee2e2",
-
-                            color:
-                              shop.is_active
-                                ? "#166534"
-                                : "#991b1b",
-                          }}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleShop(shop)
+                          }
+                          disabled={
+                            savingId === shop.id
+                          }
+                          style={
+                            shop.is_active
+                              ? deactivateButtonStyle
+                              : activateButtonStyle
+                          }
                         >
                           {shop.is_active
-                            ? "ACTIVE"
-                            : "INACTIVE"}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <div style={actionStyle}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              saveShop(shop)
-                            }
-                            disabled={
-                              savingId ===
-                              shop.id
-                            }
-                            style={saveButtonStyle}
-                          >
-                            {savingId ===
-                            shop.id
-                              ? "SAVING..."
-                              : "SAVE"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              toggleShop(
-                                shop
-                              )
-                            }
-                            disabled={
-                              savingId ===
-                              shop.id
-                            }
-                            style={
-                              shop.is_active
-                                ? deactivateButtonStyle
-                                : activateButtonStyle
-                            }
-                          >
-                            {shop.is_active
-                              ? "DEACTIVATE"
-                              : "REACTIVATE"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                )}
+                            ? "DEACTIVATE"
+                            : "REACTIVATE"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -590,20 +471,12 @@ export default function AdminShopManagementPanel({
           REFRESH SHOPS
         </button>
       </div>
-
-      <div style={footerStyle}>
-        Shops are never permanently
-        deleted from this screen.
-        Deactivation preserves previous
-        shifts, reports and account
-        history.
-      </div>
     </div>
   );
 }
 
 // ==================================================
-// STYLES
+// PROFESSIONAL SETTINGS STYLES
 // ==================================================
 
 const panelStyle = {
@@ -615,41 +488,34 @@ const panelStyle = {
 };
 
 const titleBarStyle = {
-  padding: "11px 14px",
+  padding: "13px 15px",
   background:
     "linear-gradient(90deg,#0f766e,#0891b2)",
   color: "white",
   fontWeight: "900",
-  fontSize: "12px",
-};
-
-const noticeStyle = {
-  padding: "10px 14px",
-  backgroundColor: "#ecfeff",
-  color: "#155e75",
-  fontSize: "10px",
-  borderBottom:
-    "1px solid #a5f3fc",
+  fontSize: "15px",
 };
 
 const errorStyle = {
   margin: "12px",
-  padding: "10px",
+  padding: "11px",
   backgroundColor: "#fee2e2",
   color: "#991b1b",
   border: "1px solid #fecaca",
   borderRadius: "5px",
-  fontSize: "10px",
+  fontSize: "12px",
+  fontWeight: "bold",
 };
 
 const successStyle = {
   margin: "12px",
-  padding: "10px",
+  padding: "11px",
   backgroundColor: "#dcfce7",
   color: "#166534",
   border: "1px solid #bbf7d0",
   borderRadius: "5px",
-  fontSize: "10px",
+  fontSize: "12px",
+  fontWeight: "bold",
 };
 
 const sectionStyle = {
@@ -658,7 +524,7 @@ const sectionStyle = {
 };
 
 const sectionTitleStyle = {
-  fontSize: "11px",
+  fontSize: "13px",
   fontWeight: "900",
   marginBottom: "12px",
   color: "#334155",
@@ -674,33 +540,36 @@ const createGridStyle = {
 const fieldStyle = {
   display: "flex",
   flexDirection: "column",
-  gap: "5px",
+  gap: "6px",
 };
 
 const labelStyle = {
-  fontSize: "8px",
+  fontSize: "11px",
   fontWeight: "bold",
-  color: "#64748b",
+  color: "#475569",
 };
 
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "9px",
+  padding: "10px",
   border: "1px solid #cbd5e1",
   borderRadius: "4px",
-  fontSize: "11px",
+  fontSize: "13px",
+  color: "#0f172a",
+  backgroundColor: "white",
 };
 
 const createButtonStyle = {
   width: "100%",
   marginTop: "12px",
-  padding: "10px",
+  padding: "11px",
   border: "none",
   borderRadius: "4px",
   backgroundColor: "#0891b2",
   color: "white",
   fontWeight: "bold",
+  fontSize: "12px",
   cursor: "pointer",
 };
 
@@ -708,7 +577,7 @@ const loadingStyle = {
   padding: "25px",
   textAlign: "center",
   color: "#64748b",
-  fontSize: "11px",
+  fontSize: "12px",
 };
 
 const tableWrapperStyle = {
@@ -718,105 +587,99 @@ const tableWrapperStyle = {
 const tableStyle = {
   width: "100%",
   borderCollapse: "collapse",
-  minWidth: "750px",
+  minWidth: "800px",
 };
 
 const thStyle = {
-  padding: "8px",
+  padding: "10px",
   backgroundColor: "#cffafe",
   border: "1px solid #e2e8f0",
-  fontSize: "8px",
+  fontSize: "11px",
   textAlign: "left",
+  color: "#334155",
 };
 
 const tdStyle = {
-  padding: "7px",
+  padding: "8px",
   border: "1px solid #e2e8f0",
 };
 
 const compactInputStyle = {
   width: "100%",
   boxSizing: "border-box",
-  padding: "7px",
+  padding: "8px",
   border: "1px solid #cbd5e1",
   borderRadius: "3px",
-  fontSize: "10px",
+  fontSize: "12px",
+  color: "#0f172a",
+  backgroundColor: "white",
 };
 
 const timezoneStyle = {
-  padding: "7px",
+  padding: "8px",
   backgroundColor: "#f8fafc",
   borderRadius: "3px",
-  fontSize: "9px",
+  fontSize: "12px",
 };
 
 const statusStyle = {
-  padding: "6px",
+  padding: "7px",
   textAlign: "center",
   borderRadius: "3px",
   fontWeight: "bold",
-  fontSize: "8px",
+  fontSize: "11px",
 };
 
 const actionStyle = {
   display: "flex",
-  gap: "5px",
+  gap: "6px",
 };
 
 const saveButtonStyle = {
   flex: 1,
-  padding: "7px",
+  padding: "8px",
   border: "none",
   backgroundColor: "#16a34a",
   color: "white",
   fontWeight: "bold",
   borderRadius: "3px",
   cursor: "pointer",
-  fontSize: "8px",
+  fontSize: "11px",
 };
 
 const deactivateButtonStyle = {
   flex: 1,
-  padding: "7px",
+  padding: "8px",
   border: "none",
   backgroundColor: "#f59e0b",
   color: "white",
   fontWeight: "bold",
   borderRadius: "3px",
   cursor: "pointer",
-  fontSize: "8px",
+  fontSize: "11px",
 };
 
 const activateButtonStyle = {
   flex: 1,
-  padding: "7px",
+  padding: "8px",
   border: "none",
   backgroundColor: "#0891b2",
   color: "white",
   fontWeight: "bold",
   borderRadius: "3px",
   cursor: "pointer",
-  fontSize: "8px",
+  fontSize: "11px",
 };
 
 const refreshButtonStyle = {
   width: "100%",
   marginTop: "12px",
-  padding: "8px",
+  padding: "10px",
   border: "none",
   borderRadius: "4px",
   backgroundColor: "#475569",
   color: "white",
   fontWeight: "bold",
   cursor: "pointer",
-  fontSize: "9px",
-};
-
-const footerStyle = {
-  padding: "10px",
-  backgroundColor: "#f8fafc",
-  borderTop: "1px solid #e2e8f0",
-  color: "#64748b",
-  textAlign: "center",
-  fontSize: "8px",
+  fontSize: "12px",
 };
