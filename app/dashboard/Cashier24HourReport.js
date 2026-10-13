@@ -1598,12 +1598,6 @@ export default function Cashier24HourReport({
                 </strong>
               </div>
 
-              <div style={noticeStyle}>
-                Company Float 1, 2 and 3 are
-                read-only. They are posted
-                automatically by Legend Accounts.
-              </div>
-
             </section>
 
             {/* EXPENSES */}
@@ -1772,13 +1766,6 @@ export default function Cashier24HourReport({
                 <strong>
                   {money(totalExpenses)}
                 </strong>
-              </div>
-
-              <div style={noticeStyle}>
-                Cashier → Legend Accounts transfers
-                are added to Total Expenses
-                automatically after Accounts
-                confirms receipt.
               </div>
 
               <div style={panelButtonWrapStyle}>
