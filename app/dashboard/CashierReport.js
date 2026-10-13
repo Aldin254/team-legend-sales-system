@@ -82,11 +82,110 @@ export default function CashierReport({ user, currentShift }) {
     user?.shopName ||
     "SHOP";
 
-  const cashierName =
-    user?.full_name ||
-    user?.name ||
-    user?.username ||
-    "Cashier";
+ // ==========================================
+  // CASHIER NAME FROM DUTY ROTA
+  // ==========================================
+
+  const [dutyCashierName, setDutyCashierName] =
+    useState("LOADING ROTA...");
+
+  const cashierName = dutyCashierName;
+
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
+    async function loadDutyCashier() {
+      if (cancelled || inFlight) return;
+
+      if (
+        !shiftId ||
+        !accessToken ||
+        !supabaseUrl ||
+        !supabaseAnonKey
+      ) {
+        if (!cancelled) {
+          setDutyCashierName("ROTA UNAVAILABLE");
+        }
+        return;
+      }
+
+      inFlight = true;
+
+      try {
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/rpc/tl_cashier_rota_display`,
+          {
+            method: "POST",
+            headers: {
+              apikey: supabaseAnonKey,
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              p_shift_id: shiftId,
+            }),
+            cache: "no-store",
+          }
+        );
+
+        const result = await safeJson(response);
+
+        if (!response.ok) {
+          throw new Error(
+            result?.message ||
+              result?.details ||
+              "Unable to load Duty Rota."
+          );
+        }
+
+        if (
+          !result ||
+          typeof result.display_name !== "string"
+        ) {
+          throw new Error(
+            "Invalid Duty Rota response."
+          );
+        }
+
+        if (!cancelled) {
+          setDutyCashierName(
+            result.display_name.trim() ||
+              "NOT ASSIGNED"
+          );
+        }
+      } catch (error) {
+        console.error(
+          "12-HOUR DUTY ROTA ERROR:",
+          error
+        );
+
+        if (!cancelled) {
+          setDutyCashierName("ROTA UNAVAILABLE");
+        }
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    setDutyCashierName("LOADING ROTA...");
+    void loadDutyCashier();
+
+    // Refresh automatically every 60 seconds.
+    const timer = setInterval(() => {
+      void loadDutyCashier();
+    }, 60000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [
+    shiftId,
+    accessToken,
+    supabaseUrl,
+    supabaseAnonKey,
+  ]);
 
   const activeShift =
     shift?.id === shiftId ? shift : currentShift;
