@@ -4,17 +4,661 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const NAVY = "#0f172a";
+
+const PLATFORM_COLUMNS =
+  "minmax(115px,1.6fr) repeat(3,minmax(78px,1fr))";
+
+// ==================================================
+// DATE HELPERS
+// ==================================================
+
+function dateOnly(value) {
+  return String(value || "").slice(0, 10);
+}
+
+function addDays(date, days) {
+  const d = new Date(`${date}T12:00:00Z`);
+
+  if (Number.isNaN(d.getTime())) return date;
+
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function dateDifference(a, b) {
+  return Math.round(
+    (
+      Date.parse(`${b}T12:00:00Z`) -
+      Date.parse(`${a}T12:00:00Z`)
+    ) / 86400000
+  );
+}
+
+function dateRanges(dates, maximumDays) {
+  const sorted = [
+    ...new Set(
+      dates.filter((d) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(d)
+      )
+    ),
+  ].sort();
+
+  const ranges = [];
+
+  for (const date of sorted) {
+    const last = ranges[ranges.length - 1];
+
+    if (
+      !last ||
+      dateDifference(last.start, date) >= maximumDays
+    ) {
+      ranges.push({
+        start: date,
+        end: date,
+        days: 1,
+      });
+    } else {
+      last.end = date;
+      last.days = dateDifference(last.start, date) + 1;
+    }
+  }
+
+  return ranges;
+}
+
+function upper(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function usefulName(value) {
+  const name = String(value || "").trim();
+
+  return name &&
+    ![
+      "NOT ASSIGNED",
+      "CASHIER",
+      "UNKNOWN",
+      "-",
+    ].includes(upper(name))
+    ? name
+    : "";
+}
+
+function shiftPeriod(shift) {
+  const n = upper(shift?.shift_name)
+    .replace(/[_-]/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (n === "SHIFT 2" || n === "SHIFT2") {
+    return "NIGHT";
+  }
+
+  return "DAY";
+}
+
+function cycleDay(date, anchor) {
+  if (!anchor || !date) return null;
+
+  const n = dateDifference(anchor, date);
+
+  return ((n % 14) + 14) % 14;
+}
+
+function uniqueNames(ids, peopleById) {
+  return [
+    ...new Set(
+      ids
+        .map(
+          (id) =>
+            peopleById.get(String(id))?.full_name
+        )
+        .filter(Boolean)
+    ),
+  ].join(" / ");
+}
+
+function recordedName(shift) {
+  return (
+    usefulName(shift?.cashier_name) ||
+    "ROTA NAME UNAVAILABLE"
+  );
+}
+
+// ==================================================
+// DUTY ROTA NAME RESOLUTION
+// ==================================================
+
+// Admin-safe, read-only rota previews.
+// The cashier-specific display RPC is not used here
+// because it requires an OPEN shift and cashier
+// authorization.
+
+async function buildDutyNameMap(
+  shifts,
+  shopType,
+  callRpc
+) {
+  const dates = shifts
+    .map((s) => dateOnly(s.business_date))
+    .filter(Boolean);
+
+  if (!dates.length) return {};
+
+  const requests = [
+    {
+      type: "master",
+      promise: callRpc(
+        "tl_admin_master_employee_list"
+      ),
+    },
+    {
+      type: "config",
+      promise: callRpc("tl_rota_relief_get"),
+    },
+  ];
+
+  // ==================================================
+  // FETCH MOVES, SWAPS, OFF DAYS AND HALF-DAYS
+  // ==================================================
+
+  for (const range of dateRanges(dates, 31)) {
+    const params = {
+      p_start_date: range.start,
+      p_days: range.days,
+    };
+
+    requests.push({
+      type: "extras",
+      promise: callRpc(
+        "tl_rota_extra_get",
+        params
+      ),
+    });
+
+    requests.push({
+      type: "moves",
+      promise: callRpc(
+        "tl_rota_shop_move_get",
+        params
+      ),
+    });
+
+    requests.push({
+      type: "swaps",
+      promise: callRpc(
+        "tl_rota_shop_swap_get",
+        params
+      ),
+    });
+
+    if (shopType === "24_HOUR") {
+      requests.push({
+        type: "twentyFour",
+        promise: callRpc(
+          "tl_rota_24h_shift_preview",
+          params
+        ),
+      });
+    }
+  }
+
+  for (const range of dateRanges(dates, 14)) {
+    requests.push({
+      type: "relief",
+      promise: callRpc(
+        "tl_rota_relief_preview",
+        {
+          p_start_date: range.start,
+          p_days: range.days,
+        }
+      ),
+    });
+  }
+
+  const results = await Promise.allSettled(
+    requests.map((r) => r.promise)
+  );
+
+  const data = {
+    master: [],
+    anchor: "",
+    extras: [],
+    moves: [],
+    swaps: [],
+    relief: [],
+    twentyFour: [],
+  };
+
+  const failures = new Set();
+
+  results.forEach((result, index) => {
+    const kind = requests[index].type;
+
+    if (result.status !== "fulfilled") {
+      failures.add(kind);
+
+      console.warn(
+        "Admin report rota source unavailable:",
+        kind,
+        result.reason
+      );
+
+      return;
+    }
+
+    const value = result.value;
+
+    if (kind === "master") {
+      data.master = Array.isArray(value)
+        ? value
+        : [];
+    }
+
+    if (kind === "config") {
+      data.anchor = value?.anchor_monday || "";
+    }
+
+    if (kind === "extras") {
+      data.extras.push(value);
+    }
+
+    if (
+      kind === "moves" &&
+      Array.isArray(value)
+    ) {
+      data.moves.push(...value);
+    }
+
+    if (
+      kind === "swaps" &&
+      Array.isArray(value)
+    ) {
+      data.swaps.push(...value);
+    }
+
+    if (
+      kind === "relief" &&
+      Array.isArray(value)
+    ) {
+      data.relief.push(...value);
+    }
+
+    if (
+      kind === "twentyFour" &&
+      Array.isArray(value?.shifts)
+    ) {
+      data.twentyFour.push(...value.shifts);
+
+      if (!data.anchor) {
+        data.anchor = value.anchor_monday || "";
+      }
+    }
+  });
+
+  if (
+    !data.master.length ||
+    (
+      shopType === "24_HOUR" &&
+      !data.twentyFour.length
+    )
+  ) {
+    return Object.fromEntries(
+      shifts.map((s) => [
+        s.id,
+        recordedName(s),
+      ])
+    );
+  }
+
+  // ==================================================
+  // EMPLOYEES
+  // ==================================================
+
+  const peopleById = new Map(
+    data.master.map((p) => [
+      String(p.employee_id || p.id),
+      p,
+    ])
+  );
+
+  const offs = new Set();
+  const halfDays = new Map();
+
+  data.extras.forEach((extra) => {
+    for (const off of extra?.offs || []) {
+      offs.add(
+        `${off.cycle_day}|${off.employee_id}`
+      );
+    }
+
+    for (
+      const half of extra?.half_days || []
+    ) {
+      halfDays.set(
+        `${dateOnly(half.duty_date)}|${half.shop_id}|${half.change_id}`,
+        half
+      );
+    }
+  });
+
+  function byDate(rows) {
+    const map = new Map();
+
+    for (const row of rows) {
+      const d = dateOnly(row.duty_date);
+
+      if (!map.has(d)) {
+        map.set(d, []);
+      }
+
+      map.get(d).push(row);
+    }
+
+    return map;
+  }
+
+  const reliefByDate = byDate(data.relief);
+  const movesByDate = byDate(data.moves);
+  const swapsByDate = byDate(data.swaps);
+  const previewByDate = byDate(data.twentyFour);
+  const halvesByDate = byDate([
+    ...halfDays.values(),
+  ]);
+
+  const output = {};
+
+  // ==================================================
+  // RESOLVE EACH REPORT'S DUTY ASSIGNMENT
+  // ==================================================
+
+  for (const shift of shifts) {
+    const date = dateOnly(shift.business_date);
+    const shopId = String(shift.shop_id);
+    const period = shiftPeriod(shift);
+
+    const shiftPreview =
+      previewByDate.get(date) || [];
+
+    const dayRelief =
+      reliefByDate.get(date) || [];
+
+    const dayMoves =
+      movesByDate.get(date) || [];
+
+    const daySwaps =
+      swapsByDate.get(date) || [];
+
+    const dayHalves =
+      halvesByDate.get(date) || [];
+
+    const cycle = cycleDay(
+      date,
+      data.anchor
+    );
+
+    let ids = [];
+
+    // ==================================================
+    // 24-HOUR SHOP
+    // ==================================================
+
+    if (shopType === "24_HOUR") {
+      ids = shiftPreview
+        .filter(
+          (row) =>
+            String(row.shop_id) === shopId &&
+            upper(row.shift_period) === period &&
+            row.employee_id
+        )
+        .map((row) =>
+          String(row.employee_id)
+        );
+    } else {
+      // ==================================================
+      // 12-HOUR SHOP
+      // ==================================================
+
+      ids = data.master
+        .filter(
+          (p) =>
+            String(p.shop_id || "") === shopId &&
+            upper(p.employment_status) ===
+              "ACTIVE"
+        )
+        .map((p) =>
+          String(p.employee_id || p.id)
+        );
+    }
+
+    const remove = (id) => {
+      ids = ids.filter(
+        (x) => String(x) !== String(id)
+      );
+    };
+
+    const add = (id) => {
+      if (
+        id &&
+        peopleById.has(String(id)) &&
+        !ids.includes(String(id))
+      ) {
+        ids.push(String(id));
+      }
+    };
+
+    const homeShop = (id) =>
+      String(
+        peopleById.get(String(id))?.shop_id || ""
+      );
+
+    const previewEntry = (id) =>
+      shiftPreview.find(
+        (p) =>
+          String(p.employee_id) ===
+            String(id) &&
+          !p.is_reliever
+      );
+
+    const expectedPeriod = (id) => {
+      if (shopType !== "24_HOUR") {
+        return "DAY";
+      }
+
+      const value = upper(
+        previewEntry(id)?.shift_period
+      );
+
+      return value === "OFF"
+        ? "DAY"
+        : value;
+    };
+
+    // ==================================================
+    // REGULAR AND TEMPORARY RELIEF
+    // ==================================================
+
+    for (const item of dayRelief) {
+      const coveredId = String(
+        item.covered_employee_id || ""
+      );
+
+      if (
+        homeShop(coveredId) !== shopId
+      ) {
+        continue;
+      }
+
+      const relevant =
+        shopType !== "24_HOUR" ||
+        expectedPeriod(coveredId) === period;
+
+      if (!relevant) continue;
+
+      remove(coveredId);
+      add(item.reliever_employee_id);
+    }
+
+    // ==================================================
+    // INDIVIDUAL OFF DAYS
+    // ==================================================
+
+    for (const id of [...ids]) {
+      const changed =
+        dayMoves.some(
+          (m) =>
+            String(m.moving_employee_id) ===
+            id
+        ) ||
+        daySwaps.some(
+          (s) =>
+            String(s.employee_a_id) === id ||
+            String(s.employee_b_id) === id
+        );
+
+      if (
+        !changed &&
+        cycle !== null &&
+        offs.has(`${cycle}|${id}`)
+      ) {
+        remove(id);
+      }
+    }
+
+    // ==================================================
+    // TEMPORARY SHOP SWAPS
+    // ==================================================
+
+    for (const swap of daySwaps) {
+      const a = String(
+        swap.employee_a_id
+      );
+
+      const b = String(
+        swap.employee_b_id
+      );
+
+      const shopA = String(
+        swap.home_shop_a_id
+      );
+
+      const shopB = String(
+        swap.home_shop_b_id
+      );
+
+      if (
+        shopId === shopA &&
+        (
+          shopType !== "24_HOUR" ||
+          expectedPeriod(a) === period
+        )
+      ) {
+        remove(a);
+        add(b);
+      }
+
+      if (
+        shopId === shopB &&
+        (
+          shopType !== "24_HOUR" ||
+          expectedPeriod(b) === period
+        )
+      ) {
+        remove(b);
+        add(a);
+      }
+    }
+
+    // ==================================================
+    // TEMPORARY SHOP MOVES
+    // ==================================================
+
+    for (const move of dayMoves) {
+      const mover = String(
+        move.moving_employee_id
+      );
+
+      const covered = String(
+        move.covered_employee_id
+      );
+
+      if (
+        shopId === String(move.from_shop_id)
+      ) {
+        remove(mover);
+      }
+
+      if (
+        shopId === String(move.to_shop_id) &&
+        (
+          shopType !== "24_HOUR" ||
+          expectedPeriod(covered) === period
+        )
+      ) {
+        remove(covered);
+        add(mover);
+      }
+    }
+
+    // ==================================================
+    // HALF-DAY HANDOVER
+    // ==================================================
+
+    // Historical 12-hour report displays
+    // both employees assigned to the Half-Day.
+
+    if (shopType !== "24_HOUR") {
+      const half = dayHalves.find(
+        (h) =>
+          String(h.shop_id) === shopId
+      );
+
+      if (half) {
+        ids = [
+          String(half.reliever_employee_id),
+          String(half.handover_employee_id),
+        ];
+      }
+    }
+
+    output[shift.id] =
+      uniqueNames(ids, peopleById) ||
+      recordedName(shift);
+  }
+
+  return output;
+}
+
+// ==================================================
+// ADMIN REPORTS PANEL
+// ==================================================
 
 export default function AdminReportsPanel({
   user,
 }) {
-  const [shops, setShops] =
-    useState([]);
+  const accessToken =
+    user?.access_token || null;
 
-  const [shifts, setShifts] =
-    useState([]);
+  const headers = useMemo(
+    () => ({
+      apikey: ANON,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    }),
+    [accessToken]
+  );
+
+  const [shops, setShops] = useState([]);
+  const [shifts, setShifts] = useState([]);
+
+  const [dutyNames, setDutyNames] =
+    useState({});
 
   const [
     selectedShopId,
@@ -41,8 +685,7 @@ export default function AdminReportsPanel({
     setSelectedShiftId,
   ] = useState("");
 
-  const [report, setReport] =
-    useState(null);
+  const [report, setReport] = useState(null);
 
   const [
     loadingShops,
@@ -55,731 +698,331 @@ export default function AdminReportsPanel({
   ] = useState(false);
 
   const [
+    loadingRota,
+    setLoadingRota,
+  ] = useState(false);
+
+  const [
     loadingReport,
     setLoadingReport,
   ] = useState(false);
 
-  const [message, setMessage] =
-    useState("");
+  const [message, setMessage] = useState("");
 
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const accessToken =
-    user?.access_token || null;
-
-  // ==================================================
-  // HEADERS
-  // ==================================================
-
-  const authHeaders =
-    useMemo(() => {
-      return {
-        apikey:
-          supabaseAnonKey,
-
-        Authorization:
-          `Bearer ${accessToken}`,
-
-        "Content-Type":
-          "application/json",
-      };
-    }, [
-      supabaseAnonKey,
-      accessToken,
-    ]);
-
-  // ==================================================
-  // SELECTED SHOP
-  // ==================================================
-
-  const selectedShop =
-    useMemo(() => {
-      return (
-        shops.find(
-          (shop) =>
-            String(shop.id) ===
-            String(selectedShopId)
-        ) || null
-      );
-    }, [
-      shops,
-      selectedShopId,
-    ]);
-
-  // ==================================================
-  // BUSINESS DATES
-  // ==================================================
-
-  const businessDates =
-    useMemo(() => {
-      return [
-        ...new Set(
-          shifts
-            .map(
-              (shift) =>
-                shift.business_date
-            )
-            .filter(Boolean)
-        ),
-      ].sort(
-        (a, b) =>
-          String(b).localeCompare(
-            String(a)
-          )
-      );
-    }, [shifts]);
-
-  // ==================================================
-  // CASHIERS
-  // ==================================================
-
-  const cashiers =
-    useMemo(() => {
-      return [
-        ...new Set(
-          shifts
-            .map(
-              (shift) =>
-                String(
-                  shift.cashier_name ||
-                    ""
-                ).trim()
-            )
-            .filter(Boolean)
-        ),
-      ].sort((a, b) =>
-        a.localeCompare(b)
-      );
-    }, [shifts]);
-
-  // ==================================================
-  // FILTERED SHIFTS
-  // ==================================================
-
-  const filteredShifts =
-    useMemo(() => {
-      return shifts.filter(
-        (shift) => {
-          if (
-            selectedBusinessDate !==
-              "ALL" &&
-            String(
-              shift.business_date ||
-                ""
-            ) !==
-              String(
-                selectedBusinessDate
-              )
-          ) {
-            return false;
-          }
-
-          if (
-            selectedCashier !==
-              "ALL" &&
-            String(
-              shift.cashier_name ||
-                ""
-            ) !==
-              String(
-                selectedCashier
-              )
-          ) {
-            return false;
-          }
-
-          if (
-            selectedStatus !==
-              "ALL" &&
-            String(
-              shift.status || ""
-            ).toUpperCase() !==
-              selectedStatus
-          ) {
-            return false;
-          }
-
-          return true;
-        }
-      );
-    }, [
-      shifts,
-      selectedBusinessDate,
-      selectedCashier,
-      selectedStatus,
-    ]);
-
-  // ==================================================
-  // LOAD SHOPS
-  // ==================================================
-
-  const loadShops =
-    useCallback(
-      async () => {
-        if (
-          !supabaseUrl ||
-          !supabaseAnonKey ||
-          !accessToken
-        ) {
-          setMessage(
-            "Database or login information is missing."
-          );
-          return;
-        }
-
-        try {
-          setLoadingShops(true);
-          setMessage("");
-
-          const response =
-            await fetch(
-              `${supabaseUrl}/rest/v1/shops` +
-                `?select=id,shop_name,shop_type,is_active,timezone` +
-                `&order=shop_name.asc`,
-              {
-                method: "GET",
-                headers:
-                  authHeaders,
-                cache:
-                  "no-store",
-              }
-            );
-
-          const result =
-            await safeJson(
-              response
-            );
-
-          if (!response.ok) {
-            throw new Error(
-              result?.message ||
-                result?.details ||
-                "Unable to load shops."
-            );
-          }
-
-          const loaded =
-            Array.isArray(result)
-              ? result
-              : [];
-
-          setShops(loaded);
-
-          if (
-            loaded.length > 0
-          ) {
-            setSelectedShopId(
-              (current) => {
-                const exists =
-                  loaded.some(
-                    (shop) =>
-                      String(
-                        shop.id
-                      ) ===
-                      String(
-                        current
-                      )
-                  );
-
-                return exists
-                  ? current
-                  : loaded[0].id;
-              }
-            );
-          } else {
-            setSelectedShopId(
-              ""
-            );
-          }
-        } catch (error) {
-          console.error(
-            "LOAD ADMIN REPORT SHOPS ERROR:",
-            error
-          );
-
-          setMessage(
-            error?.message ||
-              "Unable to load shops."
-          );
-        } finally {
-          setLoadingShops(false);
-        }
-      },
-      [
-        supabaseUrl,
-        supabaseAnonKey,
-        accessToken,
-        authHeaders,
-      ]
-    );
-
-  // ==================================================
-  // LOAD SHIFTS
-  // ==================================================
-
-  const loadShifts =
-    useCallback(
-      async () => {
-        if (
-          !selectedShopId ||
-          !supabaseUrl ||
-          !supabaseAnonKey ||
-          !accessToken
-        ) {
-          setShifts([]);
-          setSelectedShiftId("");
-          setReport(null);
-          return;
-        }
-
-        try {
-          setLoadingShifts(true);
-          setMessage("");
-
-          const response =
-            await fetch(
-              `${supabaseUrl}/rest/v1/shifts` +
-                `?shop_id=eq.${encodeURIComponent(
-                  selectedShopId
-                )}` +
-                `&select=` +
-                `id,shop_id,cashier_id,cashier_name,shift_name,` +
-                `business_date,scheduled_start,scheduled_end,` +
-                `opened_at,closed_at,status,opening_balance,` +
-                `total_added_float,total_output,total_expenses,` +
-                `net_income,closing_balance,notes,` +
-                `admin_manual_totals,admin_override_note,` +
-                `admin_override_at,admin_override_by` +
-                `&order=business_date.desc,opened_at.desc` +
-                `&limit=500`,
-              {
-                method: "GET",
-                headers:
-                  authHeaders,
-                cache:
-                  "no-store",
-              }
-            );
-
-          const result =
-            await safeJson(
-              response
-            );
-
-          if (!response.ok) {
-            throw new Error(
-              result?.message ||
-                result?.details ||
-                "Unable to load shifts."
-            );
-          }
-
-          const loaded =
-            Array.isArray(result)
-              ? result
-              : [];
-
-          setShifts(loaded);
-
-          if (
-            loaded.length === 0
-          ) {
-            setSelectedShiftId(
-              ""
-            );
-
-            setReport(null);
-          }
-        } catch (error) {
-          console.error(
-            "LOAD ADMIN REPORT SHIFTS ERROR:",
-            error
-          );
-
-          setMessage(
-            error?.message ||
-              "Unable to load shifts."
-          );
-        } finally {
-          setLoadingShifts(false);
-        }
-      },
-      [
-        selectedShopId,
-        supabaseUrl,
-        supabaseAnonKey,
-        accessToken,
-        authHeaders,
-      ]
-    );
+  const reportRequestRef = useRef(0);
 
   // ==================================================
   // FETCH JSON
   // ==================================================
 
-  const fetchJson =
-    useCallback(
-      async (url) => {
-        const response =
-          await fetch(url, {
-            method: "GET",
-            headers:
-              authHeaders,
-            cache:
-              "no-store",
-          });
+  const fetchJson = useCallback(
+    async (
+      path,
+      method = "GET",
+      args = null
+    ) => {
+      if (
+        !URL ||
+        !ANON ||
+        !accessToken
+      ) {
+        throw new Error(
+          "Database or Admin login information is missing."
+        );
+      }
 
-        const result =
-          await safeJson(
-            response
-          );
-
-        if (!response.ok) {
-          throw new Error(
-            result?.message ||
-              result?.details ||
-              "Unable to load report data."
-          );
-        }
-
-        return result;
-      },
-      [authHeaders]
-    );
-
-  // ==================================================
-  // LOAD FULL REPORT
-  // ==================================================
-
-  const loadReport =
-    useCallback(
-      async () => {
-        if (
-          !selectedShiftId ||
-          !selectedShopId ||
-          !supabaseUrl ||
-          !accessToken
-        ) {
-          setReport(null);
-          return;
-        }
-
-        try {
-          setLoadingReport(true);
-          setMessage("");
-
-          const [
-            shiftResult,
-            platformResult,
-            readingResult,
-            floatResult,
-            expenseResult,
-            savingsResult,
-          ] =
-            await Promise.all([
-              fetchJson(
-                `${supabaseUrl}/rest/v1/shifts` +
-                  `?id=eq.${encodeURIComponent(
-                    selectedShiftId
-                  )}` +
-                  `&select=*` +
-                  `&limit=1`
-              ),
-
-              fetchJson(
-                `${supabaseUrl}/rest/v1/shop_platforms` +
-                  `?shop_id=eq.${encodeURIComponent(
-                    selectedShopId
-                  )}` +
-                  `&select=id,shop_id,platform_name,reading_type,display_order,is_active` +
-                  `&order=display_order.asc`
-              ),
-
-              fetchJson(
-                `${supabaseUrl}/rest/v1/platform_readings` +
-                  `?shift_id=eq.${encodeURIComponent(
-                    selectedShiftId
-                  )}` +
-                  `&reading_kind=in.(OPENING,CLOSING)` +
-                  `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
-                  `&order=recorded_at.asc`
-              ),
-
-              fetchJson(
-                `${supabaseUrl}/rest/v1/shift_income_entries` +
-                  `?shift_id=eq.${encodeURIComponent(
-                    selectedShiftId
-                  )}` +
-                  `&entry_type=in.(COMPANY_FLOAT,MSHWARI_FLOAT)` +
-                  `&select=id,shift_id,entry_type,description,amount,created_at` +
-                  `&order=created_at.asc`
-              ),
-
-              fetchJson(
-                `${supabaseUrl}/rest/v1/expenses` +
-                  `?shift_id=eq.${encodeURIComponent(
-                    selectedShiftId
-                  )}` +
-                  `&select=id,shift_id,description,amount,created_at,created_by` +
-                  `&order=created_at.asc`
-              ),
-
-              fetchJson(
-                `${supabaseUrl}/rest/v1/shift_savings` +
-                  `?shift_id=eq.${encodeURIComponent(
-                    selectedShiftId
-                  )}` +
-                  `&select=id,shift_id,description,amount,payment_status,created_at` +
-                  `&order=created_at.asc`
-              ),
-            ]);
-
-          if (
-            !Array.isArray(
-              shiftResult
-            ) ||
-            shiftResult.length ===
-              0
-          ) {
-            throw new Error(
-              "Selected shift could not be found."
-            );
-          }
-
-          const shift =
-            shiftResult[0];
-
-          const platforms =
-            Array.isArray(
-              platformResult
-            )
-              ? platformResult
-              : [];
-
-          const readings =
-            Array.isArray(
-              readingResult
-            )
-              ? readingResult
-              : [];
-
-          const floats =
-            Array.isArray(
-              floatResult
-            )
-              ? floatResult
-              : [];
-
-          const expenses =
-            Array.isArray(
-              expenseResult
-            )
-              ? expenseResult
-              : [];
-
-          const savings =
-            Array.isArray(
-              savingsResult
-            )
-              ? savingsResult
-              : [];
-
-          const readingMap = {};
-
-          for (
-            const reading
-            of readings
-          ) {
-            const key =
-              `${reading.platform_id}-${reading.reading_kind}`;
-
-            const existing =
-              readingMap[key];
-
-            if (
-              !existing ||
-              new Date(
-                reading.recorded_at ||
-                  0
-              ).getTime() >=
-                new Date(
-                  existing.recorded_at ||
-                    0
-                ).getTime()
-            ) {
-              readingMap[key] =
-                reading;
-            }
-          }
-
-          const platformRows =
-            platforms.map(
-              (platform) => {
-                const opening =
-                  readingMap[
-                    `${platform.id}-OPENING`
-                  ] || null;
-
-                const closing =
-                  readingMap[
-                    `${platform.id}-CLOSING`
-                  ] || null;
-
-                const output =
-                  opening &&
-                  closing
-                    ? roundMoney(
-                        Number(
-                          closing.reading_value ||
-                            0
-                        ) -
-                          Number(
-                            opening.reading_value ||
-                              0
-                          )
-                      )
-                    : null;
-
-                return {
-                  ...platform,
-                  opening,
-                  closing,
-                  output,
-                };
+      const response = await fetch(
+        `${URL}/rest/v1/${path}`,
+        {
+          method,
+          headers,
+          cache: "no-store",
+          ...(args !== null
+            ? {
+                body: JSON.stringify(args),
               }
-            );
-
-          const companyFloats =
-            floats.filter(
-              (entry) =>
-                entry.entry_type ===
-                "COMPANY_FLOAT"
-            );
-
-          const mshwariFloats =
-            floats.filter(
-              (entry) =>
-                entry.entry_type ===
-                "MSHWARI_FLOAT"
-            );
-
-          let totalSavings = 0;
-          let paidSavings = 0;
-          let pendingSavings = 0;
-
-          for (
-            const saving
-            of savings
-          ) {
-            const amount =
-              Number(
-                saving.amount || 0
-              );
-
-            totalSavings += amount;
-
-            if (
-              String(
-                saving.payment_status ||
-                  ""
-              ).toUpperCase() ===
-              "PAID"
-            ) {
-              paidSavings +=
-                amount;
-            } else {
-              pendingSavings +=
-                amount;
-            }
-          }
-
-          setReport({
-            shift,
-            platformRows,
-            companyFloats,
-            mshwariFloats,
-            expenses,
-            savings,
-
-            totalSavings:
-              roundMoney(
-                totalSavings
-              ),
-
-            paidSavings:
-              roundMoney(
-                paidSavings
-              ),
-
-            pendingSavings:
-              roundMoney(
-                pendingSavings
-              ),
-          });
-        } catch (error) {
-          console.error(
-            "LOAD ADMIN FULL REPORT ERROR:",
-            error
-          );
-
-          setMessage(
-            error?.message ||
-              "Unable to load report."
-          );
-
-          setReport(null);
-        } finally {
-          setLoadingReport(false);
+            : {}),
         }
-      },
+      );
+
+      const result = await response
+        .json()
+        .catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            "Database request failed."
+        );
+      }
+
+      return result;
+    },
+    [headers, accessToken]
+  );
+
+  const callRpc = useCallback(
+    (name, args = {}) =>
+      fetchJson(
+        `rpc/${name}`,
+        "POST",
+        args
+      ),
+    [fetchJson]
+  );
+
+  // ==================================================
+  // SELECTED SHOP
+  // ==================================================
+
+  const selectedShop = useMemo(
+    () =>
+      shops.find(
+        (s) =>
+          String(s.id) ===
+          String(selectedShopId)
+      ) || null,
+    [shops, selectedShopId]
+  );
+
+  const cashierForShift = useCallback(
+    (s) =>
+      dutyNames[s.id] ||
+      recordedName(s),
+    [dutyNames]
+  );
+
+  // ==================================================
+  // BUSINESS DATES
+  // ==================================================
+
+  const businessDates = useMemo(
+    () =>
       [
-        selectedShiftId,
-        selectedShopId,
-        supabaseUrl,
-        accessToken,
-        fetchJson,
+        ...new Set(
+          shifts
+            .map((s) => s.business_date)
+            .filter(Boolean)
+        ),
       ]
-    );
+        .sort()
+        .reverse(),
+    [shifts]
+  );
+
+  // ==================================================
+  // CASHIERS FROM DUTY ROTA
+  // ==================================================
+
+  const cashiers = useMemo(
+    () =>
+      [
+        ...new Set(
+          shifts.flatMap((s) =>
+            cashierForShift(s)
+              .split(" / ")
+              .map((n) => n.trim())
+              .filter(
+                (n) =>
+                  n !==
+                  "ROTA NAME UNAVAILABLE"
+              )
+          )
+        ),
+      ].sort(),
+    [shifts, cashierForShift]
+  );
+
+  // ==================================================
+  // FILTERED SHIFTS
+  // ==================================================
+
+  const filteredShifts = useMemo(
+    () =>
+      shifts.filter(
+        (s) =>
+          (
+            selectedBusinessDate === "ALL" ||
+            s.business_date ===
+              selectedBusinessDate
+          ) &&
+          (
+            selectedCashier === "ALL" ||
+            cashierForShift(s)
+              .split(" / ")
+              .includes(selectedCashier)
+          ) &&
+          (
+            selectedStatus === "ALL" ||
+            upper(s.status) === selectedStatus
+          )
+      ),
+    [
+      shifts,
+      selectedBusinessDate,
+      selectedCashier,
+      selectedStatus,
+      cashierForShift,
+    ]
+  );
+
+  // ==================================================
+  // LOAD SHOPS
+  // ==================================================
+
+  const loadShops = useCallback(
+    async () => {
+      setLoadingShops(true);
+
+      try {
+        setMessage("");
+
+        const value = await fetchJson(
+          "shops?select=id,shop_name,shop_type,is_active,timezone&order=shop_name.asc"
+        );
+
+        const list = Array.isArray(value)
+          ? value
+          : [];
+
+        setShops(list);
+
+        setSelectedShopId(
+          (id) =>
+            list.some(
+              (s) =>
+                String(s.id) === String(id)
+            )
+              ? id
+              : list[0]?.id || ""
+        );
+      } catch (e) {
+        setMessage(
+          e.message || "Unable to load shops."
+        );
+      } finally {
+        setLoadingShops(false);
+      }
+    },
+    [fetchJson]
+  );
+
+  // ==================================================
+  // LOAD SHIFTS
+  // ==================================================
+
+  const loadShifts = useCallback(
+    async () => {
+      if (!selectedShopId) {
+        setShifts([]);
+        setDutyNames({});
+        setLoadingShifts(false);
+        return;
+      }
+
+      setLoadingShifts(true);
+
+      try {
+        setMessage("");
+
+        const value = await fetchJson(
+          `shifts?shop_id=eq.${encodeURIComponent(
+            selectedShopId
+          )}` +
+            `&select=id,shop_id,cashier_id,cashier_name,shift_name,business_date,scheduled_start,scheduled_end,` +
+            `opened_at,closed_at,status,opening_balance,total_added_float,total_output,total_expenses,` +
+            `net_income,closing_balance,notes,admin_manual_totals,admin_override_note,admin_override_at,admin_override_by` +
+            `&order=business_date.desc,opened_at.desc&limit=500`
+        );
+
+        setShifts(
+          Array.isArray(value) ? value : []
+        );
+      } catch (e) {
+        setShifts([]);
+        setMessage(
+          e.message || "Unable to load shifts."
+        );
+      } finally {
+        setLoadingShifts(false);
+      }
+    },
+    [
+      selectedShopId,
+      fetchJson,
+    ]
+  );
 
   // ==================================================
   // INITIAL LOAD
   // ==================================================
 
   useEffect(() => {
-    loadShops();
+    void loadShops();
   }, [loadShops]);
 
+  useEffect(() => {
+    setSelectedBusinessDate("ALL");
+    setSelectedCashier("ALL");
+    setSelectedStatus("ALL");
+    setSelectedShiftId("");
+    setReport(null);
+    setShifts([]);
+    setDutyNames({});
+
+    void loadShifts();
+  }, [loadShifts]);
+
   // ==================================================
-  // SHOP CHANGED
+  // LOAD DUTY ROTA NAMES
   // ==================================================
 
   useEffect(() => {
-    setSelectedBusinessDate(
-      "ALL"
-    );
+    let cancelled = false;
 
-    setSelectedCashier(
-      "ALL"
-    );
+    if (
+      !shifts.length ||
+      !selectedShop
+    ) {
+      setLoadingRota(false);
+      return;
+    }
 
-    setSelectedStatus(
-      "ALL"
-    );
+    setLoadingRota(true);
 
-    setSelectedShiftId(
-      ""
-    );
+    buildDutyNameMap(
+      shifts,
+      upper(selectedShop.shop_type),
+      callRpc
+    )
+      .then((names) => {
+        if (!cancelled) {
+          setDutyNames(names);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          console.error(
+            "ADMIN REPORT ROTA:",
+            e
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingRota(false);
+        }
+      });
 
-    setReport(null);
-
-    loadShifts();
+    return () => {
+      cancelled = true;
+    };
   }, [
-    selectedShopId,
-    loadShifts,
+    shifts,
+    selectedShop,
+    callRpc,
   ]);
 
   // ==================================================
@@ -788,15 +1031,12 @@ export default function AdminReportsPanel({
 
   useEffect(() => {
     if (
-      selectedBusinessDate !==
-        "ALL" &&
+      selectedBusinessDate !== "ALL" &&
       !businessDates.includes(
         selectedBusinessDate
       )
     ) {
-      setSelectedBusinessDate(
-        "ALL"
-      );
+      setSelectedBusinessDate("ALL");
     }
   }, [
     businessDates,
@@ -805,65 +1045,291 @@ export default function AdminReportsPanel({
 
   useEffect(() => {
     if (
-      selectedCashier !==
-        "ALL" &&
-      !cashiers.includes(
-        selectedCashier
-      )
+      selectedCashier !== "ALL" &&
+      !cashiers.includes(selectedCashier) &&
+      !loadingRota
     ) {
-      setSelectedCashier(
-        "ALL"
-      );
+      setSelectedCashier("ALL");
     }
   }, [
     cashiers,
     selectedCashier,
+    loadingRota,
   ]);
 
   // ==================================================
-  // CHOOSE FIRST MATCHING SHIFT
+  // FIRST MATCHING SHIFT
   // ==================================================
 
   useEffect(() => {
-    if (
-      filteredShifts.length ===
-      0
-    ) {
-      setSelectedShiftId(
-        ""
-      );
-
-      setReport(null);
-      return;
-    }
-
-    setSelectedShiftId(
-      (current) => {
-        const exists =
-          filteredShifts.some(
-            (shift) =>
-              String(
-                shift.id
-              ) ===
-              String(
-                current
-              )
-          );
-
-        return exists
-          ? current
-          : filteredShifts[0]
-              .id;
-      }
+    setSelectedShiftId((current) =>
+      filteredShifts.some(
+        (s) =>
+          String(s.id) === String(current)
+      )
+        ? current
+        : filteredShifts[0]?.id || ""
     );
   }, [filteredShifts]);
 
   // ==================================================
-  // LOAD REPORT
+  // LOAD FULL REPORT
   // ==================================================
 
+  const loadReport = useCallback(
+    async () => {
+      const requestId =
+        ++reportRequestRef.current;
+
+      if (
+        !selectedShiftId ||
+        !selectedShopId
+      ) {
+        setReport(null);
+        setLoadingReport(false);
+        return;
+      }
+
+      setLoadingReport(true);
+
+      try {
+        setMessage("");
+
+        const id = encodeURIComponent(
+          selectedShiftId
+        );
+
+        const shop = encodeURIComponent(
+          selectedShopId
+        );
+
+        const [
+          shiftResult,
+          platformResult,
+          readingResult,
+          floatResult,
+          expenseResult,
+          savingsResult,
+        ] = await Promise.all([
+          fetchJson(
+            `shifts?id=eq.${id}&select=*&limit=1`
+          ),
+
+          fetchJson(
+            `shop_platforms?shop_id=eq.${shop}` +
+              `&select=id,shop_id,platform_name,reading_type,display_order,is_active` +
+              `&order=display_order.asc`
+          ),
+
+          fetchJson(
+            `platform_readings?shift_id=eq.${id}` +
+              `&reading_kind=in.(OPENING,CLOSING)` +
+              `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
+              `&order=recorded_at.asc`
+          ),
+
+          fetchJson(
+            `shift_income_entries?shift_id=eq.${id}` +
+              `&entry_type=in.(COMPANY_FLOAT,MSHWARI_FLOAT)` +
+              `&select=id,shift_id,entry_type,description,amount,created_at` +
+              `&order=created_at.asc`
+          ),
+
+          fetchJson(
+            `expenses?shift_id=eq.${id}` +
+              `&select=id,shift_id,description,amount,created_at,created_by` +
+              `&order=created_at.asc`
+          ),
+
+          fetchJson(
+            `shift_savings?shift_id=eq.${id}` +
+              `&select=id,shift_id,description,amount,payment_status,created_at` +
+              `&order=created_at.asc`
+          ),
+        ]);
+
+        if (
+          !Array.isArray(shiftResult) ||
+          !shiftResult[0]
+        ) {
+          throw new Error(
+            "Selected shift could not be found."
+          );
+        }
+
+        if (
+          requestId !== reportRequestRef.current
+        ) {
+          return;
+        }
+
+        const shift = shiftResult[0];
+
+        const platforms =
+          Array.isArray(platformResult)
+            ? platformResult
+            : [];
+
+        const readings =
+          Array.isArray(readingResult)
+            ? readingResult
+            : [];
+
+        const floats =
+          Array.isArray(floatResult)
+            ? floatResult
+            : [];
+
+        const expenses =
+          Array.isArray(expenseResult)
+            ? expenseResult
+            : [];
+
+        const savings =
+          Array.isArray(savingsResult)
+            ? savingsResult
+            : [];
+
+        // ==================================================
+        // PLATFORM READINGS
+        // ==================================================
+
+        const readingMap = {};
+
+        for (const r of readings) {
+          const key =
+            `${r.platform_id}-${r.reading_kind}`;
+
+          if (
+            !readingMap[key] ||
+            new Date(r.recorded_at || 0) >=
+              new Date(
+                readingMap[key].recorded_at || 0
+              )
+          ) {
+            readingMap[key] = r;
+          }
+        }
+
+        const platformRows = platforms.map(
+          (platform) => {
+            const opening =
+              readingMap[
+                `${platform.id}-OPENING`
+              ] || null;
+
+            const closing =
+              readingMap[
+                `${platform.id}-CLOSING`
+              ] || null;
+
+            return {
+              ...platform,
+              opening,
+              closing,
+
+              output:
+                opening && closing
+                  ? roundMoney(
+                      Number(
+                        closing.reading_value || 0
+                      ) -
+                        Number(
+                          opening.reading_value ||
+                            0
+                        )
+                    )
+                  : null,
+            };
+          }
+        );
+
+        // ==================================================
+        // SAVINGS
+        // ==================================================
+
+        let totalSavings = 0;
+        let paidSavings = 0;
+        let pendingSavings = 0;
+
+        for (const saving of savings) {
+          const amount = Number(
+            saving.amount || 0
+          );
+
+          totalSavings += amount;
+
+          if (
+            upper(saving.payment_status) ===
+            "PAID"
+          ) {
+            paidSavings += amount;
+          } else {
+            pendingSavings += amount;
+          }
+        }
+
+        setReport({
+          shift,
+          platformRows,
+
+          companyFloats: floats.filter(
+            (x) =>
+              x.entry_type === "COMPANY_FLOAT"
+          ),
+
+          mshwariFloats: floats.filter(
+            (x) =>
+              x.entry_type === "MSHWARI_FLOAT"
+          ),
+
+          expenses,
+          savings,
+
+          totalSavings: roundMoney(
+            totalSavings
+          ),
+
+          paidSavings: roundMoney(
+            paidSavings
+          ),
+
+          pendingSavings: roundMoney(
+            pendingSavings
+          ),
+        });
+      } catch (e) {
+        if (
+          requestId === reportRequestRef.current
+        ) {
+          console.error(
+            "LOAD ADMIN FULL REPORT ERROR:",
+            e
+          );
+
+          setMessage(
+            e.message || "Unable to load report."
+          );
+
+          setReport(null);
+        }
+      } finally {
+        if (
+          requestId === reportRequestRef.current
+        ) {
+          setLoadingReport(false);
+        }
+      }
+    },
+    [
+      selectedShiftId,
+      selectedShopId,
+      fetchJson,
+    ]
+  );
+
   useEffect(() => {
-    loadReport();
+    void loadReport();
   }, [loadReport]);
 
   // ==================================================
@@ -871,165 +1337,101 @@ export default function AdminReportsPanel({
   // ==================================================
 
   return (
-    <section style={pageStyle}>
-      <div style={titleBarStyle}>
+    <section style={styles.page}>
+      <div style={styles.title}>
         VIEW REPORTS
       </div>
 
-      <div style={filterWrapStyle}>
-        <FilterField
-          label="SHOP"
-        >
+      <div style={styles.filters}>
+        <FilterField label="SHOP">
           <select
-            value={
-              selectedShopId
+            style={styles.select}
+            value={selectedShopId}
+            disabled={loadingShops}
+            onChange={(e) =>
+              setSelectedShopId(e.target.value)
             }
-            disabled={
-              loadingShops
-            }
-            onChange={(
-              event
-            ) =>
-              setSelectedShopId(
-                event.target
-                  .value
-              )
-            }
-            style={selectStyle}
           >
-            {shops.length ===
-              0 && (
+            {!shops.length && (
               <option value="">
                 No shops available
               </option>
             )}
 
-            {shops.map(
-              (shop) => (
-                <option
-                  key={
-                    shop.id
-                  }
-                  value={
-                    shop.id
-                  }
-                >
-                  {shop.shop_name}
-                  {" ("}
-                  {shop.shop_type}
-                  {")"}
-                  {!shop.is_active
-                    ? " - INACTIVE"
-                    : ""}
-                </option>
-              )
-            )}
+            {shops.map((s) => (
+              <option
+                key={s.id}
+                value={s.id}
+              >
+                {s.shop_name} ({s.shop_type})
+                {!s.is_active
+                  ? " - INACTIVE"
+                  : ""}
+              </option>
+            ))}
           </select>
         </FilterField>
 
-        <FilterField
-          label="BUSINESS DATE"
-        >
+        <FilterField label="BUSINESS DATE">
           <select
-            value={
-              selectedBusinessDate
+            style={styles.select}
+            value={selectedBusinessDate}
+            disabled={loadingShifts}
+            onChange={(e) =>
+              setSelectedBusinessDate(e.target.value)
             }
-            disabled={
-              loadingShifts
-            }
-            onChange={(
-              event
-            ) =>
-              setSelectedBusinessDate(
-                event.target
-                  .value
-              )
-            }
-            style={selectStyle}
           >
             <option value="ALL">
               ALL DATES
             </option>
 
-            {businessDates.map(
-              (date) => (
-                <option
-                  key={
-                    date
-                  }
-                  value={
-                    date
-                  }
-                >
-                  {formatBusinessDate(
-                    date
-                  )}
-                </option>
-              )
-            )}
+            {businessDates.map((d) => (
+              <option
+                key={d}
+                value={d}
+              >
+                {formatBusinessDate(d)}
+              </option>
+            ))}
           </select>
         </FilterField>
 
-        <FilterField
-          label="CASHIER"
-        >
+        <FilterField label="CASHIER">
           <select
-            value={
-              selectedCashier
-            }
+            style={styles.select}
+            value={selectedCashier}
             disabled={
-              loadingShifts
+              loadingShifts || loadingRota
             }
-            onChange={(
-              event
-            ) =>
-              setSelectedCashier(
-                event.target
-                  .value
-              )
+            onChange={(e) =>
+              setSelectedCashier(e.target.value)
             }
-            style={selectStyle}
           >
             <option value="ALL">
-              ALL CASHIERS
+              {loadingRota
+                ? "LOADING DUTY ROTA..."
+                : "ALL CASHIERS"}
             </option>
 
-            {cashiers.map(
-              (cashier) => (
-                <option
-                  key={
-                    cashier
-                  }
-                  value={
-                    cashier
-                  }
-                >
-                  {cashier}
-                </option>
-              )
-            )}
+            {cashiers.map((n) => (
+              <option
+                key={n}
+                value={n}
+              >
+                {n}
+              </option>
+            ))}
           </select>
         </FilterField>
 
-        <FilterField
-          label="STATUS"
-        >
+        <FilterField label="STATUS">
           <select
-            value={
-              selectedStatus
+            style={styles.select}
+            value={selectedStatus}
+            disabled={loadingShifts}
+            onChange={(e) =>
+              setSelectedStatus(e.target.value)
             }
-            disabled={
-              loadingShifts
-            }
-            onChange={(
-              event
-            ) =>
-              setSelectedStatus(
-                event.target
-                  .value
-              )
-            }
-            style={selectStyle}
           >
             <option value="ALL">
               ALL STATUS
@@ -1045,78 +1447,52 @@ export default function AdminReportsPanel({
           </select>
         </FilterField>
 
-        <FilterField
-          label="SHIFT"
-        >
+        <FilterField label="SHIFT">
           <select
-            value={
-              selectedShiftId
-            }
+            style={styles.select}
+            value={selectedShiftId}
             disabled={
               loadingShifts ||
-              filteredShifts.length ===
-                0
+              !filteredShifts.length
             }
-            onChange={(
-              event
-            ) =>
-              setSelectedShiftId(
-                event.target
-                  .value
-              )
+            onChange={(e) =>
+              setSelectedShiftId(e.target.value)
             }
-            style={selectStyle}
           >
-            {filteredShifts.length ===
-              0 && (
+            {!filteredShifts.length && (
               <option value="">
                 No matching shifts
               </option>
             )}
 
-            {filteredShifts.map(
-              (shift) => (
-                <option
-                  key={
-                    shift.id
-                  }
-                  value={
-                    shift.id
-                  }
-                >
-                  {formatBusinessDate(
-                    shift.business_date
-                  )}
-                  {" | "}
-                  {shift.shift_name ||
-                    "SHIFT"}
-                  {" | "}
-                  {shift.cashier_name ||
-                    "Cashier"}
-                  {" | "}
-                  {shift.status ||
-                    "-"}
-                  {" | "}
-                  {formatTime(
-                    shift.opened_at
-                  )}
-                </option>
-              )
-            )}
+            {filteredShifts.map((s) => (
+              <option
+                key={s.id}
+                value={s.id}
+              >
+                {formatBusinessDate(
+                  s.business_date
+                )}
+                {" | "}
+                {s.shift_name || "SHIFT"}
+                {" | "}
+                {cashierForShift(s)}
+                {" | "}
+                {s.status || "-"}
+                {" | "}
+                {formatTime(s.opened_at)}
+              </option>
+            ))}
           </select>
         </FilterField>
 
         <button
           type="button"
-          onClick={
-            loadReport
-          }
+          style={styles.refresh}
+          onClick={loadReport}
           disabled={
             loadingReport ||
             !selectedShiftId
-          }
-          style={
-            refreshButtonStyle
           }
         >
           {loadingReport
@@ -1125,27 +1501,25 @@ export default function AdminReportsPanel({
         </button>
       </div>
 
-      <div style={resultCountStyle}>
+      <div style={styles.count}>
         MATCHING SHIFTS:{" "}
         <strong>
-          {
-            filteredShifts.length
-          }
+          {filteredShifts.length}
         </strong>
+
+        {loadingRota
+          ? " · Loading Duty Rota names..."
+          : ""}
       </div>
 
       {message && (
-        <div style={errorStyle}>
+        <div style={styles.error}>
           {message}
         </div>
       )}
 
       {loadingReport && (
-        <div
-          style={
-            loadingStyle
-          }
-        >
+        <div style={styles.empty}>
           Loading report...
         </div>
       )}
@@ -1153,32 +1527,26 @@ export default function AdminReportsPanel({
       {!loadingReport &&
         !report &&
         !message && (
-          <div
-            style={
-              emptyStyle
-            }
-          >
+          <div style={styles.empty}>
             No report matches the selected filters.
           </div>
         )}
 
-      {!loadingReport &&
-        report && (
-          <ReportDisplay
-            shop={
-              selectedShop
-            }
-            report={
-              report
-            }
-          />
-        )}
+      {!loadingReport && report && (
+        <ReportDisplay
+          shop={selectedShop}
+          report={report}
+          cashierName={cashierForShift(
+            report.shift
+          )}
+        />
+      )}
     </section>
   );
 }
 
 // ==================================================
-// FILTER FIELD
+// DISPLAY COMPONENTS
 // ==================================================
 
 function FilterField({
@@ -1186,23 +1554,144 @@ function FilterField({
   children,
 }) {
   return (
-    <div style={filterFieldStyle}>
-      <label style={labelStyle}>
+    <label
+      style={{
+        minWidth: 0,
+        display: "block",
+      }}
+    >
+      <span style={styles.label}>
         {label}
-      </label>
+      </span>
 
+      {children}
+    </label>
+  );
+}
+
+function InfoCard({
+  label,
+  value,
+}) {
+  return (
+    <div style={styles.info}>
+      <small>{label}</small>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function InfoLine({
+  label,
+  value,
+}) {
+  return (
+    <div style={styles.infoLine}>
+      <small>{label}</small>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  background,
+}) {
+  return (
+    <div
+      style={{
+        ...styles.summaryCard,
+        borderTop:
+          `5px solid ${background}`,
+      }}
+    >
+      <div
+        style={{
+          ...styles.summaryTitle,
+          backgroundColor: background,
+        }}
+      >
+        {label}
+      </div>
+
+      <strong style={styles.summaryValue}>
+        KES {money(value)}
+      </strong>
+    </div>
+  );
+}
+
+function SectionTitle({
+  children,
+  background,
+}) {
+  return (
+    <div
+      style={{
+        ...styles.sectionTitle,
+        backgroundColor: background,
+      }}
+    >
       {children}
     </div>
   );
 }
 
+function MoneyRow({
+  label,
+  value,
+  strong = false,
+}) {
+  return (
+    <div
+      style={{
+        ...styles.moneyRow,
+        ...(strong
+          ? styles.strongRow
+          : {}),
+      }}
+    >
+      <span>{label}</span>
+
+      <strong>
+        KES {money(value)}
+      </strong>
+    </div>
+  );
+}
+
+function MoneySummary({
+  label,
+  value,
+  strong = false,
+}) {
+  return (
+    <div
+      style={{
+        ...styles.moneySummary,
+        ...(strong
+          ? styles.strongSummary
+          : {}),
+      }}
+    >
+      <small>{label}</small>
+
+      <strong>
+        KES {money(value)}
+      </strong>
+    </div>
+  );
+}
+
 // ==================================================
-// REPORT DISPLAY
+// FULL REPORT DISPLAY
 // ==================================================
 
 function ReportDisplay({
   shop,
   report,
+  cashierName,
 }) {
   const {
     shift,
@@ -1216,33 +1705,21 @@ function ReportDisplay({
     pendingSavings,
   } = report;
 
-  const totalSales =
-    roundMoney(
-      Number(
-        shift.opening_balance ||
-          0
-      ) +
-        Number(
-          shift.total_added_float ||
-            0
-        ) +
-        Number(
-          shift.total_output ||
-            0
-        )
-    );
+  // Financial calculations unchanged.
+  const totalSales = roundMoney(
+    Number(shift.opening_balance || 0) +
+      Number(shift.total_added_float || 0) +
+      Number(shift.total_output || 0)
+  );
 
   return (
-    <div style={reportStyle}>
-      <div style={reportHeaderStyle}>
-        <div style={shopCardStyle}>
-          <strong
-            style={
-              bigTextStyle
-            }
-          >
-            {shop?.shop_name ||
-              "Shop"}
+    <div style={styles.report}>
+      {/* REPORT HEADER */}
+
+      <div style={styles.reportHeader}>
+        <div style={styles.shopCard}>
+          <strong style={{ fontSize: 20 }}>
+            {shop?.shop_name || "Shop"}
           </strong>
 
           <span>
@@ -1250,17 +1727,13 @@ function ReportDisplay({
           </span>
 
           <small>
-            {shop?.shop_type ||
-              ""}
+            {shop?.shop_type || ""}
           </small>
         </div>
 
         <InfoCard
           label="CASHIER"
-          value={
-            shift.cashier_name ||
-            "-"
-          }
+          value={cashierName}
         />
 
         <InfoCard
@@ -1272,22 +1745,18 @@ function ReportDisplay({
 
         <InfoCard
           label="SHIFT"
-          value={
-            shift.shift_name ||
-            "-"
-          }
+          value={shift.shift_name || "-"}
         />
 
         <InfoCard
           label="STATUS"
-          value={
-            shift.status ||
-            "-"
-          }
+          value={shift.status || "-"}
         />
       </div>
 
-      <div style={timeGridStyle}>
+      {/* TIMES */}
+
+      <div style={styles.timeGrid}>
         <InfoLine
           label="Opened"
           value={formatDateTime(
@@ -1326,62 +1795,50 @@ function ReportDisplay({
       </div>
 
       {shift.admin_manual_totals && (
-        <div
-          style={
-            manualBannerStyle
-          }
-        >
+        <div style={styles.manual}>
           This shift contains Admin manual totals.
         </div>
       )}
 
-      <div style={summaryGridStyle}>
+      {/* SUMMARY */}
+
+      <div style={styles.summaryGrid}>
         <SummaryCard
           label="BALANCE B/F"
-          value={
-            shift.opening_balance
-          }
+          value={shift.opening_balance}
           background="#0e7490"
         />
 
         <SummaryCard
           label="TOTAL SALES"
-          value={
-            totalSales
-          }
+          value={totalSales}
           background="#0891b2"
         />
 
         <SummaryCard
           label="TOTAL EXPENSES"
-          value={
-            shift.total_expenses
-          }
+          value={shift.total_expenses}
           background="#be123c"
         />
 
         <SummaryCard
           label="CLOSING BALANCE"
-          value={
-            shift.closing_balance
-          }
+          value={shift.closing_balance}
           background="#0369a1"
         />
       </div>
 
-      <div style={twoColumnStyle}>
-        <div style={sectionStyle}>
-          <SectionTitle
-            background="#0891b2"
-          >
+      {/* INCOME AND PLATFORMS */}
+
+      <div style={styles.twoColumn}>
+        <div style={styles.section}>
+          <SectionTitle background="#0891b2">
             INCOME STATEMENT
           </SectionTitle>
 
           <MoneyRow
             label="Balance B/F"
-            value={
-              shift.opening_balance
-            }
+            value={shift.opening_balance}
           />
 
           {Array.from(
@@ -1393,9 +1850,7 @@ function ReportDisplay({
                   index + 1
                 } From Company`}
                 value={
-                  companyFloats[
-                    index
-                  ]?.amount || 0
+                  companyFloats[index]?.amount || 0
                 }
               />
             )
@@ -1410,9 +1865,7 @@ function ReportDisplay({
                   index + 1
                 } From M-Shwari`}
                 value={
-                  mshwariFloats[
-                    index
-                  ]?.amount || 0
+                  mshwariFloats[index]?.amount || 0
                 }
               />
             )
@@ -1422,68 +1875,56 @@ function ReportDisplay({
             label="TOTAL ADDED"
             value={
               Number(
-                shift.opening_balance ||
-                  0
+                shift.opening_balance || 0
               ) +
               Number(
-                shift.total_added_float ||
-                  0
+                shift.total_added_float || 0
               )
             }
             strong
           />
         </div>
 
-        <div style={sectionStyle}>
-          <SectionTitle
-            background="#15803d"
-          >
+        {/* PLATFORM SALES — ALIGNED COLUMNS */}
+
+        <div style={styles.section}>
+          <SectionTitle background="#15803d">
             PLATFORM SALES
           </SectionTitle>
 
-          <div
-            style={
-              platformHeaderStyle
-            }
-          >
-            <div>
-              PLATFORM
-            </div>
-
-            <div>
-              OPENING
-            </div>
-
-            <div>
-              CLOSING
-            </div>
-
-            <div>
-              SALES
-            </div>
-          </div>
-
-          {platformRows.map(
-            (platform) => (
+          <div style={styles.platformScroll}>
+            <div style={styles.platformHeader}>
               <div
-                key={
-                  platform.id
-                }
-                style={
-                  platformRowStyle
-                }
+                style={{
+                  textAlign: "left",
+                }}
               >
-                <strong>
-                  {
-                    platform.platform_name
-                  }
+                PLATFORM
+              </div>
+
+              <div>OPENING</div>
+              <div>CLOSING</div>
+              <div>SALES</div>
+            </div>
+
+            {platformRows.map((platform) => (
+              <div
+                key={platform.id}
+                style={styles.platformRow}
+              >
+                <strong
+                  style={{
+                    textAlign: "left",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {platform.platform_name}
                 </strong>
 
                 <span>
                   {platform.opening
                     ? money(
-                        platform
-                          .opening
+                        platform.opening
                           .reading_value
                       )
                     : "-"}
@@ -1492,120 +1933,91 @@ function ReportDisplay({
                 <span>
                   {platform.closing
                     ? money(
-                        platform
-                          .closing
+                        platform.closing
                           .reading_value
                       )
                     : "-"}
                 </span>
 
                 <strong>
-                  {platform.output ===
-                  null
+                  {platform.output === null
                     ? "-"
                     : money(
                         platform.output
                       )}
                 </strong>
               </div>
-            )
-          )}
+            ))}
 
-          <MoneyRow
-            label="TOTAL PLATFORM OUTPUT"
-            value={
-              shift.total_output
-            }
-            strong
-          />
+            <div style={styles.platformTotal}>
+              <strong
+                style={{
+                  gridColumn: "1 / 4",
+                  textAlign: "left",
+                }}
+              >
+                TOTAL PLATFORM OUTPUT
+              </strong>
+
+              <strong>
+                {money(shift.total_output)}
+              </strong>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div style={sectionStyle}>
-        <SectionTitle
-          background="#be123c"
-        >
+      {/* EXPENSES */}
+
+      <div style={styles.section}>
+        <SectionTitle background="#be123c">
           EXPENSES
         </SectionTitle>
 
-        <div
-          style={
-            expenseHeaderStyle
-          }
-        >
-          <div>
-            NO.
-          </div>
-
-          <div>
-            DESCRIPTION
-          </div>
-
-          <div>
-            AMOUNT (KES)
-          </div>
+        <div style={styles.expenseGridHeader}>
+          <div>NO.</div>
+          <div>DESCRIPTION</div>
+          <div>AMOUNT (KES)</div>
         </div>
 
-        {expenses.length ===
-          0 && (
-          <div
-            style={
-              emptyRowStyle
-            }
-          >
+        {!expenses.length && (
+          <div style={styles.emptyRow}>
             No expenses recorded.
           </div>
         )}
 
-        {expenses.map(
-          (expense, index) => (
-            <div
-              key={
-                expense.id
-              }
-              style={
-                expenseRowStyle
-              }
-            >
-              <span>
-                {index + 1}
-              </span>
+        {expenses.map((expense, i) => (
+          <div
+            key={expense.id}
+            style={styles.expenseGridRow}
+          >
+            <span>{i + 1}</span>
 
-              <span>
-                {expense.description ||
-                  "-"}
-              </span>
+            <span>
+              {expense.description || "-"}
+            </span>
 
-              <strong>
-                {money(
-                  expense.amount
-                )}
-              </strong>
-            </div>
-          )
-        )}
+            <strong>
+              {money(expense.amount)}
+            </strong>
+          </div>
+        ))}
 
         <MoneyRow
           label="TOTAL EXPENSES"
-          value={
-            shift.total_expenses
-          }
+          value={shift.total_expenses}
           strong
         />
       </div>
 
-      <div style={sectionStyle}>
-        <SectionTitle
-          background="#0e7490"
-        >
+      {/* SAVINGS / BANKING */}
+
+      <div style={styles.section}>
+        <SectionTitle background="#0e7490">
           SAVINGS / BANKING
         </SectionTitle>
 
-        <div
-          style={
-            savingsSummaryStyle
-          }
-        >
+        <div style={styles.savingsSummary}>
           <InfoLine
             label="Total Savings"
             value={`KES ${money(
@@ -1628,324 +2040,117 @@ function ReportDisplay({
           />
         </div>
 
-        <div
-          style={
-            savingsHeaderStyle
-          }
-        >
-          <div>
-            DESCRIPTION
-          </div>
-
-          <div>
-            AMOUNT
-          </div>
-
-          <div>
-            STATUS
-          </div>
+        <div style={styles.savingsHeader}>
+          <div>DESCRIPTION</div>
+          <div>AMOUNT</div>
+          <div>STATUS</div>
         </div>
 
-        {savings.length ===
-          0 && (
-          <div
-            style={
-              emptyRowStyle
-            }
-          >
+        {!savings.length && (
+          <div style={styles.emptyRow}>
             No Savings / Banking records.
           </div>
         )}
 
-        {savings.map(
-          (saving) => {
-            const paid =
-              String(
-                saving.payment_status ||
-                  ""
-              ).toUpperCase() ===
-              "PAID";
+        {savings.map((saving) => {
+          const paid =
+            upper(saving.payment_status) ===
+            "PAID";
 
-            return (
-              <div
-                key={
-                  saving.id
-                }
+          return (
+            <div
+              key={saving.id}
+              style={styles.savingsRow}
+            >
+              <span>
+                {saving.description || "-"}
+              </span>
+
+              <strong>
+                KES {money(saving.amount)}
+              </strong>
+
+              <span
                 style={
-                  savingsRowStyle
+                  paid
+                    ? styles.paid
+                    : styles.pending
                 }
               >
-                <span>
-                  {saving.description ||
-                    "-"}
-                </span>
+                {paid
+                  ? "PAID"
+                  : "PENDING"}
+              </span>
+            </div>
+          );
+        })}
 
-                <strong>
-                  KES{" "}
-                  {money(
-                    saving.amount
-                  )}
-                </strong>
-
-                <span
-                  style={
-                    paid
-                      ? paidBadgeStyle
-                      : pendingBadgeStyle
-                  }
-                >
-                  {paid
-                    ? "PAID"
-                    : "PENDING"}
-                </span>
-              </div>
-            );
-          }
-        )}
-
-        <div
-          style={
-            savingsNoticeStyle
-          }
-        >
-          Savings / Banking does not reduce Closing Balance.
+        <div style={styles.savingsNotice}>
+          Savings / Banking does not reduce
+          Closing Balance.
         </div>
       </div>
 
-      <div style={finalTotalsStyle}>
+      {/* FINAL TOTALS */}
+
+      <div style={styles.finalTotals}>
         <MoneySummary
           label="BALANCE B/F"
-          value={
-            shift.opening_balance
-          }
+          value={shift.opening_balance}
         />
 
         <MoneySummary
           label="ADDED FLOAT"
-          value={
-            shift.total_added_float
-          }
+          value={shift.total_added_float}
         />
 
         <MoneySummary
           label="PLATFORM OUTPUT"
-          value={
-            shift.total_output
-          }
+          value={shift.total_output}
         />
 
         <MoneySummary
           label="TOTAL SALES"
-          value={
-            totalSales
-          }
+          value={totalSales}
         />
 
         <MoneySummary
           label="EXPENSES"
-          value={
-            shift.total_expenses
-          }
+          value={shift.total_expenses}
         />
 
         <MoneySummary
           label="CLOSING BALANCE"
-          value={
-            shift.closing_balance
-          }
+          value={shift.closing_balance}
           strong
         />
       </div>
 
       {shift.admin_override_note && (
-        <div
-          style={
-            adminNoteStyle
-          }
-        >
-          <strong>
-            Admin Note:
-          </strong>{" "}
-          {
-            shift.admin_override_note
-          }
+        <div style={styles.manual}>
+          <strong>Admin Note: </strong>
+          {shift.admin_override_note}
         </div>
       )}
 
-      <div
-        style={
-          readOnlyNoticeStyle
-        }
-      >
-        READ ONLY REPORT — use Shift Corrections for any Admin changes.
+      <div style={styles.readOnly}>
+        READ ONLY REPORT — use Shift Corrections
+        for any Admin changes.
       </div>
     </div>
   );
 }
 
 // ==================================================
-// SMALL COMPONENTS
+// MONEY HELPERS
 // ==================================================
-
-function InfoCard({
-  label,
-  value,
-}) {
-  return (
-    <div style={infoCardStyle}>
-      <small>
-        {label}
-      </small>
-
-      <strong>
-        {value}
-      </strong>
-    </div>
-  );
-}
-
-function InfoLine({
-  label,
-  value,
-}) {
-  return (
-    <div style={infoLineStyle}>
-      <small>
-        {label}
-      </small>
-
-      <strong>
-        {value}
-      </strong>
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  background,
-}) {
-  return (
-    <div
-      style={{
-        ...summaryCardStyle,
-        borderTop:
-          `5px solid ${background}`,
-      }}
-    >
-      <div
-        style={{
-          ...summaryTitleStyle,
-          backgroundColor:
-            background,
-        }}
-      >
-        {label}
-      </div>
-
-      <strong
-        style={
-          summaryValueStyle
-        }
-      >
-        KES {money(value)}
-      </strong>
-    </div>
-  );
-}
-
-function SectionTitle({
-  children,
-  background,
-}) {
-  return (
-    <div
-      style={{
-        ...sectionTitleStyle,
-        backgroundColor:
-          background,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function MoneyRow({
-  label,
-  value,
-  strong = false,
-}) {
-  return (
-    <div
-      style={{
-        ...moneyRowStyle,
-        ...(strong
-          ? strongMoneyRowStyle
-          : {}),
-      }}
-    >
-      <span>
-        {label}
-      </span>
-
-      <strong>
-        KES {money(value)}
-      </strong>
-    </div>
-  );
-}
-
-function MoneySummary({
-  label,
-  value,
-  strong = false,
-}) {
-  return (
-    <div
-      style={{
-        ...moneySummaryStyle,
-        ...(strong
-          ? strongSummaryStyle
-          : {}),
-      }}
-    >
-      <small>
-        {label}
-      </small>
-
-      <strong>
-        KES {money(value)}
-      </strong>
-    </div>
-  );
-}
-
-// ==================================================
-// HELPERS
-// ==================================================
-
-async function safeJson(
-  response
-) {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
 
 function money(value) {
-  return Number(
-    value || 0
-  ).toLocaleString(
+  return Number(value || 0).toLocaleString(
     "en-KE",
     {
-      minimumFractionDigits:
-        2,
-      maximumFractionDigits:
-        2,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }
   );
 }
@@ -1953,35 +2158,26 @@ function money(value) {
 function roundMoney(value) {
   return (
     Math.round(
-      (Number(value) +
-        Number.EPSILON) *
-        100
+      (Number(value) + Number.EPSILON) * 100
     ) / 100
   );
 }
 
-function formatBusinessDate(
-  value
-) {
-  if (!value) {
-    return "-";
-  }
+// ==================================================
+// TIME AND DATE HELPERS
+// ==================================================
+
+function formatBusinessDate(value) {
+  if (!value) return "-";
 
   try {
     return new Intl.DateTimeFormat(
       "en-GB",
       {
-        timeZone:
-          "Africa/Nairobi",
-
-        day:
-          "2-digit",
-
-        month:
-          "short",
-
-        year:
-          "numeric",
+        timeZone: "Africa/Nairobi",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
       }
     ).format(
       new Date(
@@ -1989,868 +2185,439 @@ function formatBusinessDate(
       )
     );
   } catch {
-    return value;
+    return String(value);
   }
 }
 
 function formatDateTime(value) {
-  if (!value) {
-    return "-";
-  }
+  if (!value) return "-";
 
   try {
     return new Intl.DateTimeFormat(
       "en-GB",
       {
-        timeZone:
-          "Africa/Nairobi",
-
-        day:
-          "2-digit",
-
-        month:
-          "short",
-
-        year:
-          "numeric",
-
-        hour:
-          "2-digit",
-
-        minute:
-          "2-digit",
+        timeZone: "Africa/Nairobi",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       }
-    ).format(
-      new Date(value)
-    );
+    ).format(new Date(value));
   } catch {
     return String(value);
   }
 }
 
 function formatTime(value) {
-  if (!value) {
-    return "-";
-  }
+  if (!value) return "-";
 
   try {
     return new Intl.DateTimeFormat(
       "en-GB",
       {
-        timeZone:
-          "Africa/Nairobi",
-
-        hour:
-          "2-digit",
-
-        minute:
-          "2-digit",
+        timeZone: "Africa/Nairobi",
+        hour: "2-digit",
+        minute: "2-digit",
       }
-    ).format(
-      new Date(value)
-    );
+    ).format(new Date(value));
   } catch {
     return "-";
   }
 }
 
-function formatStoredTime(
-  value
-) {
-  if (!value) {
-    return "-";
-  }
-
-  return String(value).slice(
-    0,
-    5
-  );
+function formatStoredTime(value) {
+  return value
+    ? String(value).slice(0, 5)
+    : "-";
 }
 
 // ==================================================
 // STYLES
 // ==================================================
 
-const pageStyle = {
-  marginTop:
-    "20px",
-
-  backgroundColor:
-    "#ffffff",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "8px",
-
-  overflow:
-    "hidden",
-};
-
-const titleBarStyle = {
-  backgroundColor:
-    "#0f172a",
-
-  color:
-    "white",
-
-  padding:
-    "12px 16px",
-
-  fontSize:
-    "15px",
-
-  fontWeight:
-    "bold",
-};
-
-const filterWrapStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.25fr 1fr 1fr 0.8fr 2fr 0.9fr",
-
-  gap:
-    "8px",
-
-  alignItems:
-    "end",
-
-  padding:
-    "15px",
-
-  backgroundColor:
-    "#f8fafc",
-
-  borderBottom:
-    "1px solid #e2e8f0",
-};
-
-const filterFieldStyle = {
-  minWidth:
-    0,
-};
-
-const labelStyle = {
-  display:
-    "block",
-
-  marginBottom:
-    "5px",
-
-  fontSize:
-    "9px",
-
-  fontWeight:
-    "bold",
-
-  color:
-    "#334155",
-};
-
-const selectStyle = {
-  width:
-    "100%",
-
-  boxSizing:
-    "border-box",
-
-  padding:
-    "9px",
-
-  border:
-    "1px solid #94a3b8",
-
-  borderRadius:
-    "5px",
-
-  backgroundColor:
-    "white",
-
-  fontSize:
-    "11px",
-};
-
-const refreshButtonStyle = {
-  padding:
-    "10px",
-
-  border:
-    "none",
-
-  borderRadius:
-    "5px",
-
-  backgroundColor:
-    "#0369a1",
-
-  color:
-    "white",
-
-  fontWeight:
-    "bold",
-
-  cursor:
-    "pointer",
-};
-
-const resultCountStyle = {
-  padding:
-    "7px 15px",
-
-  backgroundColor:
-    "#e0f2fe",
-
-  color:
-    "#075985",
-
-  fontSize:
-    "10px",
-
-  borderBottom:
-    "1px solid #bae6fd",
-};
-
-const reportStyle = {
-  padding:
-    "15px",
-};
-
-const reportHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.5fr 1fr 1fr 1fr 0.8fr",
-
-  gap:
-    "8px",
-
-  marginBottom:
-    "10px",
-};
-
-const shopCardStyle = {
-  backgroundColor:
-    "#0e7490",
-
-  color:
-    "white",
-
-  minHeight:
-    "72px",
-
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  alignItems:
-    "center",
-
-  justifyContent:
-    "center",
-
-  borderRadius:
-    "5px",
-
-  textAlign:
-    "center",
-};
-
-const bigTextStyle = {
-  fontSize:
-    "20px",
-};
-
-const infoCardStyle = {
-  minHeight:
-    "72px",
-
-  padding:
-    "8px",
-
-  backgroundColor:
-    "#f1f5f9",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "5px",
-
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  justifyContent:
-    "center",
-
-  alignItems:
-    "center",
-
-  textAlign:
-    "center",
-
-  gap:
-    "5px",
-};
-
-const timeGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(4,1fr)",
-
-  gap:
-    "8px",
-
-  marginBottom:
-    "12px",
-};
-
-const infoLineStyle = {
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  gap:
-    "3px",
-
-  padding:
-    "8px",
-
-  border:
-    "1px solid #e2e8f0",
-
-  backgroundColor:
-    "#f8fafc",
-
-  borderRadius:
-    "4px",
-};
-
-const manualBannerStyle = {
-  padding:
-    "9px",
-
-  marginBottom:
-    "12px",
-
-  backgroundColor:
-    "#fef3c7",
-
-  color:
-    "#92400e",
-
-  border:
-    "1px solid #fde68a",
-
-  borderRadius:
-    "5px",
-
-  textAlign:
-    "center",
-
-  fontWeight:
-    "bold",
-};
-
-const summaryGridStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(4,1fr)",
-
-  gap:
-    "8px",
-
-  marginBottom:
-    "14px",
-};
-
-const summaryCardStyle = {
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "5px",
-
-  overflow:
-    "hidden",
-
-  textAlign:
-    "center",
-
-  backgroundColor:
-    "white",
-};
-
-const summaryTitleStyle = {
-  color:
-    "white",
-
-  padding:
-    "7px",
-
-  fontSize:
-    "10px",
-
-  fontWeight:
-    "bold",
-};
-
-const summaryValueStyle = {
-  display:
-    "block",
-
-  padding:
-    "10px",
-
-  fontSize:
-    "16px",
-};
-
-const twoColumnStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1fr 1.3fr",
-
-  gap:
-    "12px",
-
-  marginBottom:
-    "12px",
-};
-
-const sectionStyle = {
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "5px",
-
-  overflow:
-    "hidden",
-
-  marginBottom:
-    "12px",
-};
-
-const sectionTitleStyle = {
-  color:
-    "white",
-
-  padding:
-    "8px 10px",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "11px",
-};
-
-const moneyRowStyle = {
-  display:
-    "flex",
-
-  justifyContent:
-    "space-between",
-
-  gap:
-    "10px",
-
-  padding:
-    "8px 10px",
-
-  borderTop:
-    "1px solid #e2e8f0",
-
-  fontSize:
-    "10px",
-};
-
-const strongMoneyRowStyle = {
-  backgroundColor:
-    "#f1f5f9",
-
-  fontWeight:
-    "bold",
-};
-
-const platformHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.2fr 1fr 1fr 1fr",
-
-  gap:
-    "8px",
-
-  padding:
-    "7px",
-
-  backgroundColor:
-    "#dcfce7",
-
-  color:
-    "#166534",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "8px",
-
-  textAlign:
-    "center",
-};
-
-const platformRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "1.2fr 1fr 1fr 1fr",
-
-  gap:
-    "8px",
-
-  padding:
-    "8px",
-
-  borderTop:
-    "1px solid #e2e8f0",
-
-  fontSize:
-    "10px",
-
-  textAlign:
-    "right",
-};
-
-const expenseHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "0.4fr 3fr 1fr",
-
-  gap:
-    "8px",
-
-  padding:
-    "7px",
-
-  backgroundColor:
-    "#ffe4e6",
-
-  color:
-    "#9f1239",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "8px",
-};
-
-const expenseRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "0.4fr 3fr 1fr",
-
-  gap:
-    "8px",
-
-  padding:
-    "8px",
-
-  borderTop:
-    "1px solid #e2e8f0",
-
-  fontSize:
-    "10px",
-};
-
-const savingsSummaryStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(3,1fr)",
-
-  gap:
-    "8px",
-
-  padding:
-    "10px",
-};
-
-const savingsHeaderStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "2fr 1fr 1fr",
-
-  gap:
-    "8px",
-
-  padding:
-    "7px",
-
-  backgroundColor:
-    "#cffafe",
-
-  color:
-    "#155e75",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "8px",
-};
-
-const savingsRowStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "2fr 1fr 1fr",
-
-  gap:
-    "8px",
-
-  alignItems:
-    "center",
-
-  padding:
-    "8px",
-
-  borderTop:
-    "1px solid #e2e8f0",
-
-  fontSize:
-    "10px",
-};
-
-const paidBadgeStyle = {
-  padding:
-    "5px",
-
-  backgroundColor:
-    "#dcfce7",
-
-  color:
-    "#166534",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "center",
-
-  fontWeight:
-    "bold",
-};
-
-const pendingBadgeStyle = {
-  padding:
-    "5px",
-
-  backgroundColor:
-    "#fef3c7",
-
-  color:
-    "#92400e",
-
-  borderRadius:
-    "4px",
-
-  textAlign:
-    "center",
-
-  fontWeight:
-    "bold",
-};
-
-const savingsNoticeStyle = {
-  padding:
-    "7px",
-
-  backgroundColor:
-    "#ecfeff",
-
-  color:
-    "#155e75",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "8px",
-};
-
-const finalTotalsStyle = {
-  display:
-    "grid",
-
-  gridTemplateColumns:
-    "repeat(6,1fr)",
-
-  gap:
-    "7px",
-
-  marginTop:
-    "12px",
-};
-
-const moneySummaryStyle = {
-  padding:
-    "9px",
-
-  border:
-    "1px solid #cbd5e1",
-
-  borderRadius:
-    "5px",
-
-  backgroundColor:
-    "#f8fafc",
-
-  display:
-    "flex",
-
-  flexDirection:
-    "column",
-
-  gap:
-    "4px",
-
-  textAlign:
-    "center",
-
-  fontSize:
-    "9px",
-};
-
-const strongSummaryStyle = {
-  backgroundColor:
-    "#dcfce7",
-
-  color:
-    "#166534",
-
-  border:
-    "1px solid #86efac",
-};
-
-const adminNoteStyle = {
-  marginTop:
-    "12px",
-
-  padding:
-    "9px",
-
-  backgroundColor:
-    "#fef3c7",
-
-  color:
-    "#92400e",
-
-  borderRadius:
-    "5px",
-};
-
-const readOnlyNoticeStyle = {
-  marginTop:
-    "12px",
-
-  padding:
-    "9px",
-
-  backgroundColor:
-    "#e0e7ff",
-
-  color:
-    "#3730a3",
-
-  textAlign:
-    "center",
-
-  fontWeight:
-    "bold",
-
-  fontSize:
-    "9px",
-};
-
-const emptyRowStyle = {
-  padding:
-    "12px",
-
-  textAlign:
-    "center",
-
-  color:
-    "#64748b",
-
-  backgroundColor:
-    "#f8fafc",
-};
-
-const loadingStyle = {
-  padding:
-    "20px",
-
-  textAlign:
-    "center",
-
-  color:
-    "#64748b",
-};
-
-const emptyStyle = {
-  padding:
-    "25px",
-
-  textAlign:
-    "center",
-
-  color:
-    "#64748b",
-};
-
-const errorStyle = {
-  margin:
-    "12px",
-
-  padding:
-    "10px",
-
-  backgroundColor:
-    "#fef2f2",
-
-  color:
-    "#991b1b",
-
-  borderRadius:
-    "5px",
+const styles = {
+  page: {
+    marginTop: 20,
+    backgroundColor: "#fff",
+    border: "1px solid #cbd5e1",
+    borderRadius: 8,
+    overflow: "hidden",
+    color: NAVY,
+  },
+
+  title: {
+    backgroundColor: NAVY,
+    color: "white",
+    padding: "12px 16px",
+    fontSize: 15,
+    fontWeight: "bold",
+  },
+
+  filters: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(min(100%,170px),1fr))",
+    gap: 8,
+    alignItems: "end",
+    padding: 15,
+    backgroundColor: "#f8fafc",
+    borderBottom: "1px solid #e2e8f0",
+  },
+
+  label: {
+    display: "block",
+    marginBottom: 5,
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#334155",
+  },
+
+  select: {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: 9,
+    border: "1px solid #94a3b8",
+    borderRadius: 5,
+    backgroundColor: "white",
+    fontSize: 11,
+  },
+
+  refresh: {
+    padding: 10,
+    border: "none",
+    borderRadius: 5,
+    backgroundColor: "#0369a1",
+    color: "white",
+    fontWeight: "bold",
+    cursor: "pointer",
+  },
+
+  count: {
+    padding: "7px 15px",
+    backgroundColor: "#e0f2fe",
+    color: "#075985",
+    fontSize: 10,
+    borderBottom: "1px solid #bae6fd",
+  },
+
+  report: {
+    padding: 15,
+  },
+
+  reportHeader: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(min(100%,150px),1fr))",
+    gap: 8,
+    marginBottom: 10,
+  },
+
+  shopCard: {
+    backgroundColor: "#0e7490",
+    color: "white",
+    minHeight: 72,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 5,
+    textAlign: "center",
+  },
+
+  info: {
+    minHeight: 72,
+    padding: 8,
+    backgroundColor: "#f1f5f9",
+    border: "1px solid #cbd5e1",
+    borderRadius: 5,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    textAlign: "center",
+    gap: 5,
+    overflowWrap: "anywhere",
+  },
+
+  timeGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(min(100%,180px),1fr))",
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  infoLine: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+    padding: 8,
+    border: "1px solid #e2e8f0",
+    backgroundColor: "#f8fafc",
+    borderRadius: 4,
+  },
+
+  manual: {
+    padding: 9,
+    marginBottom: 12,
+    backgroundColor: "#fef3c7",
+    color: "#92400e",
+    border: "1px solid #fde68a",
+    borderRadius: 5,
+    textAlign: "center",
+    fontWeight: "bold",
+  },
+
+  summaryGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(min(100%,180px),1fr))",
+    gap: 8,
+    marginBottom: 14,
+  },
+
+  summaryCard: {
+    border: "1px solid #cbd5e1",
+    borderRadius: 5,
+    overflow: "hidden",
+    textAlign: "center",
+    backgroundColor: "white",
+  },
+
+  summaryTitle: {
+    color: "white",
+    padding: 7,
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+
+  summaryValue: {
+    display: "block",
+    padding: 10,
+    fontSize: 16,
+  },
+
+  twoColumn: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(min(100%,430px),1fr))",
+    gap: 12,
+    marginBottom: 12,
+  },
+
+  section: {
+    minWidth: 0,
+    border: "1px solid #cbd5e1",
+    borderRadius: 5,
+    overflow: "hidden",
+    marginBottom: 12,
+  },
+
+  sectionTitle: {
+    color: "white",
+    padding: "8px 10px",
+    fontWeight: "bold",
+    fontSize: 11,
+  },
+
+  moneyRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: "8px 10px",
+    borderTop: "1px solid #e2e8f0",
+    fontSize: 10,
+  },
+
+  strongRow: {
+    backgroundColor: "#f1f5f9",
+    fontWeight: "bold",
+  },
+
+  // ===============================================
+  // PLATFORM TABLE — MATCHING COLUMN WIDTHS
+  // ===============================================
+
+  platformScroll: {
+    width: "100%",
+    overflowX: "auto",
+  },
+
+  platformHeader: {
+    display: "grid",
+    gridTemplateColumns: PLATFORM_COLUMNS,
+    minWidth: 445,
+    gap: 10,
+    alignItems: "center",
+    padding: "9px 10px",
+    backgroundColor: "#dcfce7",
+    color: "#166534",
+    fontWeight: "bold",
+    fontSize: 10,
+    textAlign: "right",
+    fontVariantNumeric: "tabular-nums",
+    boxSizing: "border-box",
+  },
+
+  platformRow: {
+    display: "grid",
+    gridTemplateColumns: PLATFORM_COLUMNS,
+    minWidth: 445,
+    gap: 10,
+    alignItems: "center",
+    padding: "9px 10px",
+    borderTop: "1px solid #e2e8f0",
+    fontSize: 11,
+    textAlign: "right",
+    fontVariantNumeric: "tabular-nums",
+    boxSizing: "border-box",
+  },
+
+  platformTotal: {
+    display: "grid",
+    gridTemplateColumns: PLATFORM_COLUMNS,
+    minWidth: 445,
+    gap: 10,
+    padding: "10px",
+    backgroundColor: "#dcfce7",
+    borderTop: "1px solid #86efac",
+    color: "#166534",
+    textAlign: "right",
+    fontSize: 11,
+    boxSizing: "border-box",
+    fontVariantNumeric: "tabular-nums",
+  },
+
+  expenseGridHeader: {
+    display: "grid",
+    gridTemplateColumns: "0.4fr 3fr 1fr",
+    gap: 8,
+    padding: 7,
+    backgroundColor: "#ffe4e6",
+    color: "#9f1239",
+    fontWeight: "bold",
+    fontSize: 9,
+  },
+
+  expenseGridRow: {
+    display: "grid",
+    gridTemplateColumns: "0.4fr 3fr 1fr",
+    gap: 8,
+    padding: 8,
+    borderTop: "1px solid #e2e8f0",
+    fontSize: 10,
+  },
+
+  savingsSummary: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(3,minmax(0,1fr))",
+    gap: 8,
+    padding: 10,
+  },
+
+  savingsHeader: {
+    display: "grid",
+    gridTemplateColumns: "2fr 1fr 1fr",
+    gap: 8,
+    padding: 7,
+    backgroundColor: "#cffafe",
+    color: "#155e75",
+    fontWeight: "bold",
+    fontSize: 9,
+  },
+
+  savingsRow: {
+    display: "grid",
+    gridTemplateColumns: "2fr 1fr 1fr",
+    gap: 8,
+    alignItems: "center",
+    padding: 8,
+    borderTop: "1px solid #e2e8f0",
+    fontSize: 10,
+  },
+
+  paid: {
+    padding: 5,
+    backgroundColor: "#dcfce7",
+    color: "#166534",
+    borderRadius: 4,
+    textAlign: "center",
+    fontWeight: "bold",
+  },
+
+  pending: {
+    padding: 5,
+    backgroundColor: "#fef3c7",
+    color: "#92400e",
+    borderRadius: 4,
+    textAlign: "center",
+    fontWeight: "bold",
+  },
+
+  savingsNotice: {
+    padding: 7,
+    backgroundColor: "#ecfeff",
+    color: "#155e75",
+    textAlign: "center",
+    fontSize: 9,
+  },
+
+  finalTotals: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(min(100%,145px),1fr))",
+    gap: 7,
+    marginTop: 12,
+  },
+
+  moneySummary: {
+    padding: 9,
+    border: "1px solid #cbd5e1",
+    borderRadius: 5,
+    backgroundColor: "#f8fafc",
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    textAlign: "center",
+    fontSize: 9,
+  },
+
+  strongSummary: {
+    backgroundColor: "#dcfce7",
+    color: "#166534",
+    border: "1px solid #86efac",
+  },
+
+  readOnly: {
+    marginTop: 12,
+    padding: 9,
+    backgroundColor: "#e0e7ff",
+    color: "#3730a3",
+    textAlign: "center",
+    fontWeight: "bold",
+    fontSize: 9,
+  },
+
+  emptyRow: {
+    padding: 12,
+    textAlign: "center",
+    color: "#64748b",
+    backgroundColor: "#f8fafc",
+  },
+
+  empty: {
+    padding: 25,
+    textAlign: "center",
+    color: "#64748b",
+  },
+
+  error: {
+    margin: 12,
+    padding: 10,
+    backgroundColor: "#fef2f2",
+    color: "#991b1b",
+    borderRadius: 5,
+  },
 };
