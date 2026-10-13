@@ -995,22 +995,15 @@ export default function DashboardPage() {
           {shopType || "SHOP"}
         </div>
 
-        <div style={detailsStyle}>
-          <div>
-            <strong>Cashier:</strong>{" "}
-            {user.full_name ||
-              user.name ||
-              user.username ||
-              "Cashier"}
-          </div>
-          <div>
-            <strong>Shop:</strong>{" "}
-            {user.shop ||
-              user.shop_name ||
-              user.shopName ||
-              "Shop"}
-          </div>
-        </div>
+       <div style={detailsStyle}>
+  <div>
+    <strong>Shop:</strong>{" "}
+    {user.shop ||
+      user.shop_name ||
+      user.shopName ||
+      "Shop"}
+  </div>
+</div>
 
         {shopType === "24_HOUR" && (
           <div style={infoStyle}>
