@@ -1295,7 +1295,10 @@ export default function CashierReport({ user, currentShift }) {
       </header>
 
       <CashierLiveFeedPanel user={user} />
-
+      <CashierMealsRotaPanel
+  user={user}
+  currentShift={activeShift}
+/>
       <div style={bodyStyle}>
         <aside style={sidebarStyle}>
           <SidebarItem
