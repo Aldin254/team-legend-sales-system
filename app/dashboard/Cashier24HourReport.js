@@ -1581,43 +1581,15 @@ export default function Cashier24HourReport({
                 />
               ))}
 
-              {mshwariSlots.map((entry, index) => {
-                const mshwariUnlocked =
-                  index === 0 ||
-                  Boolean(mshwariSlots[index - 1]);
+              {/* M-SHWARI FLOATS — LOCKED */}
 
-                return (
-                  <EditableFloatRow
-                    key={`mshwari-${index}`}
-                    label={`Added Float ${
-                      index + 1
-                    } From M-Shwari`}
-                    savedEntry={entry}
-                    value={
-                      floatInputs.mshwari[index] ||
-                      ""
-                    }
-                    disabled={
-                      savingFloats ||
-                      !mshwariUnlocked
-                    }
-                    onChange={(value) => {
-                      setFloatInputs((previous) => {
-                        const mshwari = [
-                          ...previous.mshwari,
-                        ];
-
-                        mshwari[index] = value;
-
-                        return {
-                          ...previous,
-                          mshwari,
-                        };
-                      });
-                    }}
-                  />
-                );
-              })}
+{mshwariSlots.map((entry, index) => (
+  <ReadOnlyCompanyFloatRow
+    key={`mshwari-${index}`}
+    label={`Added Float ${index + 1} From M-Shwari`}
+    entry={entry}
+  />
+))}
 
               <div style={incomeTotalStyle}>
                 <strong>TOTAL ADDED</strong>
@@ -1632,23 +1604,6 @@ export default function Cashier24HourReport({
                 automatically by Legend Accounts.
               </div>
 
-              <div style={panelButtonWrapStyle}>
-                <button
-                  type="button"
-                  onClick={saveFloats}
-                  disabled={savingFloats}
-                  style={{
-                    ...greenActionStyle,
-                    background: savingFloats
-                      ? "#455466"
-                      : "#247b73",
-                  }}
-                >
-                  {savingFloats
-                    ? "Saving..."
-                    : "Save M-Shwari Float"}
-                </button>
-              </div>
             </section>
 
             {/* EXPENSES */}
