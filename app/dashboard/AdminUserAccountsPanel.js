@@ -9,52 +9,40 @@ import {
 export default function AdminUserAccountsPanel({
   user,
 }) {
-  const [accounts, setAccounts] =
-    useState([]);
-
-  const [shops, setShops] =
-    useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [shops, setShops] = useState([]);
 
   const [
     currentAdminProfileId,
     setCurrentAdminProfileId,
   ] = useState(null);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const [savingId, setSavingId] =
-    useState(null);
+  // Employee names are managed in Master Employee List.
+  // This form manages login accounts only.
 
-  const [message, setMessage] =
-    useState("");
+  const [newAccount, setNewAccount] = useState({
+    username: "",
+    role: "CASHIER",
+    shop_id: "",
+    password: "",
+  });
 
-  const [error, setError] =
-    useState("");
-
-  const [newAccount, setNewAccount] =
-    useState({
-      username: "",
-      full_name: "",
-      role: "CASHIER",
-      shop_id: "",
-      password: "",
-    });
-
-  const accessToken =
-    user?.access_token || "";
+  const accessToken = user?.access_token || "";
 
   // ==================================================
   // ACTIVE SHOPS
   // ==================================================
 
-  const activeShops =
-    useMemo(() => {
-      return shops.filter(
-        (shop) =>
-          shop.is_active !== false
-      );
-    }, [shops]);
+  const activeShops = useMemo(() => {
+    return shops.filter(
+      (shop) => shop.is_active !== false
+    );
+  }, [shops]);
 
   // ==================================================
   // LOAD
@@ -70,29 +58,20 @@ export default function AdminUserAccountsPanel({
       setError("");
       setMessage("");
 
-      const response =
-        await fetch(
-          "/api/admin/accounts",
-          {
-            method: "GET",
+      const response = await fetch(
+        "/api/admin/accounts",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          cache: "no-store",
+        }
+      );
 
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
-            },
+      const data = await response.json();
 
-            cache:
-              "no-store",
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
           data?.message ||
             "Unable to load user accounts."
@@ -100,9 +79,7 @@ export default function AdminUserAccountsPanel({
       }
 
       setAccounts(
-        Array.isArray(
-          data.accounts
-        )
+        Array.isArray(data.accounts)
           ? data.accounts
           : []
       );
@@ -114,13 +91,11 @@ export default function AdminUserAccountsPanel({
       );
 
       setCurrentAdminProfileId(
-        data.current_admin_profile_id ||
-          null
+        data.current_admin_profile_id || null
       );
     } catch (err) {
       setError(
-        err?.message ||
-          "Unable to load accounts."
+        err?.message || "Unable to load accounts."
       );
     } finally {
       setLoading(false);
@@ -128,7 +103,7 @@ export default function AdminUserAccountsPanel({
   }
 
   // ==================================================
-  // CREATE
+  // CREATE ACCOUNT
   // ==================================================
 
   async function createAccount() {
@@ -136,39 +111,22 @@ export default function AdminUserAccountsPanel({
       setError("");
       setMessage("");
 
-      const username =
-        String(
-          newAccount.username || ""
-        )
-          .trim()
-          .toLowerCase();
+      const username = String(
+        newAccount.username || ""
+      )
+        .trim()
+        .toLowerCase();
 
-      const fullName =
-        String(
-          newAccount.full_name || ""
-        ).trim();
+      const role = String(
+        newAccount.role || "CASHIER"
+      ).toUpperCase();
 
-      const role =
-        String(
-          newAccount.role ||
-            "CASHIER"
-        ).toUpperCase();
-
-      const password =
-        String(
-          newAccount.password || ""
-        );
+      const password = String(
+        newAccount.password || ""
+      );
 
       if (!username) {
-        throw new Error(
-          "Enter a username."
-        );
-      }
-
-      if (!fullName) {
-        throw new Error(
-          "Enter the staff name."
-        );
+        throw new Error("Enter a username.");
       }
 
       if (
@@ -180,9 +138,7 @@ export default function AdminUserAccountsPanel({
         );
       }
 
-      if (
-        password.length < 8
-      ) {
+      if (password.length < 8) {
         throw new Error(
           "Password must have at least 8 characters."
         );
@@ -190,45 +146,35 @@ export default function AdminUserAccountsPanel({
 
       setSavingId("CREATE");
 
-      const response =
-        await fetch(
-          "/api/admin/accounts",
-          {
-            method: "POST",
+      const response = await fetch(
+        "/api/admin/accounts",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
 
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
+          // Preserve the existing API field.
+          // Username acts as the login-profile label,
+          // not as an employee name in Master List.
 
-              "Content-Type":
-                "application/json",
-            },
+          body: JSON.stringify({
+            username,
+            full_name: username,
+            role,
+            shop_id:
+              role === "ADMIN"
+                ? null
+                : newAccount.shop_id,
+            password,
+          }),
+        }
+      );
 
-            body: JSON.stringify({
-              username,
+      const data = await response.json();
 
-              full_name:
-                fullName,
-
-              role,
-
-              shop_id:
-                role === "ADMIN"
-                  ? null
-                  : newAccount.shop_id,
-
-              password,
-            }),
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
           data?.message ||
             "Unable to create account."
@@ -237,17 +183,15 @@ export default function AdminUserAccountsPanel({
 
       setNewAccount({
         username: "",
-        full_name: "",
         role: "CASHIER",
         shop_id: "",
         password: "",
       });
 
+      await loadAccounts();
       setMessage(
         "Account created successfully."
       );
-
-      await loadAccounts();
     } catch (err) {
       setError(
         err?.message ||
@@ -262,39 +206,27 @@ export default function AdminUserAccountsPanel({
   // UPDATE LOCAL ROW
   // ==================================================
 
-  function updateRow(
-    profileId,
-    field,
-    value
-  ) {
-    setAccounts(
-      (current) =>
-        current.map(
-          (account) => {
-            if (
-              account.id !==
-              profileId
-            ) {
-              return account;
-            }
+  function updateRow(profileId, field, value) {
+    setAccounts((current) =>
+      current.map((account) => {
+        if (account.id !== profileId) {
+          return account;
+        }
 
-            const updated = {
-              ...account,
-              [field]:
-                value,
-            };
+        const updated = {
+          ...account,
+          [field]: value,
+        };
 
-            if (
-              field === "role" &&
-              value === "ADMIN"
-            ) {
-              updated.shop_id =
-                null;
-            }
+        if (
+          field === "role" &&
+          value === "ADMIN"
+        ) {
+          updated.shop_id = null;
+        }
 
-            return updated;
-          }
-        )
+        return updated;
+      })
     );
   }
 
@@ -302,90 +234,71 @@ export default function AdminUserAccountsPanel({
   // SAVE ACCOUNT
   // ==================================================
 
-  async function saveAccount(
-    account
-  ) {
+  async function saveAccount(account) {
     try {
       setError("");
       setMessage("");
+      setSavingId(account.id);
 
-      setSavingId(
-        account.id
+      const response = await fetch(
+        "/api/admin/accounts",
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            profile_id: account.id,
+
+            username: String(
+              account.username || ""
+            )
+              .trim()
+              .toLowerCase(),
+
+            // Preserve the existing profile name.
+            // It is no longer editable here.
+
+            full_name: String(
+              account.full_name ||
+                account.username ||
+                ""
+            ).trim(),
+
+            role: account.role,
+
+            shop_id:
+              account.role === "ADMIN"
+                ? null
+                : account.shop_id,
+
+            is_active: Boolean(
+              account.is_active
+            ),
+
+            password: String(
+              account.new_password || ""
+            ),
+          }),
+        }
       );
 
-      const response =
-        await fetch(
-          "/api/admin/accounts",
-          {
-            method: "PATCH",
+      const data = await response.json();
 
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              profile_id:
-                account.id,
-
-              username:
-                String(
-                  account.username ||
-                    ""
-                )
-                  .trim()
-                  .toLowerCase(),
-
-              full_name:
-                String(
-                  account.full_name ||
-                    ""
-                ).trim(),
-
-              role:
-                account.role,
-
-              shop_id:
-                account.role ===
-                "ADMIN"
-                  ? null
-                  : account.shop_id,
-
-              is_active:
-                Boolean(
-                  account.is_active
-                ),
-
-              password:
-                String(
-                  account.new_password ||
-                    ""
-                ),
-            }),
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
           data?.message ||
             "Unable to update account."
         );
       }
 
-      setMessage(
-        `${account.full_name} updated successfully.`
-      );
-
       await loadAccounts();
+
+      setMessage(
+        `${account.username} updated successfully.`
+      );
     } catch (err) {
       setError(
         err?.message ||
@@ -400,32 +313,22 @@ export default function AdminUserAccountsPanel({
   // ACTIVATE / DEACTIVATE
   // ==================================================
 
-  async function toggleAccount(
-    account
-  ) {
-    const newStatus =
-      !account.is_active;
+  async function toggleAccount(account) {
+    const newStatus = !account.is_active;
 
-    const action =
-      newStatus
-        ? "reactivate"
-        : "deactivate";
+    const action = newStatus
+      ? "reactivate"
+      : "deactivate";
 
-    const confirmed =
-      window.confirm(
-        `${action.toUpperCase()} ${account.full_name}?`
-      );
+    const confirmed = window.confirm(
+      `${action.toUpperCase()} login ${account.username}?`
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     await saveAccount({
       ...account,
-
-      is_active:
-        newStatus,
-
+      is_active: newStatus,
       new_password: "",
     });
   }
@@ -434,67 +337,46 @@ export default function AdminUserAccountsPanel({
   // DELETE LOGIN
   // ==================================================
 
-  async function deleteAccount(
-    account
-  ) {
-    const confirmed =
-      window.confirm(
-        `DELETE LOGIN ACCOUNT?\n\n${account.full_name}\nUsername: ${account.username}\n\nThe login will be removed, but historical shift records will be preserved.`
-      );
+  async function deleteAccount(account) {
+    const confirmed = window.confirm(
+      `DELETE LOGIN ACCOUNT?\n\nUsername: ${account.username}\n\nThe login will be removed, but historical shift records will be preserved.`
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
       setError("");
       setMessage("");
+      setSavingId(account.id);
 
-      setSavingId(
-        account.id
+      const response = await fetch(
+        "/api/admin/accounts",
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            profile_id: account.id,
+          }),
+        }
       );
 
-      const response =
-        await fetch(
-          "/api/admin/accounts",
-          {
-            method:
-              "DELETE",
+      const data = await response.json();
 
-            headers: {
-              Authorization:
-                `Bearer ${accessToken}`,
-
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                profile_id:
-                  account.id,
-              }),
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
+      if (!response.ok || !data?.success) {
         throw new Error(
           data?.message ||
             "Unable to delete account."
         );
       }
 
+      await loadAccounts();
+
       setMessage(
         "Login account deleted. Historical records were preserved."
       );
-
-      await loadAccounts();
     } catch (err) {
       setError(
         err?.message ||
@@ -516,10 +398,9 @@ export default function AdminUserAccountsPanel({
       </div>
 
       <div style={noticeStyle}>
-        Only Admin can create,
-        rename, assign, disable,
-        reactivate or delete staff
-        login accounts.
+        Manage login usernames, roles, shop access
+        and passwords. Employee names are managed
+        in Master Employee List.
       </div>
 
       {error && (
@@ -544,71 +425,32 @@ export default function AdminUserAccountsPanel({
         </div>
 
         <div style={createGridStyle}>
-          <Field
-            label="USERNAME"
-          >
+          <Field label="USERNAME">
             <input
-              value={
-                newAccount.username
-              }
+              value={newAccount.username}
               onChange={(e) =>
-                setNewAccount(
-                  {
-                    ...newAccount,
-
-                    username:
-                      e.target.value,
-                  }
-                )
+                setNewAccount({
+                  ...newAccount,
+                  username: e.target.value,
+                })
               }
               placeholder="example: corridor01"
               style={inputStyle}
             />
           </Field>
 
-          <Field
-            label="STAFF NAME"
-          >
-            <input
-              value={
-                newAccount.full_name
-              }
-              onChange={(e) =>
-                setNewAccount(
-                  {
-                    ...newAccount,
-
-                    full_name:
-                      e.target.value,
-                  }
-                )
-              }
-              placeholder="Cashier full name"
-              style={inputStyle}
-            />
-          </Field>
-
           <Field label="ROLE">
             <select
-              value={
-                newAccount.role
-              }
+              value={newAccount.role}
               onChange={(e) =>
-                setNewAccount(
-                  {
-                    ...newAccount,
-
-                    role:
-                      e.target.value,
-
-                    shop_id:
-                      e.target
-                        .value ===
-                      "ADMIN"
-                        ? ""
-                        : newAccount.shop_id,
-                  }
-                )
+                setNewAccount({
+                  ...newAccount,
+                  role: e.target.value,
+                  shop_id:
+                    e.target.value === "ADMIN"
+                      ? ""
+                      : newAccount.shop_id,
+                })
               }
               style={inputStyle}
             >
@@ -624,29 +466,20 @@ export default function AdminUserAccountsPanel({
 
           <Field label="SHOP">
             <select
-              value={
-                newAccount.shop_id
-              }
+              value={newAccount.shop_id}
               disabled={
-                newAccount.role ===
-                "ADMIN"
+                newAccount.role === "ADMIN"
               }
               onChange={(e) =>
-                setNewAccount(
-                  {
-                    ...newAccount,
-
-                    shop_id:
-                      e.target.value,
-                  }
-                )
+                setNewAccount({
+                  ...newAccount,
+                  shop_id: e.target.value,
+                })
               }
               style={{
                 ...inputStyle,
-
                 backgroundColor:
-                  newAccount.role ===
-                  "ADMIN"
+                  newAccount.role === "ADMIN"
                     ? "#e2e8f0"
                     : "white",
               }}
@@ -655,39 +488,29 @@ export default function AdminUserAccountsPanel({
                 Select shop
               </option>
 
-              {activeShops.map(
-                (shop) => (
-                  <option
-                    key={shop.id}
-                    value={shop.id}
-                  >
-                    {shop.shop_name}
-                    {shop.shop_type
-                      ? ` (${shop.shop_type})`
-                      : ""}
-                  </option>
-                )
-              )}
+              {activeShops.map((shop) => (
+                <option
+                  key={shop.id}
+                  value={shop.id}
+                >
+                  {shop.shop_name}
+                  {shop.shop_type
+                    ? ` (${shop.shop_type})`
+                    : ""}
+                </option>
+              ))}
             </select>
           </Field>
 
-          <Field
-            label="TEMPORARY PASSWORD"
-          >
+          <Field label="TEMPORARY PASSWORD">
             <input
               type="password"
-              value={
-                newAccount.password
-              }
+              value={newAccount.password}
               onChange={(e) =>
-                setNewAccount(
-                  {
-                    ...newAccount,
-
-                    password:
-                      e.target.value,
-                  }
-                )
+                setNewAccount({
+                  ...newAccount,
+                  password: e.target.value,
+                })
               }
               placeholder="Minimum 8 characters"
               style={inputStyle}
@@ -697,24 +520,18 @@ export default function AdminUserAccountsPanel({
 
         <button
           type="button"
-          onClick={
-            createAccount
-          }
-          disabled={
-            savingId ===
-            "CREATE"
-          }
+          onClick={createAccount}
+          disabled={savingId === "CREATE"}
           style={createButtonStyle}
         >
-          {savingId ===
-          "CREATE"
+          {savingId === "CREATE"
             ? "CREATING..."
             : "+ CREATE ACCOUNT"}
         </button>
       </div>
 
       {/* ======================================= */}
-      {/* EXISTING ACCOUNTS */}
+      {/* EXISTING LOGIN ACCOUNTS */}
       {/* ======================================= */}
 
       <div style={sectionStyle}>
@@ -726,11 +543,9 @@ export default function AdminUserAccountsPanel({
           <div style={loadingStyle}>
             Loading accounts...
           </div>
-        ) : accounts.length ===
-          0 ? (
+        ) : accounts.length === 0 ? (
           <div style={loadingStyle}>
-            No login accounts
-            found.
+            No login accounts found.
           </div>
         ) : (
           <div style={tableWrapperStyle}>
@@ -740,27 +555,18 @@ export default function AdminUserAccountsPanel({
                   <th style={thStyle}>
                     USERNAME
                   </th>
-
-                  <th style={thStyle}>
-                    STAFF NAME
-                  </th>
-
                   <th style={thStyle}>
                     ROLE
                   </th>
-
                   <th style={thStyle}>
                     SHOP
                   </th>
-
                   <th style={thStyle}>
                     STATUS
                   </th>
-
                   <th style={thStyle}>
                     NEW PASSWORD
                   </th>
-
                   <th style={thStyle}>
                     ACTION
                   </th>
@@ -768,174 +574,200 @@ export default function AdminUserAccountsPanel({
               </thead>
 
               <tbody>
-                {accounts.map(
-                  (account) => {
-                    const isSelf =
-                      String(
-                        account.id
-                      ) ===
-                      String(
-                        currentAdminProfileId
-                      );
+                {accounts.map((account) => {
+                  const isSelf =
+                    String(account.id) ===
+                    String(
+                      currentAdminProfileId
+                    );
 
-                    return (
-                      <tr
-                        key={
-                          account.id
-                        }
-                      >
-                        <td style={tdStyle}>
-                          <input
-                            value={
-                              account.username ||
-                              ""
-                            }
-                            onChange={(e) =>
-                              updateRow(
-                                account.id,
-                                "username",
-                                e.target
-                                  .value
-                              )
-                            }
-                            style={
-                              compactInputStyle
-                            }
-                          />
+                  return (
+                    <tr key={account.id}>
+                      <td style={tdStyle}>
+                        <input
+                          value={
+                            account.username || ""
+                          }
+                          onChange={(e) =>
+                            updateRow(
+                              account.id,
+                              "username",
+                              e.target.value
+                            )
+                          }
+                          style={
+                            compactInputStyle
+                          }
+                        />
 
-                          {isSelf && (
-                            <div style={selfBadgeStyle}>
-                              CURRENT ADMIN
-                            </div>
-                          )}
-                        </td>
-
-                        <td style={tdStyle}>
-                          <input
-                            value={
-                              account.full_name ||
-                              ""
-                            }
-                            onChange={(e) =>
-                              updateRow(
-                                account.id,
-                                "full_name",
-                                e.target
-                                  .value
-                              )
-                            }
-                            style={
-                              compactInputStyle
-                            }
-                          />
-                        </td>
-
-                        <td style={tdStyle}>
-                          <select
-                            value={
-                              account.role ||
-                              "CASHIER"
-                            }
-                            disabled={
-                              isSelf
-                            }
-                            onChange={(e) =>
-                              updateRow(
-                                account.id,
-                                "role",
-                                e.target
-                                  .value
-                              )
-                            }
-                            style={
-                              compactInputStyle
-                            }
-                          >
-                            <option value="CASHIER">
-                              CASHIER
-                            </option>
-
-                            <option value="ADMIN">
-                              ADMIN
-                            </option>
-                          </select>
-                        </td>
-
-                        <td style={tdStyle}>
-                          <select
-                            value={
-                              account.shop_id ||
-                              ""
-                            }
-                            disabled={
-                              account.role ===
-                              "ADMIN"
-                            }
-                            onChange={(e) =>
-                              updateRow(
-                                account.id,
-                                "shop_id",
-                                e.target
-                                  .value
-                              )
-                            }
-                            style={
-                              compactInputStyle
-                            }
-                          >
-                            <option value="">
-                              No shop
-                            </option>
-
-                            {shops.map(
-                              (shop) => (
-                                <option
-                                  key={
-                                    shop.id
-                                  }
-                                  value={
-                                    shop.id
-                                  }
-                                >
-                                  {
-                                    shop.shop_name
-                                  }
-                                  {shop.is_active ===
-                                  false
-                                    ? " [INACTIVE]"
-                                    : ""}
-                                </option>
-                              )
-                            )}
-                          </select>
-                        </td>
-
-                        <td style={tdStyle}>
+                        {isSelf && (
                           <div
-                            style={{
-                              ...statusStyle,
+                            style={selfBadgeStyle}
+                          >
+                            CURRENT ADMIN
+                          </div>
+                        )}
+                      </td>
 
-                              backgroundColor:
-                                account.is_active
-                                  ? "#dcfce7"
-                                  : "#fee2e2",
+                      <td style={tdStyle}>
+                        <select
+                          value={
+                            account.role ||
+                            "CASHIER"
+                          }
+                          disabled={isSelf}
+                          onChange={(e) =>
+                            updateRow(
+                              account.id,
+                              "role",
+                              e.target.value
+                            )
+                          }
+                          style={
+                            compactInputStyle
+                          }
+                        >
+                          <option value="CASHIER">
+                            CASHIER
+                          </option>
+                          <option value="ADMIN">
+                            ADMIN
+                          </option>
+                        </select>
+                      </td>
 
-                              color:
-                                account.is_active
-                                  ? "#166534"
-                                  : "#991b1b",
-                            }}
+                      <td style={tdStyle}>
+                        <select
+                          value={
+                            account.shop_id || ""
+                          }
+                          disabled={
+                            account.role ===
+                            "ADMIN"
+                          }
+                          onChange={(e) =>
+                            updateRow(
+                              account.id,
+                              "shop_id",
+                              e.target.value
+                            )
+                          }
+                          style={
+                            compactInputStyle
+                          }
+                        >
+                          <option value="">
+                            No shop
+                          </option>
+
+                          {shops.map((shop) => (
+                            <option
+                              key={shop.id}
+                              value={shop.id}
+                            >
+                              {shop.shop_name}
+                              {shop.is_active ===
+                              false
+                                ? " [INACTIVE]"
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div
+                          style={{
+                            ...statusStyle,
+                            backgroundColor:
+                              account.is_active
+                                ? "#dcfce7"
+                                : "#fee2e2",
+                            color:
+                              account.is_active
+                                ? "#166534"
+                                : "#991b1b",
+                          }}
+                        >
+                          {account.is_active
+                            ? "ACTIVE"
+                            : "INACTIVE"}
+                        </div>
+
+                        {!isSelf && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleAccount(
+                                account
+                              )
+                            }
+                            disabled={
+                              savingId ===
+                              account.id
+                            }
+                            style={
+                              account.is_active
+                                ? deactivateButtonStyle
+                                : activateButtonStyle
+                            }
                           >
                             {account.is_active
-                              ? "ACTIVE"
-                              : "INACTIVE"}
-                          </div>
+                              ? "Deactivate"
+                              : "Reactivate"}
+                          </button>
+                        )}
+                      </td>
+
+                      <td style={tdStyle}>
+                        <input
+                          type="password"
+                          value={
+                            account.new_password ||
+                            ""
+                          }
+                          onChange={(e) =>
+                            updateRow(
+                              account.id,
+                              "new_password",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Leave blank"
+                          style={
+                            compactInputStyle
+                          }
+                        />
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div
+                          style={actionStackStyle}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              saveAccount(
+                                account
+                              )
+                            }
+                            disabled={
+                              savingId ===
+                              account.id
+                            }
+                            style={saveButtonStyle}
+                          >
+                            {savingId ===
+                            account.id
+                              ? "SAVING..."
+                              : "SAVE"}
+                          </button>
 
                           {!isSelf && (
                             <button
                               type="button"
                               onClick={() =>
-                                toggleAccount(
+                                deleteAccount(
                                   account
                                 )
                               }
@@ -944,84 +776,17 @@ export default function AdminUserAccountsPanel({
                                 account.id
                               }
                               style={
-                                account.is_active
-                                  ? deactivateButtonStyle
-                                  : activateButtonStyle
+                                deleteButtonStyle
                               }
                             >
-                              {account.is_active
-                                ? "Deactivate"
-                                : "Reactivate"}
+                              DELETE LOGIN
                             </button>
                           )}
-                        </td>
-
-                        <td style={tdStyle}>
-                          <input
-                            type="password"
-                            value={
-                              account.new_password ||
-                              ""
-                            }
-                            onChange={(e) =>
-                              updateRow(
-                                account.id,
-                                "new_password",
-                                e.target
-                                  .value
-                              )
-                            }
-                            placeholder="Leave blank"
-                            style={
-                              compactInputStyle
-                            }
-                          />
-                        </td>
-
-                        <td style={tdStyle}>
-                          <div style={actionStackStyle}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                saveAccount(
-                                  account
-                                )
-                              }
-                              disabled={
-                                savingId ===
-                                account.id
-                              }
-                              style={saveButtonStyle}
-                            >
-                              {savingId ===
-                              account.id
-                                ? "SAVING..."
-                                : "SAVE"}
-                            </button>
-
-                            {!isSelf && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  deleteAccount(
-                                    account
-                                  )
-                                }
-                                disabled={
-                                  savingId ===
-                                  account.id
-                                }
-                                style={deleteButtonStyle}
-                              >
-                                DELETE LOGIN
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
-                )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1029,9 +794,7 @@ export default function AdminUserAccountsPanel({
 
         <button
           type="button"
-          onClick={
-            loadAccounts
-          }
+          onClick={loadAccounts}
           style={refreshButtonStyle}
         >
           REFRESH ACCOUNTS
@@ -1039,11 +802,10 @@ export default function AdminUserAccountsPanel({
       </div>
 
       <div style={footerNoticeStyle}>
-        Deleting an account removes
-        login access but preserves its
-        historical profile so previous
-        shifts and audit records remain
-        intact.
+        Deleting a login account preserves its
+        historical profile, shifts and audit records.
+        Employee records are maintained separately
+        in Master Employee List.
       </div>
     </div>
   );
@@ -1053,16 +815,12 @@ export default function AdminUserAccountsPanel({
 // FIELD
 // ==================================================
 
-function Field({
-  label,
-  children,
-}) {
+function Field({ label, children }) {
   return (
     <label style={fieldStyle}>
       <span style={labelStyle}>
         {label}
       </span>
-
       {children}
     </label>
   );
@@ -1183,7 +941,7 @@ const tableWrapperStyle = {
 const tableStyle = {
   width: "100%",
   borderCollapse: "collapse",
-  minWidth: "1000px",
+  minWidth: "850px",
 };
 
 const thStyle = {
