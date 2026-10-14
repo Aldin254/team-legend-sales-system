@@ -13,14 +13,10 @@ const EMPTY_IM_ACCOUNT = {
 
 const EMPTY_RECIPIENT = {
   shop_id: "",
-  slot_number: "",
-  recipient_name: "",
   phone_number: "",
-  linked_profile_id: null,
   im_reference: "",
   allow_mpesa_to_mpesa: true,
   allow_im_to_mpesa: true,
-  is_active: true,
 };
 
 export default function AdminMpesaRatesPanel({ user }) {
@@ -77,6 +73,7 @@ export default function AdminMpesaRatesPanel({ user }) {
   const [newRecipient, setNewRecipient] = useState(EMPTY_RECIPIENT);
   const [addingRecipient, setAddingRecipient] = useState(false);
   const [savingRecipientId, setSavingRecipientId] = useState("");
+  const [deletingRecipientId, setDeletingRecipientId] = useState("");
 
   const [rates, setRates] = useState([]);
   const [savingId, setSavingId] = useState("");
@@ -151,7 +148,7 @@ export default function AdminMpesaRatesPanel({ user }) {
   }, [supabaseUrl, authHeaders]);
 
   // ==================================================
-  // LOAD PAYMENT SETTINGS, TARIFFS AND ACCOUNTS
+  // LOAD PAYMENT SETTINGS, TARIFFS AND SHOP ACCOUNTS
   // ==================================================
 
   const loadAll = useCallback(async ({ silent = false } = {}) => {
@@ -174,8 +171,7 @@ export default function AdminMpesaRatesPanel({ user }) {
         settingsResult,
         imAccountsResult,
         tariffResult,
-        shopsResult,
-        recipientsResult,
+        accountsResult,
       ] = await Promise.all([
         callRpc("tl_admin_mpesa_fee_rates", {}),
         restGet(
@@ -190,20 +186,7 @@ export default function AdminMpesaRatesPanel({ user }) {
           "payment_tariff_bands?select=*&order=payment_method.asc,min_amount.asc",
           "Unable to load payment tariffs."
         ),
-        restGet(
-          "shops?select=id,shop_name,is_active&order=shop_name.asc",
-          "Unable to load shops."
-        ),
-        restGet(
-          "mpesa_cashier_recipients" +
-          "?select=" +
-          "id,shop_id,slot_number,recipient_name,phone_number," +
-          "linked_profile_id,is_active,im_reference," +
-          "allow_mpesa_to_mpesa,allow_im_to_mpesa," +
-          "created_at,updated_at" +
-          "&order=shop_id.asc,slot_number.asc",
-          "Unable to load cashier payment accounts."
-        ),
+        callRpc("tl_admin_shop_payment_snapshot", {}),
       ]);
 
       const loadedRates = normaliseRates(mpesaRatesResult);
@@ -248,22 +231,23 @@ export default function AdminMpesaRatesPanel({ user }) {
       setPaymentTariffs(
         Array.isArray(tariffResult) ? tariffResult : []
       );
-      setShops(Array.isArray(shopsResult) ? shopsResult : []);
 
-      const loadedRecipients = Array.isArray(recipientsResult)
-        ? recipientsResult
-        : [];
+      if (!Array.isArray(accountsResult)) {
+        throw new Error("Unable to load shop payment accounts.");
+      }
 
-      setRecipients(loadedRecipients.map((row) => ({
-        ...row,
-        phone_number: row?.phone_number == null
-          ? ""
-          : String(row.phone_number),
-        im_reference: row?.im_reference || "",
-        allow_mpesa_to_mpesa: row?.allow_mpesa_to_mpesa !== false,
-        allow_im_to_mpesa: row?.allow_im_to_mpesa !== false,
-        is_active: row?.is_active !== false,
-      })));
+      setShops(accountsResult);
+      setRecipients(
+        accountsResult
+          .filter((row) => Boolean(row.recipient_id))
+          .map((row) => ({
+            ...row,
+            phone_number: String(row.phone_number || ""),
+            im_reference: String(row.im_reference || ""),
+            allow_mpesa_to_mpesa: row.allow_mpesa_to_mpesa !== false,
+            allow_im_to_mpesa: row.allow_im_to_mpesa !== false,
+          }))
+      );
     } catch (error) {
       console.error("LOAD PAYMENT ADMIN ERROR:", error);
       setMessage(
@@ -520,95 +504,69 @@ export default function AdminMpesaRatesPanel({ user }) {
   }
 
   // ==================================================
-  // CASHIER PAYMENT ACCOUNTS
+  // SHOP PAYMENT ACCOUNTS
   // ==================================================
 
-  const shopMap = useMemo(() => {
-    const map = new Map();
-    for (const shop of shops) {
-      map.set(String(shop.id), shop);
-    }
-    return map;
-  }, [shops]);
-
   const sortedRecipients = useMemo(() => {
-    return [...recipients].sort((a, b) => {
-      const shopA = String(
-        shopMap.get(String(a.shop_id))?.shop_name || ""
-      );
-      const shopB = String(
-        shopMap.get(String(b.shop_id))?.shop_name || ""
-      );
-      const byShop = shopA.localeCompare(shopB);
-      if (byShop !== 0) return byShop;
-      return Number(a.slot_number || 0) - Number(b.slot_number || 0);
-    });
-  }, [recipients, shopMap]);
+    return [...recipients].sort((a, b) =>
+      String(a.shop_name || "").localeCompare(String(b.shop_name || ""))
+    );
+  }, [recipients]);
 
-  function updateRecipientField(id, field, value) {
+  function updateRecipientField(shopId, field, value) {
     setRecipients((previous) => previous.map((recipient) =>
-      String(recipient.id) === String(id)
+      String(recipient.shop_id) === String(shopId)
         ? { ...recipient, [field]: value }
         : recipient
     ));
   }
 
-  async function saveRecipient(recipient) {
-    await saveRecipientRecord(recipient, false);
-  }
-
-  async function addRecipient() {
-    await saveRecipientRecord(newRecipient, true);
-  }
-
-  async function saveRecipientRecord(recipient, isNew) {
-    const slot = Number(recipient.slot_number);
-    const name = String(recipient.recipient_name || "").trim();
+  async function saveRecipientRecord(recipient, isNew = false) {
+    const shopId = String(recipient.shop_id || "");
     const phone = String(recipient.phone_number || "").trim();
-
-    if (!recipient.shop_id) return showError("Select a shop.");
-    if (!Number.isInteger(slot) || slot < 1 || slot > 50) {
-      return showError("Slot must be between 1 and 50.");
-    }
-    if (!name) return showError("Enter cashier name.");
-    if (!phone) return showError("Enter M-Pesa number.");
+    if (!shopId) return showError("Select shop.");
+    if (!phone) return showError("Enter shop M-Pesa number.");
 
     try {
       if (isNew) setAddingRecipient(true);
-      else setSavingRecipientId(String(recipient.id));
-
+      else setSavingRecipientId(shopId);
       setMessage("");
-
-      await callRpc("tl_admin_save_cashier_payment_account", {
-        p_id: isNew ? null : recipient.id,
-        p_shop_id: recipient.shop_id,
-        p_slot_number: slot,
-        p_recipient_name: name,
+      await callRpc("tl_admin_shop_payment_save", {
+        p_shop_id: shopId,
         p_phone_number: phone,
-        p_linked_profile_id: recipient.linked_profile_id || null,
-        p_im_reference:
-          String(recipient.im_reference || "").trim() || null,
-        p_allow_mpesa_to_mpesa:
-          recipient.allow_mpesa_to_mpesa !== false,
-        p_allow_im_to_mpesa:
-          recipient.allow_im_to_mpesa !== false,
-        p_is_active: recipient.is_active !== false,
+        p_im_reference: String(recipient.im_reference || "").trim() || null,
+        p_allow_mpesa_to_mpesa: recipient.allow_mpesa_to_mpesa !== false,
+        p_allow_im_to_mpesa: recipient.allow_im_to_mpesa !== false,
       });
-
       if (isNew) setNewRecipient(EMPTY_RECIPIENT);
-
-      setMessage(
-        isNew
-          ? "Cashier account added successfully."
-          : "Cashier account updated successfully."
-      );
+      setMessage("Shop payment account saved.");
       setMessageType("success");
       await loadAll({ silent: true });
     } catch (error) {
-      showError(error?.message || "Unable to save cashier account.");
+      showError(error?.message || "Unable to save shop account.");
     } finally {
       setAddingRecipient(false);
       setSavingRecipientId("");
+    }
+  }
+
+  async function disableRecipient(recipient) {
+    const shopId = String(recipient.shop_id || "");
+    if (!shopId || !window.confirm(
+      `Remove active payment number for ${recipient.shop_name}?`
+    )) return;
+    try {
+      setDeletingRecipientId(shopId);
+      await callRpc("tl_admin_shop_payment_disable", {
+        p_shop_id: shopId,
+      });
+      setMessage("Shop payment account removed.");
+      setMessageType("success");
+      await loadAll({ silent: true });
+    } catch (error) {
+      showError(error?.message || "Unable to remove shop account.");
+    } finally {
+      setDeletingRecipientId("");
     }
   }
 
@@ -810,6 +768,204 @@ export default function AdminMpesaRatesPanel({ user }) {
       )}
 
       <details style={dropdownStyle}>
+        <summary style={{ ...cashierTitleStyle, ...dropdownHeadingStyle }}>
+          <span>SHOP PAYMENT ACCOUNTS</span>
+          <span aria-hidden="true">▾</span>
+        </summary>
+
+        <div style={bodyStyle}>
+          <div style={shopAccountGridStyle}>
+            <Field label="SHOP">
+              <select
+                value={newRecipient.shop_id}
+                onChange={(event) => {
+                  const shop_id = event.target.value;
+                  const previous = recipients.find((row) =>
+                    String(row.shop_id) === shop_id
+                  );
+
+                  setNewRecipient(previous ? {
+                    shop_id,
+                    phone_number: previous.phone_number || "",
+                    im_reference: previous.im_reference || "",
+                    allow_mpesa_to_mpesa: previous.allow_mpesa_to_mpesa !== false,
+                    allow_im_to_mpesa: previous.allow_im_to_mpesa !== false,
+                  } : { ...EMPTY_RECIPIENT, shop_id });
+                }}
+                style={inputStyle}
+              >
+                <option value="">Select shop</option>
+                {shops.map((shop) => (
+                  <option key={shop.shop_id} value={shop.shop_id}>
+                    {shop.shop_name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="SHOP M-PESA NUMBER">
+              <input
+                type="tel"
+                value={newRecipient.phone_number}
+                onChange={(event) =>
+                  setNewRecipient((current) => ({
+                    ...current,
+                    phone_number: event.target.value,
+                  }))
+                }
+                placeholder="07XXXXXXXX"
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="I&M REFERENCE">
+              <input
+                value={newRecipient.im_reference}
+                onChange={(event) =>
+                  setNewRecipient((current) => ({
+                    ...current,
+                    im_reference: event.target.value,
+                  }))
+                }
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+
+          {newRecipient.shop_id && (
+            <div style={compactDutyStyle}>
+              CASHIER: {shops.find((shop) =>
+                String(shop.shop_id) === String(newRecipient.shop_id)
+              )?.cashier_name || "NOT ASSIGNED"}
+            </div>
+          )}
+
+          <div style={toggleRowStyle}>
+            <Toggle
+              label="M-Pesa → M-Pesa"
+              checked={newRecipient.allow_mpesa_to_mpesa}
+              onChange={(checked) =>
+                setNewRecipient((current) => ({
+                  ...current,
+                  allow_mpesa_to_mpesa: checked,
+                }))
+              }
+            />
+
+            <Toggle
+              label="I&M → M-Pesa"
+              checked={newRecipient.allow_im_to_mpesa}
+              onChange={(checked) =>
+                setNewRecipient((current) => ({
+                  ...current,
+                  allow_im_to_mpesa: checked,
+                }))
+              }
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => saveRecipientRecord(newRecipient, true)}
+            disabled={addingRecipient}
+            style={cashierButtonStyle}
+          >
+            {addingRecipient ? "SAVING..." : "SAVE SHOP ACCOUNT"}
+          </button>
+
+          <div style={cashierWrapStyle}>
+            <div style={cashierHeaderStyle}>
+              <div>SHOP</div>
+              <div>CASHIER — DUTY ROTA</div>
+              <div>M-PESA</div>
+              <div>I&M REF</div>
+              <div>M→M</div>
+              <div>I&M→M</div>
+              <div>SAVE</div>
+              <div>REMOVE</div>
+            </div>
+
+            {sortedRecipients.map((recipient) => (
+              <div key={recipient.shop_id} style={cashierRowStyle}>
+                <strong>{recipient.shop_name}</strong>
+
+                <div style={dutyNameStyle}>
+                  {recipient.cashier_name || "NOT ASSIGNED"}
+                </div>
+
+                <input
+                  type="tel"
+                  value={recipient.phone_number || ""}
+                  onChange={(event) =>
+                    updateRecipientField(
+                      recipient.shop_id,
+                      "phone_number",
+                      event.target.value
+                    )
+                  }
+                  style={smallInputStyle}
+                />
+
+                <input
+                  value={recipient.im_reference || ""}
+                  onChange={(event) =>
+                    updateRecipientField(
+                      recipient.shop_id,
+                      "im_reference",
+                      event.target.value
+                    )
+                  }
+                  style={smallInputStyle}
+                />
+
+                <CenterCheck
+                  checked={recipient.allow_mpesa_to_mpesa !== false}
+                  onChange={(checked) =>
+                    updateRecipientField(
+                      recipient.shop_id,
+                      "allow_mpesa_to_mpesa",
+                      checked
+                    )
+                  }
+                />
+
+                <CenterCheck
+                  checked={recipient.allow_im_to_mpesa !== false}
+                  onChange={(checked) =>
+                    updateRecipientField(
+                      recipient.shop_id,
+                      "allow_im_to_mpesa",
+                      checked
+                    )
+                  }
+                />
+
+                <button
+                  type="button"
+                  onClick={() => saveRecipientRecord(recipient)}
+                  disabled={savingRecipientId === String(recipient.shop_id)}
+                  style={saveButtonStyle}
+                >
+                  {savingRecipientId === String(recipient.shop_id)
+                    ? "SAVING..." : "SAVE"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => disableRecipient(recipient)}
+                  disabled={deletingRecipientId === String(recipient.shop_id)}
+                  style={deleteButtonStyle}
+                >
+                  {deletingRecipientId === String(recipient.shop_id)
+                    ? "REMOVING..." : "REMOVE"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </details>
+
+      <details style={dropdownStyle}>
         <summary style={{ ...darkTitleStyle, ...dropdownHeadingStyle }}>
           <span>PAYMENT SYSTEM</span>
           <span aria-hidden="true">▾</span>
@@ -854,9 +1010,7 @@ export default function AdminMpesaRatesPanel({ user }) {
             disabled={savingPaymentSystem}
             style={darkButtonStyle}
           >
-            {savingPaymentSystem
-              ? "SAVING..."
-              : "SAVE PAYMENT SYSTEM"}
+            {savingPaymentSystem ? "SAVING..." : "SAVE PAYMENT SYSTEM"}
           </button>
         </div>
       </details>
@@ -1078,278 +1232,6 @@ export default function AdminMpesaRatesPanel({ user }) {
                 ? "CHECKING..."
                 : "TEST BANK PAYMENT FEE"}
             </button>
-          </div>
-        </div>
-      </details>
-<details style={dropdownStyle}>
-        <summary style={{ ...cashierTitleStyle, ...dropdownHeadingStyle }}>
-          <span>PAYMENT ACCOUNTS</span>
-          <span aria-hidden="true">▾</span>
-        </summary>
-
-        <div style={bodyStyle}>
-          <div style={newCashierGridStyle}>
-            <Field label="SHOP">
-              <select
-                value={newRecipient.shop_id}
-                onChange={(event) =>
-                  setNewRecipient((current) => ({
-                    ...current,
-                    shop_id: event.target.value,
-                  }))
-                }
-                style={inputStyle}
-              >
-                <option value="">Select shop</option>
-                {shops
-                  .filter((shop) => shop.is_active !== false)
-                  .map((shop) => (
-                    <option key={shop.id} value={shop.id}>
-                      {shop.shop_name}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-
-            <Field label="SLOT">
-              <input
-                type="number"
-                min="1"
-                max="50"
-                value={newRecipient.slot_number}
-                onChange={(event) =>
-                  setNewRecipient((current) => ({
-                    ...current,
-                    slot_number: event.target.value,
-                  }))
-                }
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="CASHIER NAME">
-              <input
-                value={newRecipient.recipient_name}
-                onChange={(event) =>
-                  setNewRecipient((current) => ({
-                    ...current,
-                    recipient_name: event.target.value,
-                  }))
-                }
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="M-PESA NUMBER">
-              <input
-                type="text"
-                value={newRecipient.phone_number}
-                onChange={(event) =>
-                  setNewRecipient((current) => ({
-                    ...current,
-                    phone_number: event.target.value,
-                  }))
-                }
-                placeholder="07XXXXXXXX"
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="I&M REFERENCE">
-              <input
-                value={newRecipient.im_reference}
-                onChange={(event) =>
-                  setNewRecipient((current) => ({
-                    ...current,
-                    im_reference: event.target.value,
-                  }))
-                }
-                placeholder="e.g. KINGS-TERRY"
-                style={inputStyle}
-              />
-            </Field>
-          </div>
-
-          <div style={toggleRowStyle}>
-            <Toggle
-              label="M-Pesa → M-Pesa"
-              checked={newRecipient.allow_mpesa_to_mpesa}
-              onChange={(checked) =>
-                setNewRecipient((current) => ({
-                  ...current,
-                  allow_mpesa_to_mpesa: checked,
-                }))
-              }
-            />
-
-            <Toggle
-              label="I&M → M-Pesa"
-              checked={newRecipient.allow_im_to_mpesa}
-              onChange={(checked) =>
-                setNewRecipient((current) => ({
-                  ...current,
-                  allow_im_to_mpesa: checked,
-                }))
-              }
-            />
-
-            <Toggle
-              label="Active"
-              checked={newRecipient.is_active}
-              onChange={(checked) =>
-                setNewRecipient((current) => ({
-                  ...current,
-                  is_active: checked,
-                }))
-              }
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={addRecipient}
-            disabled={addingRecipient}
-            style={cashierButtonStyle}
-          >
-            {addingRecipient
-              ? "ADDING..."
-              : "+ ADD CASHIER PAYMENT ACCOUNT"}
-          </button>
-
-          <div style={cashierWrapStyle}>
-            <div style={cashierHeaderStyle}>
-              <div>SHOP</div>
-              <div>SLOT</div>
-              <div>CASHIER</div>
-              <div>M-PESA</div>
-              <div>I&M REF</div>
-              <div>M→M</div>
-              <div>I&M→M</div>
-              <div>ACTIVE</div>
-              <div>SAVE</div>
-            </div>
-
-            {sortedRecipients.map((recipient) => (
-              <div key={recipient.id} style={cashierRowStyle}>
-                <select
-                  value={recipient.shop_id || ""}
-                  onChange={(event) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "shop_id",
-                      event.target.value
-                    )
-                  }
-                  style={smallInputStyle}
-                >
-                  {shops.map((shop) => (
-                    <option key={shop.id} value={shop.id}>
-                      {shop.shop_name}
-                    </option>
-                  ))}
-                </select>
-
-                <input
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={recipient.slot_number ?? ""}
-                  onChange={(event) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "slot_number",
-                      event.target.value
-                    )
-                  }
-                  style={smallInputStyle}
-                />
-
-                <input
-                  value={recipient.recipient_name || ""}
-                  onChange={(event) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "recipient_name",
-                      event.target.value
-                    )
-                  }
-                  style={smallInputStyle}
-                />
-
-                <input
-                  type="text"
-                  value={String(recipient.phone_number ?? "")}
-                  onChange={(event) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "phone_number",
-                      event.target.value
-                    )
-                  }
-                  placeholder="2547XXXXXXXX"
-                  style={smallInputStyle}
-                />
-
-                <input
-                  value={recipient.im_reference || ""}
-                  onChange={(event) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "im_reference",
-                      event.target.value
-                    )
-                  }
-                  placeholder="I&M reference"
-                  style={smallInputStyle}
-                />
-
-                <CenterCheck
-                  checked={recipient.allow_mpesa_to_mpesa !== false}
-                  onChange={(checked) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "allow_mpesa_to_mpesa",
-                      checked
-                    )
-                  }
-                />
-
-                <CenterCheck
-                  checked={recipient.allow_im_to_mpesa !== false}
-                  onChange={(checked) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "allow_im_to_mpesa",
-                      checked
-                    )
-                  }
-                />
-
-                <CenterCheck
-                  checked={recipient.is_active !== false}
-                  onChange={(checked) =>
-                    updateRecipientField(
-                      recipient.id,
-                      "is_active",
-                      checked
-                    )
-                  }
-                />
-
-                <button
-                  type="button"
-                  onClick={() => saveRecipient(recipient)}
-                  disabled={
-                    savingRecipientId === String(recipient.id)
-                  }
-                  style={saveButtonStyle}
-                >
-                  {savingRecipientId === String(recipient.id)
-                    ? "SAVING..."
-                    : "SAVE"}
-                </button>
-              </div>
-            ))}
           </div>
         </div>
       </details>
@@ -1639,14 +1521,10 @@ export default function AdminMpesaRatesPanel({ user }) {
           </div>
         </section>
       </details>
+
     </div>
   );
 }
-
-// ==================================================
-// COMPONENTS
-// ==================================================
-
 function PaymentMethodBox({ title, value, options, onChange }) {
   return (
     <div style={methodBoxStyle}>
@@ -1796,7 +1674,7 @@ function CenterCheck({ checked, onChange }) {
 }
 
 // ==================================================
-// M-PESA HELPERS
+// M-PESA RATE HELPERS
 // ==================================================
 
 function normaliseRates(value) {
@@ -1969,7 +1847,7 @@ function methodLabel(value) {
 }
 
 // ==================================================
-// ADMIN THEME
+// PROFESSIONAL ADMIN THEME
 // ==================================================
 
 const wrapperStyle = {
@@ -2199,17 +2077,27 @@ const twoGridStyle = {
 
 const paymentAddGridStyle = {
   display: "grid",
-  gridTemplateColumns:
-    "1.2fr 1fr 1fr 1fr auto",
+  gridTemplateColumns: "1.2fr 1fr 1fr 1fr auto",
   gap: "8px",
   alignItems: "end",
 };
 
-const newCashierGridStyle = {
+const shopAccountGridStyle = {
   display: "grid",
-  gridTemplateColumns:
-    "1.3fr 0.5fr 1fr 1fr 1fr",
+  gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
   gap: "8px",
+};
+
+const compactDutyStyle = {
+  margin: "10px 0",
+  fontSize: "12px",
+  fontWeight: "800",
+};
+
+const dutyNameStyle = {
+  fontSize: "11px",
+  fontWeight: "700",
+  overflowWrap: "anywhere",
 };
 
 const labelStyle = {
@@ -2298,8 +2186,7 @@ const subTitleStyle = {
   fontSize: "12px",
 };
 
-const tariffColumns =
-  "1fr 1fr 1fr 0.6fr 0.8fr 0.8fr";
+const tariffColumns = "1fr 1fr 1fr 0.6fr 0.8fr 0.8fr";
 
 const tariffHeaderStyle = {
   display: "grid",
@@ -2328,13 +2215,13 @@ const cashierWrapStyle = {
 };
 
 const cashierColumns =
-  "1.2fr 0.45fr 1fr 1fr 1fr 0.45fr 0.45fr 0.45fr 0.7fr";
+  "1.1fr 1.4fr 1.1fr 1.1fr .45fr .45fr .7fr .7fr";
 
 const cashierHeaderStyle = {
   display: "grid",
   gridTemplateColumns: cashierColumns,
   gap: "5px",
-  minWidth: "1000px",
+  minWidth: "940px",
   padding: "7px",
   backgroundColor: "#f1f5f9",
   fontSize: "10px",
@@ -2346,7 +2233,7 @@ const cashierRowStyle = {
   display: "grid",
   gridTemplateColumns: cashierColumns,
   gap: "5px",
-  minWidth: "1000px",
+  minWidth: "940px",
   padding: "7px",
   borderTop: "1px solid #e2e8f0",
   alignItems: "center",
