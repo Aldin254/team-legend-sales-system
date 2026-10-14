@@ -7,60 +7,48 @@ import {
   useState,
 } from "react";
 
-// ==========================================================
+// ======================================================
 // TEAM LEGEND / NYIKA
-// CASHIER MEALS & BONUSES
-// EXECUTIVE LED — LIGHT MINT GREEN EDITION
-// ==========================================================
+// CASHIER MEALS + KENYA HOLIDAY BONUS
+// EXECUTIVE LED — LIGHT MINT EDITION
+// ======================================================
 //
-// DEFAULT       = Solid professional navy
-// CONFIRMED     = Light mint green + ✓
-// DISQUALIFIED  = Elegant red + ✕
-// NOT APPLICABLE = Navy, no tick
+// Existing employee list comes from the Duty Rota.
+// Enabled holidays appear up to 7 days in advance.
+// Holiday Bonus is company-wide, not attendance-based.
 //
-// Full Master Employee names.
-// All benefit buttons grouped together.
-// One existing shift sign-in only.
-// No separate sign-in buttons.
-// No changes to expense posting or Duty Rota.
+// This stage displays holidays only.
+// Holiday expense posting will be connected separately.
 //
-// Existing RPC:
-// tl_meals_bonus_strip_snapshot(p_shift_id)
+// Confirmed meal expense -> light mint green ✓
+// Disqualified meal     -> red ✕
+// Pending / other       -> navy, no tick
+// Enabled holiday       -> navy and gold, no tick
 //
-// ==========================================================
+// No additional employee sign-in.
+// No financial writes.
+// ======================================================
 
 const REFRESH_MS = 30000;
 
-// ==========================================================
-// FORMAT MONEY
-// ==========================================================
-
 function money(value) {
-  const number = Number(value);
+  const n = Number(value);
 
-  if (
-    !Number.isFinite(number) ||
-    number <= 0
-  ) {
+  if (!Number.isFinite(n) || n <= 0) {
     return "0";
   }
 
-  return number.toLocaleString("en-KE", {
-    minimumFractionDigits: 0,
+  return n.toLocaleString("en-KE", {
     maximumFractionDigits: 2,
   });
 }
 
-// ==========================================================
-// GET WEEKDAY FROM BUSINESS DATE
-// ==========================================================
+function weekday(value) {
+  const date = String(
+    value ?? ""
+  ).slice(0, 10);
 
-function getWeekday(value) {
-  const date = String(value || "").slice(0, 10);
-
-  if (
-    !/^\d{4}-\d{2}-\d{2}$/.test(date)
-  ) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return -1;
   }
 
@@ -69,146 +57,134 @@ function getWeekday(value) {
   ).getUTCDay();
 }
 
-// ==========================================================
-// BENEFIT STATUS HELPERS
-// ==========================================================
+// ======================================================
+// EXISTING LUNCH / SUPPER / BONUS STATUS
+// ======================================================
 
-function getBenefitStatus(
-  employee,
-  benefit,
+function statusFor(
+  row,
+  kind,
   globalLunchEnabled
 ) {
   let applicable = true;
   let enabled = false;
   let eligible = false;
-  let configuredAmount = 0;
-  let postedAmount = null;
+  let configured = 0;
+  let posted = null;
 
-  // LUNCH
-
-  if (benefit === "LUNCH") {
+  if (kind === "LUNCH") {
     enabled =
       globalLunchEnabled &&
-      employee.lunch_enabled === true;
+      row.lunch_enabled === true;
 
     eligible =
-      employee.lunch_eligible === true;
+      row.lunch_eligible === true;
 
-    configuredAmount = Number(
-      employee.lunch_amount ?? 0
+    configured = Number(
+      row.lunch_amount ?? 0
     );
 
-    postedAmount =
-      employee.lunch_posted_amount;
+    posted =
+      row.lunch_posted_amount;
   }
 
-  // SUPPER
+  else if (kind === "SUPPER") {
+    // Supper stays disabled.
+    // Historical confirmed awards remain visible.
 
-  else if (benefit === "SUPPER") {
-    // Supper remains OFF until launch.
     applicable = false;
 
-    enabled = false;
-
-    configuredAmount = Number(
-      employee.supper_amount ?? 0
-    );
-
-    postedAmount =
-      employee.supper_posted_amount;
+    posted =
+      row.supper_posted_amount;
   }
 
-  // BONUS
-
-  else if (benefit === "BONUS") {
-    const weekday = getWeekday(
-      employee.duty_date
+  else if (kind === "BONUS") {
+    const day = weekday(
+      row.duty_date
     );
 
-    if (weekday === 1) {
+    applicable =
+      day === 1 ||
+      day === 5;
+
+    if (day === 1) {
       enabled =
-        employee.monday_enabled === true;
+        row.monday_enabled === true;
 
       eligible =
-        employee.monday_bonus_eligible === true;
+        row.monday_bonus_eligible === true;
 
-      configuredAmount = Number(
-        employee.monday_bonus ?? 0
+      configured = Number(
+        row.monday_bonus ?? 0
       );
 
-      postedAmount =
-        employee.monday_posted_amount;
+      posted =
+        row.monday_posted_amount;
     }
 
-    else if (weekday === 5) {
+    else if (day === 5) {
       enabled =
-        employee.friday_enabled === true;
+        row.friday_enabled === true;
 
       eligible =
-        employee.friday_bonus_eligible === true;
+        row.friday_bonus_eligible === true;
 
-      configuredAmount = Number(
-        employee.friday_bonus ?? 0
+      configured = Number(
+        row.friday_bonus ?? 0
       );
 
-      postedAmount =
-        employee.friday_posted_amount;
-    }
-
-    else {
-      applicable = false;
+      posted =
+        row.friday_posted_amount;
     }
   }
 
-  // CONFIRMED EXPENSE — LIGHT MINT GREEN
+  // Confirmed expense -> green tick
 
   if (
-    postedAmount !== null &&
-    postedAmount !== undefined &&
-    postedAmount !== ""
+    posted !== null &&
+    posted !== undefined &&
+    posted !== ""
   ) {
     return {
       type: "confirmed",
       icon: "✓",
-      amount: money(postedAmount),
+      amount: money(posted),
       description:
-        "Accepted and posted to Expenses",
+        "Award and matching expense confirmed",
     };
   }
 
-  // DISABLED / NOT APPLICABLE — NAVY
+  // Disabled or not applicable
 
   if (
     !applicable ||
     !enabled ||
-    !Number.isFinite(configuredAmount) ||
-    configuredAmount <= 0
+    !Number.isFinite(configured) ||
+    configured <= 0
   ) {
     return {
       type: "normal",
       icon: "",
       amount: "0",
       description:
-        "Disabled or not applicable",
+        "Disabled or not applicable today",
     };
   }
 
-  // ELIGIBLE, NOT YET POSTED — NAVY
+  // Qualified but no matching expense yet
 
   if (eligible) {
     return {
       type: "normal",
       icon: "",
-      amount: money(configuredAmount),
+      amount: money(configured),
       description:
-        "Eligible, but not yet confirmed in Expenses",
+        "Eligible; expense not yet confirmed",
     };
   }
 
-  // DISQUALIFIED — RED
-
   const attendance = String(
-    employee.attendance_status || ""
+    row.attendance_status || ""
   ).toUpperCase();
 
   if (
@@ -235,24 +211,30 @@ function getBenefitStatus(
   };
 }
 
-// ==========================================================
-// EXECUTIVE LED BUTTON
-// ==========================================================
+// ======================================================
+// SHARED EXECUTIVE LED BUTTON
+// ======================================================
 
 function BenefitButton({
   label,
   status,
+  holiday = false,
 }) {
   return (
     <span
       className={
-        `tl-executive-button tl-executive-${status.type}`
+        `tl-executive-button ` +
+        `tl-executive-${status.type}` +
+        (holiday
+          ? " tl-executive-holiday"
+          : "")
       }
       title={
         `${label}: ${status.description}`
       }
       aria-label={
-        `${label} ${status.amount}. ${status.description}`
+        `${label} ${status.amount}. ` +
+        status.description
       }
     >
       {status.icon && (
@@ -275,29 +257,53 @@ function BenefitButton({
   );
 }
 
-// ==========================================================
-// MAIN CASHIER MEALS & BONUS PANEL
-// ==========================================================
+// ======================================================
+// HOLIDAY BUTTON LABEL
+// ======================================================
+
+function holidayLabel(event) {
+  const name = String(
+    event.holiday_name || "HOLIDAY"
+  )
+    .toUpperCase()
+    .replace(/\s+DAY$/, "");
+
+  return `🇰🇪 ${name}`;
+}
+
+// ======================================================
+// MAIN PANEL
+// ======================================================
 
 export default function CashierMealsRotaPanel({
   user,
   currentShift,
 }) {
-  const [employees, setEmployees] =
-    useState([]);
+  const [
+    employees,
+    setEmployees,
+  ] = useState([]);
+
+  const [
+    holidayEvents,
+    setHolidayEvents,
+  ] = useState([]);
 
   const [
     globalLunchEnabled,
     setGlobalLunchEnabled,
   ] = useState(true);
 
-  const [error, setError] =
-    useState("");
+  const [
+    error,
+    setError,
+  ] = useState("");
 
   const requestIdRef = useRef(0);
 
   const supabaseUrl = String(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      ""
   ).replace(/\/+$/, "");
 
   const supabaseAnonKey =
@@ -313,11 +319,13 @@ export default function CashierMealsRotaPanel({
   const isShiftOpen =
     String(
       currentShift?.status || ""
-    ).trim().toUpperCase() === "OPEN";
+    )
+      .trim()
+      .toUpperCase() === "OPEN";
 
-  // ========================================================
-  // LOAD REAL AWARD STATUS
-  // ========================================================
+  // ====================================================
+  // READ MEALS + HOLIDAY SNAPSHOT
+  // ====================================================
 
   const loadMeals = useCallback(
     async (signal) => {
@@ -336,7 +344,7 @@ export default function CashierMealsRotaPanel({
 
       try {
         const response = await fetch(
-          `${supabaseUrl}/rest/v1/rpc/tl_meals_bonus_strip_snapshot`,
+          `${supabaseUrl}/rest/v1/rpc/tl_cashier_meals_holiday_snapshot`,
           {
             method: "POST",
 
@@ -380,13 +388,22 @@ export default function CashierMealsRotaPanel({
 
         if (
           signal.aborted ||
-          requestId !== requestIdRef.current
+          requestId !==
+            requestIdRef.current
         ) {
           return;
         }
 
         setEmployees(
           result.employees
+        );
+
+        setHolidayEvents(
+          Array.isArray(
+            result.holiday_events
+          )
+            ? result.holiday_events
+            : []
         );
 
         setGlobalLunchEnabled(
@@ -399,21 +416,23 @@ export default function CashierMealsRotaPanel({
       catch (err) {
         if (
           signal.aborted ||
-          requestId !== requestIdRef.current
+          requestId !==
+            requestIdRef.current
         ) {
           return;
         }
 
         console.error(
-          "TEAM LEGEND MEALS ERROR:",
+          "TEAM LEGEND MEALS / HOLIDAY:",
           err
         );
 
         setEmployees([]);
+        setHolidayEvents([]);
 
         setError(
           err?.message ||
-          "Meals & Bonuses unavailable."
+            "Meals & Bonuses unavailable."
         );
       }
     },
@@ -426,9 +445,9 @@ export default function CashierMealsRotaPanel({
     ]
   );
 
-  // ========================================================
-  // AUTOMATIC REFRESH EVERY 30 SECONDS
-  // ========================================================
+  // ====================================================
+  // AUTO REFRESH
+  // ====================================================
 
   useEffect(() => {
     const controller =
@@ -437,36 +456,39 @@ export default function CashierMealsRotaPanel({
     requestIdRef.current += 1;
 
     setEmployees([]);
+    setHolidayEvents([]);
     setError("");
 
     if (isShiftOpen) {
-      void loadMeals(controller.signal);
+      void loadMeals(
+        controller.signal
+      );
     }
 
-    const timer = setInterval(() => {
-      if (
-        isShiftOpen &&
-        document.visibilityState === "visible"
-      ) {
-        void loadMeals(controller.signal);
-      }
-    }, REFRESH_MS);
+    const timer = setInterval(
+      () => {
+        if (
+          isShiftOpen &&
+          document.visibilityState ===
+            "visible"
+        ) {
+          void loadMeals(
+            controller.signal
+          );
+        }
+      },
+      REFRESH_MS
+    );
 
     return () => {
       controller.abort();
-
       clearInterval(timer);
-
       requestIdRef.current += 1;
     };
   }, [
     isShiftOpen,
     loadMeals,
   ]);
-
-  // ========================================================
-  // HIDE WHEN THERE IS NO OPEN SHIFT
-  // ========================================================
 
   if (
     !shiftId ||
@@ -485,9 +507,9 @@ export default function CashierMealsRotaPanel({
     return null;
   }
 
-  // ========================================================
-  // EXECUTIVE LED LIGHT MINT DESIGN
-  // ========================================================
+  // ====================================================
+  // EXECUTIVE LED DESIGN
+  // ====================================================
 
   return (
     <section
@@ -496,77 +518,91 @@ export default function CashierMealsRotaPanel({
     >
       <style>{`
 
-        /* ====================================== */
-        /* MAIN NAVY CONTAINER                    */
-        /* ====================================== */
-
         .tl-executive-meals {
           margin: 6px 12px 0;
-          width: auto;
           min-width: 0;
-          box-sizing: border-box;
-          color: #FFFFFF;
+          color: #ffffff;
           font-family: inherit;
+          box-sizing: border-box;
         }
 
-        .tl-executive-meals .tl-executive-board {
+        .tl-executive-meals
+        .tl-executive-board {
           width: 100%;
-          background: #101F30;
-          border: 1px solid #29475E;
-          border-left: 3px solid #D9B66C;
-          border-radius: 9px;
           overflow-x: auto;
           scrollbar-width: thin;
+          background: #101f30;
+          border: 1px solid #29475e;
+          border-left: 3px solid #d9b66c;
+          border-radius: 9px;
           box-sizing: border-box;
         }
 
-        /* ====================================== */
-        /* EMPLOYEE ROW                           */
-        /* ====================================== */
+        /* HOLIDAY GREETING */
 
-        .tl-executive-meals .tl-executive-row {
+        .tl-executive-meals
+        .tl-executive-holiday-head {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 12px;
+          padding: 8px 13px;
+          color: #f0d398;
+          background: #203149;
+          border-bottom: 1px solid #38526a;
+          font-size: 12px;
+          font-weight: 850;
+        }
+
+        .tl-executive-meals
+        .tl-executive-holiday-head span {
+          white-space: nowrap;
+        }
+
+        /* EMPLOYEE ROW */
+
+        .tl-executive-meals
+        .tl-executive-row {
           display: flex;
           align-items: center;
           justify-content: flex-start;
           gap: 14px;
-
-          min-width: 690px;
+          min-width: 100%;
+          width: max-content;
           min-height: 49px;
-
           padding: 7px 13px;
           box-sizing: border-box;
         }
 
-        .tl-executive-meals .tl-executive-row
+        .tl-executive-meals
+        .tl-executive-row
         + .tl-executive-row {
-          border-top: 1px solid #2D465B;
+          border-top: 1px solid #2d465b;
         }
 
-        .tl-executive-meals .tl-executive-row:hover {
-          background: rgba(
-            255, 255, 255, 0.025
-          );
+        .tl-executive-meals
+        .tl-executive-row:hover {
+          background:
+            rgba(255,255,255,.025);
         }
 
-        /* ====================================== */
-        /* FULL EMPLOYEE NAME                     */
-        /* ====================================== */
+        /* MASTER EMPLOYEE NAME */
 
-        .tl-executive-meals .tl-executive-name {
+        .tl-executive-meals
+        .tl-executive-name {
           flex: 0 0 205px;
-          color: #FFFFFF;
+          color: #ffffff;
           font-size: 12px;
           font-weight: 850;
           line-height: 1.3;
-          letter-spacing: 0.025em;
+          letter-spacing: .025em;
           overflow-wrap: anywhere;
         }
 
-        /* ====================================== */
-        /* GROUP THE THREE BENEFITS               */
-        /* ====================================== */
+        /* BENEFIT BUTTONS */
 
-        .tl-executive-meals .tl-executive-buttons {
+        .tl-executive-meals
+        .tl-executive-buttons {
           display: flex;
           align-items: center;
           justify-content: flex-start;
@@ -574,11 +610,8 @@ export default function CashierMealsRotaPanel({
           flex: 0 0 auto;
         }
 
-        /* ====================================== */
-        /* DEFAULT NAVY BUTTON                    */
-        /* ====================================== */
-
-        .tl-executive-meals .tl-executive-button {
+        .tl-executive-meals
+        .tl-executive-button {
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -586,53 +619,54 @@ export default function CashierMealsRotaPanel({
 
           width: 143px;
           min-height: 36px;
-
           padding: 5px 10px;
-          box-sizing: border-box;
 
+          box-sizing: border-box;
           border-radius: 7px;
-          border: 1px solid #55768F;
+          border: 1px solid #55768f;
 
           background:
             linear-gradient(
               135deg,
-              #284B66 0%,
-              #1D3751 100%
+              #284b66,
+              #1d3751
             );
 
-          color: #FFFFFF;
+          color: #ffffff;
           white-space: nowrap;
+          font-variant-numeric:
+            tabular-nums;
 
-          font-variant-numeric: tabular-nums;
           box-shadow:
             inset 0 1px 0
-              rgba(255,255,255,0.14),
+              rgba(255,255,255,.14),
             0 3px 8px
-              rgba(0,0,0,0.13);
+              rgba(0,0,0,.13);
 
           user-select: none;
           cursor: default;
         }
 
-        .tl-executive-meals .tl-executive-label {
+        .tl-executive-meals
+        .tl-executive-label {
           color: inherit;
           font-size: 11px;
           font-weight: 850;
-          letter-spacing: 0.035em;
+          letter-spacing: .035em;
         }
 
-        .tl-executive-meals .tl-executive-amount {
+        .tl-executive-meals
+        .tl-executive-amount {
           color: inherit;
           font-size: 13px;
           font-weight: 950;
           letter-spacing: 0;
         }
 
-        /* ====================================== */
-        /* STATUS TICK / CROSS                    */
-        /* ====================================== */
+        /* STATUS ICON */
 
-        .tl-executive-meals .tl-executive-check {
+        .tl-executive-meals
+        .tl-executive-check {
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -642,116 +676,129 @@ export default function CashierMealsRotaPanel({
           flex: 0 0 21px;
 
           border-radius: 50%;
-
           font-size: 15px;
           font-weight: 950;
           line-height: 1;
-
-          color: #FFFFFF;
+          color: #ffffff;
         }
 
-        /* ====================================== */
-        /* LIGHT MINT GREEN — CONFIRMED           */
-        /* ====================================== */
+        /* CONFIRMED: LIGHT MINT */
 
         .tl-executive-meals
         .tl-executive-confirmed {
           background:
             linear-gradient(
               135deg,
-              #AEF8D6 0%,
-              #73E5B9 100%
+              #aef8d6,
+              #73e5b9
             );
 
-          border-color: #C8FFE6;
-
-          color: #07392F;
+          border-color: #c8ffe6;
+          color: #07392f;
 
           box-shadow:
             inset 0 1px 0
-              rgba(255,255,255,0.55),
+              rgba(255,255,255,.55),
             0 0 12px
-              rgba(114,233,184,0.26);
+              rgba(114,233,184,.26);
         }
 
         .tl-executive-meals
         .tl-executive-confirmed
         .tl-executive-check {
-          background: #087C67;
-          color: #FFFFFF;
+          background: #087c67;
+          color: #ffffff;
         }
 
-        /* ====================================== */
-        /* RED — DISQUALIFIED                     */
-        /* ====================================== */
+        /* DISQUALIFIED: RED */
 
         .tl-executive-meals
         .tl-executive-rejected {
           background:
             linear-gradient(
               135deg,
-              #C45469 0%,
-              #97374F 100%
+              #c45469,
+              #97374f
             );
 
-          border-color: #FFA1B0;
-
-          color: #FFFFFF;
-
-          box-shadow:
-            inset 0 1px 0
-              rgba(255,255,255,0.17);
+          border-color: #ffa1b0;
+          color: #ffffff;
         }
 
         .tl-executive-meals
         .tl-executive-rejected
         .tl-executive-check {
-          background: rgba(
-            255,255,255,0.18
-          );
-          color: #FFFFFF;
+          background:
+            rgba(255,255,255,.18);
         }
 
-        /* ====================================== */
-        /* ERROR MESSAGE                         */
-        /* ====================================== */
+        /* HOLIDAY BUTTON:
+           GOLD EDGE, NAVY UNTIL POSTED */
 
-        .tl-executive-meals .tl-executive-error {
+        .tl-executive-meals
+        .tl-executive-holiday {
+          width: auto;
+          min-width: 166px;
+          padding: 5px 13px;
+
+          border-color: #c09b5e;
+
+          background:
+            linear-gradient(
+              135deg,
+              #284b66,
+              #1d3751
+            );
+        }
+
+        /* ERRORS */
+
+        .tl-executive-meals
+        .tl-executive-error {
           padding: 6px 3px;
           font-size: 11px;
           font-weight: 650;
-          color: #FF95A4;
+          color: #ff95a4;
         }
 
-        /* ====================================== */
-        /* MOBILE                                */
-        /* ====================================== */
+        /* MOBILE */
 
         @media (max-width: 650px) {
+
           .tl-executive-meals {
             margin: 5px 8px 0;
           }
 
-          .tl-executive-meals .tl-executive-row {
-            min-width: 650px;
+          .tl-executive-meals
+          .tl-executive-row {
             min-height: 45px;
             padding: 6px 9px;
             gap: 9px;
           }
 
-          .tl-executive-meals .tl-executive-name {
+          .tl-executive-meals
+          .tl-executive-name {
             flex-basis: 180px;
             font-size: 11px;
           }
 
-          .tl-executive-meals .tl-executive-buttons {
+          .tl-executive-meals
+          .tl-executive-buttons {
             gap: 7px;
           }
 
-          .tl-executive-meals .tl-executive-button {
+          .tl-executive-meals
+          .tl-executive-button {
             width: 140px;
             min-height: 34px;
             padding: 4px 7px;
+          }
+
+          .tl-executive-meals
+          .tl-executive-holiday {
+            width: auto;
+            min-width: 150px;
+            padding: 4px 9px;
           }
         }
 
@@ -760,35 +807,30 @@ export default function CashierMealsRotaPanel({
       {employees.length > 0 && (
         <div className="tl-executive-board">
 
-          {employees.map((employee) => {
+          {/* ACTIVE HOLIDAY GREETINGS */}
 
-            const lunch =
-              getBenefitStatus(
-                employee,
-                "LUNCH",
-                globalLunchEnabled
-              );
+          {holidayEvents.length > 0 && (
+            <div className="tl-executive-holiday-head">
 
-            const supper =
-              getBenefitStatus(
-                employee,
-                "SUPPER",
-                globalLunchEnabled
-              );
+              {holidayEvents.map(
+                (event) => (
+                  <span key={event.id}>
+                    {event.greeting}
+                  </span>
+                )
+              )}
 
-            const bonus =
-              getBenefitStatus(
-                employee,
-                "BONUS",
-                globalLunchEnabled
-              );
+            </div>
+          )}
 
-            return (
+          {/* DUTY ROTA EMPLOYEES */}
+
+          {employees.map(
+            (employee) => (
               <div
                 className="tl-executive-row"
                 key={employee.employee_id}
               >
-
                 <span className="tl-executive-name">
                   {employee.full_name}
                 </span>
@@ -797,24 +839,59 @@ export default function CashierMealsRotaPanel({
 
                   <BenefitButton
                     label="LUNCH"
-                    status={lunch}
+                    status={statusFor(
+                      employee,
+                      "LUNCH",
+                      globalLunchEnabled
+                    )}
                   />
 
                   <BenefitButton
                     label="SUPPER"
-                    status={supper}
+                    status={statusFor(
+                      employee,
+                      "SUPPER",
+                      globalLunchEnabled
+                    )}
                   />
 
                   <BenefitButton
                     label="BONUS"
-                    status={bonus}
+                    status={statusFor(
+                      employee,
+                      "BONUS",
+                      globalLunchEnabled
+                    )}
                   />
 
-                </div>
+                  {/* ENABLED HOLIDAY BUTTONS */}
 
+                  {holidayEvents.map(
+                    (event) => (
+                      <BenefitButton
+                        key={event.id}
+                        holiday
+                        label={holidayLabel(event)}
+                        status={{
+                          type: "normal",
+                          icon: "",
+                          amount: money(
+                            event.amount
+                          ),
+                          description:
+                            `${event.greeting} ` +
+                            `Scheduled for ` +
+                            `${event.holiday_date}. ` +
+                            `No confirmed holiday expense yet.`,
+                        }}
+                      />
+                    )
+                  )}
+
+                </div>
               </div>
-            );
-          })}
+            )
+          )}
 
         </div>
       )}
@@ -827,6 +904,7 @@ export default function CashierMealsRotaPanel({
           {error}
         </div>
       )}
+
     </section>
   );
 }
