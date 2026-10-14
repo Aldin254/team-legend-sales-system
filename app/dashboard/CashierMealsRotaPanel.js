@@ -7,38 +7,41 @@ import {
   useState,
 } from "react";
 
-// ============================================================
+// ==========================================================
 // TEAM LEGEND / NYIKA
-// CASHIER MEALS & BONUSES — EXECUTIVE LED DESIGN 2
-// ============================================================
+// CASHIER MEALS & BONUSES
+// EXECUTIVE LED — LIGHT MINT GREEN EDITION
+// ==========================================================
 //
-// ✓ LAGOON GREEN = Award confirmed in Expenses.
-// ✕ RED          = Employee not qualified.
-// — GREY         = Disabled or not applicable.
-// … SLATE        = Qualified but expense not posted.
+// DEFAULT       = Solid professional navy
+// CONFIRMED     = Light mint green + ✓
+// DISQUALIFIED  = Elegant red + ✕
+// NOT APPLICABLE = Navy, no tick
 //
-// Uses existing Master Employee Duty Rota.
-// Uses existing shift sign-in.
-// No additional employee sign-in.
-// No expense inserts or financial modifications.
-// No changes to Salary shop routing.
 // Full Master Employee names.
+// All benefit buttons grouped together.
+// One existing shift sign-in only.
+// No separate sign-in buttons.
+// No changes to expense posting or Duty Rota.
 //
-// RPC:
+// Existing RPC:
 // tl_meals_bonus_strip_snapshot(p_shift_id)
 //
-// ============================================================
+// ==========================================================
 
-const REFRESH_INTERVAL = 30000;
+const REFRESH_MS = 30000;
 
-// ============================================================
-// MONEY FORMAT
-// ============================================================
+// ==========================================================
+// FORMAT MONEY
+// ==========================================================
 
 function money(value) {
   const number = Number(value);
 
-  if (!Number.isFinite(number) || number <= 0) {
+  if (
+    !Number.isFinite(number) ||
+    number <= 0
+  ) {
     return "0";
   }
 
@@ -48,14 +51,16 @@ function money(value) {
   });
 }
 
-// ============================================================
-// BUSINESS DATE / WEEKDAY
-// ============================================================
+// ==========================================================
+// GET WEEKDAY FROM BUSINESS DATE
+// ==========================================================
 
-function weekdayFromDate(value) {
+function getWeekday(value) {
   const date = String(value || "").slice(0, 10);
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(date)
+  ) {
     return -1;
   }
 
@@ -64,277 +69,230 @@ function weekdayFromDate(value) {
   ).getUTCDay();
 }
 
-// ============================================================
-// STATUS HELPERS
-// ============================================================
-
-function confirmedStatus(postedAmount) {
-  return {
-    kind: "confirmed",
-    symbol: "✓",
-    amount: money(postedAmount),
-    description: "Confirmed and posted to Expenses",
-  };
-}
-
-function rejectedStatus(reason) {
-  return {
-    kind: "rejected",
-    symbol: "✕",
-    amount: "0",
-    description: reason || "Not qualified",
-  };
-}
-
-function disabledStatus(reason) {
-  return {
-    kind: "disabled",
-    symbol: "—",
-    amount: "0",
-    description: reason || "Not applicable",
-  };
-}
-
-function pendingStatus(amount) {
-  return {
-    kind: "pending",
-    symbol: "…",
-    amount: money(amount),
-    description:
-      "Qualified; automatic expense not yet confirmed",
-  };
-}
-
-function isPosted(value) {
-  return (
-    value !== null &&
-    value !== undefined &&
-    value !== ""
-  );
-}
-
-function disqualificationReason(row) {
-  const status = String(
-    row?.attendance_status || ""
-  ).toUpperCase();
-
-  if (status === "LATE") {
-    return "Not qualified — shift opened after 10:50 AM";
-  }
-
-  if (status === "NOT_SIGNED_IN") {
-    return "Not qualified — shift sign-in missing";
-  }
-
-  return "Not qualified under current Duty Rota rules";
-}
-
-// ============================================================
-// BENEFIT STATUS
-// ============================================================
+// ==========================================================
+// BENEFIT STATUS HELPERS
+// ==========================================================
 
 function getBenefitStatus(
-  row,
+  employee,
   benefit,
   globalLunchEnabled
 ) {
-  const day = weekdayFromDate(row?.duty_date);
-
   let applicable = true;
   let enabled = false;
   let eligible = false;
-
   let configuredAmount = 0;
   let postedAmount = null;
 
-  // ----------------------------------------------------------
   // LUNCH
-  // ----------------------------------------------------------
 
   if (benefit === "LUNCH") {
     enabled =
       globalLunchEnabled &&
-      row.lunch_enabled === true;
-
-    configuredAmount = Number(
-      row.lunch_amount || 0
-    );
+      employee.lunch_enabled === true;
 
     eligible =
-      row.lunch_eligible === true;
+      employee.lunch_eligible === true;
+
+    configuredAmount = Number(
+      employee.lunch_amount ?? 0
+    );
 
     postedAmount =
-      row.lunch_posted_amount;
+      employee.lunch_posted_amount;
   }
 
-  // ----------------------------------------------------------
   // SUPPER
-  // ----------------------------------------------------------
 
   else if (benefit === "SUPPER") {
-    // Supper remains globally OFF.
+    // Supper remains OFF until launch.
     applicable = false;
 
     enabled = false;
 
     configuredAmount = Number(
-      row.supper_amount || 0
+      employee.supper_amount ?? 0
     );
 
     postedAmount =
-      row.supper_posted_amount;
+      employee.supper_posted_amount;
   }
 
-  // ----------------------------------------------------------
-  // MONDAY / FRIDAY BONUS
-  // ----------------------------------------------------------
+  // BONUS
 
   else if (benefit === "BONUS") {
-    if (day === 1) {
-      enabled =
-        row.monday_enabled === true;
+    const weekday = getWeekday(
+      employee.duty_date
+    );
 
-      configuredAmount = Number(
-        row.monday_bonus || 0
-      );
+    if (weekday === 1) {
+      enabled =
+        employee.monday_enabled === true;
 
       eligible =
-        row.monday_bonus_eligible === true;
+        employee.monday_bonus_eligible === true;
+
+      configuredAmount = Number(
+        employee.monday_bonus ?? 0
+      );
 
       postedAmount =
-        row.monday_posted_amount;
+        employee.monday_posted_amount;
     }
 
-    else if (day === 5) {
+    else if (weekday === 5) {
       enabled =
-        row.friday_enabled === true;
-
-      configuredAmount = Number(
-        row.friday_bonus || 0
-      );
+        employee.friday_enabled === true;
 
       eligible =
-        row.friday_bonus_eligible === true;
+        employee.friday_bonus_eligible === true;
+
+      configuredAmount = Number(
+        employee.friday_bonus ?? 0
+      );
 
       postedAmount =
-        row.friday_posted_amount;
+        employee.friday_posted_amount;
     }
 
     else {
       applicable = false;
-      enabled = false;
     }
   }
 
-  // ----------------------------------------------------------
-  // 1. CONFIRMED EXPENSE
-  // ----------------------------------------------------------
-  // Existing posted expenses remain confirmed even if
-  // Admin subsequently changes the benefit setting.
-
-  if (isPosted(postedAmount)) {
-    return confirmedStatus(postedAmount);
-  }
-
-  // ----------------------------------------------------------
-  // 2. DISABLED OR NON-APPLICABLE
-  // ----------------------------------------------------------
-
-  if (!applicable) {
-    return disabledStatus(
-      benefit === "SUPPER"
-        ? "Supper currently disabled"
-        : "Bonus not scheduled for this day"
-    );
-  }
-
-  if (!enabled) {
-    return disabledStatus(
-      "Benefit disabled in Admin settings"
-    );
-  }
+  // CONFIRMED EXPENSE — LIGHT MINT GREEN
 
   if (
+    postedAmount !== null &&
+    postedAmount !== undefined &&
+    postedAmount !== ""
+  ) {
+    return {
+      type: "confirmed",
+      icon: "✓",
+      amount: money(postedAmount),
+      description:
+        "Accepted and posted to Expenses",
+    };
+  }
+
+  // DISABLED / NOT APPLICABLE — NAVY
+
+  if (
+    !applicable ||
+    !enabled ||
     !Number.isFinite(configuredAmount) ||
     configuredAmount <= 0
   ) {
-    return disabledStatus(
-      "No benefit amount configured"
-    );
+    return {
+      type: "normal",
+      icon: "",
+      amount: "0",
+      description:
+        "Disabled or not applicable",
+    };
   }
 
-  // ----------------------------------------------------------
-  // 3. QUALIFIED BUT NOT POSTED
-  // ----------------------------------------------------------
+  // ELIGIBLE, NOT YET POSTED — NAVY
 
   if (eligible) {
-    return pendingStatus(configuredAmount);
+    return {
+      type: "normal",
+      icon: "",
+      amount: money(configuredAmount),
+      description:
+        "Eligible, but not yet confirmed in Expenses",
+    };
   }
 
-  // ----------------------------------------------------------
-  // 4. NOT QUALIFIED
-  // ----------------------------------------------------------
+  // DISQUALIFIED — RED
 
-  return rejectedStatus(
-    disqualificationReason(row)
-  );
+  const attendance = String(
+    employee.attendance_status || ""
+  ).toUpperCase();
+
+  if (
+    attendance === "LATE" ||
+    attendance === "NOT_SIGNED_IN"
+  ) {
+    return {
+      type: "rejected",
+      icon: "✕",
+      amount: "0",
+      description:
+        attendance === "LATE"
+          ? "Not qualified: shift opened after 10:50 AM"
+          : "Not qualified: shift sign-in unavailable",
+    };
+  }
+
+  return {
+    type: "normal",
+    icon: "",
+    amount: "0",
+    description:
+      "No confirmed benefit",
+  };
 }
 
-// ============================================================
-// EXECUTIVE LED STATUS CAPSULE
-// ============================================================
+// ==========================================================
+// EXECUTIVE LED BUTTON
+// ==========================================================
 
-function BenefitLED({
+function BenefitButton({
   label,
   status,
 }) {
   return (
     <span
       className={
-        `tl-benefit-led tl-benefit-led-${status.kind}`
+        `tl-executive-button tl-executive-${status.type}`
       }
       title={
         `${label}: ${status.description}`
       }
       aria-label={
-        `${label} ${status.amount}. ` +
-        status.description
+        `${label} ${status.amount}. ${status.description}`
       }
     >
-      <span
-        className="tl-benefit-led-symbol"
-        aria-hidden="true"
-      >
-        {status.symbol}
-      </span>
+      {status.icon && (
+        <span
+          className="tl-executive-check"
+          aria-hidden="true"
+        >
+          {status.icon}
+        </span>
+      )}
 
-      <span className="tl-benefit-led-label">
+      <span className="tl-executive-label">
         {label}
       </span>
 
-      <strong className="tl-benefit-led-number">
+      <strong className="tl-executive-amount">
         {status.amount}
       </strong>
     </span>
   );
 }
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
+// ==========================================================
+// MAIN CASHIER MEALS & BONUS PANEL
+// ==========================================================
 
 export default function CashierMealsRotaPanel({
   user,
   currentShift,
 }) {
-  const [employees, setEmployees] = useState([]);
+  const [employees, setEmployees] =
+    useState([]);
 
   const [
     globalLunchEnabled,
     setGlobalLunchEnabled,
   ] = useState(true);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
   const requestIdRef = useRef(0);
 
@@ -357,9 +315,9 @@ export default function CashierMealsRotaPanel({
       currentShift?.status || ""
     ).trim().toUpperCase() === "OPEN";
 
-  // ==========================================================
-  // LOAD MEALS & BONUS SNAPSHOT
-  // ==========================================================
+  // ========================================================
+  // LOAD REAL AWARD STATUS
+  // ========================================================
 
   const loadMeals = useCallback(
     async (signal) => {
@@ -409,7 +367,9 @@ export default function CashierMealsRotaPanel({
         if (
           !response.ok ||
           result?.ok !== true ||
-          !Array.isArray(result?.employees)
+          !Array.isArray(
+            result?.employees
+          )
         ) {
           throw new Error(
             result?.message ||
@@ -425,7 +385,9 @@ export default function CashierMealsRotaPanel({
           return;
         }
 
-        setEmployees(result.employees);
+        setEmployees(
+          result.employees
+        );
 
         setGlobalLunchEnabled(
           result.global_lunch_enabled === true
@@ -443,7 +405,7 @@ export default function CashierMealsRotaPanel({
         }
 
         console.error(
-          "TEAM LEGEND MEALS & BONUS ERROR:",
+          "TEAM LEGEND MEALS ERROR:",
           err
         );
 
@@ -464,9 +426,9 @@ export default function CashierMealsRotaPanel({
     ]
   );
 
-  // ==========================================================
-  // AUTOMATIC REFRESH
-  // ==========================================================
+  // ========================================================
+  // AUTOMATIC REFRESH EVERY 30 SECONDS
+  // ========================================================
 
   useEffect(() => {
     const controller =
@@ -477,39 +439,34 @@ export default function CashierMealsRotaPanel({
     setEmployees([]);
     setError("");
 
-    if (!isShiftOpen || !shiftId) {
-      return () => {
-        controller.abort();
-        requestIdRef.current += 1;
-      };
+    if (isShiftOpen) {
+      void loadMeals(controller.signal);
     }
 
-    void loadMeals(controller.signal);
-
-    const interval = setInterval(() => {
+    const timer = setInterval(() => {
       if (
+        isShiftOpen &&
         document.visibilityState === "visible"
       ) {
         void loadMeals(controller.signal);
       }
-    }, REFRESH_INTERVAL);
+    }, REFRESH_MS);
 
     return () => {
       controller.abort();
 
-      clearInterval(interval);
+      clearInterval(timer);
 
       requestIdRef.current += 1;
     };
   }, [
-    shiftId,
     isShiftOpen,
     loadMeals,
   ]);
 
-  // ==========================================================
-  // HIDE IF NO OPEN SHIFT
-  // ==========================================================
+  // ========================================================
+  // HIDE WHEN THERE IS NO OPEN SHIFT
+  // ========================================================
 
   if (
     !shiftId ||
@@ -521,383 +478,305 @@ export default function CashierMealsRotaPanel({
     return null;
   }
 
-  if (!employees.length && !error) {
+  if (
+    !employees.length &&
+    !error
+  ) {
     return null;
   }
 
-  // ==========================================================
-  // EXECUTIVE LED DESIGN 2
-  // ==========================================================
+  // ========================================================
+  // EXECUTIVE LED LIGHT MINT DESIGN
+  // ========================================================
 
   return (
-    <section className="tl-meals-executive">
-
+    <section
+      className="tl-executive-meals"
+      aria-label="Employee Meals and Bonuses"
+    >
       <style>{`
 
-        /* ===================================== */
-        /* MAIN SLIM STRIP                       */
-        /* ===================================== */
+        /* ====================================== */
+        /* MAIN NAVY CONTAINER                    */
+        /* ====================================== */
 
-        .tl-meals-executive {
+        .tl-executive-meals {
+          margin: 6px 12px 0;
           width: auto;
           min-width: 0;
-
-          margin: 5px 12px 0;
-
-          color: #F0F5FA;
-
+          box-sizing: border-box;
+          color: #FFFFFF;
           font-family: inherit;
-
-          box-sizing: border-box;
         }
 
-        .tl-meals-executive .tl-meals-board {
+        .tl-executive-meals .tl-executive-board {
           width: 100%;
-
-          background: #0D1E2E;
-
-          border: 1px solid #2B4558;
+          background: #101F30;
+          border: 1px solid #29475E;
           border-left: 3px solid #D9B66C;
-
-          border-radius: 8px;
-
+          border-radius: 9px;
           overflow-x: auto;
-
           scrollbar-width: thin;
-
           box-sizing: border-box;
         }
 
-        /* ===================================== */
-        /* EMPLOYEE ROW                          */
-        /* ===================================== */
+        /* ====================================== */
+        /* EMPLOYEE ROW                           */
+        /* ====================================== */
 
-        .tl-meals-executive .tl-meals-row {
-          display: grid;
-
-          grid-template-columns:
-            minmax(175px, 1.8fr)
-            repeat(3, minmax(115px, 1fr));
-
+        .tl-executive-meals .tl-executive-row {
+          display: flex;
           align-items: center;
+          justify-content: flex-start;
+          gap: 14px;
 
-          gap: 10px;
+          min-width: 690px;
+          min-height: 49px;
 
-          padding: 6px 12px;
-
-          min-height: 36px;
-
+          padding: 7px 13px;
           box-sizing: border-box;
         }
 
-        .tl-meals-executive .tl-meals-row
-        + .tl-meals-row {
-          border-top: 1px solid #283F52;
+        .tl-executive-meals .tl-executive-row
+        + .tl-executive-row {
+          border-top: 1px solid #2D465B;
         }
 
-        .tl-meals-executive .tl-meals-row:hover {
+        .tl-executive-meals .tl-executive-row:hover {
           background: rgba(
-            255,255,255,0.018
+            255, 255, 255, 0.025
           );
         }
 
-        /* ===================================== */
-        /* FULL EMPLOYEE NAME                    */
-        /* ===================================== */
+        /* ====================================== */
+        /* FULL EMPLOYEE NAME                     */
+        /* ====================================== */
 
-        .tl-meals-executive .tl-meals-name {
+        .tl-executive-meals .tl-executive-name {
+          flex: 0 0 205px;
           color: #FFFFFF;
-
           font-size: 12px;
-
           font-weight: 850;
-
+          line-height: 1.3;
           letter-spacing: 0.025em;
-
-          line-height: 1.35;
-
           overflow-wrap: anywhere;
         }
 
-        /* ===================================== */
-        /* EXECUTIVE LED BUTTON                  */
-        /* ===================================== */
+        /* ====================================== */
+        /* GROUP THE THREE BENEFITS               */
+        /* ====================================== */
 
-        .tl-meals-executive .tl-benefit-led {
-          display: inline-flex;
-
+        .tl-executive-meals .tl-executive-buttons {
+          display: flex;
           align-items: center;
-          justify-content: center;
-
-          gap: 6px;
-
-          min-width: 110px;
-
-          width: fit-content;
-
-          min-height: 28px;
-
-          padding: 5px 10px;
-
-          box-sizing: border-box;
-
-          border-radius: 6px;
-
-          border: 1px solid transparent;
-
-          white-space: nowrap;
-
-          font-size: 10px;
-
-          line-height: 1.2;
-
-          letter-spacing: 0.035em;
-
-          font-weight: 800;
-
-          cursor: default;
-
-          user-select: none;
-
-          font-variant-numeric:
-            tabular-nums;
-
-          box-shadow:
-            inset 0 1px 0
-            rgba(255,255,255,0.13);
-
-          transition:
-            background 0.2s ease,
-            border-color 0.2s ease,
-            box-shadow 0.2s ease;
+          justify-content: flex-start;
+          gap: 10px;
+          flex: 0 0 auto;
         }
 
-        .tl-meals-executive
-        .tl-benefit-led-symbol {
-          display: inline-flex;
+        /* ====================================== */
+        /* DEFAULT NAVY BUTTON                    */
+        /* ====================================== */
 
+        .tl-executive-meals .tl-executive-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+
+          width: 143px;
+          min-height: 36px;
+
+          padding: 5px 10px;
+          box-sizing: border-box;
+
+          border-radius: 7px;
+          border: 1px solid #55768F;
+
+          background:
+            linear-gradient(
+              135deg,
+              #284B66 0%,
+              #1D3751 100%
+            );
+
+          color: #FFFFFF;
+          white-space: nowrap;
+
+          font-variant-numeric: tabular-nums;
+          box-shadow:
+            inset 0 1px 0
+              rgba(255,255,255,0.14),
+            0 3px 8px
+              rgba(0,0,0,0.13);
+
+          user-select: none;
+          cursor: default;
+        }
+
+        .tl-executive-meals .tl-executive-label {
+          color: inherit;
+          font-size: 11px;
+          font-weight: 850;
+          letter-spacing: 0.035em;
+        }
+
+        .tl-executive-meals .tl-executive-amount {
+          color: inherit;
+          font-size: 13px;
+          font-weight: 950;
+          letter-spacing: 0;
+        }
+
+        /* ====================================== */
+        /* STATUS TICK / CROSS                    */
+        /* ====================================== */
+
+        .tl-executive-meals .tl-executive-check {
+          display: inline-flex;
           align-items: center;
           justify-content: center;
 
+          width: 21px;
+          height: 21px;
+          flex: 0 0 21px;
+
+          border-radius: 50%;
+
           font-size: 15px;
-
           font-weight: 950;
-
           line-height: 1;
 
           color: #FFFFFF;
         }
 
-        .tl-meals-executive
-        .tl-benefit-led-label {
-          font-size: 10px;
+        /* ====================================== */
+        /* LIGHT MINT GREEN — CONFIRMED           */
+        /* ====================================== */
 
-          font-weight: 850;
-
-          color: #FFFFFF;
-
-          letter-spacing: 0.045em;
-        }
-
-        .tl-meals-executive
-        .tl-benefit-led-number {
-          font-size: 12px;
-
-          font-weight: 950;
-
-          color: #FFFFFF;
-
-          letter-spacing: 0;
-
-          font-variant-numeric:
-            tabular-nums;
-        }
-
-        /* ===================================== */
-        /* LAGOON GREEN — CONFIRMED              */
-        /* ===================================== */
-
-        .tl-meals-executive
-        .tl-benefit-led-confirmed {
+        .tl-executive-meals
+        .tl-executive-confirmed {
           background:
             linear-gradient(
               135deg,
-              #087C76 0%,
-              #095E5C 100%
+              #AEF8D6 0%,
+              #73E5B9 100%
             );
 
-          border-color: #39E9CB;
+          border-color: #C8FFE6;
+
+          color: #07392F;
 
           box-shadow:
             inset 0 1px 0
-              rgba(255,255,255,0.22),
-
-            0 0 9px
-              rgba(32,201,177,0.22);
+              rgba(255,255,255,0.55),
+            0 0 12px
+              rgba(114,233,184,0.26);
         }
 
-        /* Subtle premium LED glow */
-
-        @keyframes tlLagoonGlow {
-          0%, 100% {
-            box-shadow:
-              inset 0 1px 0
-                rgba(255,255,255,0.22),
-              0 0 5px
-                rgba(32,201,177,0.12);
-          }
-
-          50% {
-            box-shadow:
-              inset 0 1px 0
-                rgba(255,255,255,0.22),
-              0 0 12px
-                rgba(32,201,177,0.34);
-          }
+        .tl-executive-meals
+        .tl-executive-confirmed
+        .tl-executive-check {
+          background: #087C67;
+          color: #FFFFFF;
         }
 
-        .tl-meals-executive
-        .tl-benefit-led-confirmed {
-          animation:
-            tlLagoonGlow 7s ease-in-out infinite;
-        }
+        /* ====================================== */
+        /* RED — DISQUALIFIED                     */
+        /* ====================================== */
 
-        /* ===================================== */
-        /* ELEGANT RED — DISQUALIFIED            */
-        /* ===================================== */
-
-        .tl-meals-executive
-        .tl-benefit-led-rejected {
+        .tl-executive-meals
+        .tl-executive-rejected {
           background:
             linear-gradient(
               135deg,
-              #933A4D 0%,
-              #682938 100%
+              #C45469 0%,
+              #97374F 100%
             );
 
-          border-color: #FA92A0;
+          border-color: #FFA1B0;
+
+          color: #FFFFFF;
 
           box-shadow:
             inset 0 1px 0
-              rgba(255,255,255,0.11);
+              rgba(255,255,255,0.17);
         }
 
-        /* ===================================== */
-        /* MUTED GREY — DISABLED                 */
-        /* ===================================== */
-
-        .tl-meals-executive
-        .tl-benefit-led-disabled {
-          background: #243345;
-
-          border-color: #536273;
-
-          opacity: 0.75;
+        .tl-executive-meals
+        .tl-executive-rejected
+        .tl-executive-check {
+          background: rgba(
+            255,255,255,0.18
+          );
+          color: #FFFFFF;
         }
 
-        /* ===================================== */
-        /* SLATE — QUALIFIED / NOT POSTED        */
-        /* ===================================== */
+        /* ====================================== */
+        /* ERROR MESSAGE                         */
+        /* ====================================== */
 
-        .tl-meals-executive
-        .tl-benefit-led-pending {
-          background:
-            linear-gradient(
-              135deg,
-              #344659,
-              #263849
-            );
-
-          border-color: #8293A6;
-        }
-
-        /* ===================================== */
-        /* ERROR DISPLAY                        */
-        /* ===================================== */
-
-        .tl-meals-executive .tl-meals-error {
-          font-size: 11px;
-
-          font-weight: 600;
-
-          color: #FB8B96;
-
+        .tl-executive-meals .tl-executive-error {
           padding: 6px 3px;
+          font-size: 11px;
+          font-weight: 650;
+          color: #FF95A4;
         }
 
-        /* ===================================== */
-        /* ACCESSIBILITY                        */
-        /* ===================================== */
-
-        @media (
-          prefers-reduced-motion: reduce
-        ) {
-          .tl-meals-executive
-          .tl-benefit-led {
-            animation: none !important;
-            transition: none !important;
-          }
-        }
-
-        /* ===================================== */
-        /* SMALL SCREENS                         */
-        /* ===================================== */
+        /* ====================================== */
+        /* MOBILE                                */
+        /* ====================================== */
 
         @media (max-width: 650px) {
-
-          .tl-meals-executive {
+          .tl-executive-meals {
             margin: 5px 8px 0;
           }
 
-          .tl-meals-executive
-          .tl-meals-row {
-            grid-template-columns:
-              minmax(155px, 1.6fr)
-              repeat(3, minmax(108px, 1fr));
-
-            gap: 8px;
-
-            padding: 5px 9px;
+          .tl-executive-meals .tl-executive-row {
+            min-width: 650px;
+            min-height: 45px;
+            padding: 6px 9px;
+            gap: 9px;
           }
 
-          .tl-meals-executive
-          .tl-meals-name {
+          .tl-executive-meals .tl-executive-name {
+            flex-basis: 180px;
             font-size: 11px;
           }
 
-          .tl-meals-executive
-          .tl-benefit-led {
-            min-width: 103px;
-
-            padding: 5px 7px;
-
-            min-height: 27px;
+          .tl-executive-meals .tl-executive-buttons {
+            gap: 7px;
           }
 
+          .tl-executive-meals .tl-executive-button {
+            width: 140px;
+            min-height: 34px;
+            padding: 4px 7px;
+          }
         }
 
       `}</style>
 
       {employees.length > 0 && (
-        <div className="tl-meals-board">
+        <div className="tl-executive-board">
 
           {employees.map((employee) => {
 
-            const lunchStatus =
+            const lunch =
               getBenefitStatus(
                 employee,
                 "LUNCH",
                 globalLunchEnabled
               );
 
-            const supperStatus =
+            const supper =
               getBenefitStatus(
                 employee,
                 "SUPPER",
                 globalLunchEnabled
               );
 
-            const bonusStatus =
+            const bonus =
               getBenefitStatus(
                 employee,
                 "BONUS",
@@ -906,36 +785,32 @@ export default function CashierMealsRotaPanel({
 
             return (
               <div
-                className="tl-meals-row"
+                className="tl-executive-row"
                 key={employee.employee_id}
               >
 
-                {/* FULL MASTER EMPLOYEE NAME */}
-
-                <span className="tl-meals-name">
+                <span className="tl-executive-name">
                   {employee.full_name}
                 </span>
 
-                {/* LUNCH */}
+                <div className="tl-executive-buttons">
 
-                <BenefitLED
-                  label="LUNCH"
-                  status={lunchStatus}
-                />
+                  <BenefitButton
+                    label="LUNCH"
+                    status={lunch}
+                  />
 
-                {/* SUPPER */}
+                  <BenefitButton
+                    label="SUPPER"
+                    status={supper}
+                  />
 
-                <BenefitLED
-                  label="SUPPER"
-                  status={supperStatus}
-                />
+                  <BenefitButton
+                    label="BONUS"
+                    status={bonus}
+                  />
 
-                {/* MONDAY / FRIDAY BONUS */}
-
-                <BenefitLED
-                  label="BONUS"
-                  status={bonusStatus}
-                />
+                </div>
 
               </div>
             );
@@ -946,13 +821,12 @@ export default function CashierMealsRotaPanel({
 
       {error && (
         <div
-          className="tl-meals-error"
+          className="tl-executive-error"
           role="alert"
         >
           {error}
         </div>
       )}
-
     </section>
   );
 }
