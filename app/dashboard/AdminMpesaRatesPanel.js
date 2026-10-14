@@ -39,7 +39,6 @@ export default function AdminMpesaRatesPanel({ user }) {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
 
-  // Temporary messages disappear after 5 seconds.
   useEffect(() => {
     if (!message) return;
 
@@ -152,7 +151,7 @@ export default function AdminMpesaRatesPanel({ user }) {
   }, [supabaseUrl, authHeaders]);
 
   // ==================================================
-  // LOAD PAYMENT SETTINGS, TARIFFS AND CASHIER ACCOUNTS
+  // LOAD PAYMENT SETTINGS, TARIFFS AND ACCOUNTS
   // ==================================================
 
   const loadAll = useCallback(async ({ silent = false } = {}) => {
@@ -750,6 +749,7 @@ export default function AdminMpesaRatesPanel({ user }) {
     () => [...new Set(rates.map(getRateType).filter(Boolean))],
     [rates]
   );
+
   if (loading) {
     return (
       <div style={loadingStyle}>
@@ -759,10 +759,25 @@ export default function AdminMpesaRatesPanel({ user }) {
   }
 
   return (
-    <div style={wrapperStyle}>
+    <div className="tl-payment-admin" style={wrapperStyle}>
+      <style>{`
+        .tl-payment-admin details > summary::-webkit-details-marker {
+          display: none;
+        }
+        .tl-payment-admin input[type="number"] {
+          appearance: textfield;
+          -moz-appearance: textfield;
+        }
+        .tl-payment-admin input[type="number"]::-webkit-inner-spin-button,
+        .tl-payment-admin input[type="number"]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+      `}</style>
+
       <section style={heroStyle}>
         <div style={heroTitleStyle}>
-          PAYMENT SYSTEM & TRANSACTION RATES
+          BANKING & PAYMENT SETTINGS
         </div>
 
         <button
@@ -794,9 +809,11 @@ export default function AdminMpesaRatesPanel({ user }) {
         </div>
       )}
 
-      {/* PAYMENT SYSTEM CONTROL */}
-      <section style={panelStyle}>
-        <div style={darkTitleStyle}>PAYMENT SYSTEM CONTROL</div>
+      <details style={dropdownStyle}>
+        <summary style={{ ...darkTitleStyle, ...dropdownHeadingStyle }}>
+          <span>PAYMENT SYSTEM</span>
+          <span aria-hidden="true">▾</span>
+        </summary>
 
         <div style={bodyStyle}>
           <div style={systemGridStyle}>
@@ -831,30 +848,24 @@ export default function AdminMpesaRatesPanel({ user }) {
             />
           </div>
 
-          <div style={summaryNoticeStyle}>
-            Cashier returns:{" "}
-            <strong>{methodLabel(paymentSettings.collection_method)}</strong>
-            {" • "}
-            Float sending:{" "}
-            <strong>{methodLabel(paymentSettings.float_send_method)}</strong>
-          </div>
-
           <button
             type="button"
             onClick={savePaymentSystem}
             disabled={savingPaymentSystem}
             style={darkButtonStyle}
           >
-            {savingPaymentSystem ? "SAVING..." : "SAVE PAYMENT SYSTEM"}
+            {savingPaymentSystem
+              ? "SAVING..."
+              : "SAVE PAYMENT SYSTEM"}
           </button>
         </div>
-      </section>
+      </details>
 
-      {/* I&M COMPANY ACCOUNT */}
-      <section style={panelStyle}>
-        <div style={bankTitleStyle}>
-          I&M COMPANY PAYMENT ACCOUNT
-        </div>
+      <details style={dropdownStyle}>
+        <summary style={{ ...bankTitleStyle, ...dropdownHeadingStyle }}>
+          <span>I&M COMPANY ACCOUNT</span>
+          <span aria-hidden="true">▾</span>
+        </summary>
 
         <div style={bodyStyle}>
           <div style={fourGridStyle}>
@@ -934,13 +945,13 @@ export default function AdminMpesaRatesPanel({ user }) {
             {savingImAccount ? "SAVING..." : "SAVE I&M DETAILS"}
           </button>
         </div>
-      </section>
+      </details>
 
-      {/* M-PESA AND I&M CHARGES */}
-      <section style={panelStyle}>
-        <div style={orangeTitleStyle}>
-          M-PESA ↔ I&M TRANSACTION CHARGES
-        </div>
+      <details style={dropdownStyle}>
+        <summary style={{ ...orangeTitleStyle, ...dropdownHeadingStyle }}>
+          <span>I&M & M-PESA CHARGES</span>
+          <span aria-hidden="true">▾</span>
+        </summary>
 
         <div style={bodyStyle}>
           <div style={paymentAddGridStyle}>
@@ -1069,13 +1080,12 @@ export default function AdminMpesaRatesPanel({ user }) {
             </button>
           </div>
         </div>
-      </section>
-
-      {/* APPROVED CASHIER PAYMENT ACCOUNTS */}
-      <section style={panelStyle}>
-        <div style={cashierTitleStyle}>
-          APPROVED CASHIER PAYMENT ACCOUNTS
-        </div>
+      </details>
+<details style={dropdownStyle}>
+        <summary style={{ ...cashierTitleStyle, ...dropdownHeadingStyle }}>
+          <span>PAYMENT ACCOUNTS</span>
+          <span aria-hidden="true">▾</span>
+        </summary>
 
         <div style={bodyStyle}>
           <div style={newCashierGridStyle}>
@@ -1171,6 +1181,7 @@ export default function AdminMpesaRatesPanel({ user }) {
                 }))
               }
             />
+
             <Toggle
               label="I&M → M-Pesa"
               checked={newRecipient.allow_im_to_mpesa}
@@ -1181,6 +1192,7 @@ export default function AdminMpesaRatesPanel({ user }) {
                 }))
               }
             />
+
             <Toggle
               label="Active"
               checked={newRecipient.is_active}
@@ -1340,292 +1352,300 @@ export default function AdminMpesaRatesPanel({ user }) {
             ))}
           </div>
         </div>
-      </section>
+      </details>
 
-      {/* ADD M-PESA FEE BAND */}
-      <section style={panelStyle}>
-        <div style={purpleTitleStyle}>
-          ADD NEW M-PESA FEE BAND
-        </div>
+      <details style={dropdownStyle}>
+        <summary style={{ ...greenTitleStyle, ...dropdownHeadingStyle }}>
+          <span>M-PESA RATE BANDS & CALCULATOR</span>
+          <span aria-hidden="true">▾</span>
+        </summary>
 
-        <div style={bodyStyle}>
-          <div style={fourGridStyle}>
-            <Field label="FEE TYPE / FLOW">
-              <input
-                list="fee-types"
-                value={newFlow}
-                onChange={(event) =>
-                  setNewFlow(event.target.value)
-                }
-                style={inputStyle}
-              />
-              <datalist id="fee-types">
-                {feeTypes.map((type) => (
-                  <option key={type} value={type} />
-                ))}
-              </datalist>
-            </Field>
-
-            <Field label="MINIMUM AMOUNT">
-              <input
-                type="number"
-                value={newMinimum}
-                onChange={(event) =>
-                  setNewMinimum(event.target.value)
-                }
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="MAXIMUM AMOUNT">
-              <input
-                type="number"
-                value={newMaximum}
-                onChange={(event) =>
-                  setNewMaximum(event.target.value)
-                }
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="SAFARICOM FEE">
-              <input
-                type="number"
-                value={newFee}
-                onChange={(event) =>
-                  setNewFee(event.target.value)
-                }
-                style={inputStyle}
-              />
-            </Field>
+        <section style={panelStyle}>
+          <div style={purpleTitleStyle}>
+            ADD NEW M-PESA FEE BAND
           </div>
 
-          <div style={twoGridStyle}>
-            <Field label="EFFECTIVE FROM">
-              <input
-                type="date"
-                value={effectiveFrom}
-                onChange={(event) =>
-                  setEffectiveFrom(event.target.value)
-                }
-                style={inputStyle}
-              />
-            </Field>
+          <div style={bodyStyle}>
+            <div style={fourGridStyle}>
+              <Field label="FEE TYPE / FLOW">
+                <input
+                  list="fee-types"
+                  value={newFlow}
+                  onChange={(event) =>
+                    setNewFlow(event.target.value)
+                  }
+                  style={inputStyle}
+                />
+                <datalist id="fee-types">
+                  {feeTypes.map((type) => (
+                    <option key={type} value={type} />
+                  ))}
+                </datalist>
+              </Field>
 
-            <Field label="EFFECTIVE TO">
-              <input
-                type="date"
-                value={effectiveTo}
-                onChange={(event) =>
-                  setEffectiveTo(event.target.value)
-                }
-                style={inputStyle}
-              />
-            </Field>
-          </div>
+              <Field label="MINIMUM AMOUNT">
+                <input
+                  type="number"
+                  value={newMinimum}
+                  onChange={(event) =>
+                    setNewMinimum(event.target.value)
+                  }
+                  style={inputStyle}
+                />
+              </Field>
 
-          <Field label="ADMIN NOTE">
-            <textarea
-              value={newNote}
-              onChange={(event) =>
-                setNewNote(event.target.value)
-              }
-              rows={2}
-              style={textareaStyle}
-            />
-          </Field>
+              <Field label="MAXIMUM AMOUNT">
+                <input
+                  type="number"
+                  value={newMaximum}
+                  onChange={(event) =>
+                    setNewMaximum(event.target.value)
+                  }
+                  style={inputStyle}
+                />
+              </Field>
 
-          <button
-            type="button"
-            onClick={addBand}
-            disabled={adding}
-            style={purpleButtonStyle}
-          >
-            {adding ? "ADDING..." : "ADD M-PESA RATE"}
-          </button>
-        </div>
-      </section>
-
-      {/* CURRENT SAFARICOM RATES */}
-      <section style={panelStyle}>
-        <div style={greenTitleStyle}>
-          CURRENT M-PESA RATE BANDS
-        </div>
-
-        {rates.length === 0 ? (
-          <div style={emptyStyle}>
-            No M-Pesa rate bands were returned.
-          </div>
-        ) : (
-          <>
-            <div style={rateHeaderStyle}>
-              <div>TYPE</div>
-              <div>MIN</div>
-              <div>MAX</div>
-              <div>FEE</div>
-              <div>ACTIVE</div>
-              <div>EFFECTIVE</div>
-              <div>SAVE</div>
-              <div>DELETE</div>
+              <Field label="SAFARICOM FEE">
+                <input
+                  type="number"
+                  value={newFee}
+                  onChange={(event) =>
+                    setNewFee(event.target.value)
+                  }
+                  style={inputStyle}
+                />
+              </Field>
             </div>
 
-            {rates.map((rate, index) => (
-              <div
-                key={rate.id || index}
-                style={rateRowStyle}
-              >
+            <div style={twoGridStyle}>
+              <Field label="EFFECTIVE FROM">
                 <input
-                  value={getRateType(rate)}
+                  type="date"
+                  value={effectiveFrom}
                   onChange={(event) =>
-                    updateRateField(
-                      rate.id,
-                      "fee_type",
-                      event.target.value
-                    )
+                    setEffectiveFrom(event.target.value)
                   }
-                  style={smallInputStyle}
+                  style={inputStyle}
                 />
+              </Field>
 
+              <Field label="EFFECTIVE TO">
                 <input
-                  type="number"
-                  value={getMinimum(rate)}
+                  type="date"
+                  value={effectiveTo}
                   onChange={(event) =>
-                    updateRateField(
-                      rate.id,
-                      "min_amount",
-                      event.target.value
-                    )
+                    setEffectiveTo(event.target.value)
                   }
-                  style={smallInputStyle}
+                  style={inputStyle}
                 />
+              </Field>
+            </div>
 
-                <input
-                  type="number"
-                  value={getMaximum(rate)}
-                  onChange={(event) =>
-                    updateRateField(
-                      rate.id,
-                      "max_amount",
-                      event.target.value
-                    )
-                  }
-                  style={smallInputStyle}
-                />
-
-                <input
-                  type="number"
-                  value={getFee(rate)}
-                  onChange={(event) =>
-                    updateRateField(
-                      rate.id,
-                      "fee",
-                      event.target.value
-                    )
-                  }
-                  style={smallInputStyle}
-                />
-
-                <CenterCheck
-                  checked={getIsActive(rate)}
-                  onChange={(checked) =>
-                    updateRateField(
-                      rate.id,
-                      "is_active",
-                      checked
-                    )
-                  }
-                />
-
-                <div style={smallTextStyle}>
-                  {rate.effective_from || "-"}
-                  {" → "}
-                  {rate.effective_to || "OPEN"}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => saveRate(rate)}
-                  disabled={savingId === String(rate.id)}
-                  style={saveButtonStyle}
-                >
-                  {savingId === String(rate.id)
-                    ? "SAVING..."
-                    : "SAVE"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => deleteRate(rate)}
-                  disabled={deletingId === String(rate.id)}
-                  style={deleteButtonStyle}
-                >
-                  {deletingId === String(rate.id)
-                    ? "DELETING..."
-                    : "DELETE"}
-                </button>
-              </div>
-            ))}
-          </>
-        )}
-      </section>
-
-      {/* SAFARICOM FEE CALCULATOR */}
-      <section style={panelStyle}>
-        <div style={blueTitleStyle}>
-          M-PESA FEE TEST
-        </div>
-
-        <div style={bodyStyle}>
-          <div style={threeGridStyle}>
-            <Field label="FEE TYPE">
-              <input
-                list="test-fee-types"
-                value={testFeeType}
-                onChange={(event) => {
-                  setTestFeeType(event.target.value);
-                  setTestResult(null);
-                }}
-                style={inputStyle}
-              />
-              <datalist id="test-fee-types">
-                {feeTypes.map((type) => (
-                  <option key={type} value={type} />
-                ))}
-              </datalist>
-            </Field>
-
-            <Field label="TRANSACTION AMOUNT">
-              <input
-                type="number"
-                value={testAmount}
-                onChange={(event) => {
-                  setTestAmount(event.target.value);
-                  setTestResult(null);
-                }}
-                style={inputStyle}
+            <Field label="ADMIN NOTE">
+              <textarea
+                value={newNote}
+                onChange={(event) =>
+                  setNewNote(event.target.value)
+                }
+                rows={2}
+                style={textareaStyle}
               />
             </Field>
 
-            <Field label="CALCULATED FEE">
-              <div style={feeResultStyle}>
-                KES {money(testResult ?? 0)}
-              </div>
-            </Field>
+            <button
+              type="button"
+              onClick={addBand}
+              disabled={adding}
+              style={purpleButtonStyle}
+            >
+              {adding ? "ADDING..." : "ADD M-PESA RATE"}
+            </button>
+          </div>
+        </section>
+
+        <section style={panelStyle}>
+          <div style={greenTitleStyle}>
+            CURRENT M-PESA RATE BANDS
           </div>
 
-          <button
-            type="button"
-            onClick={testFee}
-            disabled={testing}
-            style={blueButtonStyle}
-          >
-            {testing ? "CHECKING..." : "TEST TRANSACTION FEE"}
-          </button>
-        </div>
-      </section>
+          {rates.length === 0 ? (
+            <div style={emptyStyle}>
+              No M-Pesa rate bands were returned.
+            </div>
+          ) : (
+            <>
+              <div style={rateHeaderStyle}>
+                <div>TYPE</div>
+                <div>MIN</div>
+                <div>MAX</div>
+                <div>FEE</div>
+                <div>ACTIVE</div>
+                <div>EFFECTIVE</div>
+                <div>SAVE</div>
+                <div>DELETE</div>
+              </div>
+
+              {rates.map((rate, index) => (
+                <div
+                  key={rate.id || index}
+                  style={rateRowStyle}
+                >
+                  <input
+                    value={getRateType(rate)}
+                    onChange={(event) =>
+                      updateRateField(
+                        rate.id,
+                        "fee_type",
+                        event.target.value
+                      )
+                    }
+                    style={smallInputStyle}
+                  />
+
+                  <input
+                    type="number"
+                    value={getMinimum(rate)}
+                    onChange={(event) =>
+                      updateRateField(
+                        rate.id,
+                        "min_amount",
+                        event.target.value
+                      )
+                    }
+                    style={smallInputStyle}
+                  />
+
+                  <input
+                    type="number"
+                    value={getMaximum(rate)}
+                    onChange={(event) =>
+                      updateRateField(
+                        rate.id,
+                        "max_amount",
+                        event.target.value
+                      )
+                    }
+                    style={smallInputStyle}
+                  />
+
+                  <input
+                    type="number"
+                    value={getFee(rate)}
+                    onChange={(event) =>
+                      updateRateField(
+                        rate.id,
+                        "fee",
+                        event.target.value
+                      )
+                    }
+                    style={smallInputStyle}
+                  />
+
+                  <CenterCheck
+                    checked={getIsActive(rate)}
+                    onChange={(checked) =>
+                      updateRateField(
+                        rate.id,
+                        "is_active",
+                        checked
+                      )
+                    }
+                  />
+
+                  <div style={smallTextStyle}>
+                    {rate.effective_from || "-"}
+                    {" → "}
+                    {rate.effective_to || "OPEN"}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => saveRate(rate)}
+                    disabled={savingId === String(rate.id)}
+                    style={saveButtonStyle}
+                  >
+                    {savingId === String(rate.id)
+                      ? "SAVING..."
+                      : "SAVE"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => deleteRate(rate)}
+                    disabled={deletingId === String(rate.id)}
+                    style={deleteButtonStyle}
+                  >
+                    {deletingId === String(rate.id)
+                      ? "DELETING..."
+                      : "DELETE"}
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+        </section>
+
+        <section style={panelStyle}>
+          <div style={blueTitleStyle}>
+            M-PESA FEE TEST
+          </div>
+
+          <div style={bodyStyle}>
+            <div style={threeGridStyle}>
+              <Field label="FEE TYPE">
+                <input
+                  list="test-fee-types"
+                  value={testFeeType}
+                  onChange={(event) => {
+                    setTestFeeType(event.target.value);
+                    setTestResult(null);
+                  }}
+                  style={inputStyle}
+                />
+                <datalist id="test-fee-types">
+                  {feeTypes.map((type) => (
+                    <option key={type} value={type} />
+                  ))}
+                </datalist>
+              </Field>
+
+              <Field label="TRANSACTION AMOUNT">
+                <input
+                  type="number"
+                  value={testAmount}
+                  onChange={(event) => {
+                    setTestAmount(event.target.value);
+                    setTestResult(null);
+                  }}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="CALCULATED FEE">
+                <div style={feeResultStyle}>
+                  KES {money(testResult ?? 0)}
+                </div>
+              </Field>
+            </div>
+
+            <button
+              type="button"
+              onClick={testFee}
+              disabled={testing}
+              style={blueButtonStyle}
+            >
+              {testing ? "CHECKING..." : "TEST TRANSACTION FEE"}
+            </button>
+          </div>
+        </section>
+      </details>
     </div>
   );
 }
+
+// ==================================================
+// COMPONENTS
+// ==================================================
 
 function PaymentMethodBox({ title, value, options, onChange }) {
   return (
@@ -1646,6 +1666,7 @@ function PaymentMethodBox({ title, value, options, onChange }) {
     </div>
   );
 }
+
 function PaymentTariffTable({
   title,
   method,
@@ -1775,7 +1796,7 @@ function CenterCheck({ checked, onChange }) {
 }
 
 // ==================================================
-// M-PESA RATE HELPERS
+// M-PESA HELPERS
 // ==================================================
 
 function normaliseRates(value) {
@@ -1948,7 +1969,7 @@ function methodLabel(value) {
 }
 
 // ==================================================
-// PROFESSIONAL ADMIN THEME
+// ADMIN THEME
 // ==================================================
 
 const wrapperStyle = {
@@ -1988,6 +2009,23 @@ const refreshButtonStyle = {
   cursor: "pointer",
   fontWeight: "bold",
   fontSize: "12px",
+};
+
+const dropdownStyle = {
+  border: "1px solid #cbd5e1",
+  borderRadius: "7px",
+  overflow: "hidden",
+  backgroundColor: "white",
+};
+
+const dropdownHeadingStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  cursor: "pointer",
+  listStyle: "none",
+  userSelect: "none",
 };
 
 const panelStyle = {
@@ -2093,14 +2131,6 @@ const radioStyle = {
   fontSize: "12px",
 };
 
-const summaryNoticeStyle = {
-  marginTop: "10px",
-  padding: "9px",
-  backgroundColor: "#f1f5f9",
-  borderRadius: "5px",
-  fontSize: "12px",
-};
-
 const baseButton = {
   width: "100%",
   marginTop: "10px",
@@ -2169,14 +2199,16 @@ const twoGridStyle = {
 
 const paymentAddGridStyle = {
   display: "grid",
-  gridTemplateColumns: "1.2fr 1fr 1fr 1fr auto",
+  gridTemplateColumns:
+    "1.2fr 1fr 1fr 1fr auto",
   gap: "8px",
   alignItems: "end",
 };
 
 const newCashierGridStyle = {
   display: "grid",
-  gridTemplateColumns: "1.3fr 0.5fr 1fr 1fr 1fr",
+  gridTemplateColumns:
+    "1.3fr 0.5fr 1fr 1fr 1fr",
   gap: "8px",
 };
 
@@ -2266,7 +2298,8 @@ const subTitleStyle = {
   fontSize: "12px",
 };
 
-const tariffColumns = "1fr 1fr 1fr 0.6fr 0.8fr 0.8fr";
+const tariffColumns =
+  "1fr 1fr 1fr 0.6fr 0.8fr 0.8fr";
 
 const tariffHeaderStyle = {
   display: "grid",
