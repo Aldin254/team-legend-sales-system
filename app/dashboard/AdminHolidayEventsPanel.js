@@ -197,13 +197,12 @@ useEffect(() => {
       <div className="mbh-heading">
         <div>
           <h2>🇰🇪 Kenya Holiday Events</h2>
-          <p>One company-wide Holiday Bonus for all active Master Employees.</p>
         </div>
         <span className="mbh-heading-tag">ADMIN CONTROL</span>
       </div>
 
       <div className="mbh-meta">
-        <span>UPCOMING IN THE NEXT 7 DAYS</span>
+        <span>UPCOMING HOLIDAYS</span>
         <span>ACTIVE MASTER EMPLOYEES: <b>{employeeCount}</b></span>
       </div>
 
@@ -274,17 +273,19 @@ useEffect(() => {
                 />
               </label>
             </div>
-            <div className="mbh-estimate">
-              Projected company-wide total: <b>KES {formatMoney(previewTotal)}</b>
-              <span> · {employeeCount} active Master Employees</span>
-            </div>
-            <div className="mbh-preview">
-              {draft.enabled ? (
-                <><strong>{draft.greeting}</strong><span>Holiday Bonus KES {formatMoney(draft.amount)}</span></>
-              ) : (
-                <span>Hidden from cashiers while disabled. Admin can still see this event.</span>
-              )}
-            </div>
+           <div className="mbh-estimate">
+  ESTIMATED COST: <b>KES {formatMoney(previewTotal)}</b>
+</div>
+           <div className="mbh-preview">
+  {draft.enabled ? (
+    <>
+      <strong>{draft.greeting}</strong>
+      <span>KES {formatMoney(draft.amount)}</span>
+    </>
+  ) : (
+    <strong>DISABLED</strong>
+  )}
+</div>
             <div className="mbh-footer">
               <label>
                 Reason for changes
