@@ -19,6 +19,16 @@ export default function AccountantDashboard({ user }) {
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  // Auto-hide confirmation after 5 seconds
+  useEffect(() => {
+    if (!successMessage) return;
+
+    const timer = setTimeout(() => {
+      setSuccessMessage("");
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [successMessage]);
   const [declinedSendMessage, setDeclinedSendMessage] = useState("");
   const [report, setReport] = useState(null);
   const [reportOpenError, setReportOpenError] = useState("");
