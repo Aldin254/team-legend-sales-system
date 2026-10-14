@@ -268,7 +268,7 @@ function holidayLabel(event) {
     .toUpperCase()
     .replace(/\s+DAY$/, "");
 
-  return `🇰🇪 ${name}`;
+ return `🇰🇪 ${name} BONUS`;
 }
 
 // ======================================================
@@ -809,20 +809,6 @@ export default function CashierMealsRotaPanel({
 
           {/* ACTIVE HOLIDAY GREETINGS */}
 
-          {holidayEvents.length > 0 && (
-            <div className="tl-executive-holiday-head">
-
-              {holidayEvents.map(
-                (event) => (
-                  <span key={event.id}>
-                    {event.greeting}
-                  </span>
-                )
-              )}
-
-            </div>
-          )}
-
           {/* DUTY ROTA EMPLOYEES */}
 
           {employees.map(
@@ -866,27 +852,41 @@ export default function CashierMealsRotaPanel({
 
                   {/* ENABLED HOLIDAY BUTTONS */}
 
-                  {holidayEvents.map(
-                    (event) => (
-                      <BenefitButton
-                        key={event.id}
-                        holiday
-                        label={holidayLabel(event)}
-                        status={{
-                          type: "normal",
-                          icon: "",
-                          amount: money(
-                            event.amount
-                          ),
-                          description:
-                            `${event.greeting} ` +
-                            `Scheduled for ` +
-                            `${event.holiday_date}. ` +
-                            `No confirmed holiday expense yet.`,
-                        }}
-                      />
-                    )
-                  )}
+                  {holidayEvents.map((event) => (
+  <div
+    key={event.id}
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "12px",
+      whiteSpace: "nowrap",
+    }}
+  >
+    <BenefitButton
+      holiday
+      label={holidayLabel(event)}
+      status={{
+        type: "normal",
+        icon: "",
+        amount: money(event.amount),
+        description:
+          `${event.greeting} Scheduled for ` +
+          `${event.holiday_date}. ` +
+          `No confirmed holiday expense yet.`,
+      }}
+    />
+
+    <span
+      style={{
+        color: "#E8C478",
+        fontSize: "12px",
+        fontWeight: 800,
+      }}
+    >
+      {event.greeting}
+    </span>
+  </div>
+))}
 
                 </div>
               </div>
