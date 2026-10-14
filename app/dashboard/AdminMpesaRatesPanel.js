@@ -874,17 +874,25 @@ export default function AdminMpesaRatesPanel({ user }) {
           </button>
 
           <div style={cashierWrapStyle}>
-            <div style={cashierHeaderStyle}>
-              <div>SHOP</div>
-              <div>CASHIER — DUTY ROTA</div>
-              <div>M-PESA</div>
-              <div>I&M REF</div>
-              <div>M→M</div>
-              <div>I&M→M</div>
-              <div>SAVE</div>
-              <div>REMOVE</div>
-            </div>
+           <div style={cashierHeaderStyle}>
+  <div style={{ textAlign: "left" }}>SHOP</div>
 
+  <div style={{ textAlign: "left" }}>
+    CASHIER — DUTY ROTA
+  </div>
+
+  <div style={{ textAlign: "left" }}>M-PESA</div>
+
+  <div style={{ textAlign: "left" }}>I&M REF</div>
+
+  <div style={{ textAlign: "center" }}>M→M</div>
+
+  <div style={{ textAlign: "center" }}>I&M→M</div>
+
+  <div style={{ textAlign: "center" }}>SAVE</div>
+
+  <div style={{ textAlign: "center" }}>REMOVE</div>
+</div>
             {sortedRecipients.map((recipient) => (
               <div key={recipient.shop_id} style={cashierRowStyle}>
                 <strong>{recipient.shop_name}</strong>
@@ -2226,7 +2234,7 @@ const cashierHeaderStyle = {
   backgroundColor: "#f1f5f9",
   fontSize: "10px",
   fontWeight: "bold",
-  textAlign: "center",
+ textAlign: "left",
 };
 
 const cashierRowStyle = {
