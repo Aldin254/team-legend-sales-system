@@ -167,28 +167,30 @@ export default function AccountantDashboard({ user }) {
     return Array.isArray(result) ? result : [];
   }, [supabaseUrl, authHeaders]);
 
+  // Shop payment accounts are shared across both transfer methods.
+  // The server resolves the effective cashier from Duty Rota; it never
+  // trusts the old recipient_name saved in the payment account table.
   const loadRecipients = useCallback(async () => {
-    const response = await fetch(
-      `${supabaseUrl}/rest/v1/mpesa_cashier_recipients` +
-        "?is_active=eq.true" +
-        "&select=id,shop_id,slot_number,recipient_name,phone_number,linked_profile_id,is_active" +
-        "&order=shop_id.asc,slot_number.asc",
-      {
-        method: "GET",
-        headers: authHeaders(),
-        cache: "no-store",
-      }
+    const result = await callRpc(
+      "tl_accountant_shop_payment_recipients",
+      {}
     );
-    const result = await safeJson(response);
-    if (!response.ok) {
-      throw new Error(
-        result?.message ||
-          result?.details ||
-          "Unable to load approved M-Pesa recipients."
-      );
+
+    if (!Array.isArray(result)) {
+      throw new Error("Unable to load shop payment accounts.");
     }
-    return Array.isArray(result) ? result : [];
-  }, [supabaseUrl, authHeaders]);
+
+    return result.map((row) => ({
+      ...row,
+      id: row.id,
+      shop_id: row.shop_id,
+      phone_number: String(row.phone_number || ""),
+      cashier_name: String(row.cashier_name || "NOT ASSIGNED"),
+      duty_ready: row.duty_ready === true,
+      allow_mpesa_to_mpesa: row.allow_mpesa_to_mpesa !== false,
+      allow_im_to_mpesa: row.allow_im_to_mpesa !== false,
+    }));
+  }, [callRpc]);
 
   const loadTransactions = useCallback(async () => {
     const response = await fetch(
@@ -272,7 +274,11 @@ export default function AccountantDashboard({ user }) {
           loadedSavingsPayments,
         ] = await Promise.all([
           loadShops(),
-          loadRecipients(),
+          loadRecipients().catch((error) => {
+            console.error("SHOP PAYMENT ROTA ERROR:", error);
+            setMessage(error?.message || "Shop payment accounts unavailable.");
+            return [];
+          }),
           loadTransactions(),
           loadSavingsPayments(),
         ]);
@@ -580,14 +586,12 @@ export default function AccountantDashboard({ user }) {
   }, [shops]);
 
   const sortedRecipients = useMemo(() => {
-    return [...recipients].sort((a, b) => {
-      const shopA = String(shopMap.get(a.shop_id)?.shop_name || "");
-      const shopB = String(shopMap.get(b.shop_id)?.shop_name || "");
-      const shopCompare = shopA.localeCompare(shopB);
-      if (shopCompare !== 0) return shopCompare;
-
-      return Number(a.slot_number || 0) - Number(b.slot_number || 0);
-    });
+    return [...recipients].sort((a, b) =>
+      String(a.shop_name || shopMap.get(a.shop_id)?.shop_name || "")
+        .localeCompare(
+          String(b.shop_name || shopMap.get(b.shop_id)?.shop_name || "")
+        )
+    );
   }, [recipients, shopMap]);
 
   const selectedRecipient = useMemo(
@@ -747,8 +751,13 @@ export default function AccountantDashboard({ user }) {
     const amount = Number(sendAmount);
     setDeclinedSendMessage("");
 
-    if (!selectedRecipientId) {
-      setMessage("Select the shop and cashier receiving the float.");
+    if (!selectedRecipientId || !selectedRecipient) {
+      setMessage("Select a registered shop payment account.");
+      return;
+    }
+
+    if (!selectedRecipient.duty_ready) {
+      setMessage("Duty Rota cashier is not verified for this shop.");
       return;
     }
 
@@ -773,6 +782,15 @@ export default function AccountantDashboard({ user }) {
         }
       } catch (routeError) {
         console.warn("LATEST FLOAT ROUTE CHECK ERROR:", routeError);
+      }
+
+      if (
+        (routeAtPrepare === "IM_TO_MPESA" &&
+          !selectedRecipient.allow_im_to_mpesa) ||
+        (routeAtPrepare === "MPESA_TO_MPESA" &&
+          !selectedRecipient.allow_mpesa_to_mpesa)
+      ) {
+        throw new Error("This payment route is disabled for the shop.");
       }
 
       const result = await callRpc("tl_accountant_prepare_manual_send", {
@@ -807,6 +825,11 @@ export default function AccountantDashboard({ user }) {
 
       const prepared = {
         ...result,
+        recipient_name:
+          result.recipient_name || selectedRecipient.cashier_name,
+        shop_name:
+          shopMap.get(result.shop_id || selectedRecipient.shop_id)
+            ?.shop_name || selectedRecipient.shop_name || "Shop",
         float_send_method: preparedRouteCode,
         created_at: result?.created_at || new Date().toISOString(),
       };
@@ -816,15 +839,10 @@ export default function AccountantDashboard({ user }) {
       setPreparedSecondsLeft(30);
       setDeclinedSendMessage("");
 
-      const route = getAccountantSendRoute(
-        prepared,
-        preparedRouteCode
-      );
-
       setSuccessMessage(
-        route.isIm
-          ? `Transfer prepared for Company Float ${returnedSlot}. Send from I&M to the cashier's M-Pesa number, then enter the transaction reference.`
-          : `Transfer prepared for Company Float ${returnedSlot}. Send through M-Pesa, then enter the M-Pesa receipt.`
+        `Float ${returnedSlot} prepared — ${prepared.shop_name} • ` +
+        `${prepared.recipient_name} • ` +
+        `${formatPhoneForDisplay(prepared.phone_number)}.`
       );
 
       await refreshData({ silent: true });
@@ -872,9 +890,13 @@ export default function AccountantDashboard({ user }) {
       : "M-Pesa receipt";
 
     const confirmSend = window.confirm(
-      `Confirm that KES ${money(preparedSend.amount)} was sent successfully to ${
-        preparedSend.recipient_name || "the cashier"
-      }.\n\nRoute: ${route.routeTitle}\n${receiptLabel}: ${receipt}`
+      `CONFIRM FLOAT SENT\n\n` +
+      `Shop: ${preparedSend.shop_name || "Shop"}\n` +
+      `Cashier: ${preparedSend.recipient_name || "-"}\n` +
+      `M-Pesa: ${formatPhoneForDisplay(preparedSend.phone_number)}\n` +
+      `Amount: KES ${money(preparedSend.amount)}\n` +
+      `Route: ${route.routeTitle}\n` +
+      `${receiptLabel}: ${receipt}`
     );
 
     if (!confirmSend) return;
@@ -900,11 +922,11 @@ export default function AccountantDashboard({ user }) {
       setDeclinedSendMessage("");
 
       setSuccessMessage(
-        `Float completed. KES ${money(
-          result?.cashier_float_received
-        )} has been posted to the cashier's Company Float ${
-          result?.company_float_slot || ""
-        }.`
+        `Float sent — ${preparedSend.shop_name || "Shop"} • ` +
+        `${preparedSend.recipient_name || "Cashier"} • ` +
+        `${formatPhoneForDisplay(preparedSend.phone_number)} • ` +
+        `KES ${money(result?.cashier_float_received)} • ` +
+        `${receipt}.`
       );
 
       await refreshData({ silent: true });
@@ -925,7 +947,9 @@ export default function AccountantDashboard({ user }) {
 
     const confirmed = window.confirm(
       `Cancel transaction ${preparedSend.transaction_no || ""}?\n\n` +
+        `Shop: ${preparedSend.shop_name || "Shop"}\n` +
         `Cashier: ${preparedSend.recipient_name || "-"}\n` +
+        `M-Pesa: ${formatPhoneForDisplay(preparedSend.phone_number)}\n` +
         `Amount: KES ${money(preparedSend.amount)}\n\n` +
         "Only cancel if the money was NOT sent."
     );
@@ -969,7 +993,7 @@ export default function AccountantDashboard({ user }) {
   }
 
   async function confirmCashierReturn(transaction) {
-    if (!transaction?.id || confirmingTransactionId) return;
+    if (!transaction?.id || confirmingTransactionId || cancellingTransactionId) return;
     if (transaction.status !== "AWAITING_ACCOUNTANT_CONFIRMATION") return;
 
     const confirmed = window.confirm(
@@ -1012,18 +1036,23 @@ export default function AccountantDashboard({ user }) {
   }
 
   async function cancelPendingTransaction(transaction) {
-    if (!transaction?.id || cancellingTransactionId) return;
+    if (!transaction?.id || cancellingTransactionId || confirmingTransactionId) return;
 
     const cashier =
       transaction.recipient_name_snapshot ||
       transaction.cashier_name ||
       "-";
 
+    const cancellingReturn =
+      transaction.flow === "CASHIER_TO_ACCOUNTANT";
+
     const confirmed = window.confirm(
       `Cancel transaction ${transaction.transaction_no}?\n\n` +
         `Cashier: ${cashier}\n` +
         `Amount: KES ${money(transaction.amount)}\n\n` +
-        "Only cancel this transaction if the money was NOT sent."
+        (cancellingReturn
+          ? "Only cancel if the Accountant did NOT receive this money."
+          : "Only cancel if the money was NOT sent.")
     );
 
     if (!confirmed) return;
@@ -1461,29 +1490,40 @@ export default function AccountantDashboard({ user }) {
                       <TableCell>
                         {transaction.status ===
                         "AWAITING_ACCOUNTANT_CONFIRMATION" ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              confirmCashierReturn(transaction)
-                            }
-                            disabled={
-                              confirmingTransactionId === transaction.id
-                            }
-                            style={smallConfirmButtonStyle}
-                          >
-                            {confirmingTransactionId === transaction.id
-                              ? "Confirming..."
-                              : "Confirm Received"}
-                          </button>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => confirmCashierReturn(transaction)}
+                              disabled={Boolean(
+                                confirmingTransactionId || cancellingTransactionId
+                              )}
+                              style={smallConfirmButtonStyle}
+                            >
+                              {confirmingTransactionId === transaction.id
+                                ? "Confirming..." : "Confirm Received"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => cancelPendingTransaction(transaction)}
+                              disabled={Boolean(
+                                confirmingTransactionId || cancellingTransactionId
+                              )}
+                              style={cancelTransactionButtonStyle}
+                            >
+                              {cancellingTransactionId === transaction.id
+                                ? "Cancelling..." : "Cancel"}
+                            </button>
+                          </div>
                         ) : (
                           <button
                             type="button"
                             onClick={() =>
                               cancelPendingTransaction(transaction)
                             }
-                            disabled={
-                              cancellingTransactionId === transaction.id
-                            }
+                            disabled={Boolean(
+                              confirmingTransactionId ||
+                              cancellingTransactionId
+                            )}
                             style={cancelTransactionButtonStyle}
                           >
                             {cancellingTransactionId === transaction.id
@@ -1576,7 +1616,7 @@ export default function AccountantDashboard({ user }) {
 
           <div style={formGridStyle}>
             <div>
-              <label style={labelStyle}>Shop / Cashier</label>
+              <label style={labelStyle}>Shop / Duty Rota</label>
               <select
                 value={selectedRecipientId}
                 disabled={newActivityLocked || Boolean(preparedSend)}
@@ -1588,15 +1628,23 @@ export default function AccountantDashboard({ user }) {
                 style={inputStyle}
               >
                 <option value="">
-                  Select approved recipient
+                  Select shop
                 </option>
 
                 {sortedRecipients.map((recipient) => {
-                  const shop = shopMap.get(recipient.shop_id);
+                  const methodEnabled =
+                    floatSendMethod === "IM_TO_MPESA"
+                      ? recipient.allow_im_to_mpesa
+                      : recipient.allow_mpesa_to_mpesa;
+
                   return (
-                    <option key={recipient.id} value={recipient.id}>
-                      {shop?.shop_name || "Shop"} —{" "}
-                      {recipient.recipient_name} —{" "}
+                    <option
+                      key={recipient.id}
+                      value={recipient.id}
+                      disabled={!recipient.duty_ready || !methodEnabled}
+                    >
+                      {recipient.shop_name || "Shop"} —{" "}
+                      {recipient.cashier_name} —{" "}
                       {maskPhone(recipient.phone_number)}
                     </option>
                   );
@@ -1625,11 +1673,9 @@ export default function AccountantDashboard({ user }) {
 
           {selectedRecipient && (
             <div style={recipientPreviewStyle}>
-              <strong>Selected authorized recipient:</strong>{" "}
-              {selectedRecipient.recipient_name} •{" "}
-              {shopMap.get(selectedRecipient.shop_id)?.shop_name ||
-                "Shop"}{" "}
-              • {maskPhone(selectedRecipient.phone_number)}
+              <strong>{selectedRecipient.shop_name || "Shop"}</strong>
+              {" • "}{selectedRecipient.cashier_name}
+              {" • "}{formatPhoneForDisplay(selectedRecipient.phone_number)}
             </div>
           )}
 
@@ -1673,7 +1719,11 @@ export default function AccountantDashboard({ user }) {
                 value={preparedSend.transaction_no || "-"}
               />
               <TransactionDetail
-                label="Recipient"
+                label="Shop"
+                value={preparedSend.shop_name || "Shop"}
+              />
+              <TransactionDetail
+                label="Cashier — Duty Rota"
                 value={preparedSend.recipient_name || "-"}
               />
               <TransactionDetail
@@ -1703,7 +1753,7 @@ export default function AccountantDashboard({ user }) {
                   <>
                     Send exactly{" "}
                     <strong>KES {money(preparedSend.amount)}</strong>{" "}
-                    from <strong>I&M</strong> to cashier M-Pesa{" "}
+                    from <strong>I&M</strong> to shop M-Pesa{" "}
                     <strong>
                       {formatPhoneForDisplay(preparedSend.phone_number)}
                     </strong>
@@ -1826,8 +1876,7 @@ export default function AccountantDashboard({ user }) {
             </div>
           )}
         </section>
-
-        {/* ==================================================
+{/* ==================================================
             FLOAT RECEIVED FROM CASHIERS
         ================================================== */}
 
@@ -1900,20 +1949,30 @@ export default function AccountantDashboard({ user }) {
                       <TableCell>
                         {transaction.status ===
                         "AWAITING_ACCOUNTANT_CONFIRMATION" ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              confirmCashierReturn(transaction)
-                            }
-                            disabled={
-                              confirmingTransactionId === transaction.id
-                            }
-                            style={smallConfirmButtonStyle}
-                          >
-                            {confirmingTransactionId === transaction.id
-                              ? "Confirming..."
-                              : "Confirm Received"}
-                          </button>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => confirmCashierReturn(transaction)}
+                              disabled={Boolean(
+                                confirmingTransactionId || cancellingTransactionId
+                              )}
+                              style={smallConfirmButtonStyle}
+                            >
+                              {confirmingTransactionId === transaction.id
+                                ? "Confirming..." : "Confirm Received"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => cancelPendingTransaction(transaction)}
+                              disabled={Boolean(
+                                confirmingTransactionId || cancellingTransactionId
+                              )}
+                              style={cancelTransactionButtonStyle}
+                            >
+                              {cancellingTransactionId === transaction.id
+                                ? "Cancelling..." : "Cancel"}
+                            </button>
+                          </div>
                         ) : (
                           <span style={mutedSmallStyle}>
                             Waiting for cashier / resolution
