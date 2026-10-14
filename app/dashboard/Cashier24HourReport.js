@@ -1,588 +1,35 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+
 import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
-import CashierAttendancePanel from "./CashierAttendancePanel";
 import CashierLiveFeedPanel from "./CashierLiveFeedPanel";
+import CashierMealsRotaPanel from "./CashierMealsRotaPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
+
 import PlatformReadings24Hour from "./PlatformReadings24Hour";
 import CloseShift24Hour from "./CloseShift24Hour";
 
 // ==================================================
-// TEAM LEGEND PROFESSIONAL THEME
-// ==================================================
-
-const C = {
-  canvas: "#08121e",
-  canvasDeep: "#050c15",
-  header: "#0d1b2b",
-  sidebar: "#0b1827",
-  panel: "#101f30",
-  panelRaised: "#15263a",
-  field: "#0a1725",
-  border: "#2a3d52",
-  borderSoft: "#223448",
-  text: "#f0f5fa",
-  subtext: "#c4d0dc",
-  muted: "#91a5b8",
-  gold: "#d9b66c",
-  teal: "#40c9ac",
-  blue: "#7db8fa",
-  red: "#fb8b96",
-  greenBg: "#10332e",
-  blueBg: "#142d48",
-  redBg: "#38202a",
-};
-
-const font = {
-  fontFamily:
-    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-};
-
-const pageStyle = {
-  ...font,
-  minHeight: "100vh",
-  width: "100%",
-  boxSizing: "border-box",
-  background: `linear-gradient(150deg, ${C.canvas}, ${C.canvasDeep})`,
-  color: C.text,
-  fontSize: 13,
-  lineHeight: 1.5,
-};
-
-const loadingStyle = {
-  ...pageStyle,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 16,
-  fontWeight: 700,
-};
-
-const topHeaderStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  flexWrap: "wrap",
-  gap: 16,
-  padding: "15px clamp(16px, 2.5vw, 32px)",
-  background: C.header,
-  borderBottom: `1px solid ${C.border}`,
-  boxShadow: "0 5px 24px rgba(0,0,0,.15)",
-};
-
-const brandWrapStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-};
-
-const crownStyle = {
-  color: C.gold,
-  fontSize: 32,
-  lineHeight: 1,
-};
-
-const brandStyle = {
-  color: C.text,
-  fontSize: "clamp(18px, 2vw, 24px)",
-  fontWeight: 900,
-  letterSpacing: ".04em",
-};
-
-const taglineStyle = {
-  color: C.gold,
-  fontSize: 9,
-  fontWeight: 700,
-  letterSpacing: ".2em",
-  marginTop: 5,
-};
-
-const headerRightStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  flexWrap: "wrap",
-  gap: 16,
-  textAlign: "right",
-  color: C.subtext,
-  fontSize: 12,
-};
-
-const headerShopStyle = {
-  fontSize: 10,
-  color: C.muted,
-  letterSpacing: ".1em",
-  marginTop: 3,
-};
-
-const logoutButtonStyle = {
-  background: C.panelRaised,
-  border: `1px solid ${C.border}`,
-  color: C.text,
-  padding: "9px 16px",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontWeight: 700,
-};
-
-const bodyStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  width: "100%",
-};
-
-const sidebarStyle = {
-  flex: "0 1 172px",
-  minWidth: 145,
-  boxSizing: "border-box",
-  background: C.sidebar,
-  borderRight: `1px solid ${C.borderSoft}`,
-  padding: "18px 10px",
-  display: "flex",
-  flexDirection: "column",
-  gap: 5,
-};
-
-const mainStyle = {
-  flex: "1 1 680px",
-  minWidth: 0,
-  boxSizing: "border-box",
-  padding: "clamp(12px, 2vw, 25px)",
-};
-
-const topGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(min(100%, 150px), 1fr))",
-  gap: 10,
-  marginBottom: 12,
-};
-
-const baseCardStyle = {
-  minWidth: 0,
-  minHeight: 94,
-  padding: "14px 15px",
-  borderRadius: 11,
-  boxSizing: "border-box",
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "center",
-};
-
-const shopCardStyle = {
-  ...baseCardStyle,
-  background: "linear-gradient(145deg,#17283a,#102031)",
-  border: `1px solid ${C.border}`,
-  borderTop: `2px solid ${C.gold}`,
-};
-
-const shopTitleStyle = {
-  fontSize: "clamp(15px,1.5vw,19px)",
-  fontWeight: 850,
-  color: C.text,
-  letterSpacing: ".04em",
-  overflowWrap: "anywhere",
-};
-
-const shopSubtitleStyle = {
-  color: C.subtext,
-  fontSize: 10,
-  letterSpacing: ".1em",
-  marginTop: 4,
-};
-
-const smallTextStyle = {
-  marginTop: 5,
-  color: C.muted,
-  fontSize: 10,
-};
-
-const infoValueStyle = {
-  color: C.text,
-  fontSize: "clamp(13px,1.4vw,17px)",
-  fontWeight: 800,
-  marginTop: 6,
-  overflowWrap: "anywhere",
-};
-
-const greetingBannerStyle = {
-  padding: "10px 14px",
-  marginBottom: 10,
-  borderRadius: 8,
-  textAlign: "center",
-  fontSize: 14,
-  fontWeight: 800,
-};
-
-const greetingWelcomeStyle = {
-  background: C.greenBg,
-  color: "#b5f2dc",
-  border: "1px solid #2a6354",
-  borderLeft: `3px solid ${C.teal}`,
-};
-
-const greetingGoodbyeStyle = {
-  background: C.redBg,
-  color: "#ffc2cb",
-  border: "1px solid #723c49",
-  borderLeft: `3px solid ${C.gold}`,
-};
-
-const shiftBannerStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  flexWrap: "wrap",
-  gap: 10,
-  padding: "11px 14px",
-  marginBottom: 13,
-  borderRadius: 8,
-  color: C.subtext,
-  background: C.panel,
-  border: `1px solid ${C.border}`,
-  borderLeft: `3px solid ${C.gold}`,
-  fontSize: 12,
-};
-
-const upperGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(min(100%,305px),1fr))",
-  alignItems: "start",
-  gap: 14,
-  width: "100%",
-  marginBottom: 14,
-};
-
-const panelStyle = {
-  minWidth: 0,
-  background: C.panel,
-  border: `1px solid ${C.border}`,
-  borderRadius: 12,
-  overflow: "hidden",
-  paddingBottom: 11,
-  boxShadow: "0 8px 25px rgba(0,0,0,.10)",
-};
-
-const tableHeaderStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0,1.5fr) minmax(100px,.9fr)",
-  gap: 8,
-  alignItems: "center",
-  padding: "10px 12px",
-  background: C.field,
-  color: C.muted,
-  borderBottom: `1px solid ${C.borderSoft}`,
-  fontSize: 9,
-  letterSpacing: ".08em",
-  fontWeight: 800,
-};
-
-const incomeRowStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0,1.5fr) minmax(100px,.9fr)",
-  gap: 9,
-  alignItems: "center",
-  padding: "8px 12px",
-  minHeight: 38,
-  borderBottom: `1px solid ${C.borderSoft}`,
-  color: C.subtext,
-  fontSize: 11,
-};
-
-const moneyCell = {
-  padding: "7px 9px",
-  minHeight: 29,
-  boxSizing: "border-box",
-  borderRadius: 6,
-  fontSize: 11,
-  fontWeight: 750,
-  fontVariantNumeric: "tabular-nums",
-  textAlign: "right",
-};
-
-const amountBoxStyle = {
-  ...moneyCell,
-  color: C.text,
-  background: C.field,
-  border: `1px solid ${C.borderSoft}`,
-};
-
-const moneyInputStyle = {
-  ...moneyCell,
-  display: "block",
-  width: "100%",
-  minWidth: 65,
-  background: C.field,
-  color: C.text,
-  border: `1px solid ${C.border}`,
-  fontFamily: "inherit",
-};
-
-const savedMoneyStyle = {
-  ...moneyCell,
-  color: "#8ce3c4",
-  background: C.greenBg,
-  border: "1px solid #2a6354",
-};
-
-const lockedMoneyStyle = {
-  ...moneyCell,
-  color: C.muted,
-  background: "#0d1926",
-  border: `1px solid ${C.borderSoft}`,
-};
-
-const savedInlineStyle = {
-  color: C.teal,
-  fontWeight: 800,
-  marginLeft: 5,
-};
-
-const readOnlyInlineStyle = {
-  color: C.gold,
-  fontWeight: 800,
-  marginLeft: 5,
-};
-
-const incomeTotalStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  justifyContent: "space-between",
-  gap: 8,
-  margin: "9px 10px 0",
-  padding: "11px 12px",
-  background: "#152f30",
-  border: "1px solid #2c645a",
-  borderRadius: 7,
-  color: "#b5f2dc",
-  fontSize: 12,
-  fontVariantNumeric: "tabular-nums",
-};
-
-const noticeStyle = {
-  margin: "9px 11px 0",
-  borderRadius: 7,
-  padding: "9px 10px",
-  color: C.muted,
-  fontSize: 10,
-  lineHeight: 1.6,
-  background: C.field,
-  border: `1px solid ${C.borderSoft}`,
-};
-
-const panelButtonWrapStyle = {
-  padding: "10px 11px 3px",
-};
-
-const actionStyle = {
-  display: "block",
-  width: "100%",
-  padding: "11px 12px",
-  borderRadius: 8,
-  border: "none",
-  fontSize: 12,
-  fontWeight: 800,
-  cursor: "pointer",
-  color: "#fff",
-};
-
-const greenActionStyle = {
-  ...actionStyle,
-  background: "#247b73",
-  border: "1px solid #399e8e",
-};
-
-const redActionStyle = {
-  ...actionStyle,
-  background: "#9d4359",
-  border: "1px solid #c45b72",
-};
-
-const expenseHeaderStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "25px minmax(0,1.4fr) minmax(76px,.85fr)",
-  gap: 6,
-  padding: "10px 12px",
-  background: C.field,
-  borderBottom: `1px solid ${C.borderSoft}`,
-  color: C.muted,
-  fontSize: 9,
-  letterSpacing: ".05em",
-  fontWeight: 800,
-};
-
-const expenseRowStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "25px minmax(0,1.4fr) minmax(76px,.85fr)",
-  gap: 6,
-  alignItems: "center",
-  padding: "6px 11px",
-  borderBottom: `1px solid ${C.borderSoft}`,
-  color: C.subtext,
-  fontSize: 11,
-};
-
-const expenseInputStyle = {
-  display: "block",
-  width: "100%",
-  minWidth: 0,
-  minHeight: 32,
-  boxSizing: "border-box",
-  padding: "6px 8px",
-  borderRadius: 6,
-  border: `1px solid ${C.border}`,
-  background: C.field,
-  color: C.text,
-  fontSize: 11,
-  fontFamily: "inherit",
-};
-
-const savedExpenseStyle = {
-  background: C.greenBg,
-  border: "1px solid #2a6354",
-  color: "#a8ebd1",
-  padding: "7px 8px",
-  borderRadius: 6,
-  fontSize: 11,
-  overflowWrap: "anywhere",
-};
-
-const expenseTotalStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 7,
-  margin: "11px 10px 0",
-  padding: "11px 12px",
-  background: "#34202d",
-  border: "1px solid #774155",
-  borderRadius: 7,
-  color: "#ffc3ce",
-  fontSize: 12,
-  fontVariantNumeric: "tabular-nums",
-};
-
-const operationsGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(min(100%,380px),1fr))",
-  gap: 14,
-  marginTop: 14,
-  alignItems: "start",
-};
-
-const platformColumnStyle = {
-  minWidth: 0,
-  width: "100%",
-};
-
-const sidePanelsStyle = {
-  minWidth: 0,
-  width: "100%",
-  display: "grid",
-  gridTemplateColumns: "minmax(0,1fr)",
-  gap: 11,
-  alignContent: "start",
-};
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(min(100%,225px),1fr))",
-  gap: 12,
-  margin: "15px 0",
-};
-
-const summaryValueStyle = {
-  marginTop: 7,
-  fontSize: "clamp(17px,1.9vw,24px)",
-  letterSpacing: "-.035em",
-  fontWeight: 850,
-  color: C.text,
-  fontVariantNumeric: "tabular-nums",
-  overflowWrap: "anywhere",
-};
-
-const messageStyle = {
-  padding: "10px 14px",
-  borderRadius: 8,
-  fontSize: 12,
-  fontWeight: 700,
-  marginBottom: 12,
-  overflowWrap: "anywhere",
-};
-
-const informationStyle = {
-  background: C.panel,
-  border: `1px solid ${C.border}`,
-  borderRadius: 11,
-  overflow: "hidden",
-  marginTop: 15,
-  marginBottom: 20,
-};
-
-const informationTitleStyle = {
-  background: C.panelRaised,
-  borderBottom: `1px solid ${C.border}`,
-  borderLeft: `3px solid ${C.gold}`,
-  color: C.text,
-  padding: "11px 14px",
-  fontWeight: 800,
-  letterSpacing: ".08em",
-  fontSize: 11,
-};
-
-const informationBodyStyle = {
-  padding: 14,
-  color: C.subtext,
-  fontSize: 11,
-  lineHeight: 1.9,
-};
-
-// ==================================================
-// THEME HELPERS
-// ==================================================
-
-function toneColor(tone) {
-  if (tone === "red") return C.red;
-  if (tone === "green") return C.teal;
-  if (tone === "blue") return C.blue;
-  if (tone === "brown") return C.gold;
-  if (tone === "navy") return C.gold;
-  return C.gold;
-}
-
-function getSidebarItemStyle(active = false) {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 8,
-    padding: "11px 10px",
-    background: active ? "#163846" : "transparent",
-    color: active ? "#eefaf7" : C.subtext,
-    border: active
-      ? "1px solid #326775"
-      : "1px solid transparent",
-    borderLeft: active
-      ? `3px solid ${C.teal}`
-      : "3px solid transparent",
-    fontSize: 11,
-    fontWeight: active ? 800 : 650,
-    minWidth: 0,
-  };
-}
-
-// ==================================================
-// CASHIER 24-HOUR REPORT
+// TEAM LEGEND / NYIKA
+// 24-HOUR PROFESSIONAL CASHIER REPORT
+//
+// Meals & Bonuses:
+// - Shared CashierMealsRotaPanel
+// - Directly below Live Feed
+// - No extra employee sign-in
+// - 24-hour staff exempt from 10:50 cutoff
+// - Expense posting remains in Supabase
+//
+// Existing financial logic retained.
 // ==================================================
 
 export default function Cashier24HourReport({
@@ -591,9 +38,17 @@ export default function Cashier24HourReport({
 }) {
   const router = useRouter();
 
-  const [shift, setShift] = useState(currentShift || null);
-  const [incomeEntries, setIncomeEntries] = useState([]);
+  const [shift, setShift] = useState(
+    currentShift || null
+  );
+
+  const [
+    incomeEntries,
+    setIncomeEntries,
+  ] = useState([]);
+
   const [expenses, setExpenses] = useState([]);
+
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [floatInputs, setFloatInputs] = useState({
@@ -602,10 +57,13 @@ export default function Cashier24HourReport({
   });
 
   const [expenseInputs, setExpenseInputs] = useState(
-    Array.from({ length: 10 }, () => ({
-      description: "",
-      amount: "",
-    }))
+    Array.from(
+      { length: 10 },
+      () => ({
+        description: "",
+        amount: "",
+      })
+    )
   );
 
   const [loading, setLoading] = useState(true);
@@ -625,7 +83,8 @@ export default function Cashier24HourReport({
   const supabaseAnonKey =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  const accessToken = user?.access_token || null;
+  const accessToken =
+    user?.access_token || null;
 
   const shopId =
     user?.shop_id ||
@@ -648,107 +107,26 @@ export default function Cashier24HourReport({
     user?.shopName ||
     "SHOP";
 
- // ==================================================
-  // CASHIER NAME FROM DUTY ROTA
+  // ==================================================
+  // CASHIER NAME
   // ==================================================
 
-  const [dutyCashierName, setDutyCashierName] =
-    useState("LOADING ROTA...");
+  const sharedAccountName =
+    user?.full_name ||
+    user?.name ||
+    user?.username ||
+    "Cashier";
 
-  const cashierName = dutyCashierName;
-
-  useEffect(() => {
-    let cancelled = false;
-    let loadingDuty = false;
-
-    async function loadDutyCashier() {
-      if (loadingDuty) return;
-
-      if (
-        !shiftId ||
-        !accessToken ||
-        !supabaseUrl ||
-        !supabaseAnonKey
-      ) {
-        if (!cancelled) {
-          setDutyCashierName("ROTA UNAVAILABLE");
-        }
-        return;
-      }
-
-      loadingDuty = true;
-
-      try {
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/rpc/tl_cashier_rota_display`,
-          {
-            method: "POST",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              p_shift_id: shiftId,
-            }),
-            cache: "no-store",
-          }
-        );
-
-        const result = await safeJson(response);
-
-        if (!response.ok) {
-          throw new Error(
-            result?.message ||
-              "Unable to load Duty Rota."
-          );
-        }
-
-        if (
-          !result ||
-          typeof result.display_name !== "string"
-        ) {
-          throw new Error(
-            "Invalid Duty Rota response."
-          );
-        }
-
-        if (!cancelled) {
-          setDutyCashierName(
-            result.display_name.trim() ||
-              "NOT ASSIGNED"
-          );
-        }
-      } catch (error) {
-        console.error("DUTY ROTA ERROR:", error);
-
-        if (!cancelled) {
-          setDutyCashierName("ROTA UNAVAILABLE");
-        }
-      } finally {
-        loadingDuty = false;
-      }
-    }
-
-    void loadDutyCashier();
-
-    const timer = setInterval(() => {
-      void loadDutyCashier();
-    }, 60000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [
-    shiftId,
-    accessToken,
-    supabaseUrl,
-    supabaseAnonKey,
-  ]);
+  const cashierName =
+    String(
+      shift?.cashier_name ||
+      currentShift?.cashier_name ||
+      sharedAccountName ||
+      "Cashier"
+    ).trim() || "Cashier";
 
   // ==================================================
-  // NAIROBI CLOCK
+  // LIVE NAIROBI GREETING CLOCK
   // ==================================================
 
   useEffect(() => {
@@ -762,7 +140,7 @@ export default function Cashier24HourReport({
   }, []);
 
   // ==================================================
-  // LOAD REPORT
+  // LOAD CASHIER REPORT
   // ==================================================
 
   const loadReport = useCallback(async () => {
@@ -778,11 +156,15 @@ export default function Cashier24HourReport({
     }
 
     try {
+      // ------------------------------------------
+      // SHIFT
+      // ------------------------------------------
+
       const shiftResponse = await fetch(
         `${supabaseUrl}/rest/v1/shifts` +
-          `?id=eq.${encodeURIComponent(shiftId)}` +
-          `&select=*` +
-          `&limit=1`,
+        `?id=eq.${encodeURIComponent(shiftId)}` +
+        `&select=*` +
+        `&limit=1`,
         {
           method: "GET",
           headers: authHeaders(
@@ -793,13 +175,15 @@ export default function Cashier24HourReport({
         }
       );
 
-      const shiftResult = await safeJson(shiftResponse);
+      const shiftResult = await safeJson(
+        shiftResponse
+      );
 
       if (!shiftResponse.ok) {
         throw new Error(
           shiftResult?.message ||
-            shiftResult?.details ||
-            "Unable to load shift."
+          shiftResult?.details ||
+          "Unable to load shift."
         );
       }
 
@@ -809,13 +193,15 @@ export default function Cashier24HourReport({
           ? shiftResult[0]
           : null;
 
+      // ------------------------------------------
       // FLOATS
+      // ------------------------------------------
 
       const incomeResponse = await fetch(
         `${supabaseUrl}/rest/v1/shift_income_entries` +
-          `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-          `&select=id,entry_type,description,amount,created_at` +
-          `&order=created_at.asc`,
+        `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+        `&select=id,entry_type,description,amount,created_at` +
+        `&order=created_at.asc`,
         {
           method: "GET",
           headers: authHeaders(
@@ -826,27 +212,36 @@ export default function Cashier24HourReport({
         }
       );
 
-      const incomeResult = await safeJson(incomeResponse);
+      const incomeResult = await safeJson(
+        incomeResponse
+      );
 
       if (!incomeResponse.ok) {
         throw new Error(
           incomeResult?.message ||
-            incomeResult?.details ||
-            "Unable to load float entries."
+          incomeResult?.details ||
+          "Unable to load float entries."
         );
       }
 
-      const loadedIncome = Array.isArray(incomeResult)
-        ? incomeResult
-        : [];
+      const loadedIncome =
+        Array.isArray(incomeResult)
+          ? incomeResult
+          : [];
 
+      // ------------------------------------------
       // EXPENSES
+      //
+      // All expenses count toward totals.
+      // Only MANUAL expenses occupy the
+      // cashier's ten manual expense rows.
+      // ------------------------------------------
 
       const expenseResponse = await fetch(
         `${supabaseUrl}/rest/v1/expenses` +
-          `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-          `&select=id,description,amount,created_at,source_type,source_record_id,is_private` +
-          `&order=created_at.asc`,
+        `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+        `&select=id,description,amount,created_at,source_type,source_record_id,is_private` +
+        `&order=created_at.asc`,
         {
           method: "GET",
           headers: authHeaders(
@@ -864,14 +259,15 @@ export default function Cashier24HourReport({
       if (!expenseResponse.ok) {
         throw new Error(
           expenseResult?.message ||
-            expenseResult?.details ||
-            "Unable to load expenses."
+          expenseResult?.details ||
+          "Unable to load expenses."
         );
       }
 
-      const loadedExpenses = Array.isArray(expenseResult)
-        ? expenseResult
-        : [];
+      const loadedExpenses =
+        Array.isArray(expenseResult)
+          ? expenseResult
+          : [];
 
       const loadedManualExpenses =
         loadedExpenses.filter((expense) => {
@@ -891,18 +287,26 @@ export default function Cashier24HourReport({
           );
         });
 
+      // ------------------------------------------
+      // UPDATE STATE
+      // ------------------------------------------
+
       setShift(latestShift || currentShift);
       setIncomeEntries(loadedIncome);
-
-      // Keep all expenses for financial totals.
       setExpenses(loadedExpenses);
 
+      // ------------------------------------------
+      // FLOAT INPUTS
+      // ------------------------------------------
+
       const companyRows = loadedIncome.filter(
-        (entry) => entry.entry_type === "COMPANY_FLOAT"
+        (entry) =>
+          entry.entry_type === "COMPANY_FLOAT"
       );
 
       const mshwariRows = loadedIncome.filter(
-        (entry) => entry.entry_type === "MSHWARI_FLOAT"
+        (entry) =>
+          entry.entry_type === "MSHWARI_FLOAT"
       );
 
       setFloatInputs((previous) => {
@@ -926,13 +330,18 @@ export default function Cashier24HourReport({
         return { company, mshwari };
       });
 
+      // ------------------------------------------
+      // MANUAL EXPENSE INPUTS
+      // ------------------------------------------
+
       setExpenseInputs((previous) => {
         const next = Array.from(
           { length: 10 },
           (_, index) => ({
             description:
               previous[index]?.description || "",
-            amount: previous[index]?.amount || "",
+            amount:
+              previous[index]?.amount || "",
           })
         );
 
@@ -940,9 +349,12 @@ export default function Cashier24HourReport({
           if (loadedManualExpenses[i]) {
             next[i] = {
               description:
-                loadedManualExpenses[i].description || "",
+                loadedManualExpenses[i]
+                  .description || "",
+
               amount: String(
-                loadedManualExpenses[i].amount ?? ""
+                loadedManualExpenses[i].amount ??
+                ""
               ),
             };
           }
@@ -958,8 +370,9 @@ export default function Cashier24HourReport({
 
       setMessage(
         error?.message ||
-          "Unable to load 24-hour cashier report."
+        "Unable to load 24-hour cashier report."
       );
+
       setMessageType("error");
     } finally {
       setLoading(false);
@@ -974,17 +387,23 @@ export default function Cashier24HourReport({
   ]);
 
   // ==================================================
-  // REFRESH REPORT
+  // REFRESH COMPLETE REPORT
   // ==================================================
 
   const refresh24HourReport = useCallback(
     async () => {
       await loadReport();
 
-      setRefreshKey((previous) => previous + 1);
+      setRefreshKey(
+        (previous) => previous + 1
+      );
     },
     [loadReport]
   );
+
+  // ==================================================
+  // AUTO REFRESH EVERY 5 SECONDS
+  // ==================================================
 
   useEffect(() => {
     refresh24HourReport();
@@ -1006,15 +425,17 @@ export default function Cashier24HourReport({
   }
 
   // ==================================================
-  // FLOAT TOTALS
+  // FLOAT DATA
   // ==================================================
 
   const companyEntries = incomeEntries.filter(
-    (entry) => entry.entry_type === "COMPANY_FLOAT"
+    (entry) =>
+      entry.entry_type === "COMPANY_FLOAT"
   );
 
   const mshwariEntries = incomeEntries.filter(
-    (entry) => entry.entry_type === "MSHWARI_FLOAT"
+    (entry) =>
+      entry.entry_type === "MSHWARI_FLOAT"
   );
 
   const companyTotal = roundMoney(
@@ -1035,35 +456,43 @@ export default function Cashier24HourReport({
 
   const companySlots = Array.from(
     { length: 3 },
-    (_, index) => companyEntries[index] || null
+    (_, index) =>
+      companyEntries[index] || null
   );
 
   const mshwariSlots = Array.from(
     { length: 3 },
-    (_, index) => mshwariEntries[index] || null
+    (_, index) =>
+      mshwariEntries[index] || null
   );
 
   // ==================================================
   // MANUAL EXPENSES
   // ==================================================
 
-  const manualExpenses = expenses.filter((expense) => {
-    const sourceType = String(
-      expense?.source_type || ""
-    )
-      .trim()
-      .toUpperCase();
+  const manualExpenses = expenses.filter(
+    (expense) => {
+      const sourceType = String(
+        expense?.source_type || ""
+      )
+        .trim()
+        .toUpperCase();
 
-    return (
-      (sourceType === "" ||
-        sourceType === "MANUAL") &&
-      expense?.is_private !== true
-    );
-  });
+      return (
+        (
+          sourceType === "" ||
+          sourceType === "MANUAL"
+        ) &&
+        expense?.is_private !== true
+      );
+    }
+  );
 
   // ==================================================
   // SAVE M-SHWARI FLOATS
-  // Company float remains read-only.
+  //
+  // COMPANY FLOAT IS NEVER CREATED BY CASHIER.
+  // Accountant transfer backend is the writer.
   // ==================================================
 
   async function saveFloats() {
@@ -1071,12 +500,19 @@ export default function Cashier24HourReport({
 
     for (let i = 0; i < 3; i += 1) {
       const mshwariUnlocked =
-        i === 0 || Boolean(mshwariSlots[i - 1]);
+        i === 0 ||
+        Boolean(mshwariSlots[i - 1]);
 
-      if (mshwariUnlocked && !mshwariSlots[i]) {
+      if (
+        mshwariUnlocked &&
+        !mshwariSlots[i]
+      ) {
         const raw = floatInputs.mshwari[i];
 
-        if (raw !== "" && raw !== undefined) {
+        if (
+          raw !== "" &&
+          raw !== undefined
+        ) {
           const value = Number(raw);
 
           if (
@@ -1086,6 +522,7 @@ export default function Cashier24HourReport({
             setMessage(
               `Enter a valid M-Shwari Float ${i + 1}.`
             );
+
             setMessageType("error");
             return;
           }
@@ -1093,7 +530,8 @@ export default function Cashier24HourReport({
           rowsToSave.push({
             shift_id: shiftId,
             entry_type: "MSHWARI_FLOAT",
-            description: `Float ${i + 1} from M-Shwari`,
+            description:
+              `Float ${i + 1} from M-Shwari`,
             amount: roundMoney(value),
           });
         }
@@ -1118,10 +556,12 @@ export default function Cashier24HourReport({
           method: "POST",
           headers: {
             apikey: supabaseAnonKey,
-            Authorization: `Bearer ${accessToken}`,
+            Authorization:
+              `Bearer ${accessToken}`,
             "Content-Type": "application/json",
             Prefer: "return=representation",
           },
+
           body: JSON.stringify(rowsToSave),
         }
       );
@@ -1131,32 +571,33 @@ export default function Cashier24HourReport({
       if (!response.ok) {
         throw new Error(
           result?.message ||
-            result?.details ||
-            "Unable to save M-Shwari float."
+          result?.details ||
+          "Unable to save M-Shwari float."
         );
       }
 
       const newFloatTotal = roundMoney(
         companyTotal +
-          mshwariTotal +
-          rowsToSave.reduce(
-            (sum, row) =>
-              sum + Number(row.amount ?? 0),
-            0
-          )
+        mshwariTotal +
+        rowsToSave.reduce(
+          (sum, row) =>
+            sum + Number(row.amount ?? 0),
+          0
+        )
       );
 
       const shiftResponse = await fetch(
-        `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(
-          shiftId
-        )}`,
+        `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(shiftId)}`,
         {
           method: "PATCH",
+
           headers: {
             apikey: supabaseAnonKey,
-            Authorization: `Bearer ${accessToken}`,
+            Authorization:
+              `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
+
           body: JSON.stringify({
             total_added_float: newFloatTotal,
           }),
@@ -1172,13 +613,14 @@ export default function Cashier24HourReport({
       setMessage(
         "M-Shwari float saved successfully."
       );
+
       setMessageType("success");
 
       await refresh24HourReport();
     } catch (error) {
       setMessage(
         error?.message ||
-          "Unable to save M-Shwari float."
+        "Unable to save M-Shwari float."
       );
       setMessageType("error");
     } finally {
@@ -1202,7 +644,8 @@ export default function Cashier24HourReport({
     }
 
     const description = String(
-      expenseInputs[nextIndex]?.description || ""
+      expenseInputs[nextIndex]?.description ||
+      ""
     ).trim();
 
     const rawAmount =
@@ -1210,9 +653,7 @@ export default function Cashier24HourReport({
 
     if (description === "") {
       setMessage(
-        `Enter the description for expense ${
-          nextIndex + 1
-        }.`
+        `Enter the description for expense ${nextIndex + 1}.`
       );
       setMessageType("error");
       return;
@@ -1224,9 +665,7 @@ export default function Cashier24HourReport({
       rawAmount === undefined
     ) {
       setMessage(
-        `Enter the amount for expense ${
-          nextIndex + 1
-        }.`
+        `Enter the amount for expense ${nextIndex + 1}.`
       );
       setMessageType("error");
       return;
@@ -1239,9 +678,7 @@ export default function Cashier24HourReport({
       amount <= 0
     ) {
       setMessage(
-        `Enter a valid amount for expense ${
-          nextIndex + 1
-        }.`
+        `Enter a valid amount for expense ${nextIndex + 1}.`
       );
       setMessageType("error");
       return;
@@ -1264,12 +701,15 @@ export default function Cashier24HourReport({
         `${supabaseUrl}/rest/v1/expenses`,
         {
           method: "POST",
+
           headers: {
             apikey: supabaseAnonKey,
-            Authorization: `Bearer ${accessToken}`,
+            Authorization:
+              `Bearer ${accessToken}`,
             "Content-Type": "application/json",
             Prefer: "return=representation",
           },
+
           body: JSON.stringify(rowToSave),
         }
       );
@@ -1279,32 +719,35 @@ export default function Cashier24HourReport({
       if (!response.ok) {
         throw new Error(
           result?.message ||
-            result?.details ||
-            "Unable to save expense."
+          result?.details ||
+          "Unable to save expense."
         );
       }
 
-      const existingExpenseTotal = expenses.reduce(
-        (sum, expense) =>
-          sum + Number(expense.amount ?? 0),
-        0
-      );
+      const existingExpenseTotal =
+        expenses.reduce(
+          (sum, expense) =>
+            sum +
+            Number(expense.amount ?? 0),
+          0
+        );
 
       const newExpenseTotal = roundMoney(
         existingExpenseTotal + amount
       );
 
       const shiftResponse = await fetch(
-        `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(
-          shiftId
-        )}`,
+        `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(shiftId)}`,
         {
           method: "PATCH",
+
           headers: {
             apikey: supabaseAnonKey,
-            Authorization: `Bearer ${accessToken}`,
+            Authorization:
+              `Bearer ${accessToken}`,
             "Content-Type": "application/json",
           },
+
           body: JSON.stringify({
             total_expenses: newExpenseTotal,
           }),
@@ -1319,11 +762,7 @@ export default function Cashier24HourReport({
 
       setMessage(
         nextIndex < 9
-          ? `Expense ${
-              nextIndex + 1
-            } saved. Expense ${
-              nextIndex + 2
-            } is now available.`
+          ? `Expense ${nextIndex + 1} saved. Expense ${nextIndex + 2} is now available.`
           : "Expense 10 saved successfully."
       );
 
@@ -1333,7 +772,7 @@ export default function Cashier24HourReport({
     } catch (error) {
       setMessage(
         error?.message ||
-          "Unable to save expense."
+        "Unable to save expense."
       );
       setMessageType("error");
     } finally {
@@ -1362,22 +801,26 @@ export default function Cashier24HourReport({
   );
 
   const totalAdded = roundMoney(
-    openingBalance + companyTotal + mshwariTotal
+    openingBalance +
+    companyTotal +
+    mshwariTotal
   );
 
   const totalSales = roundMoney(
     openingBalance +
-      companyTotal +
-      mshwariTotal +
-      totalOutput
+    companyTotal +
+    mshwariTotal +
+    totalOutput
   );
 
   const reportDate = formatReportDate(
-    shift?.opened_at || new Date().toISOString()
+    shift?.opened_at ||
+    new Date().toISOString()
   );
 
   const reportDay = formatReportDay(
-    shift?.opened_at || new Date().toISOString()
+    shift?.opened_at ||
+    new Date().toISOString()
   );
 
   const shiftStatus = String(
@@ -1393,7 +836,8 @@ export default function Cashier24HourReport({
       ? "SHIFT 1"
       : shiftName === "SHIFT 2"
       ? "SHIFT 2"
-      : shift?.shift_name || "24-HOUR SHIFT";
+      : shift?.shift_name ||
+        "24-HOUR SHIFT";
 
   // ==================================================
   // GREETING
@@ -1404,26 +848,32 @@ export default function Cashier24HourReport({
     shiftStatus === "COMPLETED";
 
   const greetingShiftNumber =
-    shiftName === "SHIFT 2" ? "2" : "1";
+    shiftName === "SHIFT 2"
+      ? "2"
+      : "1";
 
   const nairobiHour = getNairobiHour(now);
 
   let shiftGreeting;
 
   if (shiftIsClosed) {
-    shiftGreeting = `Good Bye 👋 — Shift ${greetingShiftNumber} Closed`;
+    shiftGreeting =
+      `Good Bye 👋 — Shift ${greetingShiftNumber} Closed`;
   } else if (
     nairobiHour >= 5 &&
     nairobiHour < 12
   ) {
-    shiftGreeting = `Good Morning 🌞 — Welcome to Shift ${greetingShiftNumber}`;
+    shiftGreeting =
+      `Good Morning 🌞 — Welcome to Shift ${greetingShiftNumber}`;
   } else if (
     nairobiHour >= 12 &&
     nairobiHour < 17
   ) {
-    shiftGreeting = `Good Afternoon ☀️ — Welcome to Shift ${greetingShiftNumber}`;
+    shiftGreeting =
+      `Good Afternoon ☀️ — Welcome to Shift ${greetingShiftNumber}`;
   } else {
-    shiftGreeting = `Good Evening 🌙 — Welcome to Shift ${greetingShiftNumber}`;
+    shiftGreeting =
+      `Good Evening 🌙 — Welcome to Shift ${greetingShiftNumber}`;
   }
 
   // ==================================================
@@ -1438,33 +888,21 @@ export default function Cashier24HourReport({
     );
   }
 
-  if (!shift) {
-    return null;
-  }
+  if (!shift) return null;
 
   // ==================================================
-  // DASHBOARD
+  // MAIN DASHBOARD
   // ==================================================
 
- return (
-  <div className="cashier-24hour" style={pageStyle}>
+  return (
+    <div style={pageStyle}>
+      {/* TOP HEADER */}
 
-    <style>{`
-      .cashier-24hour input[type="number"]::-webkit-inner-spin-button,
-      .cashier-24hour input[type="number"]::-webkit-outer-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-      }
-
-      .cashier-24hour input[type="number"] {
-        -webkit-appearance: textfield;
-        -moz-appearance: textfield;
-        appearance: textfield;
-      }
-    `}</style>
       <header style={topHeaderStyle}>
         <div style={brandWrapStyle}>
-          <div style={crownStyle}>♛</div>
+          <div style={crownStyle}>
+            ♛
+          </div>
 
           <div>
             <div style={brandStyle}>
@@ -1501,7 +939,22 @@ export default function Cashier24HourReport({
 
       {/* SHARED LIVE FEED */}
 
-      <CashierLiveFeedPanel user={user} />
+      <CashierLiveFeedPanel
+        user={user}
+      />
+
+      {/* ===================================== */}
+      {/* MEALS & BONUSES - 24-HOUR SHOP        */}
+      {/* Uses shared Executive LED panel       */}
+      {/* No second employee sign-in            */}
+      {/* ===================================== */}
+
+      <CashierMealsRotaPanel
+        user={user}
+        currentShift={shift || currentShift}
+      />
+
+      {/* MAIN BODY */}
 
       <div style={bodyStyle}>
         <aside style={sidebarStyle}>
@@ -1556,11 +1009,10 @@ export default function Cashier24HourReport({
             <InfoCard
               title="SHIFT"
               value={shiftLabel}
-              subvalue={`${displayTime(
-                shift?.scheduled_start
-              )} - ${displayTime(
-                shift?.scheduled_end
-              )}`}
+              subvalue={
+                `${displayTime(shift?.scheduled_start)} - ` +
+                displayTime(shift?.scheduled_end)
+              }
               tone="green"
             />
 
@@ -1584,7 +1036,7 @@ export default function Cashier24HourReport({
             {shiftGreeting}
           </div>
 
-          {/* SHIFT DETAILS */}
+          {/* SHIFT BANNER */}
 
           <div style={shiftBannerStyle}>
             <strong>
@@ -1604,31 +1056,26 @@ export default function Cashier24HourReport({
             </span>
           </div>
 
-          {/* ATTENDANCE */}
-
-          <CashierAttendancePanel
-            user={user}
-            currentShift={shift || currentShift}
-          />
-
           {/* MESSAGES */}
 
           {message && (
             <div
               style={{
                 ...messageStyle,
-                background:
+                backgroundColor:
                   messageType === "success"
                     ? C.greenBg
                     : C.redBg,
+
                 color:
                   messageType === "success"
-                    ? C.teal
-                    : C.red,
-                border:
+                    ? "#b5f2dc"
+                    : "#ffc3ce",
+
+                borderColor:
                   messageType === "success"
-                    ? "1px solid #2a6354"
-                    : "1px solid #723c49",
+                    ? "#2c645a"
+                    : "#774155",
               }}
             >
               {message}
@@ -1659,30 +1106,88 @@ export default function Cashier24HourReport({
               {companySlots.map((entry, index) => (
                 <ReadOnlyCompanyFloatRow
                   key={`company-${index}`}
-                  label={`Added Float ${
-                    index + 1
-                  } From Company`}
+                  label={
+                    `Added Float ${index + 1} From Company`
+                  }
                   entry={entry}
                 />
               ))}
 
-              {/* M-SHWARI FLOATS — LOCKED */}
+              {mshwariSlots.map((entry, index) => {
+                const mshwariUnlocked =
+                  index === 0 ||
+                  Boolean(
+                    mshwariSlots[index - 1]
+                  );
 
-{mshwariSlots.map((entry, index) => (
-  <ReadOnlyCompanyFloatRow
-    key={`mshwari-${index}`}
-    label={`Added Float ${index + 1} From M-Shwari`}
-    entry={entry}
-  />
-))}
+                return (
+                  <EditableFloatRow
+                    key={`mshwari-${index}`}
+                    label={
+                      `Added Float ${index + 1} From M-Shwari`
+                    }
+                    savedEntry={entry}
+                    value={
+                      floatInputs.mshwari[index] ||
+                      ""
+                    }
+                    disabled={
+                      savingFloats ||
+                      !mshwariUnlocked
+                    }
+                    onChange={(value) => {
+                      setFloatInputs(
+                        (previous) => {
+                          const mshwari = [
+                            ...previous.mshwari,
+                          ];
+
+                          mshwari[index] = value;
+
+                          return {
+                            ...previous,
+                            mshwari,
+                          };
+                        }
+                      );
+                    }}
+                  />
+                );
+              })}
 
               <div style={incomeTotalStyle}>
                 <strong>TOTAL ADDED</strong>
+
                 <strong>
                   {money(totalAdded)}
                 </strong>
               </div>
 
+              <div style={companyFloatNoticeStyle}>
+                Company Float 1, 2 and 3 are read-only.
+                They are posted automatically by
+                Legend Accounts.
+              </div>
+
+              <div style={panelButtonWrapStyle}>
+                <button
+                  type="button"
+                  onClick={saveFloats}
+                  disabled={savingFloats}
+                  style={{
+                    ...greenActionStyle,
+
+                    backgroundColor:
+                      savingFloats
+                        ? C.border
+                        : "#247b93",
+                  }}
+                >
+                  {savingFloats
+                    ? "Saving..."
+                    : "Save M-Shwari Float"}
+                </button>
+              </div>
             </section>
 
             {/* EXPENSES */}
@@ -1762,9 +1267,8 @@ export default function Cashier24HourReport({
                                       })
                                     );
 
-                                  next[
-                                    index
-                                  ].description = value;
+                                  next[index].description =
+                                    value;
 
                                   return next;
                                 }
@@ -1772,13 +1276,12 @@ export default function Cashier24HourReport({
                             }}
                             style={{
                               ...expenseInputStyle,
-                              background:
+
+                              backgroundColor:
                                 rowDisabled
                                   ? "#0d1926"
                                   : C.field,
-                              color: rowDisabled
-                                ? C.muted
-                                : C.text,
+
                               cursor:
                                 rowDisabled
                                   ? "not-allowed"
@@ -1813,9 +1316,8 @@ export default function Cashier24HourReport({
                                       })
                                     );
 
-                                  next[
-                                    index
-                                  ].amount = value;
+                                  next[index].amount =
+                                    value;
 
                                   return next;
                                 }
@@ -1823,13 +1325,12 @@ export default function Cashier24HourReport({
                             }}
                             style={{
                               ...expenseInputStyle,
-                              background:
+
+                              backgroundColor:
                                 rowDisabled
                                   ? "#0d1926"
                                   : C.field,
-                              color: rowDisabled
-                                ? C.muted
-                                : C.text,
+
                               cursor:
                                 rowDisabled
                                   ? "not-allowed"
@@ -1853,6 +1354,13 @@ export default function Cashier24HourReport({
                 </strong>
               </div>
 
+              <div style={automaticExpenseNoticeStyle}>
+                Cashier → Legend Accounts transfers
+                are added to Total Expenses
+                automatically after Accounts
+                confirms receipt.
+              </div>
+
               <div style={panelButtonWrapStyle}>
                 <button
                   type="button"
@@ -1863,10 +1371,11 @@ export default function Cashier24HourReport({
                   }
                   style={{
                     ...redActionStyle,
-                    background:
+
+                    backgroundColor:
                       savingExpenses ||
                       manualExpenses.length >= 10
-                        ? "#455466"
+                        ? C.border
                         : "#9d4359",
                   }}
                 >
@@ -1882,7 +1391,9 @@ export default function Cashier24HourReport({
             </section>
           </div>
 
-          {/* 24-HOUR OPERATIONS */}
+          {/* ===================================== */}
+          {/* 24-HOUR OPERATIONS LAYOUT            */}
+          {/* ===================================== */}
 
           <div style={operationsGridStyle}>
             <div style={platformColumnStyle}>
@@ -1932,7 +1443,7 @@ export default function Cashier24HourReport({
             </div>
           </div>
 
-          {/* FINANCIAL SUMMARY */}
+          {/* SUMMARY */}
 
           <div style={summaryGridStyle}>
             <SummaryBox
@@ -1983,13 +1494,13 @@ export default function Cashier24HourReport({
 
             <div style={informationBodyStyle}>
               <div>
-                1. Shift 1 runs from 9:00 AM to
-                9:00 PM.
+                1. Shift 1 runs from 9:00 AM
+                to 9:00 PM.
               </div>
 
               <div>
-                2. Shift 2 runs from 9:00 PM to
-                9:00 AM.
+                2. Shift 2 runs from 9:00 PM
+                to 9:00 AM.
               </div>
 
               <div>
@@ -2005,23 +1516,21 @@ export default function Cashier24HourReport({
               </div>
 
               <div>
-                5. TABLE is handed over
-                continuously at 9:00 AM and
-                9:00 PM.
+                5. TABLE is handed over continuously
+                at 9:00 AM and 9:00 PM.
               </div>
 
               <div>
                 6. Company Float 1, 2 and 3
-                are controlled by Legend
-                Accounts and are read-only
-                for the cashier.
+                are controlled by Legend Accounts
+                and are read-only for the cashier.
               </div>
 
               <div>
                 7. Cashier → Legend Accounts
                 returns automatically become
-                expenses after Accounts
-                confirms receipt.
+                expenses after Accounts confirms
+                receipt.
               </div>
 
               <div>
@@ -2033,8 +1542,7 @@ export default function Cashier24HourReport({
               <div>
                 9. Cashier handover is only
                 available during the authorised
-                morning or evening handover
-                window.
+                morning or evening handover window.
               </div>
             </div>
           </section>
@@ -2045,7 +1553,7 @@ export default function Cashier24HourReport({
 }
 
 // ==================================================
-// SIDEBAR
+// DISPLAY COMPONENTS
 // ==================================================
 
 function SidebarItem({
@@ -2057,9 +1565,9 @@ function SidebarItem({
     <div style={getSidebarItemStyle(active)}>
       <span
         style={{
-          fontSize: 16,
+          fontSize: 17,
+          opacity: 0.9,
           width: 22,
-          flexShrink: 0,
           textAlign: "center",
         }}
       >
@@ -2070,10 +1578,6 @@ function SidebarItem({
     </div>
   );
 }
-
-// ==================================================
-// TOP SHOP CARD
-// ==================================================
 
 function TopCard({
   title,
@@ -2097,88 +1601,41 @@ function TopCard({
   );
 }
 
-// ==================================================
-// INFORMATION CARD
-// ==================================================
-
 function InfoCard({
   title,
   value,
   subvalue,
   tone,
 }) {
-  const accent = toneColor(tone);
-
   return (
-    <div
-      style={{
-        ...baseCardStyle,
-        position: "relative",
-        overflow: "hidden",
-        background: C.panel,
-        border: `1px solid ${C.border}`,
-        borderTop: `2px solid ${accent}`,
-      }}
-    >
-      <div
-        style={{
-          color: C.muted,
-          fontSize: 10,
-          fontWeight: 750,
-          letterSpacing: ".12em",
-        }}
-      >
+    <div style={getInfoCardStyle(tone)}>
+      <strong style={infoTitleStyle}>
         {title}
-      </div>
+      </strong>
 
       <div style={infoValueStyle}>
         {value}
       </div>
 
-      {subvalue && (
-        <small
-          style={{
-            color: C.subtext,
-            fontSize: 10,
-            marginTop: 4,
-          }}
-        >
+      {subvalue ? (
+        <small style={infoSubvalueStyle}>
           {subvalue}
         </small>
-      )}
+      ) : null}
     </div>
   );
 }
-
-// ==================================================
-// PANEL TITLE
-// ==================================================
 
 function PanelTitle({
   title,
   tone,
 }) {
   return (
-    <div
-      style={{
-        color: C.text,
-        background: "#152639",
-        borderBottom: `1px solid ${C.border}`,
-        borderLeft: `3px solid ${toneColor(tone)}`,
-        padding: "12px 13px",
-        fontSize: 11,
-        fontWeight: 850,
-        letterSpacing: ".1em",
-      }}
-    >
+    <div style={getPanelTitleStyle(tone)}>
       {title}
     </div>
   );
 }
-
-// ==================================================
-// INCOME ROW
-// ==================================================
 
 function IncomeDisplayRow({
   label,
@@ -2195,10 +1652,6 @@ function IncomeDisplayRow({
   );
 }
 
-// ==================================================
-// COMPANY FLOAT — READ ONLY
-// ==================================================
-
 function ReadOnlyCompanyFloatRow({
   label,
   entry,
@@ -2206,7 +1659,7 @@ function ReadOnlyCompanyFloatRow({
   return (
     <div style={incomeRowStyle}>
       <div>
-        {label}
+        {label}{" "}
 
         <span style={readOnlyInlineStyle}>
           {entry ? "✓" : "🔒"}
@@ -2228,10 +1681,6 @@ function ReadOnlyCompanyFloatRow({
   );
 }
 
-// ==================================================
-// M-SHWARI FLOAT ROW
-// ==================================================
-
 function EditableFloatRow({
   label,
   savedEntry,
@@ -2239,12 +1688,14 @@ function EditableFloatRow({
   onChange,
   disabled,
 }) {
-  const locked = Boolean(savedEntry) || disabled;
+  const locked =
+    Boolean(savedEntry) ||
+    disabled;
 
   return (
     <div style={incomeRowStyle}>
       <div>
-        {label}
+        {label}{" "}
 
         {savedEntry && (
           <span style={savedInlineStyle}>
@@ -2265,22 +1716,25 @@ function EditableFloatRow({
           value={value}
           disabled={disabled}
           placeholder={
-            disabled ? "Locked" : "0.00"
+            disabled
+              ? "Locked"
+              : "0.00"
           }
           onChange={(event) =>
             onChange(event.target.value)
           }
           style={{
             ...moneyInputStyle,
-            background: locked
-              ? "#0d1926"
-              : C.field,
-            color: locked
-              ? C.muted
-              : C.text,
-            cursor: locked
-              ? "not-allowed"
-              : "text",
+
+            backgroundColor:
+              locked
+                ? "#0d1926"
+                : C.field,
+
+            cursor:
+              locked
+                ? "not-allowed"
+                : "text",
           }}
         />
       )}
@@ -2288,32 +1742,14 @@ function EditableFloatRow({
   );
 }
 
-// ==================================================
-// SUMMARY CARD
-// ==================================================
-
 function SummaryBox({
   title,
   amount,
   tone,
 }) {
   return (
-    <div
-      style={{
-        background:
-          "linear-gradient(130deg,#15283b,#101e2e)",
-        border: `1px solid ${C.border}`,
-        borderLeft: `3px solid ${toneColor(tone)}`,
-        borderRadius: 10,
-        padding: "15px 16px",
-        fontSize: 10,
-        fontWeight: 750,
-        letterSpacing: ".09em",
-        color: C.muted,
-        minWidth: 0,
-      }}
-    >
-      {title}
+    <div style={getSummaryBoxStyle(tone)}>
+      <div>{title}</div>
 
       <div style={summaryValueStyle}>
         KES {money(amount)}
@@ -2332,7 +1768,8 @@ function authHeaders(
 ) {
   return {
     apikey: anonKey,
-    Authorization: `Bearer ${accessToken}`,
+    Authorization:
+      `Bearer ${accessToken}`,
     "Content-Type": "application/json",
   };
 }
@@ -2346,48 +1783,61 @@ async function safeJson(response) {
 }
 
 // ==================================================
-// MONEY
+// NUMBER HELPERS
 // ==================================================
 
 function money(value) {
-  const numeric = Number(value ?? 0);
+  const numeric = Number(
+    value ?? 0
+  );
 
-  const safeValue = Number.isFinite(numeric)
-    ? numeric
-    : 0;
+  const safeValue =
+    Number.isFinite(numeric)
+      ? numeric
+      : 0;
 
-  return safeValue.toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return safeValue.toLocaleString(
+    "en-KE",
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }
+  );
 }
 
 function roundMoney(value) {
   return (
     Math.round(
-      (Number(value) + Number.EPSILON) * 100
+      (Number(value) +
+        Number.EPSILON) * 100
     ) / 100
   );
 }
 
 // ==================================================
-// DATE
+// DATE HELPERS
 // ==================================================
 
 function formatReportDate(value) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Nairobi",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "Africa/Nairobi",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  ).format(new Date(value));
 }
 
 function formatReportDay(value) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Nairobi",
-    weekday: "long",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "Africa/Nairobi",
+      weekday: "long",
+    }
+  ).format(new Date(value));
 }
 
 function displayTime(value) {
@@ -2395,10 +1845,6 @@ function displayTime(value) {
     .split(".")[0]
     .slice(0, 5);
 }
-
-// ==================================================
-// SHIFT NAME
-// ==================================================
 
 function normaliseShiftName(value) {
   const text = String(value || "")
@@ -2424,10 +1870,6 @@ function normaliseShiftName(value) {
   return text;
 }
 
-// ==================================================
-// NAIROBI HOUR
-// ==================================================
-
 function getNairobiHour(
   date = new Date()
 ) {
@@ -2440,7 +1882,8 @@ function getNairobiHour(
     }
   );
 
-  const parts = formatter.formatToParts(date);
+  const parts =
+    formatter.formatToParts(date);
 
   const hourPart = parts.find(
     (part) => part.type === "hour"
@@ -2453,4 +1896,706 @@ function getNairobiHour(
   return Number.isFinite(hour)
     ? hour
     : 0;
+}
+
+// ==================================================
+// 24-HOUR PROFESSIONAL THEME
+// Same Navy / Gold / Teal family
+// ==================================================
+
+const C = {
+  canvas: "#08121e",
+  canvasDeep: "#050c15",
+  header: "#0d1b2b",
+  sidebar: "#0b1827",
+  panel: "#101f30",
+  panelRaised: "#15263a",
+  field: "#0a1725",
+  border: "#2a3d52",
+  borderSoft: "#223448",
+  text: "#f0f5fa",
+  subtext: "#c4d0dc",
+  muted: "#91a5b8",
+  gold: "#d9b66c",
+  teal: "#40c9ac",
+  blue: "#7db8fa",
+  red: "#fb8b96",
+  greenBg: "#10332e",
+  blueBg: "#142d48",
+  redBg: "#38202a",
+};
+
+const pageStyle = {
+  width: "100%",
+  minHeight: "100vh",
+
+  background:
+    `linear-gradient(150deg, ${C.canvas} 0%, ${C.canvasDeep} 100%)`,
+
+  color: C.text,
+
+  fontFamily:
+    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+
+  fontSize: 13,
+  lineHeight: 1.5,
+  boxSizing: "border-box",
+};
+
+const loadingStyle = {
+  ...pageStyle,
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  fontSize: 16,
+  fontWeight: 700,
+};
+
+const topHeaderStyle = {
+  background: C.header,
+  color: C.text,
+  borderBottom: `1px solid ${C.border}`,
+  boxShadow: "0 5px 24px rgba(0,0,0,.15)",
+  padding: "15px clamp(16px,2.5vw,32px)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  flexWrap: "wrap",
+  gap: 16,
+};
+
+const brandWrapStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  minWidth: 0,
+};
+
+const crownStyle = {
+  fontSize: 31,
+  lineHeight: 1,
+  color: C.gold,
+  textShadow:
+    "0 1px 10px rgba(217,182,108,.12)",
+};
+
+const brandStyle = {
+  color: C.text,
+  fontSize: "clamp(18px,2vw,24px)",
+  fontWeight: 850,
+  letterSpacing: ".04em",
+  lineHeight: 1.15,
+};
+
+const taglineStyle = {
+  marginTop: 5,
+  color: C.gold,
+  fontSize: 9,
+  letterSpacing: ".2em",
+  fontWeight: 700,
+};
+
+const headerRightStyle = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+  gap: 16,
+  color: C.subtext,
+  fontSize: 12,
+  textAlign: "right",
+};
+
+const headerShopStyle = {
+  color: C.muted,
+  fontSize: 10,
+  letterSpacing: ".1em",
+  marginTop: 3,
+};
+
+const logoutButtonStyle = {
+  border: `1px solid ${C.border}`,
+  background: C.panelRaised,
+  color: C.text,
+  borderRadius: 8,
+  padding: "9px 16px",
+  fontSize: 12,
+  fontWeight: 750,
+  cursor: "pointer",
+};
+
+const bodyStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "stretch",
+  gap: 0,
+  width: "100%",
+};
+
+const sidebarStyle = {
+  flex: "0 1 172px",
+  minWidth: 145,
+  background: C.sidebar,
+  borderRight:
+    `1px solid ${C.borderSoft}`,
+  padding: "18px 10px",
+  boxSizing: "border-box",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "stretch",
+  gap: 5,
+};
+
+const mainStyle = {
+  flex: "1 1 680px",
+  minWidth: 0,
+  padding: "clamp(12px,2vw,25px)",
+  boxSizing: "border-box",
+};
+
+const topGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(min(100%,150px),1fr))",
+  gap: 10,
+  marginBottom: 12,
+};
+
+const baseTopCard = {
+  borderRadius: 11,
+  minWidth: 0,
+  minHeight: 94,
+  padding: "14px 15px",
+  boxSizing: "border-box",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+};
+
+const shopCardStyle = {
+  ...baseTopCard,
+  background:
+    "linear-gradient(145deg,#17283a,#102031)",
+  border: `1px solid ${C.border}`,
+  borderTop: `2px solid ${C.gold}`,
+};
+
+const shopTitleStyle = {
+  color: C.text,
+  fontSize: "clamp(15px,1.5vw,19px)",
+  fontWeight: 850,
+  letterSpacing: ".04em",
+  overflowWrap: "anywhere",
+};
+
+const shopSubtitleStyle = {
+  marginTop: 4,
+  color: C.subtext,
+  fontSize: 10,
+  letterSpacing: ".1em",
+  fontWeight: 700,
+};
+
+const smallTextStyle = {
+  marginTop: 5,
+  color: C.muted,
+  fontSize: 10,
+};
+
+const infoTitleStyle = {
+  color: C.muted,
+  fontSize: 10,
+  letterSpacing: ".12em",
+  textTransform: "uppercase",
+  fontWeight: 750,
+};
+
+const infoValueStyle = {
+  color: C.text,
+  fontSize: "clamp(13px,1.4vw,17px)",
+  lineHeight: 1.3,
+  fontWeight: 800,
+  marginTop: 6,
+  overflowWrap: "anywhere",
+};
+
+const infoSubvalueStyle = {
+  color: C.subtext,
+  fontSize: 10,
+  marginTop: 4,
+  fontVariantNumeric: "tabular-nums",
+};
+
+const greetingBannerStyle = {
+  boxSizing: "border-box",
+  width: "100%",
+  padding: "10px 14px",
+  borderRadius: 8,
+  marginBottom: 10,
+  textAlign: "center",
+  fontSize: 13,
+  fontWeight: 750,
+  letterSpacing: ".015em",
+};
+
+const greetingWelcomeStyle = {
+  background: "#101e2d",
+  color: C.subtext,
+  border:
+    `1px solid ${C.borderSoft}`,
+  borderLeft:
+    `3px solid ${C.gold}`,
+};
+
+const greetingGoodbyeStyle = {
+  background: C.redBg,
+  color: "#ffc3ce",
+  border: "1px solid #774155",
+  borderLeft:
+    `3px solid ${C.red}`,
+};
+
+const shiftBannerStyle = {
+  background: C.blueBg,
+  color: C.subtext,
+  border: `1px solid ${C.border}`,
+  borderLeft:
+    `3px solid ${C.blue}`,
+  padding: "10px 14px",
+  borderRadius: 8,
+  marginBottom: 12,
+  display: "flex",
+  flexWrap: "wrap",
+  justifyContent: "space-between",
+  gap: 10,
+  fontSize: 12,
+};
+
+const upperGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(min(100%,340px),1fr))",
+  gap: 14,
+  alignItems: "start",
+};
+
+const panelStyle = {
+  minWidth: 0,
+  background: C.panel,
+  border:
+    `1px solid ${C.border}`,
+  borderRadius: 12,
+  boxShadow:
+    "0 8px 25px rgba(0,0,0,.10)",
+  overflowX: "auto",
+  overflowY: "hidden",
+  paddingBottom: 11,
+};
+
+const tableHeaderStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(0,1.5fr) minmax(100px,.9fr)",
+  gap: 8,
+  alignItems: "center",
+  padding: "10px 12px",
+  borderBottom:
+    `1px solid ${C.borderSoft}`,
+  background: C.field,
+  color: C.muted,
+  fontSize: 9,
+  letterSpacing: ".08em",
+  fontWeight: 800,
+};
+
+const incomeRowStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(0,1.5fr) minmax(100px,.9fr)",
+  gap: 9,
+  alignItems: "center",
+  padding: "8px 12px",
+  minHeight: 38,
+  borderBottom:
+    `1px solid ${C.borderSoft}`,
+  color: C.subtext,
+  fontSize: 11,
+};
+
+const moneyCell = {
+  padding: "7px 9px",
+  minHeight: 29,
+  boxSizing: "border-box",
+  borderRadius: 6,
+  fontSize: 11,
+  lineHeight: 1.4,
+  fontWeight: 750,
+  fontVariantNumeric: "tabular-nums",
+  textAlign: "right",
+};
+
+const amountBoxStyle = {
+  ...moneyCell,
+  color: C.text,
+  background: C.field,
+  border:
+    `1px solid ${C.borderSoft}`,
+};
+
+const moneyInputStyle = {
+  ...moneyCell,
+  display: "block",
+  width: "100%",
+  minWidth: 65,
+  outlineOffset: 2,
+  background: C.field,
+  color: C.text,
+  border:
+    `1px solid ${C.border}`,
+  fontFamily: "inherit",
+};
+
+const savedMoneyStyle = {
+  ...moneyCell,
+  color: "#8ce3c4",
+  background: C.greenBg,
+  border: "1px solid #2a6354",
+};
+
+const lockedMoneyStyle = {
+  ...moneyCell,
+  color: C.muted,
+  background: "#0d1926",
+  border:
+    `1px solid ${C.borderSoft}`,
+};
+
+const savedInlineStyle = {
+  color: C.teal,
+  fontWeight: 800,
+};
+
+const readOnlyInlineStyle = {
+  marginLeft: 5,
+  color: C.gold,
+  fontWeight: 700,
+};
+
+const incomeTotalStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  justifyContent: "space-between",
+  gap: 8,
+  margin: "9px 10px 0",
+  padding: "11px 12px",
+  background: "#152f30",
+  border: "1px solid #2c645a",
+  borderRadius: 7,
+  color: "#b5f2dc",
+  fontSize: 12,
+  fontVariantNumeric: "tabular-nums",
+};
+
+const quietNote = {
+  margin: "9px 11px 0",
+  borderRadius: 7,
+  padding: "9px 10px",
+  color: C.muted,
+  fontSize: 10,
+  lineHeight: 1.6,
+};
+
+const companyFloatNoticeStyle = {
+  ...quietNote,
+  background: C.field,
+  border:
+    `1px solid ${C.borderSoft}`,
+};
+
+const automaticExpenseNoticeStyle = {
+  ...quietNote,
+  background: C.field,
+  border:
+    `1px solid ${C.borderSoft}`,
+};
+
+const panelButtonWrapStyle = {
+  padding: "10px 11px 3px",
+};
+
+const greenActionStyle = {
+  width: "100%",
+  display: "block",
+  padding: "11px 12px",
+  border: "1px solid #3e99ac",
+  background: "#247b93",
+  color: "#fff",
+  borderRadius: 8,
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const redActionStyle = {
+  ...greenActionStyle,
+  border: "1px solid #c45b72",
+  background: "#9d4359",
+};
+
+const expenseHeaderStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "25px minmax(0,1.4fr) minmax(76px,.85fr)",
+  gap: 6,
+  padding: "10px 12px",
+  background: C.field,
+  borderBottom:
+    `1px solid ${C.borderSoft}`,
+  color: C.muted,
+  fontSize: 9,
+  letterSpacing: ".05em",
+  fontWeight: 800,
+};
+
+const expenseRowStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "25px minmax(0,1.4fr) minmax(76px,.85fr)",
+  gap: 6,
+  alignItems: "center",
+  padding: "6px 11px",
+  borderBottom:
+    `1px solid ${C.borderSoft}`,
+  fontSize: 11,
+  color: C.muted,
+};
+
+const expenseInputStyle = {
+  display: "block",
+  width: "100%",
+  minWidth: 0,
+  minHeight: 32,
+  boxSizing: "border-box",
+  padding: "6px 8px",
+  borderRadius: 6,
+  border:
+    `1px solid ${C.border}`,
+  outlineOffset: 2,
+  background: C.field,
+  color: C.text,
+  fontSize: 11,
+  fontFamily: "inherit",
+};
+
+const savedExpenseStyle = {
+  background: C.greenBg,
+  border: "1px solid #2a6354",
+  color: "#a8ebd1",
+  padding: "7px 8px",
+  borderRadius: 6,
+  fontSize: 11,
+  overflowWrap: "anywhere",
+};
+
+const expenseTotalStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  justifyContent: "space-between",
+  gap: 7,
+  margin: "11px 10px 0",
+  padding: "11px 12px",
+  background: "#34202d",
+  border: "1px solid #774155",
+  borderRadius: 7,
+  color: "#ffc3ce",
+  fontSize: 12,
+  fontVariantNumeric: "tabular-nums",
+};
+
+// ==================================================
+// 24-HOUR OPERATIONS LAYOUT
+// ==================================================
+
+const operationsGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(min(100%,420px),1fr))",
+  alignItems: "start",
+  gap: 14,
+  marginTop: 14,
+};
+
+const platformColumnStyle = {
+  minWidth: 0,
+  width: "100%",
+};
+
+const sidePanelsStyle = {
+  minWidth: 0,
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(0, 1fr)",
+  alignContent: "start",
+  gap: 14,
+};
+
+const summaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(min(100%,225px),1fr))",
+  gap: 12,
+  margin: "15px 0",
+};
+
+const summaryValueStyle = {
+  marginTop: 7,
+  fontSize: "clamp(17px,1.9vw,24px)",
+  letterSpacing: "-.035em",
+  fontWeight: 850,
+  color: C.text,
+  fontVariantNumeric: "tabular-nums",
+  overflowWrap: "anywhere",
+};
+
+const messageStyle = {
+  padding: "10px 14px",
+  borderRadius: 8,
+  border:
+    `1px solid ${C.border}`,
+  fontSize: 12,
+  fontWeight: 700,
+  marginBottom: 12,
+  overflowWrap: "anywhere",
+};
+
+const informationStyle = {
+  background: C.panel,
+  marginTop: 14,
+  borderRadius: 12,
+  overflow: "hidden",
+  border:
+    `1px solid ${C.border}`,
+  boxShadow:
+    "0 8px 25px rgba(0,0,0,.10)",
+};
+
+const informationTitleStyle = {
+  background: C.panelRaised,
+  color: C.text,
+  padding: "12px 14px",
+  borderBottom:
+    `1px solid ${C.border}`,
+  borderLeft:
+    `3px solid ${C.gold}`,
+  fontWeight: 850,
+  fontSize: 11,
+  letterSpacing: ".08em",
+};
+
+const informationBodyStyle = {
+  padding: "14px",
+  fontSize: 11,
+  lineHeight: 1.9,
+  color: C.subtext,
+};
+
+// ==================================================
+// THEME HELPERS
+// ==================================================
+
+function toneColor(tone) {
+  const t = String(
+    tone || ""
+  ).toLowerCase();
+
+  if (t === "red") return C.red;
+  if (t === "green") return C.teal;
+  if (t === "blue") return C.blue;
+  if (t === "brown") return C.gold;
+  if (t === "navy") return C.gold;
+
+  return C.gold;
+}
+
+function getSidebarItemStyle(
+  active = false
+) {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 8,
+    padding: "11px 10px",
+
+    background:
+      active
+        ? "#163846"
+        : "transparent",
+
+    color:
+      active
+        ? "#eefaf7"
+        : C.subtext,
+
+    border:
+      active
+        ? "1px solid #326775"
+        : "1px solid transparent",
+
+    borderLeft:
+      active
+        ? `3px solid ${C.teal}`
+        : "3px solid transparent",
+
+    fontSize: 11,
+    fontWeight:
+      active ? 800 : 650,
+    minWidth: 0,
+  };
+}
+
+function getInfoCardStyle(tone) {
+  return {
+    ...baseTopCard,
+    background: C.panel,
+    border:
+      `1px solid ${C.border}`,
+    borderTop:
+      `2px solid ${toneColor(tone)}`,
+    overflow: "hidden",
+  };
+}
+
+function getPanelTitleStyle(tone) {
+  return {
+    color: C.text,
+    background: "#152639",
+    borderBottom:
+      `1px solid ${C.border}`,
+    borderLeft:
+      `3px solid ${toneColor(tone)}`,
+    padding: "12px 13px",
+    fontSize: 11,
+    fontWeight: 850,
+    letterSpacing: ".1em",
+  };
+}
+
+function getSummaryBoxStyle(tone) {
+  return {
+    background:
+      "linear-gradient(130deg,#15283b,#101e2e)",
+    border:
+      `1px solid ${C.border}`,
+    borderLeft:
+      `3px solid ${toneColor(tone)}`,
+    borderRadius: 10,
+    padding: "15px 16px",
+    fontSize: 10,
+    fontWeight: 750,
+    letterSpacing: ".09em",
+    color: C.muted,
+    minWidth: 0,
+  };
 }
