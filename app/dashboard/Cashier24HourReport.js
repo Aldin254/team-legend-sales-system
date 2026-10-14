@@ -896,6 +896,21 @@ export default function Cashier24HourReport({
 
   return (
     <div style={pageStyle}>
+    <style>{`
+  /* 24-HOUR PLATFORM READINGS:
+     REMOVE NUMBER INPUT ARROWS */
+
+  .tl24-clean-platform-inputs input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  .tl24-clean-platform-inputs input[type="number"]::-webkit-inner-spin-button,
+  .tl24-clean-platform-inputs input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+`}</style>
       {/* TOP HEADER */}
 
       <header style={topHeaderStyle}>
@@ -1396,7 +1411,10 @@ export default function Cashier24HourReport({
           {/* ===================================== */}
 
           <div style={operationsGridStyle}>
-            <div style={platformColumnStyle}>
+          <div
+  className="tl24-clean-platform-inputs"
+  style={platformColumnStyle}
+>
               <PlatformReadings24Hour
                 user={user}
                 currentShift={
