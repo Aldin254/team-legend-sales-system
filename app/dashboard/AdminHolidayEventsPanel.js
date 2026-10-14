@@ -311,11 +311,6 @@ useEffect(() => {
         );
       })}
 
-      <div className="mbh-notice">
-        {postingConnected
-          ? "Holiday deductions are handled by the holiday-date posting system, not by this Admin panel."
-          : "Stage 1 is settings only: enabling now does not create an expense. The holiday-date posting and cashier visibility will be connected in the next stage."}
-      </div>
     </section>
   );
 }
