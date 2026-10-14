@@ -111,19 +111,231 @@ export default function Cashier24HourReport({
   // CASHIER NAME
   // ==================================================
 
-  const sharedAccountName =
-    user?.full_name ||
-    user?.name ||
-    user?.username ||
-    "Cashier";
+  // ==================================================
+  // CASHIER ON DUTY — EFFECTIVE MASTER DUTY ROTA
+  // 24-HOUR SHOPS ONLY
+  //
+  // Uses existing tl_meals_rota_duty_snapshot.
+  // Does not update shifts.cashier_name.
+  // Does not alter salary, meals or rota records.
+  // ==================================================
 
+  const dutyShiftId =
+    currentShift?.id || shift?.id || null;
+
+  const dutyScope = JSON.stringify([
+    dutyShiftId,
+    shopId,
+    accessToken,
+  ]);
+
+  const [dutyNameState, setDutyNameState] = useState({
+    scope: null,
+    name: null,
+  });
+
+  useEffect(() => {
+    let active = true;
+    let busy = false;
+    let controller = null;
+
+    if (
+      !dutyShiftId ||
+      !shopId ||
+      !accessToken ||
+      !supabaseUrl ||
+      !supabaseAnonKey
+    ) {
+      setDutyNameState({
+        scope: dutyScope,
+        name: "ROTA UNAVAILABLE",
+      });
+      return;
+    }
+
+    async function loadDutyName() {
+      if (!active || busy) return;
+
+      busy = true;
+      const requestController = new AbortController();
+      controller = requestController;
+
+      const timeout = setTimeout(
+        () => requestController.abort(),
+        12000
+      );
+
+      try {
+        const response = await fetch(
+          `${String(supabaseUrl).replace(/\/+$/, "")}` +
+            "/rest/v1/rpc/tl_meals_rota_duty_snapshot",
+          {
+            method: "POST",
+            headers: {
+              apikey: supabaseAnonKey,
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              p_shift_id: dutyShiftId,
+            }),
+            cache: "no-store",
+            signal: requestController.signal,
+          }
+        );
+
+        const result = await response
+          .json()
+          .catch(() => null);
+
+        if (
+          !response.ok ||
+          result?.ok !== true ||
+          !Array.isArray(result?.employees) ||
+          String(result.shift_id) !== String(dutyShiftId)
+        ) {
+          throw new Error(
+            result?.message ||
+            `Duty Rota request failed (HTTP ${response.status}).`
+          );
+        }
+
+        // Snapshot is scoped to the authenticated shift.
+        // Require valid names and unique Master Employee IDs.
+        const employeesById = new Map();
+
+        for (const employee of result.employees) {
+          const id = String(
+            employee?.employee_id || ""
+          ).trim();
+
+          const name = String(
+            employee?.full_name || ""
+          ).trim();
+
+          const employeeShop = String(
+            employee?.duty_shop_id || ""
+          );
+
+          if (
+            id &&
+            name &&
+            employeeShop === String(shopId)
+          ) {
+            employeesById.set(id, name);
+          }
+        }
+
+        const names = Array.from(
+          employeesById.values()
+        );
+
+        let resolvedName;
+
+        if (names.length === 1) {
+          resolvedName = names[0];
+        } else if (names.length === 0) {
+          resolvedName = "ROTA VACANT";
+        } else {
+          // Do not arbitrarily pick one of multiple
+          // competing on-duty assignments.
+          resolvedName = "CHECK ROTA ASSIGNMENTS";
+          console.warn(
+            "Multiple employees assigned to one 24-hour shift."
+          );
+        }
+
+        if (!active) return;
+
+        setDutyNameState({
+          scope: dutyScope,
+          name: resolvedName,
+        });
+      } catch (error) {
+        if (!active) return;
+
+        console.error(
+          "24-HOUR DUTY ROTA NAME ERROR:",
+          error
+        );
+
+        // On temporary connection failure,
+        // preserve this shift's last successful name.
+        setDutyNameState((previous) => {
+          if (
+            previous.scope === dutyScope &&
+            previous.name &&
+            previous.name !== "ROTA UNAVAILABLE"
+          ) {
+            return previous;
+          }
+
+          return {
+            scope: dutyScope,
+            name: "ROTA UNAVAILABLE",
+          };
+        });
+      } finally {
+        clearTimeout(timeout);
+
+        if (controller === requestController) {
+          controller = null;
+        }
+
+        busy = false;
+      }
+    }
+
+    void loadDutyName();
+
+    // Lightweight rota refresh: once per minute.
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadDutyName();
+      }
+    }, 60000);
+
+    // Refresh immediately when the cashier
+    // returns to the browser tab.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadDutyName();
+      }
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      onVisibilityChange
+    );
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+
+      document.removeEventListener(
+        "visibilitychange",
+        onVisibilityChange
+      );
+
+      if (controller) {
+        controller.abort();
+      }
+    };
+  }, [
+    dutyShiftId,
+    shopId,
+    accessToken,
+    supabaseUrl,
+    supabaseAnonKey,
+    dutyScope,
+  ]);
+
+  // This existing variable is also used by
+  // the Welcome header and Cashier on Duty card.
   const cashierName =
-    String(
-      shift?.cashier_name ||
-      currentShift?.cashier_name ||
-      sharedAccountName ||
-      "Cashier"
-    ).trim() || "Cashier";
+    dutyNameState.scope === dutyScope
+      ? dutyNameState.name || "ROTA LOADING..."
+      : "ROTA LOADING...";
 
   // ==================================================
   // LIVE NAIROBI GREETING CLOCK
