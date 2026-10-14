@@ -238,16 +238,16 @@ export default function AdminMpesaRatesPanel({ user }) {
 
       setShops(accountsResult);
       setRecipients(
-        accountsResult
-          .filter((row) => Boolean(row.recipient_id))
-          .map((row) => ({
-            ...row,
-            phone_number: String(row.phone_number || ""),
-            im_reference: String(row.im_reference || ""),
-            allow_mpesa_to_mpesa: row.allow_mpesa_to_mpesa !== false,
-            allow_im_to_mpesa: row.allow_im_to_mpesa !== false,
-          }))
-      );
+  accountsResult.map((row) => ({
+    ...row,
+    phone_number: String(row.phone_number || ""),
+    im_reference: String(row.im_reference || ""),
+    allow_mpesa_to_mpesa:
+      row.allow_mpesa_to_mpesa !== false,
+    allow_im_to_mpesa:
+      row.allow_im_to_mpesa !== false,
+  }))
+);
     } catch (error) {
       console.error("LOAD PAYMENT ADMIN ERROR:", error);
       setMessage(
