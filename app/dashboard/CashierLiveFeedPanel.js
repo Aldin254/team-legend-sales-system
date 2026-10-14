@@ -4,662 +4,284 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
+// TEAM LEGEND / NYIKA — SHARED CASHIER LIVE FEED
+// Time-aware half-day duties and resilient Supabase refresh.
+// Existing Rota, Admin announcements and database unchanged.
+
 const REFRESH_MS = 30000;
+const CLOCK_REFRESH_MS = 10000;
+const FETCH_TIMEOUT_MS = 15000;
 
 // ==================================================
-// TEAM LEGEND — SHARED CASHIER LIVE FEED
-// Admin announcements, OFF days, relief,
-// temporary Moves, Swaps and Half-Day duties.
+// GENERAL HELPERS
 // ==================================================
 
-export default function CashierLiveFeedPanel({
-  user,
-}) {
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const accessToken =
-    user?.access_token || null;
-
-  const [feed, setFeed] = useState(null);
-  const [temporaryEvents, setTemporaryEvents] =
-    useState([]);
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [partialWarnings, setPartialWarnings] =
-    useState([]);
-
-  // ==================================================
-  // AUTH
-  // ==================================================
-
-  const authHeaders = useCallback(
-    () => ({
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    }),
-    [supabaseAnonKey, accessToken]
-  );
-
-  // ==================================================
-  // SUPABASE RPC
-  // ==================================================
-
-  const callRpc = useCallback(
-    async (functionName, body = {}, signal) => {
-      if (
-        !supabaseUrl ||
-        !supabaseAnonKey ||
-        !accessToken
-      ) {
-        throw new Error(
-          "Cashier session is incomplete."
-        );
-      }
-
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/rpc/${functionName}`,
-        {
-          method: "POST",
-          headers: authHeaders(),
-          body: JSON.stringify(body),
-          cache: "no-store",
-          ...(signal ? { signal } : {}),
-        }
-      );
-
-      const result = await safeJson(response);
-
-      if (!response.ok) {
-        throw new Error(
-          result?.message ||
-            result?.details ||
-            result?.hint ||
-            `Unable to run ${functionName}.`
-        );
-      }
-
-      return result;
-    },
-    [
-      supabaseUrl,
-      supabaseAnonKey,
-      accessToken,
-      authHeaders,
-    ]
-  );
-
-  // ==================================================
-  // LOAD REGULAR + TEMPORARY LIVE FEED
-  // AUTOMATIC REFRESH EVERY 30 SECONDS
-  // ==================================================
-
-  useEffect(() => {
-    let cancelled = false;
-    let inFlight = false;
-
-    const controller = new AbortController();
-
-    if (!accessToken) {
-      setFeed(null);
-      setTemporaryEvents([]);
-      setPartialWarnings([]);
-      setLoading(false);
-      setError("Cashier session unavailable.");
-
-      return () => {
-        controller.abort();
-      };
-    }
-
-    setLoading(true);
-    setError("");
-
-    async function loadFeed() {
-      if (cancelled || inFlight) return;
-
-      inFlight = true;
-
-      try {
-        const [regularResult, temporaryResult] =
-          await Promise.allSettled([
-            callRpc(
-              "tl_cashier_live_feed_snapshot",
-              {},
-              controller.signal
-            ),
-            callRpc(
-              "tl_cashier_live_feed_temporary",
-              {},
-              controller.signal
-            ),
-          ]);
-
-        if (cancelled) return;
-
-        const regularOK =
-          regularResult.status === "fulfilled" &&
-          regularResult.value?.success === true;
-
-        const temporaryOK =
-          temporaryResult.status === "fulfilled" &&
-          temporaryResult.value?.success === true &&
-          Array.isArray(
-            temporaryResult.value?.events
-          );
-
-        if (!regularOK) {
-          console.error(
-            "REGULAR LIVE FEED ERROR:",
-            regularResult.status === "rejected"
-              ? regularResult.reason
-              : regularResult.value
-          );
-        }
-
-        if (!temporaryOK) {
-          console.error(
-            "TEMPORARY LIVE FEED ERROR:",
-            temporaryResult.status === "rejected"
-              ? temporaryResult.reason
-              : temporaryResult.value
-          );
-        }
-
-        if (!regularOK && !temporaryOK) {
-          throw new Error(
-            "Unable to load Live Feed."
-          );
-        }
-
-        setFeed(
-          regularOK
-            ? regularResult.value
-            : null
-        );
-
-        setTemporaryEvents(
-          temporaryOK
-            ? temporaryResult.value.events
-            : []
-        );
-
-        const warnings = [];
-
-        if (!regularOK) {
-          warnings.push(
-            "Regular Duty Rota updates unavailable."
-          );
-        }
-
-        if (!temporaryOK) {
-          warnings.push(
-            "Temporary Duty Rota updates unavailable."
-          );
-        }
-
-        setPartialWarnings(warnings);
-        setError("");
-      } catch (err) {
-        if (!cancelled) {
-          console.error(
-            "LIVE FEED ERROR:",
-            err
-          );
-
-          setError(
-            err?.message ||
-              "Unable to load Live Feed."
-          );
-        }
-      } finally {
-        inFlight = false;
-
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadFeed();
-
-    const timer = setInterval(() => {
-      void loadFeed();
-    }, REFRESH_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-      controller.abort();
-    };
-  }, [accessToken, callRpc]);
-
-  // ==================================================
-  // BUILD MOVING FEED
-  // ==================================================
-
-  const tickerItems = useMemo(() => {
-    const items = [];
-
-    const today = feed?.today;
-    const tomorrow = feed?.tomorrow;
-
-    const todayDate =
-      dateOnly(today?.date) ||
-      todayNairobi();
-
-    const tomorrowDate =
-      dateOnly(tomorrow?.date) ||
-      addDays(todayDate, 1);
-
-    const announcements =
-      Array.isArray(feed?.announcements)
-        ? feed.announcements
-        : [];
-
-    const todayEvents =
-      Array.isArray(today?.events)
-        ? today.events
-        : [];
-
-    const tomorrowEvents =
-      Array.isArray(tomorrow?.events)
-        ? tomorrow.events
-        : [];
-
-    // ==================================================
-    // ADMIN ANNOUNCEMENTS FIRST
-    // ==================================================
-
-    for (const announcement of announcements) {
-      const title =
-        cleanText(announcement?.title);
-
-      const message =
-        cleanText(announcement?.message);
-
-      const important =
-        upper(announcement?.priority) ===
-        "IMPORTANT";
-
-      const pinned =
-        announcement?.is_pinned === true;
-
-      let text = "";
-
-      if (important) {
-        text += "IMPORTANT: ";
-      }
-
-      if (pinned) {
-        text += "PINNED: ";
-      }
-
-      if (title) {
-        text += `${title} — `;
-      }
-
-      text += message;
-
-      if (text.trim()) {
-        items.push(text.trim());
-      }
-    }
-
-    // ==================================================
-    // PREPARE TEMPORARY ASSIGNMENTS
-    // ==================================================
-
-    const sortedTemporary = [
-      ...temporaryEvents,
-    ]
-      .filter((event) => {
-        const date =
-          dateOnly(event?.duty_date);
-
-        const type =
-          upper(event?.type);
-
-        return (
-          date >= todayDate &&
-          ["MOVE", "SWAP", "HALF_DAY"].includes(type)
-        );
-      })
-      .sort((a, b) => {
-        const dateComparison =
-          dateOnly(a.duty_date).localeCompare(
-            dateOnly(b.duty_date)
-          );
-
-        if (dateComparison !== 0) {
-          return dateComparison;
-        }
-
-        return upper(a.type).localeCompare(
-          upper(b.type)
-        );
-      });
-
-    // The original Live Feed already includes
-    // some Moves. Avoid showing those twice.
-
-    const temporaryMoveKeys = new Set();
-
-    for (const event of sortedTemporary) {
-      if (
-        upper(event?.type) === "MOVE" &&
-        event?.change_id
-      ) {
-        temporaryMoveKeys.add(
-          eventKey(
-            event.duty_date,
-            event.change_id
-          )
-        );
-      }
-    }
-
-    const seenTemporary = new Set();
-
-    function addTemporaryForDate(date, label) {
-      for (const event of sortedTemporary) {
-        if (
-          dateOnly(event.duty_date) !== date
-        ) {
-          continue;
-        }
-
-        const key = [
-          dateOnly(event.duty_date),
-          upper(event.type),
-          cleanText(event.change_id) ||
-            cleanText(event.message),
-        ].join("|");
-
-        if (seenTemporary.has(key)) {
-          continue;
-        }
-
-        seenTemporary.add(key);
-
-        const type = upper(event.type);
-
-        const typeLabel =
-          type === "MOVE"
-            ? "TEMPORARY MOVE"
-            : type === "SWAP"
-              ? "TEMPORARY SWAP"
-              : "HALF-DAY";
-
-        const description =
-          cleanText(event.message);
-
-        if (!description) continue;
-
-        items.push(
-          `${label}: ${typeLabel} — ${description}`
-        );
-      }
-    }
-
-    // ==================================================
-    // NORMAL OFF DAYS AND RELIEF ASSIGNMENTS
-    // ==================================================
-
-    function addRegularEvents(events, label, date) {
-      for (const event of events) {
-        const action =
-          upper(event?.action_type);
-
-        const eventType =
-          upper(event?.event_type);
-
-        const isMove =
-          action === "MOVE" ||
-          action === "SHOP_MOVE" ||
-          eventType === "TEMPORARY_DUTY_CHANGE";
-
-        const changeId =
-          event?.change_group_id ||
-          event?.change_id;
-
-        // The same temporary Move is shown
-        // using the more informative new source.
-
-        if (
-          isMove &&
-          changeId &&
-          temporaryMoveKeys.has(
-            eventKey(
-              event?.duty_date || date,
-              changeId
-            )
-          )
-        ) {
-          continue;
-        }
-
-        const text =
-          buildDutyMessage(event, label);
-
-        if (text) {
-          items.push(text);
-        }
-      }
-    }
-
-    // ==================================================
-    // TODAY
-    // ==================================================
-
-    addTemporaryForDate(
-      todayDate,
-      "TODAY"
-    );
-
-    addRegularEvents(
-      todayEvents,
-      "TODAY",
-      todayDate
-    );
-
-    // ==================================================
-    // TOMORROW
-    // ==================================================
-
-    addTemporaryForDate(
-      tomorrowDate,
-      "TOMORROW"
-    );
-
-    addRegularEvents(
-      tomorrowEvents,
-      "TOMORROW",
-      tomorrowDate
-    );
-
-    // ==================================================
-    // FUTURE TEMPORARY CHANGES
-    // DAYS 3–7
-    // ==================================================
-
-    const futureDates = [
-      ...new Set(
-        sortedTemporary
-          .map((event) =>
-            dateOnly(event.duty_date)
-          )
-          .filter(
-            (date) =>
-              date !== todayDate &&
-              date !== tomorrowDate
-          )
-      ),
-    ].sort();
-
-    for (const date of futureDates) {
-      addTemporaryForDate(
-        date,
-        futureDateLabel(date)
-      );
-    }
-
-    // ==================================================
-    // SOURCE WARNINGS
-    // ==================================================
-
-    for (const warning of partialWarnings) {
-      items.push(warning);
-    }
-
-    // ==================================================
-    // FALLBACK
-    // ==================================================
-
-    if (items.length === 0) {
-      items.push(
-        "No new Team Legend updates at the moment."
-      );
-    }
-
-    return items;
-  }, [
-    feed,
-    temporaryEvents,
-    partialWarnings,
-  ]);
-
-  // ==================================================
-  // DISPLAY — ORIGINAL THEME PRESERVED
-  // ==================================================
-
+function cleanText(value) {
+  return String(value ?? "").trim();
+}
+
+function upper(value) {
+  return cleanText(value).toUpperCase();
+}
+
+function dateOnly(value) {
+  return cleanText(value).slice(0, 10);
+}
+
+function nairobiClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+
+  const part = (key) =>
+    parts.find((p) => p.type === key)?.value || "00";
+
+  return {
+    date:
+      `${part("year")}-${part("month")}-${part("day")}`,
+    minute:
+      Number(part("hour")) * 60 +
+      Number(part("minute")),
+  };
+}
+
+function addDays(day, amount) {
+  const d = new Date(`${day}T12:00:00Z`);
+
+  if (Number.isNaN(d.getTime())) {
+    return day;
+  }
+
+  d.setUTCDate(d.getUTCDate() + amount);
+
+  return d.toISOString().slice(0, 10);
+}
+
+function dateLabel(day) {
+  const d = new Date(`${day}T12:00:00Z`);
+
+  if (Number.isNaN(d.getTime())) {
+    return day;
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  }).format(d).toUpperCase();
+}
+
+function eventKey(day, id) {
   return (
-    <>
-      <style>{`
-        @keyframes teamLegendLiveFeedScroll {
-          0% {
-            transform: translateX(100vw);
-          }
-
-          100% {
-            transform: translateX(-100%);
-          }
-        }
-
-        .team-legend-live-feed-track {
-          display: inline-flex;
-          align-items: center;
-          width: max-content;
-          white-space: nowrap;
-          animation:
-            teamLegendLiveFeedScroll
-            120s linear infinite;
-          will-change: transform;
-        }
-
-        .team-legend-live-feed-track:hover {
-          animation-play-state: paused;
-        }
-      `}</style>
-
-      <section style={panelStyle}>
-        <div style={labelStyle}>
-          <span style={liveDotStyle} />
-
-          <span>
-            LIVE FEED
-          </span>
-        </div>
-
-        <div style={tickerWindowStyle}>
-          {loading ? (
-            <div style={staticMessageStyle}>
-              Loading live feed...
-            </div>
-          ) : error ? (
-            <div style={staticMessageStyle}>
-              Live Feed temporarily unavailable
-            </div>
-          ) : (
-            <div className="team-legend-live-feed-track">
-              {tickerItems.map((item, index) => (
-                <TickerItem
-                  key={`${index}-${item}`}
-                  text={item}
-                />
-              ))}
-
-              {tickerItems.map((item, index) => (
-                <TickerItem
-                  key={`copy-${index}-${item}`}
-                  text={item}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-    </>
+    `${dateOnly(day)}|` +
+    `${cleanText(id)}`
   );
 }
 
-// ==================================================
-// TICKER ITEM
-// ==================================================
-
-function TickerItem({ text }) {
-  return (
-    <div style={tickerItemStyle}>
-      <span style={separatorStyle}>
-        ◆
-      </span>
-
-      <span>
-        {text}
-      </span>
-    </div>
-  );
+async function safeJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 // ==================================================
-// BUILD REGULAR DUTY MESSAGE
+// HALF-DAY TIME PARSER
+//
+// Expected temporary event message:
+// Half-day at NYIKA01:
+// MELVIN NDUKU 09:00 - 15:00;
+// IRENE KATHULE 15:00 - 22:00
+//
+// No employee's duty time is guessed.
+// ==================================================
+
+function parseHalfDay(message) {
+  const raw = cleanText(message);
+
+  const header =
+    /^(half[\s-]*day\s+at\s+[^:]+:)\s*/i.exec(raw);
+
+  if (!header) {
+    return null;
+  }
+
+  const segments = raw
+    .slice(header[0].length)
+    .split(/\s*[;；|\n]\s*/)
+    .filter(Boolean);
+
+  if (!segments.length) {
+    return null;
+  }
+
+  const duties = [];
+
+  for (const segment of segments) {
+    const match =
+      /^(.+?)\s+([01]?\d|2[0-3]):([0-5]\d)\s*[-–—]\s*([01]?\d|2[0-3]):([0-5]\d)\s*$/
+        .exec(segment);
+
+    if (!match) {
+      return null;
+    }
+
+    const start =
+      Number(match[2]) * 60 +
+      Number(match[3]);
+
+    const end =
+      Number(match[4]) * 60 +
+      Number(match[5]);
+
+    if (
+      end <= start ||
+      !cleanText(match[1])
+    ) {
+      return null;
+    }
+
+    duties.push({
+      name: cleanText(match[1]),
+      start,
+      end,
+      startText:
+        `${match[2].padStart(2, "0")}:${match[3]}`,
+      endText:
+        `${match[4].padStart(2, "0")}:${match[5]}`,
+    });
+  }
+
+  return {
+    heading: header[1],
+    duties,
+  };
+}
+
+// ==================================================
+// TEMPORARY DUTY MESSAGE
+// ==================================================
+
+function temporaryMessage(
+  event,
+  label,
+  eventDate,
+  clock
+) {
+  const type = upper(event?.type);
+  const description =
+    cleanText(event?.message);
+
+  if (!description) {
+    return "";
+  }
+
+  const heading =
+    type === "MOVE"
+      ? "TEMPORARY MOVE"
+      : type === "SWAP"
+        ? "TEMPORARY SWAP"
+        : "HALF-DAY";
+
+  // Future assignments remain visible in full.
+  if (
+    type !== "HALF_DAY" ||
+    eventDate !== clock.date
+  ) {
+    return (
+      `${label}: ${heading} — ${description}`
+    );
+  }
+
+  const parsed = parseHalfDay(description);
+
+  // Preserve unrecognised event formats.
+  // A structured Supabase response would be needed
+  // to time-filter any different message format.
+  if (!parsed) {
+    return (
+      `${label}: ${heading} — ${description}`
+    );
+  }
+
+  const shop = parsed.heading
+    .replace(
+      /^half[\s-]*day\s+at\s+/i,
+      ""
+    )
+    .replace(/:$/, "");
+
+  const active = parsed.duties.find(
+    (d) =>
+      clock.minute >= d.start &&
+      clock.minute < d.end
+  );
+
+  if (active) {
+    return (
+      `${label}: HALF-DAY AT ${shop} — ` +
+      `${active.name} ` +
+      `${active.startText} - ${active.endText} ` +
+      "(ON DUTY)"
+    );
+  }
+
+  const next = parsed.duties.find(
+    (d) => clock.minute < d.start
+  );
+
+  if (next) {
+    return (
+      `${label}: HALF-DAY AT ${shop} — ` +
+      `${next.name} starts at ${next.startText}`
+    );
+  }
+
+  // All assignments for today have finished.
+  return "";
+}
+
+// ==================================================
+// ORIGINAL REGULAR DUTY MESSAGE
 // ==================================================
 
 function buildDutyMessage(event, dayLabel) {
-  const source =
-    upper(event?.source);
-
+  const source = upper(event?.source);
   const eventType =
     upper(event?.event_type);
-
   const actionType =
     upper(event?.action_type);
-
   const effectiveStatus =
     upper(event?.effective_status);
 
-  const employeeName =
-    cleanText(
-      event?.employee_off ||
-        event?.employee_name
-    );
+  const employeeName = cleanText(
+    event?.employee_off ||
+    event?.employee_name
+  );
 
-  const reliefName =
-    cleanText(event?.relief_employee);
+  const reliefName = cleanText(
+    event?.relief_employee
+  );
 
-  const shopName =
-    cleanText(event?.shop_name);
+  const shopName = cleanText(
+    event?.shop_name
+  );
 
-  const reason =
-    cleanText(event?.reason_text);
+  const reason = cleanText(
+    event?.reason_text
+  );
 
   const temporary =
     source === "TEMPORARY_OVERRIDE";
@@ -674,10 +296,7 @@ function buildDutyMessage(event, dayLabel) {
     ].includes(eventType);
 
   const isMove =
-    [
-      "MOVE",
-      "SHOP_MOVE",
-    ].includes(actionType) ||
+    ["MOVE", "SHOP_MOVE"].includes(actionType) ||
     eventType === "TEMPORARY_DUTY_CHANGE";
 
   const isSwap =
@@ -742,112 +361,754 @@ function buildDutyMessage(event, dayLabel) {
 }
 
 // ==================================================
-// DATE HELPERS
+// TICKER ITEM
 // ==================================================
 
-function todayNairobi() {
-  const parts =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone: "Africa/Nairobi",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
+function TickerItem({ text }) {
+  return (
+    <div style={tickerItemStyle}>
+      <span style={separatorStyle}>◆</span>
+      <span>{text}</span>
+    </div>
+  );
+}
+
+// ==================================================
+// MAIN LIVE FEED PANEL
+// ==================================================
+
+export default function CashierLiveFeedPanel({
+  user,
+}) {
+  const supabaseUrl = String(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  ).replace(/\/+$/, "");
+
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
+  const accessToken =
+    user?.access_token || "";
+
+  const [feed, setFeed] = useState(null);
+
+  const [
+    temporaryEvents,
+    setTemporaryEvents,
+  ] = useState([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [hasLoaded, setHasLoaded] =
+    useState(false);
+
+  const [
+    connectionProblem,
+    setConnectionProblem,
+  ] = useState("");
+
+  const [clockTime, setClockTime] =
+    useState(() => new Date());
+
+  const inFlight = useRef(false);
+
+  // ==================================================
+  // SUPABASE RPC
+  // ==================================================
+
+  const callRpc = useCallback(
+    async (name, signal) => {
+      if (
+        !supabaseUrl ||
+        !supabaseAnonKey ||
+        !accessToken
+      ) {
+        throw new Error(
+          "Cashier session or Supabase connection is missing."
+        );
       }
-    ).formatToParts(new Date());
 
-  const values = Object.fromEntries(
-    parts
-      .filter(
-        (part) => part.type !== "literal"
-      )
-      .map((part) => [
-        part.type,
-        part.value,
-      ])
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/rpc/${name}`,
+        {
+          method: "POST",
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization:
+              `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+          cache: "no-store",
+          signal,
+        }
+      );
+
+      const value = await safeJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          value?.message ||
+          value?.details ||
+          `${name} failed (HTTP ${response.status}).`
+        );
+      }
+
+      if (value?.success !== true) {
+        throw new Error(
+          `${name} returned an unsuccessful response.`
+        );
+      }
+
+      return value;
+    },
+    [
+      supabaseUrl,
+      supabaseAnonKey,
+      accessToken,
+    ]
   );
 
-  return (
-    `${values.year}-` +
-    `${values.month}-` +
-    `${values.day}`
-  );
-}
+  // ==================================================
+  // TIME-AWARE REFRESH
+  //
+  // Update the Nairobi clock independently of fetch.
+  // Half-Day transitions do not need a database call.
+  // ==================================================
 
-function dateOnly(value) {
-  return String(value || "").slice(0, 10);
-}
+  useEffect(() => {
+    const interval = setInterval(
+      () => setClockTime(new Date()),
+      CLOCK_REFRESH_MS
+    );
 
-function addDays(dateString, days) {
-  const date = new Date(
-    `${dateString}T12:00:00Z`
-  );
+    return () => {
+      clearInterval(interval);
+    };
+  }, []);
 
-  if (Number.isNaN(date.getTime())) {
-    return dateString;
-  }
+  // ==================================================
+  // LOAD LIVE FEED — RESILIENT NETWORK HANDLING
+  // ==================================================
 
-  date.setUTCDate(
-    date.getUTCDate() + days
-  );
+  useEffect(() => {
+    let cancelled = false;
+    let activeController = null;
 
-  return date.toISOString().slice(0, 10);
-}
-
-function futureDateLabel(dateString) {
-  const date = new Date(
-    `${dateString}T12:00:00Z`
-  );
-
-  if (Number.isNaN(date.getTime())) {
-    return dateString;
-  }
-
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone: "UTC",
-      weekday: "short",
-      day: "2-digit",
-      month: "short",
+    if (
+      !supabaseUrl ||
+      !supabaseAnonKey ||
+      !accessToken
+    ) {
+      setFeed(null);
+      setTemporaryEvents([]);
+      setConnectionProblem(
+        "Cashier login or Supabase configuration is missing."
+      );
+      setHasLoaded(false);
+      setLoading(false);
+      return undefined;
     }
-  )
-    .format(date)
-    .toUpperCase();
-}
 
-function eventKey(date, changeId) {
+    setLoading(true);
+    setConnectionProblem("");
+    inFlight.current = false;
+
+    async function loadFeed() {
+      if (
+        cancelled ||
+        inFlight.current
+      ) {
+        return;
+      }
+
+      // Reduce unnecessary requests from background tabs.
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+
+      inFlight.current = true;
+
+      const controller =
+        new AbortController();
+
+      activeController = controller;
+
+      const timeout = setTimeout(
+        () => controller.abort(),
+        FETCH_TIMEOUT_MS
+      );
+
+      try {
+        const [
+          regular,
+          temporary,
+        ] = await Promise.allSettled([
+          callRpc(
+            "tl_cashier_live_feed_snapshot",
+            controller.signal
+          ),
+          callRpc(
+            "tl_cashier_live_feed_temporary",
+            controller.signal
+          ),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        const goodRegular =
+          regular.status === "fulfilled";
+
+        const goodTemporary =
+          temporary.status === "fulfilled" &&
+          Array.isArray(
+            temporary.value?.events
+          );
+
+        // Only replace data when that source succeeded.
+        // A failed source keeps its previously loaded data.
+
+        if (goodRegular) {
+          setFeed(regular.value);
+        }
+
+        if (goodTemporary) {
+          setTemporaryEvents(
+            temporary.value.events
+          );
+        }
+
+        if (
+          goodRegular ||
+          goodTemporary
+        ) {
+          setHasLoaded(true);
+        }
+
+        if (
+          goodRegular &&
+          goodTemporary
+        ) {
+          setConnectionProblem("");
+        } else {
+          const failed = [
+            !goodRegular ? "regular" : null,
+            !goodTemporary ? "temporary" : null,
+          ]
+            .filter(Boolean)
+            .join(" and ");
+
+          const reason =
+            !goodRegular &&
+            regular.status === "rejected"
+              ? regular.reason?.message
+              : !goodTemporary &&
+                temporary.status === "rejected"
+                ? temporary.reason?.message
+                : "Unexpected response";
+
+          console.warn(
+            `Live Feed ${failed} request failed; preserving previous data.`,
+            reason
+          );
+
+          setConnectionProblem(
+            `${failed} Live Feed source unavailable. Retrying automatically.`
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn(
+            "Live Feed temporarily unavailable:",
+            err
+          );
+
+          setConnectionProblem(
+            "Live Feed connection interrupted. Retrying automatically."
+          );
+        }
+      } finally {
+        clearTimeout(timeout);
+
+        if (
+          activeController === controller
+        ) {
+          activeController = null;
+        }
+
+        inFlight.current = false;
+
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadFeed();
+
+    const interval = setInterval(
+      () => void loadFeed(),
+      REFRESH_MS
+    );
+
+    const onVisible = () => {
+      if (
+        document.visibilityState === "visible"
+      ) {
+        void loadFeed();
+      }
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      onVisible
+    );
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+
+      document.removeEventListener(
+        "visibilitychange",
+        onVisible
+      );
+
+      activeController?.abort();
+    };
+  }, [
+    callRpc,
+    supabaseUrl,
+    supabaseAnonKey,
+    accessToken,
+  ]);
+
+  // ==================================================
+  // CURRENT NAIROBI DATE AND TIME
+  // ==================================================
+
+  const clock = useMemo(
+    () => nairobiClock(clockTime),
+    [clockTime]
+  );
+
+  // ==================================================
+  // BUILD SHARED MOVING FEED
+  // ==================================================
+
+  const tickerItems = useMemo(() => {
+    const items = [];
+
+    const todayDate = clock.date;
+    const tomorrowDate =
+      addDays(todayDate, 1);
+
+    const lastDate =
+      addDays(todayDate, 6);
+
+    // ==================================================
+    // ADMIN ANNOUNCEMENTS
+    // ==================================================
+
+    const announcements = Array.isArray(
+      feed?.announcements
+    )
+      ? feed.announcements
+      : [];
+
+    for (const announcement of announcements) {
+      const title =
+        cleanText(announcement?.title);
+
+      const message =
+        cleanText(announcement?.message);
+
+      let text = "";
+
+      if (
+        upper(announcement?.priority) ===
+        "IMPORTANT"
+      ) {
+        text += "IMPORTANT: ";
+      }
+
+      if (
+        announcement?.is_pinned === true
+      ) {
+        text += "PINNED: ";
+      }
+
+      if (title) {
+        text += `${title} — `;
+      }
+
+      text += message;
+
+      if (text.trim()) {
+        items.push(text.trim());
+      }
+    }
+
+    // ==================================================
+    // TEMPORARY DUTY EVENTS
+    // ==================================================
+
+    const sortedTemporary = [
+      ...temporaryEvents,
+    ]
+      .filter((event) => {
+        const date =
+          dateOnly(event?.duty_date);
+
+        return (
+          date >= todayDate &&
+          date <= lastDate &&
+          ["MOVE", "SWAP", "HALF_DAY"].includes(
+            upper(event?.type)
+          )
+        );
+      })
+      .sort((a, b) => {
+        const dateComparison =
+          dateOnly(a.duty_date)
+            .localeCompare(
+              dateOnly(b.duty_date)
+            );
+
+        if (dateComparison !== 0) {
+          return dateComparison;
+        }
+
+        return upper(a.type)
+          .localeCompare(
+            upper(b.type)
+          );
+      });
+
+    // Prevent duplicate temporary Moves.
+
+    const temporaryMoveKeys = new Set(
+      sortedTemporary
+        .filter(
+          (event) =>
+            upper(event?.type) === "MOVE" &&
+            event?.change_id
+        )
+        .map(
+          (event) =>
+            eventKey(
+              event.duty_date,
+              event.change_id
+            )
+        )
+    );
+
+    const seenTemporary = new Set();
+
+    function addTemporaryForDate(
+      date,
+      label
+    ) {
+      for (const event of sortedTemporary) {
+        if (
+          dateOnly(event.duty_date) !== date
+        ) {
+          continue;
+        }
+
+        const key = [
+          date,
+          upper(event.type),
+          cleanText(event.change_id) ||
+            cleanText(event.message),
+        ].join("|");
+
+        if (seenTemporary.has(key)) {
+          continue;
+        }
+
+        seenTemporary.add(key);
+
+        const message =
+          temporaryMessage(
+            event,
+            label,
+            date,
+            clock
+          );
+
+        if (message) {
+          items.push(message);
+        }
+      }
+    }
+
+    // ==================================================
+    // REGULAR OFF DAYS / RELIEF / MOVES / SWAPS
+    // ==================================================
+
+    function addRegular(
+      events,
+      label,
+      date
+    ) {
+      for (const event of events) {
+        const action =
+          upper(event?.action_type);
+
+        const eventType =
+          upper(event?.event_type);
+
+        const isMove =
+          [
+            "MOVE",
+            "SHOP_MOVE",
+          ].includes(action) ||
+          eventType ===
+            "TEMPORARY_DUTY_CHANGE";
+
+        const changeId =
+          event?.change_group_id ||
+          event?.change_id;
+
+        if (
+          isMove &&
+          changeId &&
+          temporaryMoveKeys.has(
+            eventKey(
+              event?.duty_date || date,
+              changeId
+            )
+          )
+        ) {
+          continue;
+        }
+
+        const text =
+          buildDutyMessage(
+            event,
+            label
+          );
+
+        if (text) {
+          items.push(text);
+        }
+      }
+    }
+
+    // ==================================================
+    // TODAY
+    // ==================================================
+
+    addTemporaryForDate(
+      todayDate,
+      "TODAY"
+    );
+
+    // Do not display stale yesterday events
+    // after midnight if Supabase is unavailable.
+
+    if (
+      !feed?.today?.date ||
+      dateOnly(feed.today.date) === todayDate
+    ) {
+      addRegular(
+        Array.isArray(feed?.today?.events)
+          ? feed.today.events
+          : [],
+        "TODAY",
+        todayDate
+      );
+    }
+
+    // ==================================================
+    // TOMORROW
+    // ==================================================
+
+    addTemporaryForDate(
+      tomorrowDate,
+      "TOMORROW"
+    );
+
+    if (
+      !feed?.tomorrow?.date ||
+      dateOnly(feed.tomorrow.date) ===
+        tomorrowDate
+    ) {
+      addRegular(
+        Array.isArray(feed?.tomorrow?.events)
+          ? feed.tomorrow.events
+          : [],
+        "TOMORROW",
+        tomorrowDate
+      );
+    }
+
+    // ==================================================
+    // FUTURE TEMPORARY EVENTS — DAYS 3–7
+    // ==================================================
+
+    const futureDates = [
+      ...new Set(
+        sortedTemporary.map(
+          (event) =>
+            dateOnly(event.duty_date)
+        )
+      ),
+    ]
+      .filter(
+        (date) =>
+          date > tomorrowDate
+      )
+      .sort();
+
+    for (const date of futureDates) {
+      addTemporaryForDate(
+        date,
+        dateLabel(date)
+      );
+    }
+
+    // ==================================================
+    // FALLBACK
+    // ==================================================
+
+    if (items.length === 0) {
+      items.push(
+        "No new Team Legend updates at the moment."
+      );
+    }
+
+    return items;
+  }, [
+    clock,
+    feed,
+    temporaryEvents,
+  ]);
+
+  // ==================================================
+  // DISPLAY — SAME NAVY THEME
+  // ==================================================
+
+  const showTicker =
+    hasLoaded ||
+    Boolean(feed) ||
+    temporaryEvents.length > 0;
+
   return (
-    `${dateOnly(date)}|` +
-    `${cleanText(changeId)}`
+    <>
+      <style>{`
+        @keyframes teamLegendLiveFeedScroll {
+          0% {
+            transform: translateX(100vw);
+          }
+
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+
+        .team-legend-live-feed-track {
+          display: inline-flex;
+          align-items: center;
+          width: max-content;
+          white-space: nowrap;
+
+          animation:
+            teamLegendLiveFeedScroll
+            120s
+            linear
+            infinite;
+
+          will-change: transform;
+        }
+
+        .team-legend-live-feed-track:hover {
+          animation-play-state: paused;
+        }
+      `}</style>
+
+      <section style={panelStyle}>
+        <div style={labelStyle}>
+          <span
+            style={{
+              ...liveDotStyle,
+
+              backgroundColor:
+                connectionProblem
+                  ? "#f59e0b"
+                  : "#22C55E",
+
+              boxShadow:
+                connectionProblem
+                  ? "0 0 9px rgba(245,158,11,.65)"
+                  : liveDotStyle.boxShadow,
+            }}
+          />
+
+          <span>LIVE FEED</span>
+
+          {connectionProblem &&
+            showTicker && (
+              <span
+                style={retryLabelStyle}
+                title={connectionProblem}
+              >
+                RETRYING
+              </span>
+            )}
+        </div>
+
+        <div
+          style={tickerWindowStyle}
+          aria-live="off"
+        >
+          {loading && !showTicker ? (
+            <div style={staticMessageStyle}>
+              Loading live feed...
+            </div>
+          ) : !showTicker ? (
+            <div
+              style={staticMessageStyle}
+              role="status"
+            >
+              Live Feed temporarily unavailable —
+              reconnecting
+            </div>
+          ) : (
+            <div className="team-legend-live-feed-track">
+              {tickerItems.map(
+                (item, index) => (
+                  <TickerItem
+                    key={`${index}-${item}`}
+                    text={item}
+                  />
+                )
+              )}
+
+              {tickerItems.map(
+                (item, index) => (
+                  <TickerItem
+                    key={`copy-${index}-${item}`}
+                    text={item}
+                  />
+                )
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+    </>
   );
 }
 
 // ==================================================
-// GENERAL HELPERS
-// ==================================================
-
-function upper(value) {
-  return String(value || "")
-    .trim()
-    .toUpperCase();
-}
-
-function cleanText(value) {
-  return String(value ?? "").trim();
-}
-
-async function safeJson(response) {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
-// ==================================================
-// LIVE FEED STYLES — UNCHANGED
+// ORIGINAL NAVY LIVE FEED STYLES
 // ==================================================
 
 const panelStyle = {
@@ -891,6 +1152,13 @@ const liveDotStyle = {
   boxShadow:
     "0 0 9px rgba(34,197,94,0.85)",
   flexShrink: 0,
+};
+
+const retryLabelStyle = {
+  color: "#fbbf24",
+  fontSize: "9px",
+  fontWeight: 900,
+  letterSpacing: ".2px",
 };
 
 const tickerWindowStyle = {
