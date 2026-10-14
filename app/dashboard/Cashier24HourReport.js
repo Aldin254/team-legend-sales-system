@@ -20,16 +20,24 @@ import CloseShift24Hour from "./CloseShift24Hour";
 
 // ==================================================
 // TEAM LEGEND / NYIKA
-// 24-HOUR PROFESSIONAL CASHIER REPORT
+// CLEAN 24-HOUR CASHIER DASHBOARD
 //
-// Meals & Bonuses:
-// - Shared CashierMealsRotaPanel
-// - Directly below Live Feed
-// - No extra employee sign-in
-// - 24-hour staff exempt from 10:50 cutoff
-// - Expense posting remains in Supabase
+// Preserves:
+// - Effective Duty Rota cashier name
+// - Existing financial calculations
+// - Historical M-Shwari float amounts
+// - Private Master Employee V3 Salary
+// - Meals & Bonuses
+// - Shared Live Feed
+// - Manual expenses
+// - 24-hour platform readings
+// - Shift closing
 //
-// Existing financial logic retained.
+// Removed:
+// - M-Shwari float input rows
+// - Save M-Shwari Float button
+// - Small explanatory notices below totals
+// - Number input arrows
 // ==================================================
 
 export default function Cashier24HourReport({
@@ -42,36 +50,36 @@ export default function Cashier24HourReport({
     currentShift || null
   );
 
-  const [
-    incomeEntries,
-    setIncomeEntries,
-  ] = useState([]);
+  const [incomeEntries, setIncomeEntries] =
+    useState([]);
 
   const [expenses, setExpenses] = useState([]);
 
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshKey, setRefreshKey] =
+    useState(0);
 
-  const [floatInputs, setFloatInputs] = useState({
-    company: ["", "", ""],
-    mshwari: ["", "", ""],
-  });
-
-  const [expenseInputs, setExpenseInputs] = useState(
-    Array.from(
-      { length: 10 },
-      () => ({
-        description: "",
-        amount: "",
-      })
-    )
-  );
+  const [expenseInputs, setExpenseInputs] =
+    useState(
+      Array.from(
+        { length: 10 },
+        () => ({
+          description: "",
+          amount: "",
+        })
+      )
+    );
 
   const [loading, setLoading] = useState(true);
-  const [savingFloats, setSavingFloats] = useState(false);
-  const [savingExpenses, setSavingExpenses] = useState(false);
+
+  const [savingExpenses, setSavingExpenses] =
+    useState(false);
+
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
-  const [now, setNow] = useState(() => new Date());
+  const [messageType, setMessageType] =
+    useState("");
+
+  const [now, setNow] =
+    useState(() => new Date());
 
   // ==================================================
   // SUPABASE
@@ -99,7 +107,8 @@ export default function Cashier24HourReport({
     user?.auth_user_id ||
     null;
 
-  const shiftId = currentShift?.id || null;
+  const shiftId =
+    currentShift?.id || null;
 
   const shopName =
     user?.shop ||
@@ -108,20 +117,13 @@ export default function Cashier24HourReport({
     "SHOP";
 
   // ==================================================
-  // CASHIER NAME
-  // ==================================================
-
-  // ==================================================
-  // CASHIER ON DUTY — EFFECTIVE MASTER DUTY ROTA
-  // 24-HOUR SHOPS ONLY
-  //
-  // Uses existing tl_meals_rota_duty_snapshot.
-  // Does not update shifts.cashier_name.
-  // Does not alter salary, meals or rota records.
+  // CASHIER ON DUTY — MASTER DUTY ROTA
   // ==================================================
 
   const dutyShiftId =
-    currentShift?.id || shift?.id || null;
+    currentShift?.id ||
+    shift?.id ||
+    null;
 
   const dutyScope = JSON.stringify([
     dutyShiftId,
@@ -129,10 +131,11 @@ export default function Cashier24HourReport({
     accessToken,
   ]);
 
-  const [dutyNameState, setDutyNameState] = useState({
-    scope: null,
-    name: null,
-  });
+  const [dutyNameState, setDutyNameState] =
+    useState({
+      scope: null,
+      name: null,
+    });
 
   useEffect(() => {
     let active = true;
@@ -157,7 +160,10 @@ export default function Cashier24HourReport({
       if (!active || busy) return;
 
       busy = true;
-      const requestController = new AbortController();
+
+      const requestController =
+        new AbortController();
+
       controller = requestController;
 
       const timeout = setTimeout(
@@ -173,8 +179,10 @@ export default function Cashier24HourReport({
             method: "POST",
             headers: {
               apikey: supabaseAnonKey,
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
+              Authorization:
+                `Bearer ${accessToken}`,
+              "Content-Type":
+                "application/json",
             },
             body: JSON.stringify({
               p_shift_id: dutyShiftId,
@@ -192,16 +200,15 @@ export default function Cashier24HourReport({
           !response.ok ||
           result?.ok !== true ||
           !Array.isArray(result?.employees) ||
-          String(result.shift_id) !== String(dutyShiftId)
+          String(result.shift_id) !==
+            String(dutyShiftId)
         ) {
           throw new Error(
             result?.message ||
-            `Duty Rota request failed (HTTP ${response.status}).`
+              `Duty Rota request failed (HTTP ${response.status}).`
           );
         }
 
-        // Snapshot is scoped to the authenticated shift.
-        // Require valid names and unique Master Employee IDs.
         const employeesById = new Map();
 
         for (const employee of result.employees) {
@@ -237,9 +244,9 @@ export default function Cashier24HourReport({
         } else if (names.length === 0) {
           resolvedName = "ROTA VACANT";
         } else {
-          // Do not arbitrarily pick one of multiple
-          // competing on-duty assignments.
-          resolvedName = "CHECK ROTA ASSIGNMENTS";
+          resolvedName =
+            "CHECK ROTA ASSIGNMENTS";
+
           console.warn(
             "Multiple employees assigned to one 24-hour shift."
           );
@@ -259,8 +266,6 @@ export default function Cashier24HourReport({
           error
         );
 
-        // On temporary connection failure,
-        // preserve this shift's last successful name.
         setDutyNameState((previous) => {
           if (
             previous.scope === dutyScope &&
@@ -278,7 +283,9 @@ export default function Cashier24HourReport({
       } finally {
         clearTimeout(timeout);
 
-        if (controller === requestController) {
+        if (
+          controller === requestController
+        ) {
           controller = null;
         }
 
@@ -288,17 +295,20 @@ export default function Cashier24HourReport({
 
     void loadDutyName();
 
-    // Lightweight rota refresh: once per minute.
     const timer = setInterval(() => {
-      if (document.visibilityState === "visible") {
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
         void loadDutyName();
       }
     }, 60000);
 
-    // Refresh immediately when the cashier
-    // returns to the browser tab.
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
         void loadDutyName();
       }
     };
@@ -330,15 +340,14 @@ export default function Cashier24HourReport({
     dutyScope,
   ]);
 
-  // This existing variable is also used by
-  // the Welcome header and Cashier on Duty card.
   const cashierName =
     dutyNameState.scope === dutyScope
-      ? dutyNameState.name || "ROTA LOADING..."
+      ? dutyNameState.name ||
+        "ROTA LOADING..."
       : "ROTA LOADING...";
 
   // ==================================================
-  // LIVE NAIROBI GREETING CLOCK
+  // LIVE NAIROBI CLOCK
   // ==================================================
 
   useEffect(() => {
@@ -348,11 +357,13 @@ export default function Cashier24HourReport({
       setNow(new Date());
     }, 15000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+    };
   }, []);
 
   // ==================================================
-  // LOAD CASHIER REPORT
+  // LOAD REPORT
   // ==================================================
 
   const loadReport = useCallback(async () => {
@@ -374,9 +385,9 @@ export default function Cashier24HourReport({
 
       const shiftResponse = await fetch(
         `${supabaseUrl}/rest/v1/shifts` +
-        `?id=eq.${encodeURIComponent(shiftId)}` +
-        `&select=*` +
-        `&limit=1`,
+          `?id=eq.${encodeURIComponent(shiftId)}` +
+          `&select=*` +
+          `&limit=1`,
         {
           method: "GET",
           headers: authHeaders(
@@ -387,15 +398,14 @@ export default function Cashier24HourReport({
         }
       );
 
-      const shiftResult = await safeJson(
-        shiftResponse
-      );
+      const shiftResult =
+        await safeJson(shiftResponse);
 
       if (!shiftResponse.ok) {
         throw new Error(
           shiftResult?.message ||
-          shiftResult?.details ||
-          "Unable to load shift."
+            shiftResult?.details ||
+            "Unable to load shift."
         );
       }
 
@@ -406,14 +416,14 @@ export default function Cashier24HourReport({
           : null;
 
       // ------------------------------------------
-      // FLOATS
+      // FLOAT ENTRIES
       // ------------------------------------------
 
       const incomeResponse = await fetch(
         `${supabaseUrl}/rest/v1/shift_income_entries` +
-        `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-        `&select=id,entry_type,description,amount,created_at` +
-        `&order=created_at.asc`,
+          `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+          `&select=id,entry_type,description,amount,created_at` +
+          `&order=created_at.asc`,
         {
           method: "GET",
           headers: authHeaders(
@@ -424,15 +434,14 @@ export default function Cashier24HourReport({
         }
       );
 
-      const incomeResult = await safeJson(
-        incomeResponse
-      );
+      const incomeResult =
+        await safeJson(incomeResponse);
 
       if (!incomeResponse.ok) {
         throw new Error(
           incomeResult?.message ||
-          incomeResult?.details ||
-          "Unable to load float entries."
+            incomeResult?.details ||
+            "Unable to load float entries."
         );
       }
 
@@ -444,16 +453,15 @@ export default function Cashier24HourReport({
       // ------------------------------------------
       // EXPENSES
       //
-      // All expenses count toward totals.
-      // Only MANUAL expenses occupy the
-      // cashier's ten manual expense rows.
+      // All expenses remain included in totals.
+      // Only MANUAL expenses occupy manual rows.
       // ------------------------------------------
 
       const expenseResponse = await fetch(
         `${supabaseUrl}/rest/v1/expenses` +
-        `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-        `&select=id,description,amount,created_at,source_type,source_record_id,is_private` +
-        `&order=created_at.asc`,
+          `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+          `&select=id,description,amount,created_at,source_type,source_record_id,is_private` +
+          `&order=created_at.asc`,
         {
           method: "GET",
           headers: authHeaders(
@@ -464,15 +472,14 @@ export default function Cashier24HourReport({
         }
       );
 
-      const expenseResult = await safeJson(
-        expenseResponse
-      );
+      const expenseResult =
+        await safeJson(expenseResponse);
 
       if (!expenseResponse.ok) {
         throw new Error(
           expenseResult?.message ||
-          expenseResult?.details ||
-          "Unable to load expenses."
+            expenseResult?.details ||
+            "Unable to load expenses."
         );
       }
 
@@ -503,44 +510,12 @@ export default function Cashier24HourReport({
       // UPDATE STATE
       // ------------------------------------------
 
-      setShift(latestShift || currentShift);
+      setShift(
+        latestShift || currentShift
+      );
+
       setIncomeEntries(loadedIncome);
       setExpenses(loadedExpenses);
-
-      // ------------------------------------------
-      // FLOAT INPUTS
-      // ------------------------------------------
-
-      const companyRows = loadedIncome.filter(
-        (entry) =>
-          entry.entry_type === "COMPANY_FLOAT"
-      );
-
-      const mshwariRows = loadedIncome.filter(
-        (entry) =>
-          entry.entry_type === "MSHWARI_FLOAT"
-      );
-
-      setFloatInputs((previous) => {
-        const company = [...previous.company];
-        const mshwari = [...previous.mshwari];
-
-        for (let i = 0; i < 3; i += 1) {
-          if (companyRows[i]) {
-            company[i] = String(
-              companyRows[i].amount ?? ""
-            );
-          }
-
-          if (mshwariRows[i]) {
-            mshwari[i] = String(
-              mshwariRows[i].amount ?? ""
-            );
-          }
-        }
-
-        return { company, mshwari };
-      });
 
       // ------------------------------------------
       // MANUAL EXPENSE INPUTS
@@ -551,9 +526,11 @@ export default function Cashier24HourReport({
           { length: 10 },
           (_, index) => ({
             description:
-              previous[index]?.description || "",
+              previous[index]?.description ||
+              "",
             amount:
-              previous[index]?.amount || "",
+              previous[index]?.amount ||
+              "",
           })
         );
 
@@ -563,10 +540,9 @@ export default function Cashier24HourReport({
               description:
                 loadedManualExpenses[i]
                   .description || "",
-
               amount: String(
-                loadedManualExpenses[i].amount ??
-                ""
+                loadedManualExpenses[i]
+                  .amount ?? ""
               ),
             };
           }
@@ -582,7 +558,7 @@ export default function Cashier24HourReport({
 
       setMessage(
         error?.message ||
-        "Unable to load 24-hour cashier report."
+          "Unable to load 24-hour cashier report."
       );
 
       setMessageType("error");
@@ -599,7 +575,7 @@ export default function Cashier24HourReport({
   ]);
 
   // ==================================================
-  // REFRESH COMPLETE REPORT
+  // REFRESH REPORT
   // ==================================================
 
   const refresh24HourReport = useCallback(
@@ -613,10 +589,6 @@ export default function Cashier24HourReport({
     [loadReport]
   );
 
-  // ==================================================
-  // AUTO REFRESH EVERY 5 SECONDS
-  // ==================================================
-
   useEffect(() => {
     refresh24HourReport();
 
@@ -624,7 +596,9 @@ export default function Cashier24HourReport({
       refresh24HourReport();
     }, 5000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+    };
   }, [refresh24HourReport]);
 
   // ==================================================
@@ -632,7 +606,10 @@ export default function Cashier24HourReport({
   // ==================================================
 
   function logout() {
-    sessionStorage.removeItem("teamLegendUser");
+    sessionStorage.removeItem(
+      "teamLegendUser"
+    );
+
     router.replace("/");
   }
 
@@ -640,20 +617,29 @@ export default function Cashier24HourReport({
   // FLOAT DATA
   // ==================================================
 
-  const companyEntries = incomeEntries.filter(
-    (entry) =>
-      entry.entry_type === "COMPANY_FLOAT"
-  );
+  const companyEntries =
+    incomeEntries.filter(
+      (entry) =>
+        entry.entry_type ===
+        "COMPANY_FLOAT"
+    );
 
-  const mshwariEntries = incomeEntries.filter(
-    (entry) =>
-      entry.entry_type === "MSHWARI_FLOAT"
-  );
+  // Historical M-Shwari entries remain included.
+  // Cashiers no longer enter new M-Shwari floats
+  // from this dashboard.
+
+  const mshwariEntries =
+    incomeEntries.filter(
+      (entry) =>
+        entry.entry_type ===
+        "MSHWARI_FLOAT"
+    );
 
   const companyTotal = roundMoney(
     companyEntries.reduce(
       (sum, entry) =>
-        sum + Number(entry.amount ?? 0),
+        sum +
+        Number(entry.amount ?? 0),
       0
     )
   );
@@ -661,7 +647,8 @@ export default function Cashier24HourReport({
   const mshwariTotal = roundMoney(
     mshwariEntries.reduce(
       (sum, entry) =>
-        sum + Number(entry.amount ?? 0),
+        sum +
+        Number(entry.amount ?? 0),
       0
     )
   );
@@ -670,12 +657,6 @@ export default function Cashier24HourReport({
     { length: 3 },
     (_, index) =>
       companyEntries[index] || null
-  );
-
-  const mshwariSlots = Array.from(
-    { length: 3 },
-    (_, index) =>
-      mshwariEntries[index] || null
   );
 
   // ==================================================
@@ -701,146 +682,6 @@ export default function Cashier24HourReport({
   );
 
   // ==================================================
-  // SAVE M-SHWARI FLOATS
-  //
-  // COMPANY FLOAT IS NEVER CREATED BY CASHIER.
-  // Accountant transfer backend is the writer.
-  // ==================================================
-
-  async function saveFloats() {
-    const rowsToSave = [];
-
-    for (let i = 0; i < 3; i += 1) {
-      const mshwariUnlocked =
-        i === 0 ||
-        Boolean(mshwariSlots[i - 1]);
-
-      if (
-        mshwariUnlocked &&
-        !mshwariSlots[i]
-      ) {
-        const raw = floatInputs.mshwari[i];
-
-        if (
-          raw !== "" &&
-          raw !== undefined
-        ) {
-          const value = Number(raw);
-
-          if (
-            !Number.isFinite(value) ||
-            value <= 0
-          ) {
-            setMessage(
-              `Enter a valid M-Shwari Float ${i + 1}.`
-            );
-
-            setMessageType("error");
-            return;
-          }
-
-          rowsToSave.push({
-            shift_id: shiftId,
-            entry_type: "MSHWARI_FLOAT",
-            description:
-              `Float ${i + 1} from M-Shwari`,
-            amount: roundMoney(value),
-          });
-        }
-      }
-    }
-
-    if (rowsToSave.length === 0) {
-      setMessage(
-        "Enter at least one active M-Shwari float amount."
-      );
-      setMessageType("error");
-      return;
-    }
-
-    try {
-      setSavingFloats(true);
-      setMessage("");
-
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/shift_income_entries`,
-        {
-          method: "POST",
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization:
-              `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-            Prefer: "return=representation",
-          },
-
-          body: JSON.stringify(rowsToSave),
-        }
-      );
-
-      const result = await safeJson(response);
-
-      if (!response.ok) {
-        throw new Error(
-          result?.message ||
-          result?.details ||
-          "Unable to save M-Shwari float."
-        );
-      }
-
-      const newFloatTotal = roundMoney(
-        companyTotal +
-        mshwariTotal +
-        rowsToSave.reduce(
-          (sum, row) =>
-            sum + Number(row.amount ?? 0),
-          0
-        )
-      );
-
-      const shiftResponse = await fetch(
-        `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(shiftId)}`,
-        {
-          method: "PATCH",
-
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization:
-              `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
-            total_added_float: newFloatTotal,
-          }),
-        }
-      );
-
-      if (!shiftResponse.ok) {
-        throw new Error(
-          "M-Shwari float saved but shift total could not be updated."
-        );
-      }
-
-      setMessage(
-        "M-Shwari float saved successfully."
-      );
-
-      setMessageType("success");
-
-      await refresh24HourReport();
-    } catch (error) {
-      setMessage(
-        error?.message ||
-        "Unable to save M-Shwari float."
-      );
-      setMessageType("error");
-    } finally {
-      setSavingFloats(false);
-    }
-  }
-
-  // ==================================================
   // SAVE MANUAL EXPENSES
   // ==================================================
 
@@ -851,13 +692,14 @@ export default function Cashier24HourReport({
       setMessage(
         "All 10 manual expense rows have already been saved."
       );
+
       setMessageType("success");
       return;
     }
 
     const description = String(
       expenseInputs[nextIndex]?.description ||
-      ""
+        ""
     ).trim();
 
     const rawAmount =
@@ -865,8 +707,11 @@ export default function Cashier24HourReport({
 
     if (description === "") {
       setMessage(
-        `Enter the description for expense ${nextIndex + 1}.`
+        `Enter the description for expense ${
+          nextIndex + 1
+        }.`
       );
+
       setMessageType("error");
       return;
     }
@@ -877,8 +722,11 @@ export default function Cashier24HourReport({
       rawAmount === undefined
     ) {
       setMessage(
-        `Enter the amount for expense ${nextIndex + 1}.`
+        `Enter the amount for expense ${
+          nextIndex + 1
+        }.`
       );
+
       setMessageType("error");
       return;
     }
@@ -890,8 +738,11 @@ export default function Cashier24HourReport({
       amount <= 0
     ) {
       setMessage(
-        `Enter a valid amount for expense ${nextIndex + 1}.`
+        `Enter a valid amount for expense ${
+          nextIndex + 1
+        }.`
       );
+
       setMessageType("error");
       return;
     }
@@ -913,26 +764,26 @@ export default function Cashier24HourReport({
         `${supabaseUrl}/rest/v1/expenses`,
         {
           method: "POST",
-
           headers: {
             apikey: supabaseAnonKey,
             Authorization:
               `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
             Prefer: "return=representation",
           },
-
           body: JSON.stringify(rowToSave),
         }
       );
 
-      const result = await safeJson(response);
+      const result =
+        await safeJson(response);
 
       if (!response.ok) {
         throw new Error(
           result?.message ||
-          result?.details ||
-          "Unable to save expense."
+            result?.details ||
+            "Unable to save expense."
         );
       }
 
@@ -952,14 +803,13 @@ export default function Cashier24HourReport({
         `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(shiftId)}`,
         {
           method: "PATCH",
-
           headers: {
             apikey: supabaseAnonKey,
             Authorization:
               `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
-
           body: JSON.stringify({
             total_expenses: newExpenseTotal,
           }),
@@ -974,7 +824,11 @@ export default function Cashier24HourReport({
 
       setMessage(
         nextIndex < 9
-          ? `Expense ${nextIndex + 1} saved. Expense ${nextIndex + 2} is now available.`
+          ? `Expense ${
+              nextIndex + 1
+            } saved. Expense ${
+              nextIndex + 2
+            } is now available.`
           : "Expense 10 saved successfully."
       );
 
@@ -984,8 +838,9 @@ export default function Cashier24HourReport({
     } catch (error) {
       setMessage(
         error?.message ||
-        "Unable to save expense."
+          "Unable to save expense."
       );
+
       setMessageType("error");
     } finally {
       setSavingExpenses(false);
@@ -1014,25 +869,25 @@ export default function Cashier24HourReport({
 
   const totalAdded = roundMoney(
     openingBalance +
-    companyTotal +
-    mshwariTotal
+      companyTotal +
+      mshwariTotal
   );
 
   const totalSales = roundMoney(
     openingBalance +
-    companyTotal +
-    mshwariTotal +
-    totalOutput
+      companyTotal +
+      mshwariTotal +
+      totalOutput
   );
 
   const reportDate = formatReportDate(
     shift?.opened_at ||
-    new Date().toISOString()
+      new Date().toISOString()
   );
 
   const reportDay = formatReportDay(
     shift?.opened_at ||
-    new Date().toISOString()
+      new Date().toISOString()
   );
 
   const shiftStatus = String(
@@ -1047,9 +902,9 @@ export default function Cashier24HourReport({
     shiftName === "SHIFT 1"
       ? "SHIFT 1"
       : shiftName === "SHIFT 2"
-      ? "SHIFT 2"
-      : shift?.shift_name ||
-        "24-HOUR SHIFT";
+        ? "SHIFT 2"
+        : shift?.shift_name ||
+          "24-HOUR SHIFT";
 
   // ==================================================
   // GREETING
@@ -1064,28 +919,37 @@ export default function Cashier24HourReport({
       ? "2"
       : "1";
 
-  const nairobiHour = getNairobiHour(now);
+  const nairobiHour =
+    getNairobiHour(now);
 
   let shiftGreeting;
 
   if (shiftIsClosed) {
     shiftGreeting =
-      `Good Bye 👋 — Shift ${greetingShiftNumber} Closed`;
+      `Good Bye 👋 — Shift ${
+        greetingShiftNumber
+      } Closed`;
   } else if (
     nairobiHour >= 5 &&
     nairobiHour < 12
   ) {
     shiftGreeting =
-      `Good Morning 🌞 — Welcome to Shift ${greetingShiftNumber}`;
+      `Good Morning 🌞 — Welcome to Shift ${
+        greetingShiftNumber
+      }`;
   } else if (
     nairobiHour >= 12 &&
     nairobiHour < 17
   ) {
     shiftGreeting =
-      `Good Afternoon ☀️ — Welcome to Shift ${greetingShiftNumber}`;
+      `Good Afternoon ☀️ — Welcome to Shift ${
+        greetingShiftNumber
+      }`;
   } else {
     shiftGreeting =
-      `Good Evening 🌙 — Welcome to Shift ${greetingShiftNumber}`;
+      `Good Evening 🌙 — Welcome to Shift ${
+        greetingShiftNumber
+      }`;
   }
 
   // ==================================================
@@ -1107,22 +971,23 @@ export default function Cashier24HourReport({
   // ==================================================
 
   return (
-    <div style={pageStyle}>
-    <style>{`
-  /* 24-HOUR PLATFORM READINGS:
-     REMOVE NUMBER INPUT ARROWS */
+    <div
+      className="tl24-cashier-clean"
+      style={pageStyle}
+    >
+      <style>{`
+        .tl24-cashier-clean input[type="number"] {
+          -moz-appearance: textfield;
+          appearance: textfield;
+        }
 
-  .tl24-clean-platform-inputs input[type="number"] {
-    -moz-appearance: textfield;
-    appearance: textfield;
-  }
+        .tl24-cashier-clean input[type="number"]::-webkit-inner-spin-button,
+        .tl24-cashier-clean input[type="number"]::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+      `}</style>
 
-  .tl24-clean-platform-inputs input[type="number"]::-webkit-inner-spin-button,
-  .tl24-clean-platform-inputs input[type="number"]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-`}</style>
       {/* TOP HEADER */}
 
       <header style={topHeaderStyle}>
@@ -1170,15 +1035,13 @@ export default function Cashier24HourReport({
         user={user}
       />
 
-      {/* ===================================== */}
-      {/* MEALS & BONUSES - 24-HOUR SHOP        */}
-      {/* Uses shared Executive LED panel       */}
-      {/* No second employee sign-in            */}
-      {/* ===================================== */}
+      {/* MEALS & BONUSES */}
 
       <CashierMealsRotaPanel
         user={user}
-        currentShift={shift || currentShift}
+        currentShift={
+          shift || currentShift
+        }
       />
 
       {/* MAIN BODY */}
@@ -1237,8 +1100,12 @@ export default function Cashier24HourReport({
               title="SHIFT"
               value={shiftLabel}
               subvalue={
-                `${displayTime(shift?.scheduled_start)} - ` +
-                displayTime(shift?.scheduled_end)
+                `${displayTime(
+                  shift?.scheduled_start
+                )} - ` +
+                displayTime(
+                  shift?.scheduled_end
+                )
               }
               tone="green"
             />
@@ -1270,20 +1137,20 @@ export default function Cashier24HourReport({
               {shiftName === "SHIFT 1"
                 ? "SHIFT 1 — DAY SHIFT"
                 : shiftName === "SHIFT 2"
-                ? "SHIFT 2 — NIGHT SHIFT"
-                : "24-HOUR SHIFT"}
+                  ? "SHIFT 2 — NIGHT SHIFT"
+                  : "24-HOUR SHIFT"}
             </strong>
 
             <span>
               {shiftName === "SHIFT 1"
                 ? "9:00 AM – 9:00 PM"
                 : shiftName === "SHIFT 2"
-                ? "9:00 PM – 9:00 AM"
-                : ""}
+                  ? "9:00 PM – 9:00 AM"
+                  : ""}
             </span>
           </div>
 
-          {/* MESSAGES */}
+          {/* NOTICES */}
 
           {message && (
             <div
@@ -1330,90 +1197,28 @@ export default function Cashier24HourReport({
                 amount={openingBalance}
               />
 
-              {companySlots.map((entry, index) => (
-                <ReadOnlyCompanyFloatRow
-                  key={`company-${index}`}
-                  label={
-                    `Added Float ${index + 1} From Company`
-                  }
-                  entry={entry}
-                />
-              ))}
-
-              {mshwariSlots.map((entry, index) => {
-                const mshwariUnlocked =
-                  index === 0 ||
-                  Boolean(
-                    mshwariSlots[index - 1]
-                  );
-
-                return (
-                  <EditableFloatRow
-                    key={`mshwari-${index}`}
+              {companySlots.map(
+                (entry, index) => (
+                  <ReadOnlyCompanyFloatRow
+                    key={`company-${index}`}
                     label={
-                      `Added Float ${index + 1} From M-Shwari`
+                      `Added Float ${
+                        index + 1
+                      } From Company`
                     }
-                    savedEntry={entry}
-                    value={
-                      floatInputs.mshwari[index] ||
-                      ""
-                    }
-                    disabled={
-                      savingFloats ||
-                      !mshwariUnlocked
-                    }
-                    onChange={(value) => {
-                      setFloatInputs(
-                        (previous) => {
-                          const mshwari = [
-                            ...previous.mshwari,
-                          ];
-
-                          mshwari[index] = value;
-
-                          return {
-                            ...previous,
-                            mshwari,
-                          };
-                        }
-                      );
-                    }}
+                    entry={entry}
                   />
-                );
-              })}
+                )
+              )}
 
               <div style={incomeTotalStyle}>
-                <strong>TOTAL ADDED</strong>
+                <strong>
+                  TOTAL ADDED
+                </strong>
 
                 <strong>
                   {money(totalAdded)}
                 </strong>
-              </div>
-
-              <div style={companyFloatNoticeStyle}>
-                Company Float 1, 2 and 3 are read-only.
-                They are posted automatically by
-                Legend Accounts.
-              </div>
-
-              <div style={panelButtonWrapStyle}>
-                <button
-                  type="button"
-                  onClick={saveFloats}
-                  disabled={savingFloats}
-                  style={{
-                    ...greenActionStyle,
-
-                    backgroundColor:
-                      savingFloats
-                        ? C.border
-                        : "#247b93",
-                  }}
-                >
-                  {savingFloats
-                    ? "Saving..."
-                    : "Save M-Shwari Float"}
-                </button>
               </div>
             </section>
 
@@ -1440,7 +1245,9 @@ export default function Cashier24HourReport({
                   const rowUnlocked =
                     index === 0 ||
                     Boolean(
-                      manualExpenses[index - 1]
+                      manualExpenses[
+                        index - 1
+                      ]
                     );
 
                   const rowDisabled =
@@ -1452,38 +1259,54 @@ export default function Cashier24HourReport({
                       key={index}
                       style={expenseRowStyle}
                     >
-                      <div>{index + 1}</div>
+                      <div>
+                        {index + 1}
+                      </div>
 
                       {saved ? (
                         <>
                           <div
-                            style={savedExpenseStyle}
+                            style={
+                              savedExpenseStyle
+                            }
                           >
                             {saved.description}
                           </div>
 
                           <div
-                            style={savedExpenseStyle}
+                            style={
+                              savedExpenseStyle
+                            }
                           >
-                            {money(saved.amount)} ✓
+                            {money(
+                              saved.amount
+                            )}{" "}
+                            ✓
                           </div>
                         </>
                       ) : (
                         <>
                           <input
                             value={
-                              expenseInputs[index]
-                                ?.description || ""
+                              expenseInputs[
+                                index
+                              ]?.description ||
+                              ""
                             }
                             placeholder={
                               rowUnlocked
                                 ? "Description"
                                 : "Locked"
                             }
-                            disabled={rowDisabled}
-                            onChange={(event) => {
+                            disabled={
+                              rowDisabled
+                            }
+                            onChange={(
+                              event
+                            ) => {
                               const value =
-                                event.target.value;
+                                event.target
+                                  .value;
 
                               setExpenseInputs(
                                 (previous) => {
@@ -1494,7 +1317,9 @@ export default function Cashier24HourReport({
                                       })
                                     );
 
-                                  next[index].description =
+                                  next[
+                                    index
+                                  ].description =
                                     value;
 
                                   return next;
@@ -1521,18 +1346,25 @@ export default function Cashier24HourReport({
                             min="0"
                             step="0.01"
                             value={
-                              expenseInputs[index]
-                                ?.amount || ""
+                              expenseInputs[
+                                index
+                              ]?.amount ||
+                              ""
                             }
                             placeholder={
                               rowUnlocked
                                 ? "0.00"
                                 : "Locked"
                             }
-                            disabled={rowDisabled}
-                            onChange={(event) => {
+                            disabled={
+                              rowDisabled
+                            }
+                            onChange={(
+                              event
+                            ) => {
                               const value =
-                                event.target.value;
+                                event.target
+                                  .value;
 
                               setExpenseInputs(
                                 (previous) => {
@@ -1543,7 +1375,9 @@ export default function Cashier24HourReport({
                                       })
                                     );
 
-                                  next[index].amount =
+                                  next[
+                                    index
+                                  ].amount =
                                     value;
 
                                   return next;
@@ -1581,13 +1415,6 @@ export default function Cashier24HourReport({
                 </strong>
               </div>
 
-              <div style={automaticExpenseNoticeStyle}>
-                Cashier → Legend Accounts transfers
-                are added to Total Expenses
-                automatically after Accounts
-                confirms receipt.
-              </div>
-
               <div style={panelButtonWrapStyle}>
                 <button
                   type="button"
@@ -1608,25 +1435,25 @@ export default function Cashier24HourReport({
                 >
                   {savingExpenses
                     ? "Saving..."
-                    : manualExpenses.length >= 10
-                    ? "All Expenses Saved"
-                    : `Save Expense ${
-                        manualExpenses.length + 1
-                      }`}
+                    : manualExpenses.length >=
+                        10
+                      ? "All Expenses Saved"
+                      : `Save Expense ${
+                          manualExpenses.length +
+                          1
+                        }`}
                 </button>
               </div>
             </section>
           </div>
 
-          {/* ===================================== */}
-          {/* 24-HOUR OPERATIONS LAYOUT            */}
-          {/* ===================================== */}
+          {/* 24-HOUR OPERATIONS LAYOUT */}
 
           <div style={operationsGridStyle}>
-          <div
-  className="tl24-clean-platform-inputs"
-  style={platformColumnStyle}
->
+            <div
+              className="tl24-clean-platform-inputs"
+              style={platformColumnStyle}
+            >
               <PlatformReadings24Hour
                 user={user}
                 currentShift={
@@ -1746,21 +1573,23 @@ export default function Cashier24HourReport({
               </div>
 
               <div>
-                5. TABLE is handed over continuously
-                at 9:00 AM and 9:00 PM.
+                5. TABLE is handed over
+                continuously at 9:00 AM
+                and 9:00 PM.
               </div>
 
               <div>
                 6. Company Float 1, 2 and 3
-                are controlled by Legend Accounts
-                and are read-only for the cashier.
+                are controlled by Legend
+                Accounts and are read-only
+                for the cashier.
               </div>
 
               <div>
                 7. Cashier → Legend Accounts
                 returns automatically become
-                expenses after Accounts confirms
-                receipt.
+                expenses after Accounts
+                confirms receipt.
               </div>
 
               <div>
@@ -1772,7 +1601,8 @@ export default function Cashier24HourReport({
               <div>
                 9. Cashier handover is only
                 available during the authorised
-                morning or evening handover window.
+                morning or evening handover
+                window.
               </div>
             </div>
           </section>
@@ -1911,67 +1741,6 @@ function ReadOnlyCompanyFloatRow({
   );
 }
 
-function EditableFloatRow({
-  label,
-  savedEntry,
-  value,
-  onChange,
-  disabled,
-}) {
-  const locked =
-    Boolean(savedEntry) ||
-    disabled;
-
-  return (
-    <div style={incomeRowStyle}>
-      <div>
-        {label}{" "}
-
-        {savedEntry && (
-          <span style={savedInlineStyle}>
-            ✓
-          </span>
-        )}
-      </div>
-
-      {savedEntry ? (
-        <div style={savedMoneyStyle}>
-          {money(savedEntry.amount)}
-        </div>
-      ) : (
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          value={value}
-          disabled={disabled}
-          placeholder={
-            disabled
-              ? "Locked"
-              : "0.00"
-          }
-          onChange={(event) =>
-            onChange(event.target.value)
-          }
-          style={{
-            ...moneyInputStyle,
-
-            backgroundColor:
-              locked
-                ? "#0d1926"
-                : C.field,
-
-            cursor:
-              locked
-                ? "not-allowed"
-                : "text",
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
 function SummaryBox({
   title,
   amount,
@@ -2000,7 +1769,8 @@ function authHeaders(
     apikey: anonKey,
     Authorization:
       `Bearer ${accessToken}`,
-    "Content-Type": "application/json",
+    "Content-Type":
+      "application/json",
   };
 }
 
@@ -2017,9 +1787,7 @@ async function safeJson(response) {
 // ==================================================
 
 function money(value) {
-  const numeric = Number(
-    value ?? 0
-  );
+  const numeric = Number(value ?? 0);
 
   const safeValue =
     Number.isFinite(numeric)
@@ -2038,8 +1806,10 @@ function money(value) {
 function roundMoney(value) {
   return (
     Math.round(
-      (Number(value) +
-        Number.EPSILON) * 100
+      (
+        Number(value) +
+        Number.EPSILON
+      ) * 100
     ) / 100
   );
 }
@@ -2130,7 +1900,7 @@ function getNairobiHour(
 
 // ==================================================
 // 24-HOUR PROFESSIONAL THEME
-// Same Navy / Gold / Teal family
+// NAVY / GOLD / TEAL
 // ==================================================
 
 const C = {
@@ -2158,15 +1928,11 @@ const C = {
 const pageStyle = {
   width: "100%",
   minHeight: "100vh",
-
   background:
     `linear-gradient(150deg, ${C.canvas} 0%, ${C.canvasDeep} 100%)`,
-
   color: C.text,
-
   fontFamily:
     'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-
   fontSize: 13,
   lineHeight: 1.5,
   boxSizing: "border-box",
@@ -2184,9 +1950,12 @@ const loadingStyle = {
 const topHeaderStyle = {
   background: C.header,
   color: C.text,
-  borderBottom: `1px solid ${C.border}`,
-  boxShadow: "0 5px 24px rgba(0,0,0,.15)",
-  padding: "15px clamp(16px,2.5vw,32px)",
+  borderBottom:
+    `1px solid ${C.border}`,
+  boxShadow:
+    "0 5px 24px rgba(0,0,0,.15)",
+  padding:
+    "15px clamp(16px,2.5vw,32px)",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -2211,7 +1980,8 @@ const crownStyle = {
 
 const brandStyle = {
   color: C.text,
-  fontSize: "clamp(18px,2vw,24px)",
+  fontSize:
+    "clamp(18px,2vw,24px)",
   fontWeight: 850,
   letterSpacing: ".04em",
   lineHeight: 1.15,
@@ -2244,7 +2014,8 @@ const headerShopStyle = {
 };
 
 const logoutButtonStyle = {
-  border: `1px solid ${C.border}`,
+  border:
+    `1px solid ${C.border}`,
   background: C.panelRaised,
   color: C.text,
   borderRadius: 8,
@@ -2279,7 +2050,8 @@ const sidebarStyle = {
 const mainStyle = {
   flex: "1 1 680px",
   minWidth: 0,
-  padding: "clamp(12px,2vw,25px)",
+  padding:
+    "clamp(12px,2vw,25px)",
   boxSizing: "border-box",
 };
 
@@ -2306,13 +2078,16 @@ const shopCardStyle = {
   ...baseTopCard,
   background:
     "linear-gradient(145deg,#17283a,#102031)",
-  border: `1px solid ${C.border}`,
-  borderTop: `2px solid ${C.gold}`,
+  border:
+    `1px solid ${C.border}`,
+  borderTop:
+    `2px solid ${C.gold}`,
 };
 
 const shopTitleStyle = {
   color: C.text,
-  fontSize: "clamp(15px,1.5vw,19px)",
+  fontSize:
+    "clamp(15px,1.5vw,19px)",
   fontWeight: 850,
   letterSpacing: ".04em",
   overflowWrap: "anywhere",
@@ -2342,7 +2117,8 @@ const infoTitleStyle = {
 
 const infoValueStyle = {
   color: C.text,
-  fontSize: "clamp(13px,1.4vw,17px)",
+  fontSize:
+    "clamp(13px,1.4vw,17px)",
   lineHeight: 1.3,
   fontWeight: 800,
   marginTop: 6,
@@ -2353,7 +2129,8 @@ const infoSubvalueStyle = {
   color: C.subtext,
   fontSize: 10,
   marginTop: 4,
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric:
+    "tabular-nums",
 };
 
 const greetingBannerStyle = {
@@ -2388,7 +2165,8 @@ const greetingGoodbyeStyle = {
 const shiftBannerStyle = {
   background: C.blueBg,
   color: C.subtext,
-  border: `1px solid ${C.border}`,
+  border:
+    `1px solid ${C.border}`,
   borderLeft:
     `3px solid ${C.blue}`,
   padding: "10px 14px",
@@ -2396,7 +2174,8 @@ const shiftBannerStyle = {
   marginBottom: 12,
   display: "flex",
   flexWrap: "wrap",
-  justifyContent: "space-between",
+  justifyContent:
+    "space-between",
   gap: 10,
   fontSize: 12,
 };
@@ -2460,7 +2239,8 @@ const moneyCell = {
   fontSize: 11,
   lineHeight: 1.4,
   fontWeight: 750,
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric:
+    "tabular-nums",
   textAlign: "right",
 };
 
@@ -2470,19 +2250,6 @@ const amountBoxStyle = {
   background: C.field,
   border:
     `1px solid ${C.borderSoft}`,
-};
-
-const moneyInputStyle = {
-  ...moneyCell,
-  display: "block",
-  width: "100%",
-  minWidth: 65,
-  outlineOffset: 2,
-  background: C.field,
-  color: C.text,
-  border:
-    `1px solid ${C.border}`,
-  fontFamily: "inherit",
 };
 
 const savedMoneyStyle = {
@@ -2500,11 +2267,6 @@ const lockedMoneyStyle = {
     `1px solid ${C.borderSoft}`,
 };
 
-const savedInlineStyle = {
-  color: C.teal,
-  fontWeight: 800,
-};
-
 const readOnlyInlineStyle = {
   marginLeft: 5,
   color: C.gold,
@@ -2514,7 +2276,8 @@ const readOnlyInlineStyle = {
 const incomeTotalStyle = {
   display: "flex",
   flexWrap: "wrap",
-  justifyContent: "space-between",
+  justifyContent:
+    "space-between",
   gap: 8,
   margin: "9px 10px 0",
   padding: "11px 12px",
@@ -2523,30 +2286,8 @@ const incomeTotalStyle = {
   borderRadius: 7,
   color: "#b5f2dc",
   fontSize: 12,
-  fontVariantNumeric: "tabular-nums",
-};
-
-const quietNote = {
-  margin: "9px 11px 0",
-  borderRadius: 7,
-  padding: "9px 10px",
-  color: C.muted,
-  fontSize: 10,
-  lineHeight: 1.6,
-};
-
-const companyFloatNoticeStyle = {
-  ...quietNote,
-  background: C.field,
-  border:
-    `1px solid ${C.borderSoft}`,
-};
-
-const automaticExpenseNoticeStyle = {
-  ...quietNote,
-  background: C.field,
-  border:
-    `1px solid ${C.borderSoft}`,
+  fontVariantNumeric:
+    "tabular-nums",
 };
 
 const panelButtonWrapStyle = {
@@ -2630,7 +2371,8 @@ const savedExpenseStyle = {
 const expenseTotalStyle = {
   display: "flex",
   flexWrap: "wrap",
-  justifyContent: "space-between",
+  justifyContent:
+    "space-between",
   gap: 7,
   margin: "11px 10px 0",
   padding: "11px 12px",
@@ -2639,7 +2381,8 @@ const expenseTotalStyle = {
   borderRadius: 7,
   color: "#ffc3ce",
   fontSize: 12,
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric:
+    "tabular-nums",
 };
 
 // ==================================================
@@ -2665,7 +2408,7 @@ const sidePanelsStyle = {
   width: "100%",
   display: "grid",
   gridTemplateColumns:
-    "minmax(0, 1fr)",
+    "minmax(0,1fr)",
   alignContent: "start",
   gap: 14,
 };
@@ -2680,11 +2423,13 @@ const summaryGridStyle = {
 
 const summaryValueStyle = {
   marginTop: 7,
-  fontSize: "clamp(17px,1.9vw,24px)",
+  fontSize:
+    "clamp(17px,1.9vw,24px)",
   letterSpacing: "-.035em",
   fontWeight: 850,
   color: C.text,
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric:
+    "tabular-nums",
   overflowWrap: "anywhere",
 };
 
