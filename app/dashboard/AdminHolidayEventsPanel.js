@@ -61,7 +61,16 @@ export default function AdminHolidayEventsPanel({ user }) {
   const [savingId, setSavingId] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+// Automatically clear success messages after 5 seconds.
+useEffect(() => {
+  if (!success) return;
 
+  const timer = setTimeout(() => {
+    setSuccess("");
+  }, 5000);
+
+  return () => clearTimeout(timer);
+}, [success]);
   const rpc = useCallback(async (functionName, payload = {}, signal) => {
     if (!url || !anonKey || !token) {
       throw new Error("Admin session or Supabase configuration is missing.");
