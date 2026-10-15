@@ -11,14 +11,6 @@ const EMPTY_IM_ACCOUNT = {
   is_active: true,
 };
 
-const EMPTY_RECIPIENT = {
-  shop_id: "",
-  phone_number: "",
-  im_reference: "",
-  allow_mpesa_to_mpesa: true,
-  allow_im_to_mpesa: true,
-};
-
 export default function AdminMpesaRatesPanel({ user }) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -68,10 +60,7 @@ export default function AdminMpesaRatesPanel({ user }) {
   const [paymentTestResult, setPaymentTestResult] = useState(null);
   const [testingPaymentFee, setTestingPaymentFee] = useState(false);
 
-  const [shops, setShops] = useState([]);
   const [recipients, setRecipients] = useState([]);
-  const [newRecipient, setNewRecipient] = useState(EMPTY_RECIPIENT);
-  const [addingRecipient, setAddingRecipient] = useState(false);
   const [savingRecipientId, setSavingRecipientId] = useState("");
   const [deletingRecipientId, setDeletingRecipientId] = useState("");
 
@@ -236,18 +225,15 @@ export default function AdminMpesaRatesPanel({ user }) {
         throw new Error("Unable to load shop payment accounts.");
       }
 
-      setShops(accountsResult);
       setRecipients(
-  accountsResult.map((row) => ({
-    ...row,
-    phone_number: String(row.phone_number || ""),
-    im_reference: String(row.im_reference || ""),
-    allow_mpesa_to_mpesa:
-      row.allow_mpesa_to_mpesa !== false,
-    allow_im_to_mpesa:
-      row.allow_im_to_mpesa !== false,
-  }))
-);
+        accountsResult.map((row) => ({
+          ...row,
+          phone_number: String(row.phone_number || ""),
+          im_reference: String(row.im_reference || ""),
+          allow_mpesa_to_mpesa: row.allow_mpesa_to_mpesa !== false,
+          allow_im_to_mpesa: row.allow_im_to_mpesa !== false,
+        }))
+      );
     } catch (error) {
       console.error("LOAD PAYMENT ADMIN ERROR:", error);
       setMessage(
@@ -521,15 +507,14 @@ export default function AdminMpesaRatesPanel({ user }) {
     ));
   }
 
-  async function saveRecipientRecord(recipient, isNew = false) {
+  async function saveRecipientRecord(recipient) {
     const shopId = String(recipient.shop_id || "");
     const phone = String(recipient.phone_number || "").trim();
     if (!shopId) return showError("Select shop.");
     if (!phone) return showError("Enter shop M-Pesa number.");
 
     try {
-      if (isNew) setAddingRecipient(true);
-      else setSavingRecipientId(shopId);
+      setSavingRecipientId(shopId);
       setMessage("");
       await callRpc("tl_admin_shop_payment_save", {
         p_shop_id: shopId,
@@ -538,14 +523,12 @@ export default function AdminMpesaRatesPanel({ user }) {
         p_allow_mpesa_to_mpesa: recipient.allow_mpesa_to_mpesa !== false,
         p_allow_im_to_mpesa: recipient.allow_im_to_mpesa !== false,
       });
-      if (isNew) setNewRecipient(EMPTY_RECIPIENT);
       setMessage("Shop payment account saved.");
       setMessageType("success");
       await loadAll({ silent: true });
     } catch (error) {
       showError(error?.message || "Unable to save shop account.");
     } finally {
-      setAddingRecipient(false);
       setSavingRecipientId("");
     }
   }
@@ -774,125 +757,18 @@ export default function AdminMpesaRatesPanel({ user }) {
         </summary>
 
         <div style={bodyStyle}>
-          <div style={shopAccountGridStyle}>
-            <Field label="SHOP">
-              <select
-                value={newRecipient.shop_id}
-                onChange={(event) => {
-                  const shop_id = event.target.value;
-                  const previous = recipients.find((row) =>
-                    String(row.shop_id) === shop_id
-                  );
-
-                  setNewRecipient(previous ? {
-                    shop_id,
-                    phone_number: previous.phone_number || "",
-                    im_reference: previous.im_reference || "",
-                    allow_mpesa_to_mpesa: previous.allow_mpesa_to_mpesa !== false,
-                    allow_im_to_mpesa: previous.allow_im_to_mpesa !== false,
-                  } : { ...EMPTY_RECIPIENT, shop_id });
-                }}
-                style={inputStyle}
-              >
-                <option value="">Select shop</option>
-                {shops.map((shop) => (
-                  <option key={shop.shop_id} value={shop.shop_id}>
-                    {shop.shop_name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="SHOP M-PESA NUMBER">
-              <input
-                type="tel"
-                value={newRecipient.phone_number}
-                onChange={(event) =>
-                  setNewRecipient((current) => ({
-                    ...current,
-                    phone_number: event.target.value,
-                  }))
-                }
-                placeholder="07XXXXXXXX"
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="I&M REFERENCE">
-              <input
-                value={newRecipient.im_reference}
-                onChange={(event) =>
-                  setNewRecipient((current) => ({
-                    ...current,
-                    im_reference: event.target.value,
-                  }))
-                }
-                style={inputStyle}
-              />
-            </Field>
-          </div>
-
-          {newRecipient.shop_id && (
-            <div style={compactDutyStyle}>
-              CASHIER: {shops.find((shop) =>
-                String(shop.shop_id) === String(newRecipient.shop_id)
-              )?.cashier_name || "NOT ASSIGNED"}
-            </div>
-          )}
-
-          <div style={toggleRowStyle}>
-            <Toggle
-              label="M-Pesa → M-Pesa"
-              checked={newRecipient.allow_mpesa_to_mpesa}
-              onChange={(checked) =>
-                setNewRecipient((current) => ({
-                  ...current,
-                  allow_mpesa_to_mpesa: checked,
-                }))
-              }
-            />
-
-            <Toggle
-              label="I&M → M-Pesa"
-              checked={newRecipient.allow_im_to_mpesa}
-              onChange={(checked) =>
-                setNewRecipient((current) => ({
-                  ...current,
-                  allow_im_to_mpesa: checked,
-                }))
-              }
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => saveRecipientRecord(newRecipient, true)}
-            disabled={addingRecipient}
-            style={cashierButtonStyle}
-          >
-            {addingRecipient ? "SAVING..." : "SAVE SHOP ACCOUNT"}
-          </button>
-
           <div style={cashierWrapStyle}>
-           <div style={cashierHeaderStyle}>
-  <div style={{ textAlign: "left" }}>SHOP</div>
+            <div style={cashierHeaderStyle}>
+              <div style={{ textAlign: "left" }}>SHOP</div>
+              <div style={{ textAlign: "left" }}>CASHIER — DUTY ROTA</div>
+              <div style={{ textAlign: "left" }}>M-PESA</div>
+              <div style={{ textAlign: "left" }}>I&M REF</div>
+              <div style={{ textAlign: "center" }}>M→M</div>
+              <div style={{ textAlign: "center" }}>I&M→M</div>
+              <div style={{ textAlign: "center" }}>SAVE</div>
+              <div style={{ textAlign: "center" }}>REMOVE</div>
+            </div>
 
-  <div style={{ textAlign: "left" }}>
-    CASHIER — DUTY ROTA
-  </div>
-
-  <div style={{ textAlign: "left" }}>M-PESA</div>
-
-  <div style={{ textAlign: "left" }}>I&M REF</div>
-
-  <div style={{ textAlign: "center" }}>M→M</div>
-
-  <div style={{ textAlign: "center" }}>I&M→M</div>
-
-  <div style={{ textAlign: "center" }}>SAVE</div>
-
-  <div style={{ textAlign: "center" }}>REMOVE</div>
-</div>
             {sortedRecipients.map((recipient) => (
               <div key={recipient.shop_id} style={cashierRowStyle}>
                 <strong>{recipient.shop_name}</strong>
@@ -1249,8 +1125,7 @@ export default function AdminMpesaRatesPanel({ user }) {
           <span>M-PESA RATE BANDS & CALCULATOR</span>
           <span aria-hidden="true">▾</span>
         </summary>
-
-        <section style={panelStyle}>
+<section style={panelStyle}>
           <div style={purpleTitleStyle}>
             ADD NEW M-PESA FEE BAND
           </div>
@@ -1533,6 +1408,7 @@ export default function AdminMpesaRatesPanel({ user }) {
     </div>
   );
 }
+
 function PaymentMethodBox({ title, value, options, onChange }) {
   return (
     <div style={methodBoxStyle}>
@@ -1649,21 +1525,6 @@ function Field({ label, children }) {
       <label style={labelStyle}>{label}</label>
       {children}
     </div>
-  );
-}
-
-function Toggle({ label, checked, onChange }) {
-  return (
-    <label style={checkboxLineStyle}>
-      <input
-        type="checkbox"
-        checked={Boolean(checked)}
-        onChange={(event) =>
-          onChange(event.target.checked)
-        }
-      />
-      {label}
-    </label>
   );
 }
 
@@ -2046,11 +1907,6 @@ const orangeButtonStyle = {
   backgroundColor: "#dc2626",
 };
 
-const cashierButtonStyle = {
-  ...baseButton,
-  backgroundColor: "#0f766e",
-};
-
 const purpleButtonStyle = {
   ...baseButton,
   backgroundColor: "#7c3aed",
@@ -2088,18 +1944,6 @@ const paymentAddGridStyle = {
   gridTemplateColumns: "1.2fr 1fr 1fr 1fr auto",
   gap: "8px",
   alignItems: "end",
-};
-
-const shopAccountGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
-  gap: "8px",
-};
-
-const compactDutyStyle = {
-  margin: "10px 0",
-  fontSize: "12px",
-  fontWeight: "800",
 };
 
 const dutyNameStyle = {
@@ -2154,12 +1998,6 @@ const checkboxLineStyle = {
   marginTop: "9px",
   fontSize: "12px",
   fontWeight: "bold",
-};
-
-const toggleRowStyle = {
-  display: "flex",
-  gap: "16px",
-  flexWrap: "wrap",
 };
 
 const testerPanelStyle = {
@@ -2234,7 +2072,7 @@ const cashierHeaderStyle = {
   backgroundColor: "#f1f5f9",
   fontSize: "10px",
   fontWeight: "bold",
- textAlign: "left",
+  textAlign: "left",
 };
 
 const cashierRowStyle = {
