@@ -2837,7 +2837,7 @@ function nairobiParts(
 
 function nairobiDate() {
   const p =
-    na irobiParts();
+   nairobiParts();
   return (
     `${p.year}-` +
     `${String(
