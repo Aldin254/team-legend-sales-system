@@ -1,5 +1,5 @@
 "use client";
-
+import AdminMasterLunchOverridePanel from "./AdminMasterLunchOverridePanel";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminHolidayEventsPanel from "./AdminHolidayEventsPanel";
 // TEAM LEGEND — MEALS / BONUS (professional navy + gold layout)
@@ -422,9 +422,18 @@ export default function AdminMealsBonusPanel({ user }) {
                 </div>
               </div>
             </>
-          )}
+      )}
         </div>
       </section>
+
+      {/* DATE-SPECIFIC LUNCH CONTROL */}
+
+      {employee && (
+        <AdminMasterLunchOverridePanel
+          user={user}
+          employee={employee}
+        />
+      )}
 
       {employee && draft && (
         <section className="mb-preview">
