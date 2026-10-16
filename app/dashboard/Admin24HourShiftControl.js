@@ -1,9 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+// ======================================
+// SUPABASE RPC
+// ======================================
 
 async function rpc(name, token, body) {
   if (!URL || !KEY || !token) {
@@ -31,21 +40,26 @@ async function rpc(name, token, body) {
   if (!response.ok) {
     throw new Error(
       result?.message ||
-      result?.details ||
-      "Database request failed."
+        result?.details ||
+        result?.hint ||
+        "Database request failed."
     );
   }
 
   return result;
 }
 
-const money = (n) =>
-  n == null
+const money = (value) =>
+  value == null
     ? "—"
-    : `KES ${Number(n).toLocaleString("en-KE", {
+    : `KES ${Number(value).toLocaleString("en-KE", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}`;
+
+// ======================================
+// MAIN COMPONENT
+// ======================================
 
 export default function Admin24HourShiftControl({
   user,
@@ -57,11 +71,11 @@ export default function Admin24HourShiftControl({
   const options = useMemo(
     () =>
       shops.filter(
-        (s) =>
-          String(s.shop_type || "")
+        (shop) =>
+          String(shop.shop_type || "")
             .trim()
             .toUpperCase() === "24_HOUR" &&
-          s.is_active !== false
+          shop.is_active !== false
       ),
     [shops]
   );
@@ -74,17 +88,25 @@ export default function Admin24HourShiftControl({
   const [reason, setReason] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterLoading, setRosterLoading] =
+    useState(false);
+
   const [saving, setSaving] = useState(false);
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [version, setVersion] = useState(0);
 
+  const selectionTouchedRef = useRef(false);
+
+  // ======================================
+  // SELECT SHOP
+  // ======================================
+
   useEffect(() => {
-    setShopId((old) =>
-      options.some((s) => s.id === old)
-        ? old
+    setShopId((previous) =>
+      options.some((s) => s.id === previous)
+        ? previous
         : options[0]?.id || ""
     );
   }, [options]);
@@ -112,14 +134,46 @@ export default function Admin24HourShiftControl({
       }
     )
       .then((data) => {
-        if (!cancelled) {
-          setStatus(data);
+        if (cancelled) return;
+
+        setStatus(data);
+
+        // When reviewing the currently OPEN
+        // shift today, select that same shift
+        // by default.
+        //
+        // This allows Admin to finish Recovery
+        // without creating another shift.
+
+        if (
+          !selectionTouchedRef.current &&
+          data?.active_recovery === true &&
+          data?.source?.status === "OPEN" &&
+          data?.source?.business_date ===
+            data?.today_date
+        ) {
+          const name = String(
+            data.source.shift_name || ""
+          )
+            .trim()
+            .toUpperCase();
+
+          if (name === "SHIFT 1") {
+            setSelection("SHIFT 1 TODAY");
+          }
+
+          if (name === "SHIFT 2") {
+            setSelection("SHIFT 2 TODAY");
+          }
         }
       })
-      .catch((e) => {
+      .catch((err) => {
         if (!cancelled) {
           setStatus(null);
-          setError(e.message);
+          setError(
+            err?.message ||
+              "Unable to load shift status."
+          );
         }
       })
       .finally(() => {
@@ -132,6 +186,10 @@ export default function Admin24HourShiftControl({
       cancelled = true;
     };
   }, [shopId, token, version]);
+
+  // ======================================
+  // SELECTED SHIFT
+  // ======================================
 
   const selectedShift =
     selection === "AUTO"
@@ -146,15 +204,33 @@ export default function Admin24HourShiftControl({
       : status?.today_date || "";
 
   const source = status?.source;
-  const active = status?.active_recovery === true;
 
-  const sameSlot =
-    source?.status === "OPEN" &&
-    source?.business_date === selectedDate &&
-    source?.shift_name === selectedShift;
+  const active =
+    status?.active_recovery === true;
 
   // ======================================
-  // EFFECTIVE DUTY ROTA ONLY
+  // SAME OPEN SHIFT
+  //
+  // ADMIN MAY:
+  // - EDIT FINANCIAL FIGURES
+  // - EDIT PLATFORM READINGS
+  // - MAKE NO CHANGES
+  //
+  // ENDING RECOVERY DOES NOT REQUIRE
+  // NEW CLOSING READINGS.
+  // ======================================
+
+  const sameSlot =
+    active &&
+    source?.status === "OPEN" &&
+    String(source?.business_date) ===
+      String(selectedDate) &&
+    String(source?.shift_name)
+      .trim()
+      .toUpperCase() === selectedShift;
+
+  // ======================================
+  // DUTY ROTA
   // ======================================
 
   useEffect(() => {
@@ -187,9 +263,13 @@ export default function Admin24HourShiftControl({
 
         setRoster(data);
       })
-      .catch((e) => {
+      .catch((err) => {
         if (!cancelled) {
-          setError(e.message);
+          setRoster(null);
+          setError(
+            err?.message ||
+              "Unable to load Duty Rota."
+          );
         }
       })
       .finally(() => {
@@ -201,20 +281,45 @@ export default function Admin24HourShiftControl({
     return () => {
       cancelled = true;
     };
-  }, [shopId, token, selectedDate, version]);
+  }, [
+    shopId,
+    token,
+    selectedDate,
+    version,
+  ]);
+
+  // ======================================
+  // ACTION VALIDATION
+  //
+  // SAME SHIFT:
+  // - NO REASON REQUIRED
+  // - NO PLATFORM READINGS REQUIRED
+  // - NO FINANCIAL EDIT REQUIRED
+  //
+  // DIFFERENT SHIFT:
+  // - ADMIN REASON REQUIRED
+  // - HANDOVER RULES REMAIN
+  // ======================================
+
+  const reasonText = reason.trim();
 
   const canSave =
     active &&
     !!source &&
-    Array.isArray(roster?.employees) &&
-    reason.trim().length >= 10 &&
-    reason.trim().length <= 500 &&
     !loading &&
-    !rosterLoading &&
-    !saving;
+    !saving &&
+    reasonText.length <= 500 &&
+    (
+      sameSlot ||
+      (
+        Array.isArray(roster?.employees) &&
+        !rosterLoading &&
+        reasonText.length >= 10
+      )
+    );
 
   // ======================================
-  // FINALIZE RECOVERY
+  // FINALIZE / END RECOVERY
   // ======================================
 
   async function finalize() {
@@ -225,6 +330,8 @@ export default function Admin24HourShiftControl({
     setMessage("");
 
     try {
+      // Always verify the latest session.
+
       const latest = await rpc(
         "tl_admin_24h_recovery_status_v1",
         token,
@@ -234,9 +341,11 @@ export default function Admin24HourShiftControl({
       );
 
       if (
-        !latest?.active_recovery ||
+        latest?.active_recovery !== true ||
         !latest?.source ||
-        latest.session_id !== status.session_id
+        !latest?.session_id ||
+        latest.session_id !== status.session_id ||
+        latest.source.id !== source.id
       ) {
         throw new Error(
           "Recovery changed. Refresh the report."
@@ -255,6 +364,107 @@ export default function Admin24HourShiftControl({
           ? latest.auto_date
           : latest.today_date;
 
+      if (
+        nextShift !== selectedShift ||
+        nextDate !== selectedDate
+      ) {
+        throw new Error(
+          "Shift selection changed. Refresh first."
+        );
+      }
+
+      const latestSameSlot =
+        latest.source.status === "OPEN" &&
+        String(latest.source.business_date) ===
+          String(nextDate) &&
+        String(latest.source.shift_name)
+          .trim()
+          .toUpperCase() === nextShift;
+
+      if (latestSameSlot !== sameSlot) {
+        throw new Error(
+          "Shift status changed. Refresh first."
+        );
+      }
+
+      // ==================================
+      // OPTION 1:
+      // FINISH RECOVERY, KEEP SHIFT OPEN
+      //
+      // This uses the existing recovery
+      // ending function.
+      //
+      // Does not:
+      // - Close Shift 1
+      // - Create Shift 2
+      // - Require six platform readings
+      // - Reset any reading to zero
+      // - Change financial figures
+      // ==================================
+
+      if (latestSameSlot) {
+        const confirmed = window.confirm(
+          [
+            "END ADMIN RECOVERY",
+            "",
+            `Shop: ${latest.shop_name}`,
+            `Shift: ${latest.source.shift_name}`,
+            `Business date: ${latest.source.business_date}`,
+            "",
+            "Keep the current shift OPEN.",
+            "Keep all saved corrections.",
+            "Do not change platform readings.",
+            "Do not create another shift.",
+            "",
+            "Continue?",
+          ].join("\n")
+        );
+
+        if (!confirmed) return;
+
+        await rpc(
+          "tl_admin_end_shift_recovery",
+          token,
+          {
+            p_session_id: latest.session_id,
+            p_note: reasonText || null,
+          }
+        );
+
+        setMessage(
+          "Recovery ended. Existing shift remains OPEN."
+        );
+
+        setReason("");
+        setVersion((n) => n + 1);
+
+        onChanged?.();
+
+        return;
+      }
+
+      // ==================================
+      // OPTION 2:
+      // CLOSE SOURCE AND OPEN NEXT SHIFT
+      //
+      // This is a genuine financial
+      // handover, not merely exiting
+      // Admin Recovery.
+      //
+      // Existing server-side validations
+      // for verified handover readings
+      // remain in place.
+      // ==================================
+
+      if (
+        reasonText.length < 10 ||
+        reasonText.length > 500
+      ) {
+        throw new Error(
+          "Enter an Admin reason of 10–500 characters."
+        );
+      }
+
       const effective = await rpc(
         "tl_admin_24h_rota_staff_v1",
         token,
@@ -264,7 +474,9 @@ export default function Admin24HourShiftControl({
         }
       );
 
-      if (!Array.isArray(effective?.employees)) {
+      if (
+        !Array.isArray(effective?.employees)
+      ) {
         throw new Error(
           "Unable to verify Duty Rota."
         );
@@ -272,40 +484,42 @@ export default function Admin24HourShiftControl({
 
       const names =
         effective.employees
-          .map((e) => e.name)
+          .map((employee) => employee.name)
           .join(", ") || "VACANT";
 
       const confirmed = window.confirm(
         [
-          "FINALIZE 24-HOUR RECOVERY",
+          "FINALIZE & OPEN NEXT SHIFT",
+          "",
           `Shop: ${latest.shop_name}`,
-          `Recovered: ${latest.source.shift_name} — ${latest.source.business_date}`,
+          `Recovered: ${latest.source.shift_name}`,
+          `Date: ${latest.source.business_date}`,
           `Corrected closing: ${money(
             latest.source.closing_balance
           )}`,
-          `Next: ${nextShift} — ${nextDate}`,
+          "",
+          `Next: ${nextShift}`,
+          `Business date: ${nextDate}`,
           `Duty Rota: ${names}`,
           "",
-          "The corrected balance and handover readings will carry forward.",
-          "Old expenses and financial history stay on the recovered record.",
+          "This closes the current shift",
+          "and opens a different shift.",
+          "",
+          "Continue?",
         ].join("\n")
       );
 
       if (!confirmed) return;
 
-      // No registration-based cashier ID.
-      // Shift identity must never be guessed
-      // from the login profiles directory.
-
       const result = await rpc(
-  "tl_admin_24h_finish_from_rota_v1",
-  token,
-  {
-    p_shop_id: shopId,
-    p_selection: selection,
-    p_reason: reason.trim(),
-  }
-);
+        "tl_admin_24h_finish_from_rota_v1",
+        token,
+        {
+          p_shop_id: shopId,
+          p_selection: selection,
+          p_reason: reasonText,
+        }
+      );
 
       if (result?.ok !== true) {
         throw new Error(
@@ -321,21 +535,24 @@ export default function Admin24HourShiftControl({
       setVersion((n) => n + 1);
 
       onChanged?.();
-    } catch (e) {
+
+    } catch (err) {
       setError(
-        e?.message ||
-          "Unable to finalize recovery."
+        err?.message ||
+          "Unable to complete Admin Recovery."
       );
     } finally {
       setSaving(false);
     }
   }
 
-  if (!options.length) return null;
-
   // ======================================
   // DISPLAY
   // ======================================
+
+  if (!options.length) {
+    return null;
+  }
 
   return (
     <section style={styles.panel}>
@@ -354,8 +571,10 @@ export default function Admin24HourShiftControl({
               style={styles.field}
               value={shopId}
               disabled={saving}
-              onChange={(e) => {
-                setShopId(e.target.value);
+              onChange={(event) => {
+                selectionTouchedRef.current = false;
+
+                setShopId(event.target.value);
                 setStatus(null);
                 setRoster(null);
                 setSelection("AUTO");
@@ -364,12 +583,12 @@ export default function Admin24HourShiftControl({
                 setMessage("");
               }}
             >
-              {options.map((s) => (
+              {options.map((shop) => (
                 <option
-                  key={s.id}
-                  value={s.id}
+                  key={shop.id}
+                  value={shop.id}
                 >
-                  {s.shop_name}
+                  {shop.shop_name}
                 </option>
               ))}
             </select>
@@ -442,12 +661,14 @@ export default function Admin24HourShiftControl({
               "SHIFT 2 TODAY",
               "SHIFT 2 TODAY",
             ],
-          ].map(([value, title]) => (
+          ].map(([value, label]) => (
             <button
               key={value}
               type="button"
               disabled={saving}
               onClick={() => {
+                selectionTouchedRef.current = true;
+
                 setSelection(value);
                 setError("");
               }}
@@ -470,7 +691,7 @@ export default function Admin24HourShiftControl({
                     : "#cbd5e1",
               }}
             >
-              {title}
+              {label}
             </button>
           ))}
         </div>
@@ -489,11 +710,13 @@ export default function Admin24HourShiftControl({
           <Figure
             label={
               sameSlot
-                ? "CORRECTED BALANCE"
-                : "OPENING BALANCE B/F"
+                ? "CURRENT OPENING B/F"
+                : "NEXT OPENING B/F"
             }
             value={money(
-              source?.closing_balance
+              sameSlot
+                ? source?.opening_balance
+                : source?.closing_balance
             )}
           />
         </div>
@@ -508,7 +731,7 @@ export default function Admin24HourShiftControl({
               ? "Loading..."
               : roster?.employees?.length
               ? roster.employees
-                  .map((e) => e.name)
+                  .map((employee) => employee.name)
                   .join(" · ")
               : roster
               ? "VACANT"
@@ -518,7 +741,9 @@ export default function Admin24HourShiftControl({
 
         <div style={styles.staff}>
           <label style={styles.label}>
-            ADMIN REASON
+            {sameSlot
+              ? "ADMIN NOTE (OPTIONAL)"
+              : "ADMIN REASON"}
           </label>
 
           <textarea
@@ -527,8 +752,8 @@ export default function Admin24HourShiftControl({
             style={styles.field}
             value={reason}
             disabled={saving}
-            onChange={(e) => {
-              setReason(e.target.value);
+            onChange={(event) => {
+              setReason(event.target.value);
               setError("");
             }}
           />
@@ -559,13 +784,13 @@ export default function Admin24HourShiftControl({
             onClick={finalize}
             style={{
               ...styles.save,
-              opacity: canSave
-                ? 1
-                : 0.5,
+              opacity: canSave ? 1 : 0.5,
             }}
           >
             {saving
               ? "SAVING..."
+              : sameSlot
+              ? "END RECOVERY — KEEP SHIFT OPEN"
               : "FINALIZE RECOVERY & OPEN SHIFT"}
           </button>
 
@@ -589,6 +814,10 @@ export default function Admin24HourShiftControl({
     </section>
   );
 }
+
+// ======================================
+// FIGURE
+// ======================================
 
 function Figure({ label, value }) {
   return (
