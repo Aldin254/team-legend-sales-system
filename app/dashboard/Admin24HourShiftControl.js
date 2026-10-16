@@ -298,15 +298,14 @@ export default function Admin24HourShiftControl({
       // from the login profiles directory.
 
       const result = await rpc(
-        "tl_admin_24h_finish_and_open_v1",
-        token,
-        {
-          p_shop_id: shopId,
-          p_selection: selection,
-          p_cashier_id: null,
-          p_reason: reason.trim(),
-        }
-      );
+  "tl_admin_24h_finish_from_rota_v1",
+  token,
+  {
+    p_shop_id: shopId,
+    p_selection: selection,
+    p_reason: reason.trim(),
+  }
+);
 
       if (result?.ok !== true) {
         throw new Error(
