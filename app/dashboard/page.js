@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import CashierReport from "./CashierReport";
@@ -102,11 +97,7 @@ async function getRecoveryAssignment(token) {
   return value[0] || null;
 }
 
-async function getRecoveryTarget(
-  assignment,
-  shopId,
-  token
-) {
+async function getRecoveryTarget(assignment, shopId, token) {
   if (!assignment?.target_shift_id) {
     throw new Error(
       "The Admin recovery target is missing."
@@ -156,6 +147,58 @@ async function get12HourOpeningGate(token) {
   return result;
 }
 
+// ==================================================
+// 24-HOUR EXISTING OPEN SHIFT
+//
+// Finds an Admin-opened shift even when
+// cashier_id is NULL.
+//
+// Requires tl_cashier_24h_open_shift_v1()
+// in Supabase.
+// ==================================================
+
+async function get24HourAdminOpenedShift(shopId, token) {
+  const result = await restPost(
+    "rpc/tl_cashier_24h_open_shift_v1",
+    token,
+    {}
+  );
+
+  if (!result || result.ok !== true) {
+    throw new Error(
+      "Unable to verify the open 24-hour shift."
+    );
+  }
+
+  if (
+    String(result.shop_id || "") !==
+    String(shopId)
+  ) {
+    throw new Error(
+      "24-hour shop assignment mismatch."
+    );
+  }
+
+  const shift = result.shift || null;
+
+  if (shift) {
+    if (
+      String(shift.shop_id) !== String(shopId) ||
+      shift.status !== "OPEN"
+    ) {
+      throw new Error(
+        "Invalid open shift returned for this shop."
+      );
+    }
+  }
+
+  return shift;
+}
+
+// ==================================================
+// CASHIER SESSION HELPERS
+// ==================================================
+
 const cashierShop = (u) =>
   u?.shop_id || u?.shopId || null;
 
@@ -177,54 +220,35 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const [balanceBF, setBalanceBF] = useState("");
-  const [balanceLocked, setBalanceLocked] =
-    useState(false);
+  const [balanceLocked, setBalanceLocked] = useState(false);
 
-  const [currentShift, setCurrentShift] =
-    useState(null);
-
+  const [currentShift, setCurrentShift] = useState(null);
   const [shopType, setShopType] = useState("");
-  const [closedForToday, setClosedForToday] =
-    useState(false);
+  const [closedForToday, setClosedForToday] = useState(false);
 
   const [message, setMessage] = useState("");
-  const [startingShift, setStartingShift] =
-    useState(false);
+  const [startingShift, setStartingShift] = useState(false);
 
   // ADMIN RECOVERY
 
-  const [recoveryView, setRecoveryView] =
-    useState(null);
-
-  const [recoveryReady, setRecoveryReady] =
-    useState(false);
-
-  const [recoveryError, setRecoveryError] =
-    useState("");
+  const [recoveryView, setRecoveryView] = useState(null);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
 
   // 12-HOUR ACCOUNTABILITY
 
-  const [closingGate, setClosingGate] =
-    useState(null);
-
-  const [closingGateReady, setClosingGateReady] =
-    useState(false);
-
-  const [closingGateError, setClosingGateError] =
-    useState("");
-
-  const [staleOpenShift, setStaleOpenShift] =
-    useState(null);
+  const [closingGate, setClosingGate] = useState(null);
+  const [closingGateReady, setClosingGateReady] = useState(false);
+  const [closingGateError, setClosingGateError] = useState("");
+  const [staleOpenShift, setStaleOpenShift] = useState(null);
 
   // REFS
 
   const refreshPromiseRef = useRef(null);
   const wasRecoveringRef = useRef(false);
   const recoveryPollRef = useRef(false);
-
   const closingGatePollRef = useRef(false);
   const closingWasLockedRef = useRef(false);
-
   const autoStart12hRef = useRef("");
 
   // ==================================================
@@ -322,9 +346,7 @@ export default function DashboardPage() {
         const next = {
           ...u,
 
-          id:
-            result.user?.id ||
-            u.id,
+          id: u.id,
 
           auth_user_id:
             result.user?.id ||
@@ -373,7 +395,7 @@ export default function DashboardPage() {
   // 1. LOGIN
   // 2. ADMIN RECOVERY
   // 3. 12-HOUR CLOSING GATE
-  // 4. NORMAL OPEN SHIFT
+  // 4. EXISTING OPEN SHIFT
   // 5. PREVIOUS CLOSED SHIFT
   // ==================================================
 
@@ -383,7 +405,6 @@ export default function DashboardPage() {
     async function initialize() {
       setLoading(true);
       setMessage("");
-
       setRecoveryReady(false);
 
       setClosingGateReady(false);
@@ -417,9 +438,7 @@ export default function DashboardPage() {
 
         saveUserSession(active);
 
-        const role = String(
-          active.role || ""
-        )
+        const role = String(active.role || "")
           .trim()
           .toUpperCase();
 
@@ -437,9 +456,7 @@ export default function DashboardPage() {
         }
 
         const shopId = cashierShop(active);
-        const cashierId =
-          cashierProfile(active);
-
+        const cashierId = cashierProfile(active);
         const token = active.access_token;
 
         if (
@@ -489,7 +506,6 @@ export default function DashboardPage() {
 
           setCurrentShift(null);
           setClosedForToday(false);
-
           setRecoveryError("");
           setRecoveryReady(true);
 
@@ -507,9 +523,7 @@ export default function DashboardPage() {
         if (type === "12_HOUR") {
           try {
             const gate =
-              await get12HourOpeningGate(
-                token
-              );
+              await get12HourOpeningGate(token);
 
             if (cancelled) return;
 
@@ -535,7 +549,7 @@ export default function DashboardPage() {
 
             setClosingGateError(
               err?.message ||
-                "Unable to verify previous 12-hour closing."
+              "Unable to verify previous 12-hour closing."
             );
 
             setClosingGateReady(true);
@@ -547,26 +561,39 @@ export default function DashboardPage() {
         }
 
         // ======================================
-        // NORMAL OPEN SHIFT FOR CASHIER
+        // OPEN SHIFT LOOKUP
+        //
+        // 24H: SHOP-WIDE VIA AUTHENTICATED RPC
+        // 12H: ORIGINAL CASHIER OWNERSHIP
         // ======================================
 
-        const mine = await restGet(
-          `shifts?shop_id=eq.${encodeURIComponent(
-            shopId
-          )}` +
-            `&cashier_id=eq.${encodeURIComponent(
-              cashierId
+        let open = null;
+
+        if (type === "24_HOUR") {
+          open =
+            await get24HourAdminOpenedShift(
+              shopId,
+              token
+            );
+        } else {
+          const mine = await restGet(
+            `shifts?shop_id=eq.${encodeURIComponent(
+              shopId
             )}` +
-            "&status=eq.OPEN" +
-            "&select=*" +
-            "&order=opened_at.desc" +
-            "&limit=1",
-          token
-        );
+              `&cashier_id=eq.${encodeURIComponent(
+                cashierId
+              )}` +
+              "&status=eq.OPEN" +
+              "&select=*" +
+              "&order=opened_at.desc" +
+              "&limit=1",
+            token
+          );
+
+          open = mine?.[0] || null;
+        }
 
         if (cancelled) return;
-
-        const open = mine?.[0];
 
         if (open) {
           if (type === "12_HOUR") {
@@ -576,13 +603,12 @@ export default function DashboardPage() {
             ) {
               setCurrentShift(null);
               setStaleOpenShift(open);
+
               return;
             }
 
             const newlyActive =
-              await getRecoveryAssignment(
-                token
-              );
+              await getRecoveryAssignment(token);
 
             if (cancelled) return;
 
@@ -595,8 +621,7 @@ export default function DashboardPage() {
                 );
 
               if (!cancelled) {
-                wasRecoveringRef.current =
-                  true;
+                wasRecoveringRef.current = true;
 
                 setRecoveryView({
                   assignment: newlyActive,
@@ -617,15 +642,10 @@ export default function DashboardPage() {
 
           if (cancelled) return;
 
-          // Existing OPEN 24-hour shifts are
-          // never renamed or automatically closed.
-
           setCurrentShift(open);
 
           setBalanceBF(
-            String(
-              open.opening_balance ?? 0
-            )
+            String(open.opening_balance ?? 0)
           );
 
           setBalanceLocked(true);
@@ -635,7 +655,7 @@ export default function DashboardPage() {
         }
 
         // ======================================
-        // CHECK SHOP-WIDE OVERDUE OPEN SHIFT
+        // 12-HOUR SHOP-WIDE OVERDUE CHECK
         // ======================================
 
         if (type === "12_HOUR") {
@@ -649,9 +669,8 @@ export default function DashboardPage() {
 
           if (
             shopOpen &&
-            String(
-              shopOpen.business_date
-            ) !== nairobiDate()
+            String(shopOpen.business_date) !==
+              nairobiDate()
           ) {
             setCurrentShift(null);
             setStaleOpenShift(shopOpen);
@@ -704,15 +723,12 @@ export default function DashboardPage() {
             : ""
         );
 
-        setBalanceLocked(
-          Boolean(previous)
-        );
-
+        setBalanceLocked(Boolean(previous));
         setClosedForToday(false);
+
       } catch (err) {
         if (
-          err?.name ===
-          "SessionExpiredError"
+          err?.name === "SessionExpiredError"
         ) {
           if (!cancelled) {
             expireSession();
@@ -724,12 +740,12 @@ export default function DashboardPage() {
         if (!cancelled) {
           setMessage(
             err?.message ||
-              "Unable to load dashboard."
+            "Unable to load dashboard."
           );
 
           setRecoveryError(
             err?.message ||
-              "Recovery verification failed."
+            "Recovery verification failed."
           );
 
           setRecoveryReady(true);
@@ -759,9 +775,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (
-      String(
-        user?.role || ""
-      ).toUpperCase() !== "CASHIER"
+      String(user?.role || "").toUpperCase() !==
+      "CASHIER"
     ) {
       return;
     }
@@ -808,23 +823,23 @@ export default function DashboardPage() {
           });
 
           setCurrentShift(null);
-
           setRecoveryError("");
           setRecoveryReady(true);
-        } else if (
-          wasRecoveringRef.current
-        ) {
+
+        } else if (wasRecoveringRef.current) {
           window.location.reload();
+
         } else {
           setRecoveryView(null);
           setRecoveryError("");
           setRecoveryReady(true);
         }
+
       } catch (err) {
         if (!cancelled) {
           setRecoveryError(
             err?.message ||
-              "Unable to verify Admin recovery."
+            "Unable to verify Admin recovery."
           );
 
           setRecoveryReady(true);
@@ -863,6 +878,122 @@ export default function DashboardPage() {
   }, [
     user?.access_token,
     user?.role,
+    user?.shop_id,
+    user?.shopId,
+  ]);
+
+  // ==================================================
+  // LIVE 24-HOUR AUTO-JOIN
+  //
+  // Cashier enters an existing shift opened
+  // by Admin without creating another shift.
+  // ==================================================
+
+  useEffect(() => {
+    if (
+      loading ||
+      shopType !== "24_HOUR" ||
+      currentShift ||
+      !recoveryReady ||
+      recoveryView ||
+      recoveryError ||
+      !user?.access_token ||
+      !cashierShop(user)
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const shopId = cashierShop(user);
+    const token = user.access_token;
+
+    async function pollOpenShift() {
+      if (inFlight) return;
+
+      inFlight = true;
+
+      try {
+        const recovery =
+          await getRecoveryAssignment(token);
+
+        if (
+          cancelled ||
+          recovery
+        ) {
+          return;
+        }
+
+        const open =
+          await get24HourAdminOpenedShift(
+            shopId,
+            token
+          );
+
+        if (
+          cancelled ||
+          !open
+        ) {
+          return;
+        }
+
+        setCurrentShift(open);
+
+        setBalanceBF(
+          String(open.opening_balance ?? 0)
+        );
+
+        setBalanceLocked(true);
+        setClosedForToday(false);
+        setMessage("");
+
+      } catch (err) {
+        if (!cancelled) {
+          setMessage(
+            err?.message ||
+            "24-hour shift check failed."
+          );
+        }
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    const timer = setInterval(
+      pollOpenShift,
+      8000
+    );
+
+    const onFocus = () => {
+      void pollOpenShift();
+    };
+
+    window.addEventListener(
+      "focus",
+      onFocus
+    );
+
+    void pollOpenShift();
+
+    return () => {
+      cancelled = true;
+
+      clearInterval(timer);
+
+      window.removeEventListener(
+        "focus",
+        onFocus
+      );
+    };
+  }, [
+    loading,
+    shopType,
+    currentShift,
+    recoveryReady,
+    recoveryView,
+    recoveryError,
+    user?.access_token,
     user?.shop_id,
     user?.shopId,
   ]);
@@ -914,11 +1045,12 @@ export default function DashboardPage() {
         } else if (wasLocked) {
           window.location.reload();
         }
+
       } catch (err) {
         if (!cancelled) {
           setClosingGateError(
             err?.message ||
-              "12-hour closing verification unavailable."
+            "12-hour closing verification unavailable."
           );
 
           setCurrentShift(null);
@@ -974,8 +1106,7 @@ export default function DashboardPage() {
       } catch (err) {
         if (
           !cancelled &&
-          err?.name ===
-            "SessionExpiredError"
+          err?.name === "SessionExpiredError"
         ) {
           expireSession();
         }
@@ -993,8 +1124,7 @@ export default function DashboardPage() {
 
     const onVisibility = () => {
       if (
-        document.visibilityState ===
-        "visible"
+        document.visibilityState === "visible"
       ) {
         void refresh();
       }
@@ -1044,10 +1174,7 @@ export default function DashboardPage() {
   // ==================================================
 
   async function startShift() {
-    if (
-      !user ||
-      startingShift
-    ) {
+    if (!user || startingShift) {
       return;
     }
 
@@ -1086,15 +1213,10 @@ export default function DashboardPage() {
       }
 
       const active =
-        await refreshUserSession(
-          user
-        );
+        await refreshUserSession(user);
 
-      const shopId =
-        cashierShop(active);
-
-      const cashierId =
-        cashierProfile(active);
+      const shopId = cashierShop(active);
+      const cashierId = cashierProfile(active);
 
       const cashierName =
         active.full_name ||
@@ -1102,8 +1224,7 @@ export default function DashboardPage() {
         active.username ||
         "Cashier";
 
-      const token =
-        active.access_token;
+      const token = active.access_token;
 
       if (
         !shopId ||
@@ -1116,9 +1237,7 @@ export default function DashboardPage() {
       }
 
       if (
-        await getRecoveryAssignment(
-          token
-        )
+        await getRecoveryAssignment(token)
       ) {
         throw new Error(
           "Admin Recovery is ACTIVE. Wait until it ends."
@@ -1139,9 +1258,7 @@ export default function DashboardPage() {
 
       if (type === "12_HOUR") {
         const gate =
-          await get12HourOpeningGate(
-            token
-          );
+          await get12HourOpeningGate(token);
 
         closingWasLockedRef.current =
           gate.locked;
@@ -1197,29 +1314,24 @@ export default function DashboardPage() {
       // SHOP-WIDE OPEN SHIFT CHECK
       // ======================================
 
-      const open = await restGet(
-        `shifts?shop_id=eq.${encodeURIComponent(
-          shopId
-        )}` +
-          "&status=eq.OPEN" +
-          "&select=*" +
-          "&order=opened_at.desc" +
-          "&limit=1",
-        token
-      );
+      const existing =
+        type === "24_HOUR"
+          ? await get24HourAdminOpenedShift(
+              shopId,
+              token
+            )
+          : await getShopOpenShift(
+              shopId,
+              token
+            );
 
-      if (open?.length) {
-        const existing = open[0];
-
+      if (existing) {
         if (
           type === "12_HOUR" &&
-          String(
-            existing.business_date
-          ) !== nairobiDate()
+          String(existing.business_date) !==
+            nairobiDate()
         ) {
-          setStaleOpenShift(
-            existing
-          );
+          setStaleOpenShift(existing);
 
           throw new Error(
             "An overdue OPEN shift must be finalized by Admin."
@@ -1227,8 +1339,9 @@ export default function DashboardPage() {
         }
 
         if (
+          type === "12_HOUR" &&
           String(existing.cashier_id) !==
-          String(cashierId)
+            String(cashierId)
         ) {
           throw new Error(
             "Another cashier already has an OPEN shift for this shop."
@@ -1237,9 +1350,7 @@ export default function DashboardPage() {
 
         if (type === "12_HOUR") {
           if (
-            await getRecoveryAssignment(
-              token
-            )
+            await getRecoveryAssignment(token)
           ) {
             throw new Error(
               "Admin recovery started."
@@ -1253,9 +1364,6 @@ export default function DashboardPage() {
             token
           );
         }
-
-        // Never create another shift while
-        // this shop already has an OPEN shift.
 
         setCurrentShift(existing);
 
@@ -1290,9 +1398,7 @@ export default function DashboardPage() {
       } else {
         if (
           balanceBF === "" ||
-          !Number.isFinite(
-            Number(balanceBF)
-          ) ||
+          !Number.isFinite(Number(balanceBF)) ||
           Number(balanceBF) < 0
         ) {
           throw new Error(
@@ -1300,9 +1406,7 @@ export default function DashboardPage() {
           );
         }
 
-        bf = Number(
-          balanceBF
-        );
+        bf = Number(balanceBF);
       }
 
       if (!Number.isFinite(bf)) {
@@ -1315,35 +1419,27 @@ export default function DashboardPage() {
 
       const base = {
         shop_id: shopId,
-
         cashier_id: cashierId,
-
         cashier_name: cashierName,
 
         opened_at: now.toISOString(),
-
         closed_at: null,
 
         status: "OPEN",
 
         opening_balance: roundMoney(bf),
-
         total_added_float: 0,
-
         total_output: 0,
-
         total_expenses: 0,
 
         net_income: roundMoney(bf),
-
         closing_balance: roundMoney(bf),
 
         notes: null,
       };
 
       // ======================================
-      // 12-HOUR SHIFT
-      // ORIGINAL BEHAVIOR PRESERVED
+      // 12-HOUR SHIFT CREATION
       // ======================================
 
       if (type === "12_HOUR") {
@@ -1355,9 +1451,7 @@ export default function DashboardPage() {
           );
 
         if (
-          await getRecoveryAssignment(
-            token
-          )
+          await getRecoveryAssignment(token)
         ) {
           throw new Error(
             "Admin recovery started."
@@ -1368,16 +1462,10 @@ export default function DashboardPage() {
           await createShift(
             {
               ...base,
-
               shift_name: "DAY",
-
               business_date: nairobiDate(),
-
-              scheduled_start:
-                nairobiTime(now),
-
-              scheduled_end:
-                "23:59:00",
+              scheduled_start: nairobiTime(now),
+              scheduled_end: "23:59:00",
             },
             token
           );
@@ -1404,21 +1492,14 @@ export default function DashboardPage() {
       }
 
       // ======================================
-      // 24-HOUR SHIFT — CORRECTED
+      // 24-HOUR NORMAL SHIFT CREATION
       //
-      // Select the shift by Nairobi time.
-      // Never alternate solely from the
-      // previous shift name.
-      //
-      // Protect business date, duplicate
-      // shifts, platform handover, and B/F.
+      // ONLY WHEN NO OPEN SHIFT EXISTS
       // ======================================
 
       if (type === "24_HOUR") {
         const slot =
           getScheduled24HourSlot(now);
-
-        // Prevent duplicate historical slots.
 
         const existingSlot =
           await restGet(
@@ -1438,18 +1519,12 @@ export default function DashboardPage() {
 
         if (existingSlot?.length) {
           throw new Error(
-            `${slot.shiftName} for ` +
-            `${slot.businessDate} already exists. ` +
+            `${slot.shiftName} for ${slot.businessDate} already exists. ` +
             "Contact Admin for correction."
           );
         }
 
-        // Expected chronological predecessor:
-        //
-        // SHIFT 1 today follows SHIFT 2 yesterday.
-        // SHIFT 2 today follows SHIFT 1 today.
-        //
-        // Do not silently skip overnight shifts.
+        // VERIFY CHRONOLOGICAL PREDECESSOR
 
         if (
           previous &&
@@ -1476,16 +1551,11 @@ export default function DashboardPage() {
               expectedPreviousDate
           ) {
             throw new Error(
-              "Previous 24-hour shift history " +
-              "is incomplete or out of sequence. " +
-              "Contact Admin to reconcile the " +
-              "missing shift and platform readings."
+              "Previous 24-hour shift history is incomplete or out of sequence. " +
+              "Contact Admin to reconcile the missing shift and platform readings."
             );
           }
         }
-
-        // Preserve the original authoritative
-        // platform handover requirements.
 
         const readings =
           previous &&
@@ -1498,18 +1568,12 @@ export default function DashboardPage() {
             : [];
 
         if (
-          await getRecoveryAssignment(
-            token
-          )
+          await getRecoveryAssignment(token)
         ) {
           throw new Error(
             "Admin recovery started."
           );
         }
-
-        // The shift identity and business date
-        // are now derived from the same Nairobi
-        // timestamp, preventing inconsistencies.
 
         const newShift =
           await createShift(
@@ -1519,9 +1583,7 @@ export default function DashboardPage() {
               cashier_name: "NOT ASSIGNED",
 
               shift_name: slot.shiftName,
-
-              business_date:
-                slot.businessDate,
+              business_date: slot.businessDate,
 
               scheduled_start:
                 slot.scheduledStart,
@@ -1554,20 +1616,18 @@ export default function DashboardPage() {
       }
 
       throw new Error(
-        `Unsupported shop type: ${
-          type || "UNKNOWN"
-        }`
+        `Unsupported shop type: ${type || "UNKNOWN"}`
       );
+
     } catch (err) {
       if (
-        err?.name ===
-        "SessionExpiredError"
+        err?.name === "SessionExpiredError"
       ) {
         expireSession();
       } else {
         setMessage(
           err?.message ||
-            "Unable to start shift."
+          "Unable to start shift."
         );
       }
     } finally {
@@ -1604,9 +1664,7 @@ export default function DashboardPage() {
     const key =
       `${cashierShop(user)}:${nairobiDate()}`;
 
-    if (
-      autoStart12hRef.current === key
-    ) {
+    if (autoStart12hRef.current === key) {
       return;
     }
 
@@ -1644,7 +1702,9 @@ export default function DashboardPage() {
     );
   }
 
-  if (!user) return null;
+  if (!user) {
+    return null;
+  }
 
   const role = String(
     user.role || ""
@@ -1652,33 +1712,19 @@ export default function DashboardPage() {
     .trim()
     .toUpperCase();
 
-  // ==========================================
   // ADMIN
-  // ==========================================
 
   if (role === "ADMIN") {
-    return (
-      <AdminDashboard
-        user={user}
-      />
-    );
+    return <AdminDashboard user={user} />;
   }
 
-  // ==========================================
   // ACCOUNTANT
-  // ==========================================
 
   if (role === "ACCOUNTANT") {
-    return (
-      <AccountantDashboard
-        user={user}
-      />
-    );
+    return <AccountantDashboard user={user} />;
   }
 
-  // ==========================================
   // RECOVERY VERIFICATION
-  // ==========================================
 
   if (!recoveryReady) {
     return (
@@ -1715,28 +1761,20 @@ export default function DashboardPage() {
     );
   }
 
-  // ==========================================
-  // ADMIN RECOVERY PREVIEW — READ ONLY
-  // ==========================================
+  // ADMIN RECOVERY PREVIEW
 
   if (recoveryView) {
     return (
       <CashierRecoveryPreview
         user={user}
-        recoveryAssignment={
-          recoveryView.assignment
-        }
-        recoveryShift={
-          recoveryView.shift
-        }
+        recoveryAssignment={recoveryView.assignment}
+        recoveryShift={recoveryView.shift}
         onLogout={logout}
       />
     );
   }
 
-  // ==========================================
   // 12-HOUR GATE LOADING
-  // ==========================================
 
   if (
     shopType === "12_HOUR" &&
@@ -1749,9 +1787,7 @@ export default function DashboardPage() {
     );
   }
 
-  // ==========================================
   // 12-HOUR VERIFICATION FAILED
-  // ==========================================
 
   if (
     shopType === "12_HOUR" &&
@@ -1773,8 +1809,7 @@ export default function DashboardPage() {
           </p>
 
           <p style={mutedStyle}>
-            Financial access is temporarily
-            blocked for your protection.
+            Financial access is temporarily blocked for your protection.
           </p>
 
           <button
@@ -1797,9 +1832,7 @@ export default function DashboardPage() {
     );
   }
 
-  // ==========================================
-  // STRICT 12-HOUR ACCOUNTABILITY LOCK
-  // ==========================================
+  // 12-HOUR ACCOUNTABILITY LOCK
 
   if (
     shopType === "12_HOUR" &&
@@ -1821,19 +1854,15 @@ export default function DashboardPage() {
           </h2>
 
           <p style={mutedStyle}>
-            Closing readings from a previous
-            shift have not been verified.
-            Only Admin Recovery can complete
-            the missing information.
+            Closing readings from a previous shift
+            have not been verified. Only Admin
+            Recovery can complete the missing
+            information.
           </p>
 
-          <div style={
-            lockedInformationStyle
-          }>
+          <div style={lockedInformationStyle}>
             <div>
-              <strong>
-                Shop:
-              </strong>{" "}
+              <strong>Shop:</strong>{" "}
               {user.shop ||
                 user.shop_name ||
                 user.shopName ||
@@ -1844,37 +1873,28 @@ export default function DashboardPage() {
               <strong>
                 Outstanding closings:
               </strong>{" "}
-              {closingGate.pending_incidents ??
-                "—"}
+              {closingGate.pending_incidents ?? "—"}
             </div>
 
             <div>
-              <strong>
-                Missing readings:
-              </strong>{" "}
-              {closingGate.missing_readings ??
-                "—"}
+              <strong>Missing readings:</strong>{" "}
+              {closingGate.missing_readings ?? "—"}
             </div>
 
             <div>
               <strong>
                 Oldest pending date:
               </strong>{" "}
-              {closingGate.oldest_unresolved_date ||
-                "—"}
+              {closingGate.oldest_unresolved_date || "—"}
             </div>
 
             <div>
-              <strong>
-                Balance B/F:
-              </strong>{" "}
+              <strong>Balance B/F:</strong>{" "}
               PENDING ADMIN VERIFICATION
             </div>
 
             <div>
-              <strong>
-                Financial entries:
-              </strong>{" "}
+              <strong>Financial entries:</strong>{" "}
               LOCKED
             </div>
           </div>
@@ -1899,9 +1919,7 @@ export default function DashboardPage() {
     );
   }
 
-  // ==========================================
   // OVERDUE 12-HOUR OPEN SHIFT
-  // ==========================================
 
   if (
     shopType === "12_HOUR" &&
@@ -1923,35 +1941,25 @@ export default function DashboardPage() {
           </h2>
 
           <p style={mutedStyle}>
-            A previous business-date shift
-            remains OPEN. It cannot be used
-            for the current day's financial
-            entries or carried forward
+            A previous business-date shift remains
+            OPEN. It cannot be used for current
+            financial entries or carried forward
             as verified.
           </p>
 
-          <div style={
-            lockedInformationStyle
-          }>
+          <div style={lockedInformationStyle}>
             <div>
-              <strong>
-                Old shift date:
-              </strong>{" "}
-              {staleOpenShift.business_date ||
-                "—"}
+              <strong>Old shift date:</strong>{" "}
+              {staleOpenShift.business_date || "—"}
             </div>
 
             <div>
-              <strong>
-                Balance B/F:
-              </strong>{" "}
+              <strong>Balance B/F:</strong>{" "}
               PENDING VERIFICATION
             </div>
 
             <div>
-              <strong>
-                Financial entries:
-              </strong>{" "}
+              <strong>Financial entries:</strong>{" "}
               LOCKED
             </div>
           </div>
@@ -1976,9 +1984,7 @@ export default function DashboardPage() {
     );
   }
 
-  // ==========================================
   // NORMAL CASHIER REPORT
-  // ==========================================
 
   if (currentShift) {
     return shopType === "24_HOUR" ? (
@@ -1994,9 +2000,7 @@ export default function DashboardPage() {
     );
   }
 
-  // ==========================================
-  // 12-HOUR SHOP CLOSED TODAY
-  // ==========================================
+  // 12-HOUR CLOSED TODAY
 
   if (
     shopType === "12_HOUR" &&
@@ -2014,15 +2018,11 @@ export default function DashboardPage() {
           </h2>
 
           <p style={mutedStyle}>
-            This shop already completed
-            today's shift.
+            This shop already completed today's shift.
           </p>
 
-          <div style={
-            balancePreviewStyle
-          }>
-            Closing Balance: KES{" "}
-            {money(balanceBF)}
+          <div style={balancePreviewStyle}>
+            Closing Balance: KES {money(balanceBF)}
           </div>
 
           <button
@@ -2036,9 +2036,7 @@ export default function DashboardPage() {
     );
   }
 
-  // ==========================================
   // START SHIFT SCREEN
-  // ==========================================
 
   return (
     <div style={startPageStyle}>
@@ -2057,9 +2055,7 @@ export default function DashboardPage() {
 
         <div style={detailsStyle}>
           <div>
-            <strong>
-              Shop:
-            </strong>{" "}
+            <strong>Shop:</strong>{" "}
             {user.shop ||
               user.shop_name ||
               user.shopName ||
@@ -2094,24 +2090,19 @@ export default function DashboardPage() {
           value={balanceBF}
           disabled={balanceLocked}
           onChange={(event) =>
-            setBalanceBF(
-              event.target.value
-            )
+            setBalanceBF(event.target.value)
           }
           style={{
             ...inputStyle,
-
-            backgroundColor:
-              balanceLocked
-                ? "#f1f5f9"
-                : "white",
+            backgroundColor: balanceLocked
+              ? "#f1f5f9"
+              : "white",
           }}
         />
 
         {balanceLocked && (
           <p style={lockedTextStyle}>
-            Carried forward from previous
-            closed shift.
+            Carried forward from previous closed shift.
           </p>
         )}
 
@@ -2124,11 +2115,9 @@ export default function DashboardPage() {
         <button
           style={{
             ...startButtonStyle,
-
-            background:
-              startingShift
-                ? "#94a3b8"
-                : "#07912a",
+            background: startingShift
+              ? "#94a3b8"
+              : "#07912a",
           }}
           disabled={startingShift}
           onClick={startShift}
@@ -2148,14 +2137,12 @@ export default function DashboardPage() {
     </div>
   );
 }
+
 // ==================================================
 // SHOP AND SHIFT HELPERS
 // ==================================================
 
-async function getShopType(
-  shopId,
-  token
-) {
+async function getShopType(shopId, token) {
   const result = await restGet(
     `shops?id=eq.${encodeURIComponent(
       shopId
@@ -2167,20 +2154,14 @@ async function getShopType(
   const shop = result?.[0];
 
   if (!shop) {
-    throw new Error(
-      "Shop was not found."
-    );
+    throw new Error("Shop was not found.");
   }
 
   if (shop.is_active === false) {
-    throw new Error(
-      "This shop is inactive."
-    );
+    throw new Error("This shop is inactive.");
   }
 
-  return String(
-    shop.shop_type || ""
-  )
+  return String(shop.shop_type || "")
     .trim()
     .toUpperCase();
 }
@@ -2189,10 +2170,7 @@ async function getShopType(
 // SHOP-WIDE OPEN SHIFT
 // ==================================================
 
-async function getShopOpenShift(
-  shopId,
-  token
-) {
+async function getShopOpenShift(shopId, token) {
   const rows = await restGet(
     `shifts?shop_id=eq.${encodeURIComponent(
       shopId
@@ -2235,9 +2213,6 @@ async function getClosedShiftForDate(
 
 // ==================================================
 // LAST CLOSED SHIFT
-//
-// 12H: BUSINESS DATE ORDER.
-// 24H: EXISTING CLOSED-AT ORDER.
 // ==================================================
 
 async function getLatestClosedShift(
@@ -2267,10 +2242,7 @@ async function getLatestClosedShift(
 // SHOP PLATFORMS
 // ==================================================
 
-async function getPlatforms(
-  shopId,
-  token
-) {
+async function getPlatforms(shopId, token) {
   const rows = await restGet(
     `shop_platforms?shop_id=eq.${encodeURIComponent(
       shopId
@@ -2316,24 +2288,19 @@ async function getReading(
     token
   );
 
-  const raw =
-    rows?.[0]?.reading_value;
+  const raw = rows?.[0]?.reading_value;
 
   if (
     raw === "" ||
     raw == null ||
-    !Number.isFinite(
-      Number(raw)
-    )
+    !Number.isFinite(Number(raw))
   ) {
     throw new Error(
       `Previous shift ${kind} reading is missing or invalid.`
     );
   }
 
-  return roundMoney(
-    Number(raw)
-  );
+  return roundMoney(Number(raw));
 }
 
 // ==================================================
@@ -2345,25 +2312,18 @@ async function get12HourOpeningReadings(
   previous,
   token
 ) {
-  const platforms =
-    await getPlatforms(
-      shopId,
-      token
-    );
+  const platforms = await getPlatforms(
+    shopId,
+    token
+  );
 
-  const table =
-    platforms.find((p) =>
-      isTable(
-        p.platform_name
-      )
-    );
+  const table = platforms.find((p) =>
+    isTable(p.platform_name)
+  );
 
   let tableBF = 0;
 
-  if (
-    table &&
-    previous?.id
-  ) {
+  if (table && previous?.id) {
     tableBF = await getReading(
       previous.id,
       table.id,
@@ -2372,20 +2332,16 @@ async function get12HourOpeningReadings(
     );
   }
 
-  return platforms.map(
-    (p) => ({
-      platformId: p.id,
-
-      value:
-        isTable(p.platform_name)
-          ? tableBF
-          : 0,
-    })
-  );
+  return platforms.map((p) => ({
+    platformId: p.id,
+    value: isTable(p.platform_name)
+      ? tableBF
+      : 0,
+  }));
 }
 
 // ==================================================
-// REPAIR EXISTING 12-HOUR OPENING READINGS
+// REPAIR 12-HOUR OPENING READINGS
 // ==================================================
 
 async function ensure12HourOpeningReadings(
@@ -2394,45 +2350,35 @@ async function ensure12HourOpeningReadings(
   cashierId,
   token
 ) {
-  const platforms =
-    await getPlatforms(
-      shopId,
-      token
-    );
+  const platforms = await getPlatforms(
+    shopId,
+    token
+  );
 
-  const existing =
-    await restGet(
-      `platform_readings?shift_id=eq.${encodeURIComponent(
-        shiftId
-      )}` +
-        "&reading_kind=eq.OPENING" +
-        "&select=platform_id",
-      token
-    );
+  const existing = await restGet(
+    `platform_readings?shift_id=eq.${encodeURIComponent(
+      shiftId
+    )}` +
+      "&reading_kind=eq.OPENING" +
+      "&select=platform_id",
+    token
+  );
 
-  const recorded =
-    new Set(
-      (existing || []).map(
-        (r) => r.platform_id
-      )
-    );
+  const recorded = new Set(
+    (existing || []).map((r) => r.platform_id)
+  );
 
-  const missing =
-    platforms.filter(
-      (p) =>
-        !recorded.has(p.id)
-    );
+  const missing = platforms.filter(
+    (p) => !recorded.has(p.id)
+  );
 
   if (!missing.length) {
     return;
   }
 
-  const tableMissing =
-    missing.find((p) =>
-      isTable(
-        p.platform_name
-      )
-    );
+  const tableMissing = missing.find((p) =>
+    isTable(p.platform_name)
+  );
 
   let tableBF = 0;
 
@@ -2454,15 +2400,12 @@ async function ensure12HourOpeningReadings(
     }
   }
 
-  const readings =
-    missing.map((p) => ({
-      platformId: p.id,
-
-      value:
-        isTable(p.platform_name)
-          ? tableBF
-          : 0,
-    }));
+  const readings = missing.map((p) => ({
+    platformId: p.id,
+    value: isTable(p.platform_name)
+      ? tableBF
+      : 0,
+  }));
 
   await insertOpeningReadings(
     shiftId,
@@ -2482,9 +2425,7 @@ async function get24HourCarryForwardReadings(
   token
 ) {
   const previousName =
-    normaliseShiftName(
-      previous?.shift_name
-    );
+    normaliseShiftName(previous?.shift_name);
 
   const kind =
     previousName === "SHIFT 1"
@@ -2498,10 +2439,7 @@ async function get24HourCarryForwardReadings(
   }
 
   const platforms =
-    await getPlatforms(
-      shopId,
-      token
-    );
+    await getPlatforms(shopId, token);
 
   const rows = await restGet(
     `platform_readings?shift_id=eq.${encodeURIComponent(
@@ -2512,61 +2450,44 @@ async function get24HourCarryForwardReadings(
     token
   );
 
-  const byPlatform =
-    new Map(
-      (rows || []).map(
-        (r) => [
-          r.platform_id,
-          r.reading_value,
-        ]
-      )
-    );
-
-  return platforms.map(
-    (p) => {
-      const raw =
-        byPlatform.get(
-          p.id
-        );
-
-      if (
-        raw === "" ||
-        raw == null ||
-        !Number.isFinite(
-          Number(raw)
-        )
-      ) {
-        throw new Error(
-          `Previous ${previousName} is missing ${kind} for ${p.platform_name}.`
-        );
-      }
-
-      return {
-        platformId: p.id,
-        value:
-          roundMoney(
-            Number(raw)
-          ),
-      };
-    }
+  const byPlatform = new Map(
+    (rows || []).map((r) => [
+      r.platform_id,
+      r.reading_value,
+    ])
   );
+
+  return platforms.map((p) => {
+    const raw = byPlatform.get(p.id);
+
+    if (
+      raw === "" ||
+      raw == null ||
+      !Number.isFinite(Number(raw))
+    ) {
+      throw new Error(
+        `Previous ${previousName} is missing ${kind} for ${p.platform_name}.`
+      );
+    }
+
+    return {
+      platformId: p.id,
+      value: roundMoney(Number(raw)),
+    };
+  });
 }
 
 // ==================================================
 // CREATE SHIFT
 // ==================================================
 
-async function createShift(
-  shift,
-  token
-) {
-  const result =
-    await restPost(
-      "shifts",
-      token,
-      shift,
-      true
-    );
+async function createShift(shift, token) {
+  const result = await restPost(
+    "shifts",
+    token,
+    shift,
+    true
+  );
 
   if (
     !Array.isArray(result) ||
@@ -2594,45 +2515,32 @@ async function insertOpeningReadings(
     return;
   }
 
-  const at =
-    new Date().toISOString();
+  const at = new Date().toISOString();
 
   await restPost(
     "platform_readings",
     token,
     readings.map((r) => ({
-      shift_id:
-        shiftId,
-
-      platform_id:
-        r.platformId,
-
-      reading_kind:
-        "OPENING",
-
-      reading_value:
-        roundMoney(r.value),
-
-      recorded_at:
-        at,
-
-      recorded_by:
-        cashierId,
+      shift_id: shiftId,
+      platform_id: r.platformId,
+      reading_kind: "OPENING",
+      reading_value: roundMoney(r.value),
+      recorded_at: at,
+      recorded_by: cashierId,
     }))
   );
 }
 
 // ==================================================
-// 24-HOUR SHIFT HELPERS — CORRECTED
+// 24-HOUR SHIFT NAME HELPERS
 // ==================================================
 
 function normaliseShiftName(value) {
-  const text =
-    String(value || "")
-      .trim()
-      .toUpperCase()
-      .replace(/[_-]+/g, " ")
-      .replace(/\s+/g, " ");
+  const text = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
 
   if (text === "SHIFT1") {
     return "SHIFT 1";
@@ -2646,30 +2554,17 @@ function normaliseShiftName(value) {
 }
 
 const proper24h = (name) =>
-  [
-    "SHIFT 1",
-    "SHIFT 2",
-  ].includes(
+  ["SHIFT 1", "SHIFT 2"].includes(
     normaliseShiftName(name)
   );
 
 const isTable = (name) =>
   String(name || "")
     .trim()
-    .toUpperCase() ===
-  "TABLE";
+    .toUpperCase() === "TABLE";
 
 // ==================================================
-// SELECT SHIFT FROM NAIROBI CLOCK
-//
-// 09:00 to 20:59 => SHIFT 1
-// 21:00 to 08:59 => SHIFT 2
-//
-// At 00:00 to 08:59, SHIFT 2 belongs
-// to the previous business date.
-//
-// Previously closed shift is NOT used
-// to choose SHIFT 1 or SHIFT 2.
+// SCHEDULED 24-HOUR SHIFT
 // ==================================================
 
 function getScheduled24HourSlot(
@@ -2679,37 +2574,26 @@ function getScheduled24HourSlot(
 
   const today =
     `${p.year}-` +
-    `${String(
-      p.month
-    ).padStart(2, "0")}-` +
-    `${String(
-      p.day
-    ).padStart(2, "0")}`;
+    `${String(p.month).padStart(2, "0")}-` +
+    `${String(p.day).padStart(2, "0")}`;
 
   const shiftName =
-    p.hour >= 9 &&
-    p.hour < 21
+    p.hour >= 9 && p.hour < 21
       ? "SHIFT 1"
       : "SHIFT 2";
 
   const businessDate =
-    shiftName === "SHIFT 2" &&
-    p.hour < 9
-      ? datePlusDays(
-          today,
-          -1
-        )
+    shiftName === "SHIFT 2" && p.hour < 9
+      ? datePlusDays(today, -1)
       : today;
 
   return {
     shiftName,
     businessDate,
-
     scheduledStart:
       shiftName === "SHIFT 1"
         ? "09:00:00"
         : "21:00:00",
-
     scheduledEnd:
       shiftName === "SHIFT 1"
         ? "21:00:00"
@@ -2718,30 +2602,20 @@ function getScheduled24HourSlot(
 }
 
 // ==================================================
-// ADD DAYS USING UTC DATE ARITHMETIC
+// ADD DAYS
 // ==================================================
 
-function datePlusDays(
-  dateString,
-  days
-) {
-  const [y, m, d] =
-    dateString
-      .split("-")
-      .map(Number);
+function datePlusDays(dateString, days) {
+  const [y, m, d] = dateString
+    .split("-")
+    .map(Number);
 
-  const date =
-    new Date(
-      Date.UTC(
-        y,
-        m - 1,
-        d
-      )
-    );
+  const date = new Date(
+    Date.UTC(y, m - 1, d)
+  );
 
   date.setUTCDate(
-    date.getUTCDate() +
-      days
+    date.getUTCDate() + days
   );
 
   return (
@@ -2759,36 +2633,19 @@ function datePlusDays(
 // NAIROBI TIME
 // ==================================================
 
-function nairobiParts(
-  date = new Date()
-) {
+function nairobiParts(date = new Date()) {
   const fields =
     new Intl.DateTimeFormat(
       "en-GB",
       {
-        timeZone:
-          "Africa/Nairobi",
-
-        year:
-          "numeric",
-
-        month:
-          "2-digit",
-
-        day:
-          "2-digit",
-
-        hour:
-          "2-digit",
-
-        minute:
-          "2-digit",
-
-        second:
-          "2-digit",
-
-        hourCycle:
-          "h23",
+        timeZone: "Africa/Nairobi",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
       }
     ).formatToParts(date);
 
@@ -2796,35 +2653,22 @@ function nairobiParts(
 
   for (const p of fields) {
     if (p.type !== "literal") {
-      out[p.type] =
-        p.value;
+      out[p.type] = p.value;
     }
   }
 
   return {
-    year:
-      +out.year,
-
-    month:
-      +out.month,
-
-    day:
-      +out.day,
-
-    hour:
-      +out.hour,
-
-    minute:
-      +out.minute,
-
-    second:
-      +out.second,
+    year: +out.year,
+    month: +out.month,
+    day: +out.day,
+    hour: +out.hour,
+    minute: +out.minute,
+    second: +out.second,
   };
 }
 
 function nairobiDate() {
-  const p =
-   nairobiParts();
+  const p = nairobiParts();
 
   return (
     `${p.year}-` +
@@ -2838,8 +2682,7 @@ function nairobiDate() {
 }
 
 function nairobiTime(date) {
-  const p =
-    nairobiParts(date);
+  const p = nairobiParts(date);
 
   return (
     `${String(
@@ -2863,46 +2706,32 @@ function shouldRefreshToken(u) {
     return true;
   }
 
-  const stored =
-    Number(u.expires_at);
+  const stored = Number(u.expires_at);
 
   const exp =
-    Number.isFinite(stored) &&
-    stored > 0
+    Number.isFinite(stored) && stored > 0
       ? stored
-      : jwtExpiry(
-          u.access_token
-        );
+      : jwtExpiry(u.access_token);
 
   return exp
-    ? (
-        exp -
-        Math.floor(
-          Date.now() / 1000
-        )
-      ) <= 300
+    ? exp - Math.floor(Date.now() / 1000) <= 300
     : false;
 }
 
 function jwtExpiry(token) {
   try {
-    let payload =
-      String(token)
-        .split(".")[1]
-        .replace(/-/g, "+")
-        .replace(/_/g, "/");
+    let payload = String(token)
+      .split(".")[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
 
-    while (
-      payload.length % 4
-    ) {
+    while (payload.length % 4) {
       payload += "=";
     }
 
     return (
       Number(
-        JSON.parse(
-          atob(payload)
-        ).exp
+        JSON.parse(atob(payload)).exp
       ) || null
     );
   } catch {
@@ -2915,8 +2744,7 @@ function sessionExpired() {
     "Your login session expired. Please log in again."
   );
 
-  err.name =
-    "SessionExpiredError";
+  err.name = "SessionExpiredError";
 
   return err;
 }
@@ -2927,26 +2755,20 @@ function sessionExpired() {
 
 const roundMoney = (value) =>
   Math.round(
-    (
-      Number(value) +
-      Number.EPSILON
-    ) * 100
+    (Number(value) + Number.EPSILON) * 100
   ) / 100;
 
 const money = (value) =>
   Number(value || 0).toLocaleString(
     "en-KE",
     {
-      minimumFractionDigits:
-        2,
-
-      maximumFractionDigits:
-        2,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }
   );
 
 // ==================================================
-// STYLES — PRESERVED
+// STYLES
 // ==================================================
 
 const loadingStyle = {
@@ -3131,5 +2953,4 @@ const refreshButtonStyle = {
   fontWeight: 800,
   fontSize: 13,
   backgroundColor: "#063c63",
-  cursor: "pointer",
 };
