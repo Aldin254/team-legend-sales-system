@@ -132,13 +132,7 @@ async function getRecoveryTarget(
 }
 
 // ==================================================
-// NEW — STRICT 12-HOUR OPENING GATE
-//
-// Uses installed Stage 5B RPC.
-// This function records a locked opening attempt
-// whenever previous closing incidents are pending.
-//
-// Fail closed on missing or invalid response.
+// STRICT 12-HOUR OPENING GATE
 // ==================================================
 
 async function get12HourOpeningGate(token) {
@@ -197,7 +191,7 @@ export default function DashboardPage() {
   const [startingShift, setStartingShift] =
     useState(false);
 
-  // EXISTING ADMIN RECOVERY
+  // ADMIN RECOVERY
 
   const [recoveryView, setRecoveryView] =
     useState(null);
@@ -208,7 +202,7 @@ export default function DashboardPage() {
   const [recoveryError, setRecoveryError] =
     useState("");
 
-  // NEW — 12-HOUR ACCOUNTABILITY
+  // 12-HOUR ACCOUNTABILITY
 
   const [closingGate, setClosingGate] =
     useState(null);
@@ -381,8 +375,6 @@ export default function DashboardPage() {
   // 3. 12-HOUR CLOSING GATE
   // 4. NORMAL OPEN SHIFT
   // 5. PREVIOUS CLOSED SHIFT
-  //
-  // Do not show old editable 12-hour shifts.
   // ==================================================
 
   useEffect(() => {
@@ -511,13 +503,6 @@ export default function DashboardPage() {
         // ======================================
         // STRICT 12-HOUR CLOSING CHECK
         // ======================================
-        //
-        // Run BEFORE selecting any OPEN shift.
-        // A cashier with unresolved incidents
-        // must not access editable financial forms.
-        //
-        // Failed RPC = locked, never ignored.
-        // ======================================
 
         if (type === "12_HOUR") {
           try {
@@ -562,7 +547,7 @@ export default function DashboardPage() {
         }
 
         // ======================================
-        // NORMAL OPEN SHIFT FOR THIS CASHIER
+        // NORMAL OPEN SHIFT FOR CASHIER
         // ======================================
 
         const mine = await restGet(
@@ -585,21 +570,14 @@ export default function DashboardPage() {
 
         if (open) {
           if (type === "12_HOUR") {
-            // A previous business-date shift
-            // cannot remain editable today.
-
             if (
               String(open.business_date) !==
               nairobiDate()
             ) {
               setCurrentShift(null);
               setStaleOpenShift(open);
-
               return;
             }
-
-            // Recovery could have started
-            // while loading the current shift.
 
             const newlyActive =
               await getRecoveryAssignment(
@@ -639,6 +617,9 @@ export default function DashboardPage() {
 
           if (cancelled) return;
 
+          // Existing OPEN 24-hour shifts are
+          // never renamed or automatically closed.
+
           setCurrentShift(open);
 
           setBalanceBF(
@@ -677,10 +658,6 @@ export default function DashboardPage() {
 
             return;
           }
-
-          // ==================================
-          // ALREADY CLOSED TODAY
-          // ==================================
 
           const completed =
             await getClosedShiftForDate(
@@ -778,8 +755,6 @@ export default function DashboardPage() {
 
   // ==================================================
   // LIVE RECOVERY CHECK — EVERY 8 SECONDS
-  //
-  // Existing Admin Recovery behavior retained.
   // ==================================================
 
   useEffect(() => {
@@ -825,8 +800,7 @@ export default function DashboardPage() {
 
           if (cancelled) return;
 
-          wasRecoveringRef.current =
-            true;
+          wasRecoveringRef.current = true;
 
           setRecoveryView({
             assignment: active,
@@ -894,17 +868,7 @@ export default function DashboardPage() {
   ]);
 
   // ==================================================
-  // NEW — LIVE 12-HOUR INCIDENT CHECK
-  //
-  // Rechecks every 20 seconds.
-  //
-  // If a new closing incident appears:
-  // Hide the editable cashier report.
-  //
-  // If Admin resolves the incident:
-  // Reload and verify opening information again.
-  //
-  // Database financial guards remain authoritative.
+  // LIVE 12-HOUR INCIDENT CHECK
   // ==================================================
 
   useEffect(() => {
@@ -920,14 +884,11 @@ export default function DashboardPage() {
     let cancelled = false;
 
     async function pollGate() {
-      if (
-        closingGatePollRef.current
-      ) {
+      if (closingGatePollRef.current) {
         return;
       }
 
-      closingGatePollRef.current =
-        true;
+      closingGatePollRef.current = true;
 
       try {
         const gate =
@@ -951,10 +912,6 @@ export default function DashboardPage() {
           setBalanceBF("");
           setBalanceLocked(true);
         } else if (wasLocked) {
-          // Admin verified the incident.
-          // Reload previous shift history and
-          // check the current business date.
-
           window.location.reload();
         }
       } catch (err) {
@@ -967,8 +924,7 @@ export default function DashboardPage() {
           setCurrentShift(null);
         }
       } finally {
-        closingGatePollRef.current =
-          false;
+        closingGatePollRef.current = false;
       }
     }
 
@@ -1085,11 +1041,6 @@ export default function DashboardPage() {
 
   // ==================================================
   // START SHIFT
-  //
-  // STRICT 12-HOUR SECURITY:
-  // Recheck the database before creating a shift.
-  //
-  // 24-HOUR SHIFT LOGIC PRESERVED.
   // ==================================================
 
   async function startShift() {
@@ -1119,10 +1070,6 @@ export default function DashboardPage() {
           "This 12-hour shop has already closed today."
         );
       }
-
-      // ======================================
-      // PREVENT UNVERIFIED 12-HOUR OPENING
-      // ======================================
 
       if (
         shopType === "12_HOUR" &&
@@ -1167,10 +1114,6 @@ export default function DashboardPage() {
           "Incomplete cashier login."
         );
       }
-
-      // ======================================
-      // FRESH ADMIN RECOVERY CHECK
-      // ======================================
 
       if (
         await getRecoveryAssignment(
@@ -1266,8 +1209,7 @@ export default function DashboardPage() {
       );
 
       if (open?.length) {
-        const existing =
-          open[0];
+        const existing = open[0];
 
         if (
           type === "12_HOUR" &&
@@ -1285,9 +1227,7 @@ export default function DashboardPage() {
         }
 
         if (
-          String(
-            existing.cashier_id
-          ) !==
+          String(existing.cashier_id) !==
           String(cashierId)
         ) {
           throw new Error(
@@ -1314,9 +1254,10 @@ export default function DashboardPage() {
           );
         }
 
-        setCurrentShift(
-          existing
-        );
+        // Never create another shift while
+        // this shop already has an OPEN shift.
+
+        setCurrentShift(existing);
 
         setBalanceBF(
           String(
@@ -1364,9 +1305,7 @@ export default function DashboardPage() {
         );
       }
 
-      if (
-        !Number.isFinite(bf)
-      ) {
+      if (!Number.isFinite(bf)) {
         throw new Error(
           "Cannot open shift with an unverified Balance B/F."
         );
@@ -1377,45 +1316,34 @@ export default function DashboardPage() {
       const base = {
         shop_id: shopId,
 
-        cashier_id:
-          cashierId,
+        cashier_id: cashierId,
 
-        cashier_name:
-          cashierName,
+        cashier_name: cashierName,
 
-        opened_at:
-          now.toISOString(),
+        opened_at: now.toISOString(),
 
-        closed_at:
-          null,
+        closed_at: null,
 
-        status:
-          "OPEN",
+        status: "OPEN",
 
-        opening_balance:
-          roundMoney(bf),
+        opening_balance: roundMoney(bf),
 
-        total_added_float:
-          0,
+        total_added_float: 0,
 
-        total_output:
-          0,
+        total_output: 0,
 
-        total_expenses:
-          0,
+        total_expenses: 0,
 
-        net_income:
-          roundMoney(bf),
+        net_income: roundMoney(bf),
 
-        closing_balance:
-          roundMoney(bf),
+        closing_balance: roundMoney(bf),
 
-        notes:
-          null,
+        notes: null,
       };
 
       // ======================================
       // 12-HOUR SHIFT
+      // ORIGINAL BEHAVIOR PRESERVED
       // ======================================
 
       if (type === "12_HOUR") {
@@ -1436,19 +1364,14 @@ export default function DashboardPage() {
           );
         }
 
-        // Fixed 11:59 PM cutoff.
-        // Supabase also enforces this.
-
         const newShift =
           await createShift(
             {
               ...base,
 
-              shift_name:
-                "DAY",
+              shift_name: "DAY",
 
-              business_date:
-                nairobiDate(),
+              business_date: nairobiDate(),
 
               scheduled_start:
                 nairobiTime(now),
@@ -1466,9 +1389,7 @@ export default function DashboardPage() {
           token
         );
 
-        setCurrentShift(
-          newShift
-        );
+        setCurrentShift(newShift);
 
         setBalanceBF(
           String(
@@ -1483,21 +1404,92 @@ export default function DashboardPage() {
       }
 
       // ======================================
-      // 24-HOUR SHIFT
-      // ORIGINAL LOGIC PRESERVED
+      // 24-HOUR SHIFT — CORRECTED
+      //
+      // Select the shift by Nairobi time.
+      // Never alternate solely from the
+      // previous shift name.
+      //
+      // Protect business date, duplicate
+      // shifts, platform handover, and B/F.
       // ======================================
 
       if (type === "24_HOUR") {
-        const shiftName =
-          determineNext24HourShift(
-            previous
+        const slot =
+          getScheduled24HourSlot(now);
+
+        // Prevent duplicate historical slots.
+
+        const existingSlot =
+          await restGet(
+            `shifts?shop_id=eq.${encodeURIComponent(
+              shopId
+            )}` +
+              `&business_date=eq.${encodeURIComponent(
+                slot.businessDate
+              )}` +
+              `&shift_name=eq.${encodeURIComponent(
+                slot.shiftName
+              )}` +
+              "&select=id,status" +
+              "&limit=1",
+            token
           );
+
+        if (existingSlot?.length) {
+          throw new Error(
+            `${slot.shiftName} for ` +
+            `${slot.businessDate} already exists. ` +
+            "Contact Admin for correction."
+          );
+        }
+
+        // Expected chronological predecessor:
+        //
+        // SHIFT 1 today follows SHIFT 2 yesterday.
+        // SHIFT 2 today follows SHIFT 1 today.
+        //
+        // Do not silently skip overnight shifts.
+
+        if (
+          previous &&
+          proper24h(previous.shift_name)
+        ) {
+          const expectedPreviousName =
+            slot.shiftName === "SHIFT 1"
+              ? "SHIFT 2"
+              : "SHIFT 1";
+
+          const expectedPreviousDate =
+            slot.shiftName === "SHIFT 1"
+              ? datePlusDays(
+                  slot.businessDate,
+                  -1
+                )
+              : slot.businessDate;
+
+          if (
+            normaliseShiftName(
+              previous.shift_name
+            ) !== expectedPreviousName ||
+            String(previous.business_date) !==
+              expectedPreviousDate
+          ) {
+            throw new Error(
+              "Previous 24-hour shift history " +
+              "is incomplete or out of sequence. " +
+              "Contact Admin to reconcile the " +
+              "missing shift and platform readings."
+            );
+          }
+        }
+
+        // Preserve the original authoritative
+        // platform handover requirements.
 
         const readings =
           previous &&
-          proper24h(
-            previous.shift_name
-          )
+          proper24h(previous.shift_name)
             ? await get24HourCarryForwardReadings(
                 shopId,
                 previous,
@@ -1515,31 +1507,27 @@ export default function DashboardPage() {
           );
         }
 
+        // The shift identity and business date
+        // are now derived from the same Nairobi
+        // timestamp, preventing inconsistencies.
+
         const newShift =
           await createShift(
             {
               ...base,
 
-              cashier_name:
-                "NOT ASSIGNED",
+              cashier_name: "NOT ASSIGNED",
 
-              shift_name:
-                shiftName,
+              shift_name: slot.shiftName,
 
               business_date:
-                get24HourBusinessDate(
-                  shiftName
-                ),
+                slot.businessDate,
 
               scheduled_start:
-                shiftName === "SHIFT 1"
-                  ? "09:00:00"
-                  : "21:00:00",
+                slot.scheduledStart,
 
               scheduled_end:
-                shiftName === "SHIFT 1"
-                  ? "21:00:00"
-                  : "09:00:00",
+                slot.scheduledEnd,
             },
             token
           );
@@ -1551,9 +1539,7 @@ export default function DashboardPage() {
           token
         );
 
-        setCurrentShift(
-          newShift
-        );
+        setCurrentShift(newShift);
 
         setBalanceBF(
           String(
@@ -1591,15 +1577,6 @@ export default function DashboardPage() {
 
   // ==================================================
   // AUTOMATIC 12-HOUR NEXT-DAY OPENING
-  //
-  // Only when:
-  // - No Admin Recovery is active
-  // - No incomplete closing incident exists
-  // - No overdue OPEN shift exists
-  // - No shift has closed today
-  // - A previous CLOSED shift provides Balance B/F
-  //
-  // First-ever shift still requires manual B/F.
   // ==================================================
 
   useEffect(() => {
@@ -1633,8 +1610,7 @@ export default function DashboardPage() {
       return;
     }
 
-    autoStart12hRef.current =
-      key;
+    autoStart12hRef.current = key;
 
     void startShift();
   }, [
@@ -1775,7 +1751,6 @@ export default function DashboardPage() {
 
   // ==========================================
   // 12-HOUR VERIFICATION FAILED
-  // FAIL CLOSED
   // ==========================================
 
   if (
@@ -1823,7 +1798,7 @@ export default function DashboardPage() {
   }
 
   // ==========================================
-  // NEW — STRICT ACCOUNTABILITY LOCK
+  // STRICT 12-HOUR ACCOUNTABILITY LOCK
   // ==========================================
 
   if (
@@ -2173,7 +2148,6 @@ export default function DashboardPage() {
     </div>
   );
 }
-
 // ==================================================
 // SHOP AND SHIFT HELPERS
 // ==================================================
@@ -2262,11 +2236,8 @@ async function getClosedShiftForDate(
 // ==================================================
 // LAST CLOSED SHIFT
 //
-// For 12H, use business-date order to avoid
-// a late Admin closure making an older shift
-// appear newer than the latest business date.
-//
-// For 24H, retain the original closed_at order.
+// 12H: BUSINESS DATE ORDER.
+// 24H: EXISTING CLOSED-AT ORDER.
 // ==================================================
 
 async function getLatestClosedShift(
@@ -2415,9 +2386,6 @@ async function get12HourOpeningReadings(
 
 // ==================================================
 // REPAIR EXISTING 12-HOUR OPENING READINGS
-//
-// Only invoked for valid current-day OPEN shifts.
-// Never called for locked overdue shifts.
 // ==================================================
 
 async function ensure12HourOpeningReadings(
@@ -2506,7 +2474,6 @@ async function ensure12HourOpeningReadings(
 
 // ==================================================
 // 24-HOUR PLATFORM CARRY FORWARD
-// ORIGINAL LOGIC RETAINED
 // ==================================================
 
 async function get24HourCarryForwardReadings(
@@ -2656,8 +2623,7 @@ async function insertOpeningReadings(
 }
 
 // ==================================================
-// 24-HOUR SHIFT HELPERS
-// ORIGINAL LOGIC RETAINED
+// 24-HOUR SHIFT HELPERS — CORRECTED
 // ==================================================
 
 function normaliseShiftName(value) {
@@ -2693,46 +2659,67 @@ const isTable = (name) =>
     .toUpperCase() ===
   "TABLE";
 
-function determineNext24HourShift(
-  previous
+// ==================================================
+// SELECT SHIFT FROM NAIROBI CLOCK
+//
+// 09:00 to 20:59 => SHIFT 1
+// 21:00 to 08:59 => SHIFT 2
+//
+// At 00:00 to 08:59, SHIFT 2 belongs
+// to the previous business date.
+//
+// Previously closed shift is NOT used
+// to choose SHIFT 1 or SHIFT 2.
+// ==================================================
+
+function getScheduled24HourSlot(
+  at = new Date()
 ) {
-  const name =
-    normaliseShiftName(
-      previous?.shift_name
-    );
+  const p = nairobiParts(at);
 
-  if (name === "SHIFT 1") {
-    return "SHIFT 2";
-  }
-
-  if (name === "SHIFT 2") {
-    return "SHIFT 1";
-  }
-
-  const { hour } =
-    nairobiParts();
-
-  return hour >= 9 && hour < 21
-    ? "SHIFT 1"
-    : "SHIFT 2";
-}
-
-function get24HourBusinessDate(
-  name
-) {
   const today =
-    nairobiDate();
+    `${p.year}-` +
+    `${String(
+      p.month
+    ).padStart(2, "0")}-` +
+    `${String(
+      p.day
+    ).padStart(2, "0")}`;
 
-  return (
-    name === "SHIFT 2" &&
-    nairobiParts().hour < 9
-  )
-    ? datePlusDays(
-        today,
-        -1
-      )
-    : today;
+  const shiftName =
+    p.hour >= 9 &&
+    p.hour < 21
+      ? "SHIFT 1"
+      : "SHIFT 2";
+
+  const businessDate =
+    shiftName === "SHIFT 2" &&
+    p.hour < 9
+      ? datePlusDays(
+          today,
+          -1
+        )
+      : today;
+
+  return {
+    shiftName,
+    businessDate,
+
+    scheduledStart:
+      shiftName === "SHIFT 1"
+        ? "09:00:00"
+        : "21:00:00",
+
+    scheduledEnd:
+      shiftName === "SHIFT 1"
+        ? "21:00:00"
+        : "09:00:00",
+  };
 }
+
+// ==================================================
+// ADD DAYS USING UTC DATE ARITHMETIC
+// ==================================================
 
 function datePlusDays(
   dateString,
@@ -2838,6 +2825,7 @@ function nairobiParts(
 function nairobiDate() {
   const p =
    nairobiParts();
+
   return (
     `${p.year}-` +
     `${String(
@@ -2958,8 +2946,7 @@ const money = (value) =>
   );
 
 // ==================================================
-// STYLES
-// ORIGINAL STYLES RETAINED
+// STYLES — PRESERVED
 // ==================================================
 
 const loadingStyle = {
@@ -3101,7 +3088,7 @@ const balancePreviewStyle = {
 };
 
 // ==================================================
-// NEW — 12-HOUR LOCK SCREEN STYLES
+// 12-HOUR LOCK SCREEN STYLES
 // ==================================================
 
 const centeredHeadingStyle = {
