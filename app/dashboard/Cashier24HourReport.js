@@ -1,6 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import CashierSavingsPanel from "./CashierSavingsPanel";
@@ -12,14 +16,15 @@ import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import PlatformReadings24Hour from "./PlatformReadings24Hour";
 import CloseShift24Hour from "./CloseShift24Hour";
 
+// ==============================================
 // TEAM LEGEND / NYIKA
 // 24-HOUR CASHIER REPORT
 //
-// Company floats: READ ONLY.
-// M-Shwari floats: READ ONLY / LOCKED.
-// No manual M-Shwari float saving.
-// Existing historical floats still count.
-// Duty Rota, Salary V3 and Expenses preserved.
+// Cashier name: saved Master Employee assignment.
+// No profile-based Duty Rota name lookup.
+//
+// Existing financial features and layout retained.
+// ==============================================
 
 export default function Cashier24HourReport({
   user,
@@ -27,28 +32,51 @@ export default function Cashier24HourReport({
 }) {
   const router = useRouter();
 
-  const [shift, setShift] = useState(currentShift || null);
-  const [incomeEntries, setIncomeEntries] = useState([]);
+  const [shift, setShift] = useState(
+    currentShift || null
+  );
+
+  const [incomeEntries, setIncomeEntries] =
+    useState([]);
+
   const [expenses, setExpenses] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [savingExpenses, setSavingExpenses] = useState(false);
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
-  const [now, setNow] = useState(() => new Date());
 
-  const [expenseInputs, setExpenseInputs] = useState(
-    Array.from({ length: 10 }, () => ({
-      description: "",
-      amount: "",
-    }))
+  const [savingExpenses, setSavingExpenses] =
+    useState(false);
+
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] =
+    useState("");
+
+  const [now, setNow] = useState(
+    () => new Date()
   );
 
-  // SUPABASE
+  const [expenseInputs, setExpenseInputs] =
+    useState(
+      Array.from(
+        { length: 10 },
+        () => ({
+          description: "",
+          amount: "",
+        })
+      )
+    );
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const accessToken = user?.access_token || null;
+  // ==============================================
+  // SUPABASE
+  // ==============================================
+
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  const accessToken =
+    user?.access_token || null;
 
   const shopId =
     user?.shop_id ||
@@ -63,7 +91,8 @@ export default function Cashier24HourReport({
     user?.auth_user_id ||
     null;
 
-  const shiftId = currentShift?.id || null;
+  const shiftId =
+    currentShift?.id || null;
 
   const shopName =
     user?.shop ||
@@ -71,204 +100,46 @@ export default function Cashier24HourReport({
     user?.shopName ||
     "SHOP";
 
-  // ==================================================
-  // CASHIER ON DUTY: EFFECTIVE MASTER DUTY ROTA
-  // ==================================================
+  // ==============================================
+  // CASHIER ON DUTY
+  //
+  // Read the employee assignment already saved
+  // against this shift by Admin/Duty Rota.
+  //
+  // master_employee_id is the employee identity.
+  // cashier_id is a separate login-profile identity.
+  //
+  // Do not confuse or substitute these IDs.
+  // ==============================================
 
-  const dutyShiftId = currentShift?.id || shift?.id || null;
+  const assignedMasterId =
+    shift?.master_employee_id ||
+    currentShift?.master_employee_id ||
+    null;
 
-  const dutyScope = JSON.stringify([
-    dutyShiftId,
-    shopId,
-    accessToken,
-  ]);
+  const assignedName = String(
+    shift?.cashier_name ||
+    currentShift?.cashier_name ||
+    ""
+  ).trim();
 
-  const [dutyNameState, setDutyNameState] = useState({
-    scope: null,
-    name: null,
-  });
-
-  useEffect(() => {
-    let active = true;
-    let busy = false;
-    let controller = null;
-
-    if (
-      !dutyShiftId ||
-      !shopId ||
-      !accessToken ||
-      !supabaseUrl ||
-      !supabaseAnonKey
-    ) {
-      setDutyNameState({
-        scope: dutyScope,
-        name: "ROTA UNAVAILABLE",
-      });
-      return;
-    }
-
-    async function loadDutyName() {
-      if (!active || busy) return;
-
-      busy = true;
-      const requestController = new AbortController();
-      controller = requestController;
-
-      const timeout = setTimeout(
-        () => requestController.abort(),
-        12000
-      );
-
-      try {
-        const response = await fetch(
-          `${String(supabaseUrl).replace(/\/+$/, "")}` +
-            "/rest/v1/rpc/tl_meals_rota_duty_snapshot",
-          {
-            method: "POST",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              p_shift_id: dutyShiftId,
-            }),
-            cache: "no-store",
-            signal: requestController.signal,
-          }
-        );
-
-        const result = await response
-          .json()
-          .catch(() => null);
-
-        if (
-          !response.ok ||
-          result?.ok !== true ||
-          !Array.isArray(result?.employees) ||
-          String(result.shift_id) !== String(dutyShiftId)
-        ) {
-          throw new Error(
-            result?.message ||
-              `Duty Rota request failed (HTTP ${response.status}).`
-          );
-        }
-
-        const employeesById = new Map();
-
-        for (const employee of result.employees) {
-          const id = String(employee?.employee_id || "").trim();
-          const name = String(employee?.full_name || "").trim();
-          const employeeShop = String(employee?.duty_shop_id || "");
-
-          if (
-            id &&
-            name &&
-            employeeShop === String(shopId)
-          ) {
-            employeesById.set(id, name);
-          }
-        }
-
-        const names = Array.from(employeesById.values());
-
-        const resolvedName =
-          names.length === 1
-            ? names[0]
-            : names.length === 0
-              ? "ROTA VACANT"
-              : "CHECK ROTA ASSIGNMENTS";
-
-        if (names.length > 1) {
-          console.warn(
-            "Multiple employees assigned to one 24-hour shift."
-          );
-        }
-
-        if (!active) return;
-
-        setDutyNameState({
-          scope: dutyScope,
-          name: resolvedName,
-        });
-      } catch (error) {
-        if (!active) return;
-
-        console.error(
-          "24-HOUR DUTY ROTA NAME ERROR:",
-          error
-        );
-
-        setDutyNameState((previous) => {
-          if (
-            previous.scope === dutyScope &&
-            previous.name &&
-            previous.name !== "ROTA UNAVAILABLE"
-          ) {
-            return previous;
-          }
-
-          return {
-            scope: dutyScope,
-            name: "ROTA UNAVAILABLE",
-          };
-        });
-      } finally {
-        clearTimeout(timeout);
-
-        if (controller === requestController) {
-          controller = null;
-        }
-
-        busy = false;
-      }
-    }
-
-    void loadDutyName();
-
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void loadDutyName();
-      }
-    }, 60000);
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void loadDutyName();
-      }
-    };
-
-    document.addEventListener(
-      "visibilitychange",
-      onVisibilityChange
-    );
-
-    return () => {
-      active = false;
-      clearInterval(timer);
-
-      document.removeEventListener(
-        "visibilitychange",
-        onVisibilityChange
-      );
-
-      if (controller) controller.abort();
-    };
-  }, [
-    dutyShiftId,
-    shopId,
-    accessToken,
-    supabaseUrl,
-    supabaseAnonKey,
-    dutyScope,
-  ]);
+  const validAssignedName =
+    assignedName.length > 0 &&
+    ![
+      "NOT ASSIGNED",
+      "WELCOME",
+      "ROTA UNAVAILABLE",
+      "UNASSIGNED",
+    ].includes(assignedName.toUpperCase());
 
   const cashierName =
-    dutyNameState.scope === dutyScope
-      ? dutyNameState.name || "ROTA LOADING..."
-      : "ROTA LOADING...";
+    assignedMasterId && validAssignedName
+      ? assignedName
+      : "NOT ASSIGNED";
 
+  // ==============================================
   // NAIROBI CLOCK
+  // ==============================================
 
   useEffect(() => {
     setNow(new Date());
@@ -280,9 +151,9 @@ export default function Cashier24HourReport({
     return () => clearInterval(timer);
   }, []);
 
-  // ==================================================
+  // ==============================================
   // LOAD SHIFT / FLOATS / EXPENSES
-  // ==================================================
+  // ==============================================
 
   const loadReport = useCallback(async () => {
     if (
@@ -302,11 +173,12 @@ export default function Cashier24HourReport({
         accessToken
       );
 
-      // SHIFT
+      // CURRENT SHIFT
 
       const shiftResponse = await fetch(
         `${supabaseUrl}/rest/v1/shifts` +
           `?id=eq.${encodeURIComponent(shiftId)}` +
+          `&shop_id=eq.${encodeURIComponent(shopId)}` +
           "&select=*&limit=1",
         {
           method: "GET",
@@ -315,20 +187,27 @@ export default function Cashier24HourReport({
         }
       );
 
-      const shiftResult = await safeJson(shiftResponse);
+      const shiftResult =
+        await safeJson(shiftResponse);
 
       if (!shiftResponse.ok) {
         throw new Error(
           shiftResult?.message ||
-            shiftResult?.details ||
-            "Unable to load shift."
+          shiftResult?.details ||
+          "Unable to load shift."
         );
       }
 
       const latestShift =
-        Array.isArray(shiftResult) && shiftResult.length > 0
-          ? shiftResult[0]
+        Array.isArray(shiftResult)
+          ? shiftResult[0] || null
           : null;
+
+      if (!latestShift) {
+        throw new Error(
+          "Shift is no longer accessible."
+        );
+      }
 
       // FLOAT LEDGER
 
@@ -344,19 +223,21 @@ export default function Cashier24HourReport({
         }
       );
 
-      const incomeResult = await safeJson(incomeResponse);
+      const incomeResult =
+        await safeJson(incomeResponse);
 
       if (!incomeResponse.ok) {
         throw new Error(
           incomeResult?.message ||
-            incomeResult?.details ||
-            "Unable to load float entries."
+          incomeResult?.details ||
+          "Unable to load float entries."
         );
       }
 
-      const loadedIncome = Array.isArray(incomeResult)
-        ? incomeResult
-        : [];
+      const loadedIncome =
+        Array.isArray(incomeResult)
+          ? incomeResult
+          : [];
 
       // EXPENSES
 
@@ -372,22 +253,21 @@ export default function Cashier24HourReport({
         }
       );
 
-      const expenseResult = await safeJson(expenseResponse);
+      const expenseResult =
+        await safeJson(expenseResponse);
 
       if (!expenseResponse.ok) {
         throw new Error(
           expenseResult?.message ||
-            expenseResult?.details ||
-            "Unable to load expenses."
+          expenseResult?.details ||
+          "Unable to load expenses."
         );
       }
 
-      const loadedExpenses = Array.isArray(expenseResult)
-        ? expenseResult
-        : [];
-
-      // Only manual expenses occupy the 10 entry rows.
-      // Private salary and automatic expenses remain in totals.
+      const loadedExpenses =
+        Array.isArray(expenseResult)
+          ? expenseResult
+          : [];
 
       const loadedManualExpenses =
         loadedExpenses.filter((expense) => {
@@ -398,12 +278,15 @@ export default function Cashier24HourReport({
             .toUpperCase();
 
           return (
-            (sourceType === "" || sourceType === "MANUAL") &&
+            (
+              sourceType === "" ||
+              sourceType === "MANUAL"
+            ) &&
             expense?.is_private !== true
           );
         });
 
-      setShift(latestShift || currentShift);
+      setShift(latestShift);
       setIncomeEntries(loadedIncome);
       setExpenses(loadedExpenses);
 
@@ -411,8 +294,10 @@ export default function Cashier24HourReport({
         const next = Array.from(
           { length: 10 },
           (_, index) => ({
-            description: previous[index]?.description || "",
-            amount: previous[index]?.amount || "",
+            description:
+              previous[index]?.description || "",
+            amount:
+              previous[index]?.amount || "",
           })
         );
 
@@ -420,9 +305,11 @@ export default function Cashier24HourReport({
           if (loadedManualExpenses[i]) {
             next[i] = {
               description:
-                loadedManualExpenses[i].description || "",
+                loadedManualExpenses[i]
+                  .description || "",
               amount: String(
-                loadedManualExpenses[i].amount ?? ""
+                loadedManualExpenses[i]
+                  .amount ?? ""
               ),
             };
           }
@@ -430,12 +317,16 @@ export default function Cashier24HourReport({
 
         return next;
       });
+
     } catch (error) {
-      console.error("24H CASHIER REPORT ERROR:", error);
+      console.error(
+        "24H CASHIER REPORT ERROR:",
+        error
+      );
 
       setMessage(
         error?.message ||
-          "Unable to load 24-hour cashier report."
+        "Unable to load 24-hour cashier report."
       );
 
       setMessageType("error");
@@ -448,15 +339,20 @@ export default function Cashier24HourReport({
     accessToken,
     supabaseUrl,
     supabaseAnonKey,
-    currentShift,
   ]);
 
+  // ==============================================
   // REFRESH EVERY 5 SECONDS
+  // ==============================================
 
-  const refresh24HourReport = useCallback(async () => {
-    await loadReport();
-    setRefreshKey((previous) => previous + 1);
-  }, [loadReport]);
+  const refresh24HourReport =
+    useCallback(async () => {
+      await loadReport();
+
+      setRefreshKey(
+        (previous) => previous + 1
+      );
+    }, [loadReport]);
 
   useEffect(() => {
     void refresh24HourReport();
@@ -468,73 +364,97 @@ export default function Cashier24HourReport({
     return () => clearInterval(timer);
   }, [refresh24HourReport]);
 
+  // ==============================================
+  // LOGOUT
+  // ==============================================
+
   function logout() {
-    sessionStorage.removeItem("teamLegendUser");
+    sessionStorage.removeItem(
+      "teamLegendUser"
+    );
+
     router.replace("/");
   }
 
-  // ==================================================
-  // FLOATS — ALL SIX ROWS READ ONLY
-  // ==================================================
+  // ==============================================
+  // FLOATS — READ ONLY
+  // ==============================================
 
   const companyEntries = incomeEntries.filter(
-    (entry) => entry.entry_type === "COMPANY_FLOAT"
+    (entry) =>
+      entry.entry_type === "COMPANY_FLOAT"
   );
 
   const mshwariEntries = incomeEntries.filter(
-    (entry) => entry.entry_type === "MSHWARI_FLOAT"
+    (entry) =>
+      entry.entry_type === "MSHWARI_FLOAT"
   );
 
   const companyTotal = roundMoney(
     companyEntries.reduce(
-      (sum, entry) => sum + Number(entry.amount ?? 0),
+      (sum, entry) =>
+        sum + Number(entry.amount ?? 0),
       0
     )
   );
 
   const mshwariTotal = roundMoney(
     mshwariEntries.reduce(
-      (sum, entry) => sum + Number(entry.amount ?? 0),
+      (sum, entry) =>
+        sum + Number(entry.amount ?? 0),
       0
     )
   );
 
   const companySlots = Array.from(
     { length: 3 },
-    (_, index) => companyEntries[index] || null
+    (_, index) =>
+      companyEntries[index] || null
   );
 
   const mshwariSlots = Array.from(
     { length: 3 },
-    (_, index) => mshwariEntries[index] || null
+    (_, index) =>
+      mshwariEntries[index] || null
   );
 
+  // ==============================================
   // MANUAL EXPENSES
+  // ==============================================
 
-  const manualExpenses = expenses.filter((expense) => {
-    const sourceType = String(
-      expense?.source_type || ""
-    )
-      .trim()
-      .toUpperCase();
+  const manualExpenses = expenses.filter(
+    (expense) => {
+      const sourceType = String(
+        expense?.source_type || ""
+      )
+        .trim()
+        .toUpperCase();
 
-    return (
-      (sourceType === "" || sourceType === "MANUAL") &&
-      expense?.is_private !== true
-    );
-  });
+      return (
+        (
+          sourceType === "" ||
+          sourceType === "MANUAL"
+        ) &&
+        expense?.is_private !== true
+      );
+    }
+  );
 
-  // ==================================================
-  // SAVE MANUAL EXPENSES ONLY
-  // ==================================================
+  // ==============================================
+  // SAVE MANUAL EXPENSE
+  //
+  // Existing saving workflow retained.
+  // ==============================================
 
   async function saveExpenses() {
-    const nextIndex = manualExpenses.length;
+    const nextIndex =
+      manualExpenses.length;
 
     if (nextIndex >= 10) {
       setMessage(
         "All 10 manual expense rows have already been saved."
       );
+
       setMessageType("success");
       return;
     }
@@ -543,12 +463,14 @@ export default function Cashier24HourReport({
       expenseInputs[nextIndex]?.description || ""
     ).trim();
 
-    const rawAmount = expenseInputs[nextIndex]?.amount;
+    const rawAmount =
+      expenseInputs[nextIndex]?.amount;
 
-    if (description === "") {
+    if (!description) {
       setMessage(
         `Enter the description for expense ${nextIndex + 1}.`
       );
+
       setMessageType("error");
       return;
     }
@@ -561,16 +483,21 @@ export default function Cashier24HourReport({
       setMessage(
         `Enter the amount for expense ${nextIndex + 1}.`
       );
+
       setMessageType("error");
       return;
     }
 
     const amount = Number(rawAmount);
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
       setMessage(
         `Enter a valid amount for expense ${nextIndex + 1}.`
       );
+
       setMessageType("error");
       return;
     }
@@ -594,29 +521,34 @@ export default function Cashier24HourReport({
           method: "POST",
           headers: {
             apikey: supabaseAnonKey,
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
+            Authorization:
+              `Bearer ${accessToken}`,
+            "Content-Type":
+              "application/json",
             Prefer: "return=representation",
           },
           body: JSON.stringify(rowToSave),
         }
       );
 
-      const result = await safeJson(response);
+      const result =
+        await safeJson(response);
 
       if (!response.ok) {
         throw new Error(
           result?.message ||
-            result?.details ||
-            "Unable to save expense."
+          result?.details ||
+          "Unable to save expense."
         );
       }
 
-      const existingExpenseTotal = expenses.reduce(
-        (sum, expense) =>
-          sum + Number(expense.amount ?? 0),
-        0
-      );
+      const existingExpenseTotal =
+        expenses.reduce(
+          (sum, expense) =>
+            sum +
+            Number(expense.amount ?? 0),
+          0
+        );
 
       const newExpenseTotal = roundMoney(
         existingExpenseTotal + amount
@@ -628,8 +560,10 @@ export default function Cashier24HourReport({
           method: "PATCH",
           headers: {
             apikey: supabaseAnonKey,
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
+            Authorization:
+              `Bearer ${accessToken}`,
+            "Content-Type":
+              "application/json",
           },
           body: JSON.stringify({
             total_expenses: newExpenseTotal,
@@ -650,20 +584,24 @@ export default function Cashier24HourReport({
       );
 
       setMessageType("success");
+
       await refresh24HourReport();
+
     } catch (error) {
       setMessage(
-        error?.message || "Unable to save expense."
+        error?.message ||
+        "Unable to save expense."
       );
+
       setMessageType("error");
     } finally {
       setSavingExpenses(false);
     }
   }
 
-  // ==================================================
-  // TOTALS
-  // ==================================================
+  // ==============================================
+  // FINANCIAL TOTALS
+  // ==============================================
 
   const openingBalance = Number(
     shift?.opening_balance ?? 0
@@ -681,27 +619,27 @@ export default function Cashier24HourReport({
     shift?.closing_balance ?? 0
   );
 
-  // Historical M-Shwari amounts remain in both totals.
-
   const totalAdded = roundMoney(
     openingBalance +
-      companyTotal +
-      mshwariTotal
+    companyTotal +
+    mshwariTotal
   );
 
   const totalSales = roundMoney(
     openingBalance +
-      companyTotal +
-      mshwariTotal +
-      totalOutput
+    companyTotal +
+    mshwariTotal +
+    totalOutput
   );
 
   const reportDate = formatReportDate(
-    shift?.opened_at || new Date().toISOString()
+    shift?.opened_at ||
+    new Date().toISOString()
   );
 
   const reportDay = formatReportDay(
-    shift?.opened_at || new Date().toISOString()
+    shift?.opened_at ||
+    new Date().toISOString()
   );
 
   const shiftStatus = String(
@@ -716,29 +654,41 @@ export default function Cashier24HourReport({
     shiftName === "SHIFT 1"
       ? "SHIFT 1"
       : shiftName === "SHIFT 2"
-        ? "SHIFT 2"
-        : shift?.shift_name || "24-HOUR SHIFT";
+      ? "SHIFT 2"
+      : shift?.shift_name ||
+        "24-HOUR SHIFT";
 
+  // ==============================================
   // GREETING
+  // ==============================================
 
   const shiftIsClosed =
     shiftStatus === "CLOSED" ||
     shiftStatus === "COMPLETED";
 
   const greetingShiftNumber =
-    shiftName === "SHIFT 2" ? "2" : "1";
+    shiftName === "SHIFT 2"
+      ? "2"
+      : "1";
 
-  const nairobiHour = getNairobiHour(now);
+  const nairobiHour =
+    getNairobiHour(now);
 
   let shiftGreeting;
 
   if (shiftIsClosed) {
     shiftGreeting =
       `Good Bye 👋 — Shift ${greetingShiftNumber} Closed`;
-  } else if (nairobiHour >= 5 && nairobiHour < 12) {
+  } else if (
+    nairobiHour >= 5 &&
+    nairobiHour < 12
+  ) {
     shiftGreeting =
       `Good Morning 🌞 — Welcome to Shift ${greetingShiftNumber}`;
-  } else if (nairobiHour >= 12 && nairobiHour < 17) {
+  } else if (
+    nairobiHour >= 12 &&
+    nairobiHour < 17
+  ) {
     shiftGreeting =
       `Good Afternoon ☀️ — Welcome to Shift ${greetingShiftNumber}`;
   } else {
@@ -756,12 +706,15 @@ export default function Cashier24HourReport({
 
   if (!shift) return null;
 
-  // ==================================================
+  // ==============================================
   // DASHBOARD
-  // ==================================================
+  // ==============================================
 
   return (
-    <div className="tl24-cashier-clean" style={pageStyle}>
+    <div
+      className="tl24-cashier-clean"
+      style={pageStyle}
+    >
       <style>{`
         .tl24-cashier-clean input[type="number"] {
           -moz-appearance: textfield;
@@ -779,10 +732,15 @@ export default function Cashier24HourReport({
 
       <header style={topHeaderStyle}>
         <div style={brandWrapStyle}>
-          <div style={crownStyle}>♛</div>
+          <div style={crownStyle}>
+            ♛
+          </div>
 
           <div>
-            <div style={brandStyle}>TEAM LEGEND</div>
+            <div style={brandStyle}>
+              TEAM LEGEND
+            </div>
+
             <div style={taglineStyle}>
               DISCIPLINE • FOCUS • RESULTS
             </div>
@@ -811,11 +769,12 @@ export default function Cashier24HourReport({
         </div>
       </header>
 
-      {/* LIVE FEED */}
+      {/* SHARED LIVE FEED */}
 
       <CashierLiveFeedPanel user={user} />
 
-      {/* MEALS & BONUSES */}
+      {/* MEALS AND BONUS PANEL
+          Backend authorization unchanged. */}
 
       <CashierMealsRotaPanel
         user={user}
@@ -823,25 +782,32 @@ export default function Cashier24HourReport({
       />
 
       <div style={bodyStyle}>
+        {/* SIDEBAR */}
+
         <aside style={sidebarStyle}>
           <SidebarItem
             active
             icon="⌂"
             label="Cashier Report"
           />
+
           <SidebarItem
             icon="▤"
             label="View Reports"
           />
+
           <SidebarItem
             icon="▦"
             label="Accounts"
           />
+
           <SidebarItem
             icon="⚙"
             label="Settings"
           />
         </aside>
+
+        {/* MAIN CONTENT */}
 
         <main style={mainStyle}>
           {/* TOP CARDS */}
@@ -873,8 +839,12 @@ export default function Cashier24HourReport({
               title="SHIFT"
               value={shiftLabel}
               subvalue={
-                `${displayTime(shift?.scheduled_start)} - ` +
-                displayTime(shift?.scheduled_end)
+                `${displayTime(
+                  shift?.scheduled_start
+                )} - ` +
+                displayTime(
+                  shift?.scheduled_end
+                )
               }
               tone="green"
             />
@@ -885,6 +855,8 @@ export default function Cashier24HourReport({
               tone="green"
             />
           </div>
+
+          {/* GREETING */}
 
           <div
             style={{
@@ -897,36 +869,43 @@ export default function Cashier24HourReport({
             {shiftGreeting}
           </div>
 
+          {/* SHIFT BANNER */}
+
           <div style={shiftBannerStyle}>
             <strong>
               {shiftName === "SHIFT 1"
                 ? "SHIFT 1 — DAY SHIFT"
                 : shiftName === "SHIFT 2"
-                  ? "SHIFT 2 — NIGHT SHIFT"
-                  : "24-HOUR SHIFT"}
+                ? "SHIFT 2 — NIGHT SHIFT"
+                : "24-HOUR SHIFT"}
             </strong>
 
             <span>
               {shiftName === "SHIFT 1"
                 ? "9:00 AM – 9:00 PM"
                 : shiftName === "SHIFT 2"
-                  ? "9:00 PM – 9:00 AM"
-                  : ""}
+                ? "9:00 PM – 9:00 AM"
+                : ""}
             </span>
           </div>
+
+          {/* MESSAGES */}
 
           {message && (
             <div
               style={{
                 ...messageStyle,
+
                 backgroundColor:
                   messageType === "success"
                     ? C.greenBg
                     : C.redBg,
+
                 color:
                   messageType === "success"
                     ? "#b5f2dc"
                     : "#ffc3ce",
+
                 borderColor:
                   messageType === "success"
                     ? "#2c645a"
@@ -937,9 +916,11 @@ export default function Cashier24HourReport({
             </div>
           )}
 
-          {/* INCOME AND EXPENSES */}
+          {/* INCOME / EXPENSES */}
 
           <div style={upperGridStyle}>
+            {/* INCOME */}
+
             <section style={panelStyle}>
               <PanelTitle
                 title="INCOME STATEMENT"
@@ -956,34 +937,43 @@ export default function Cashier24HourReport({
                 amount={openingBalance}
               />
 
-              {/* THREE COMPANY FLOATS */}
+              {/* COMPANY FLOATS */}
 
-              {companySlots.map((entry, index) => (
-                <ReadOnlyFloatRow
-                  key={`company-${index}`}
-                  label={
-                    `Added Float ${index + 1} From Company`
-                  }
-                  entry={entry}
-                />
-              ))}
+              {companySlots.map(
+                (entry, index) => (
+                  <ReadOnlyFloatRow
+                    key={`company-${index}`}
+                    label={
+                      `Added Float ${index + 1} From Company`
+                    }
+                    entry={entry}
+                  />
+                )
+              )}
 
-              {/* THREE LOCKED M-SHWARI FLOATS */}
+              {/* M-SHWARI FLOATS */}
 
-              {mshwariSlots.map((entry, index) => (
-                <ReadOnlyFloatRow
-                  key={`mshwari-${index}`}
-                  label={
-                    `Added Float ${index + 1} From M-Shwari`
-                  }
-                  entry={entry}
-                  alwaysLocked
-                />
-              ))}
+              {mshwariSlots.map(
+                (entry, index) => (
+                  <ReadOnlyFloatRow
+                    key={`mshwari-${index}`}
+                    label={
+                      `Added Float ${index + 1} From M-Shwari`
+                    }
+                    entry={entry}
+                    alwaysLocked
+                  />
+                )
+              )}
 
               <div style={incomeTotalStyle}>
-                <strong>TOTAL ADDED</strong>
-                <strong>{money(totalAdded)}</strong>
+                <strong>
+                  TOTAL ADDED
+                </strong>
+
+                <strong>
+                  {money(totalAdded)}
+                </strong>
               </div>
             </section>
 
@@ -1004,29 +994,39 @@ export default function Cashier24HourReport({
               {Array.from(
                 { length: 10 },
                 (_, index) => {
-                  const saved = manualExpenses[index];
+                  const saved =
+                    manualExpenses[index];
 
                   const rowUnlocked =
                     index === 0 ||
-                    Boolean(manualExpenses[index - 1]);
+                    Boolean(
+                      manualExpenses[index - 1]
+                    );
 
                   const rowDisabled =
-                    savingExpenses || !rowUnlocked;
+                    savingExpenses ||
+                    !rowUnlocked;
 
                   return (
                     <div
                       key={index}
                       style={expenseRowStyle}
                     >
-                      <div>{index + 1}</div>
+                      <div>
+                        {index + 1}
+                      </div>
 
                       {saved ? (
                         <>
-                          <div style={savedExpenseStyle}>
+                          <div
+                            style={savedExpenseStyle}
+                          >
                             {saved.description}
                           </div>
 
-                          <div style={savedExpenseStyle}>
+                          <div
+                            style={savedExpenseStyle}
+                          >
                             {money(saved.amount)} ✓
                           </div>
                         </>
@@ -1049,12 +1049,15 @@ export default function Cashier24HourReport({
 
                               setExpenseInputs(
                                 (previous) => {
-                                  const next = previous.map(
-                                    (row) => ({ ...row })
-                                  );
+                                  const next =
+                                    previous.map(
+                                      (row) => ({
+                                        ...row,
+                                      })
+                                    );
 
-                                  next[index].description =
-                                    value;
+                                  next[index]
+                                    .description = value;
 
                                   return next;
                                 }
@@ -1093,12 +1096,15 @@ export default function Cashier24HourReport({
 
                               setExpenseInputs(
                                 (previous) => {
-                                  const next = previous.map(
-                                    (row) => ({ ...row })
-                                  );
+                                  const next =
+                                    previous.map(
+                                      (row) => ({
+                                        ...row,
+                                      })
+                                    );
 
-                                  next[index].amount =
-                                    value;
+                                  next[index]
+                                    .amount = value;
 
                                   return next;
                                 }
@@ -1124,8 +1130,13 @@ export default function Cashier24HourReport({
               )}
 
               <div style={expenseTotalStyle}>
-                <strong>TOTAL EXPENSES</strong>
-                <strong>{money(totalExpenses)}</strong>
+                <strong>
+                  TOTAL EXPENSES
+                </strong>
+
+                <strong>
+                  {money(totalExpenses)}
+                </strong>
               </div>
 
               <div style={panelButtonWrapStyle}>
@@ -1138,6 +1149,7 @@ export default function Cashier24HourReport({
                   }
                   style={{
                     ...redActionStyle,
+
                     backgroundColor:
                       savingExpenses ||
                       manualExpenses.length >= 10
@@ -1148,8 +1160,10 @@ export default function Cashier24HourReport({
                   {savingExpenses
                     ? "Saving..."
                     : manualExpenses.length >= 10
-                      ? "All Expenses Saved"
-                      : `Save Expense ${manualExpenses.length + 1}`}
+                    ? "All Expenses Saved"
+                    : `Save Expense ${
+                        manualExpenses.length + 1
+                      }`}
                 </button>
               </div>
             </section>
@@ -1164,30 +1178,46 @@ export default function Cashier24HourReport({
             >
               <PlatformReadings24Hour
                 user={user}
-                currentShift={shift || currentShift}
+                currentShift={
+                  shift || currentShift
+                }
                 refreshKey={refreshKey}
-                onReadingsChanged={refresh24HourReport}
+                onReadingsChanged={
+                  refresh24HourReport
+                }
               />
             </div>
 
             <div style={sidePanelsStyle}>
               <CashierSavingsPanel
                 user={user}
-                currentShift={shift || currentShift}
+                currentShift={
+                  shift || currentShift
+                }
               />
 
               <CashierSalaryPanel
                 user={user}
-                currentShift={shift || currentShift}
-                onSalaryPaid={refresh24HourReport}
+                currentShift={
+                  shift || currentShift
+                }
+                onSalaryPaid={
+                  refresh24HourReport
+                }
               />
 
-              <CashierAccountsPanel user={user} />
+              <CashierAccountsPanel
+                user={user}
+              />
 
               <CashierAccountsReturnPanel
                 user={user}
-                currentShift={shift || currentShift}
-                onReturnChanged={refresh24HourReport}
+                currentShift={
+                  shift || currentShift
+                }
+                onReturnChanged={
+                  refresh24HourReport
+                }
               />
             </div>
           </div>
@@ -1224,7 +1254,9 @@ export default function Cashier24HourReport({
 
           <CloseShift24Hour
             user={user}
-            currentShift={shift || currentShift}
+            currentShift={
+              shift || currentShift
+            }
             refreshKey={refreshKey}
             onShiftClosed={() => {
               router.refresh();
@@ -1241,38 +1273,50 @@ export default function Cashier24HourReport({
 
             <div style={informationBodyStyle}>
               <div>
-                1. Shift 1 runs from 9:00 AM to 9:00 PM.
+                1. Shift 1 runs from
+                9:00 AM to 9:00 PM.
               </div>
+
               <div>
-                2. Shift 2 runs from 9:00 PM to 9:00 AM.
+                2. Shift 2 runs from
+                9:00 PM to 9:00 AM.
               </div>
+
               <div>
-                3. Resettable platforms are recorded at
-                11:59 PM and reset to zero at midnight.
+                3. Resettable platforms are
+                recorded at 11:59 PM and
+                reset at midnight.
               </div>
+
               <div>
-                4. TABLE does not reset at midnight
-                and has no midnight reading.
+                4. TABLE does not reset
+                at midnight.
               </div>
+
               <div>
-                5. TABLE is handed over continuously
+                5. TABLE is handed over
                 at 9:00 AM and 9:00 PM.
               </div>
+
               <div>
-                6. Company Float 1, 2 and 3 are
-                controlled by Legend Accounts.
+                6. Company Float 1–3
+                is controlled by
+                Legend Accounts.
               </div>
+
               <div>
-                7. Cashier to Legend Accounts returns
-                become expenses after confirmation.
+                7. Confirmed cashier returns
+                become expenses.
               </div>
+
               <div>
-                8. Weekly salary payments create
-                private expenses after confirmation.
+                8. Salary payments create
+                private expenses.
               </div>
+
               <div>
-                9. Cashier handover follows the
-                authorised shift handover window.
+                9. Cashier handover follows
+                the authorised window.
               </div>
             </div>
           </section>
@@ -1282,11 +1326,15 @@ export default function Cashier24HourReport({
   );
 }
 
-// ==================================================
+// ==============================================
 // DISPLAY COMPONENTS
-// ==================================================
+// ==============================================
 
-function SidebarItem({ icon, label, active }) {
+function SidebarItem({
+  icon,
+  label,
+  active,
+}) {
   return (
     <div style={getSidebarItemStyle(active)}>
       <span
@@ -1299,34 +1347,63 @@ function SidebarItem({ icon, label, active }) {
       >
         {icon}
       </span>
+
       <span>{label}</span>
     </div>
   );
 }
 
-function TopCard({ title, subtitle, footer }) {
+function TopCard({
+  title,
+  subtitle,
+  footer,
+}) {
   return (
     <div style={shopCardStyle}>
-      <div style={shopTitleStyle}>{title}</div>
-      <strong style={shopSubtitleStyle}>{subtitle}</strong>
-      <div style={smallTextStyle}>{footer}</div>
+      <div style={shopTitleStyle}>
+        {title}
+      </div>
+
+      <strong style={shopSubtitleStyle}>
+        {subtitle}
+      </strong>
+
+      <div style={smallTextStyle}>
+        {footer}
+      </div>
     </div>
   );
 }
 
-function InfoCard({ title, value, subvalue, tone }) {
+function InfoCard({
+  title,
+  value,
+  subvalue,
+  tone,
+}) {
   return (
     <div style={getInfoCardStyle(tone)}>
-      <strong style={infoTitleStyle}>{title}</strong>
-      <div style={infoValueStyle}>{value}</div>
+      <strong style={infoTitleStyle}>
+        {title}
+      </strong>
+
+      <div style={infoValueStyle}>
+        {value}
+      </div>
+
       {subvalue ? (
-        <small style={infoSubvalueStyle}>{subvalue}</small>
+        <small style={infoSubvalueStyle}>
+          {subvalue}
+        </small>
       ) : null}
     </div>
   );
 }
 
-function PanelTitle({ title, tone }) {
+function PanelTitle({
+  title,
+  tone,
+}) {
   return (
     <div style={getPanelTitleStyle(tone)}>
       {title}
@@ -1334,20 +1411,20 @@ function PanelTitle({ title, tone }) {
   );
 }
 
-function IncomeDisplayRow({ label, amount }) {
+function IncomeDisplayRow({
+  label,
+  amount,
+}) {
   return (
     <div style={incomeRowStyle}>
       <div>{label}</div>
+
       <div style={amountBoxStyle}>
         {money(amount)}
       </div>
     </div>
   );
 }
-
-// One component for both Company and M-Shwari.
-// Neither type permits cashier editing.
-// M-Shwari always displays a lock indicator.
 
 function ReadOnlyFloatRow({
   label,
@@ -1358,12 +1435,13 @@ function ReadOnlyFloatRow({
     <div style={incomeRowStyle}>
       <div>
         {label}{" "}
+
         <span style={readOnlyInlineStyle}>
           {alwaysLocked
             ? "🔒"
             : entry
-              ? "✓"
-              : "🔒"}
+            ? "✓"
+            : "🔒"}
         </span>
       </div>
 
@@ -1382,10 +1460,15 @@ function ReadOnlyFloatRow({
   );
 }
 
-function SummaryBox({ title, amount, tone }) {
+function SummaryBox({
+  title,
+  amount,
+  tone,
+}) {
   return (
     <div style={getSummaryBoxStyle(tone)}>
       <div>{title}</div>
+
       <div style={summaryValueStyle}>
         KES {money(amount)}
       </div>
@@ -1393,14 +1476,18 @@ function SummaryBox({ title, amount, tone }) {
   );
 }
 
-// ==================================================
-// SUPABASE HELPERS
-// ==================================================
+// ==============================================
+// HELPERS
+// ==============================================
 
-function authHeaders(anonKey, accessToken) {
+function authHeaders(
+  anonKey,
+  accessToken
+) {
   return {
     apikey: anonKey,
-    Authorization: `Bearer ${accessToken}`,
+    Authorization:
+      `Bearer ${accessToken}`,
     "Content-Type": "application/json",
   };
 }
@@ -1413,49 +1500,54 @@ async function safeJson(response) {
   }
 }
 
-// ==================================================
-// NUMBER HELPERS
-// ==================================================
-
 function money(value) {
-  const numeric = Number(value ?? 0);
+  const numeric =
+    Number(value ?? 0);
 
-  const safeValue = Number.isFinite(numeric)
-    ? numeric
-    : 0;
+  const safeValue =
+    Number.isFinite(numeric)
+      ? numeric
+      : 0;
 
-  return safeValue.toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function roundMoney(value) {
-  return (
-    Math.round(
-      (Number(value) + Number.EPSILON) * 100
-    ) / 100
+  return safeValue.toLocaleString(
+    "en-KE",
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }
   );
 }
 
-// ==================================================
+function roundMoney(value) {
+  return Math.round(
+    (Number(value) + Number.EPSILON) * 100
+  ) / 100;
+}
+
+// ==============================================
 // DATE HELPERS
-// ==================================================
+// ==============================================
 
 function formatReportDate(value) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Nairobi",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "Africa/Nairobi",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  ).format(new Date(value));
 }
 
 function formatReportDay(value) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Nairobi",
-    weekday: "long",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      timeZone: "Africa/Nairobi",
+      weekday: "long",
+    }
+  ).format(new Date(value));
 }
 
 function displayTime(value) {
@@ -1471,42 +1563,55 @@ function normaliseShiftName(value) {
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ");
 
-  if (text === "SHIFT 1" || text === "SHIFT1") {
+  if (
+    text === "SHIFT 1" ||
+    text === "SHIFT1"
+  ) {
     return "SHIFT 1";
   }
 
-  if (text === "SHIFT 2" || text === "SHIFT2") {
+  if (
+    text === "SHIFT 2" ||
+    text === "SHIFT2"
+  ) {
     return "SHIFT 2";
   }
 
   return text;
 }
 
-function getNairobiHour(date = new Date()) {
-  const formatter = new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      timeZone: "Africa/Nairobi",
-      hour: "2-digit",
-      hourCycle: "h23",
-    }
-  );
+function getNairobiHour(
+  date = new Date()
+) {
+  const formatter =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone: "Africa/Nairobi",
+        hour: "2-digit",
+        hourCycle: "h23",
+      }
+    );
 
-  const parts = formatter.formatToParts(date);
+  const parts =
+    formatter.formatToParts(date);
 
   const hourPart = parts.find(
     (part) => part.type === "hour"
   );
 
-  const hour = Number(hourPart?.value ?? 0);
+  const hour = Number(
+    hourPart?.value ?? 0
+  );
 
-  return Number.isFinite(hour) ? hour : 0;
+  return Number.isFinite(hour)
+    ? hour
+    : 0;
 }
 
-// ==================================================
+// ==============================================
 // 24-HOUR PROFESSIONAL COLOURS
-// NAVY / GOLD / TEAL
-// ==================================================
+// ==============================================
 
 const C = {
   canvas: "#08121e",
@@ -1556,8 +1661,10 @@ const topHeaderStyle = {
   background: C.header,
   color: C.text,
   borderBottom: `1px solid ${C.border}`,
-  boxShadow: "0 5px 24px rgba(0,0,0,.15)",
-  padding: "15px clamp(16px,2.5vw,32px)",
+  boxShadow:
+    "0 5px 24px rgba(0,0,0,.15)",
+  padding:
+    "15px clamp(16px,2.5vw,32px)",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -1582,7 +1689,8 @@ const crownStyle = {
 
 const brandStyle = {
   color: C.text,
-  fontSize: "clamp(18px,2vw,24px)",
+  fontSize:
+    "clamp(18px,2vw,24px)",
   fontWeight: 850,
   letterSpacing: ".04em",
   lineHeight: 1.15,
@@ -1637,7 +1745,8 @@ const sidebarStyle = {
   flex: "0 1 172px",
   minWidth: 145,
   background: C.sidebar,
-  borderRight: `1px solid ${C.borderSoft}`,
+  borderRight:
+    `1px solid ${C.borderSoft}`,
   padding: "18px 10px",
   boxSizing: "border-box",
   display: "flex",
@@ -1649,7 +1758,8 @@ const sidebarStyle = {
 const mainStyle = {
   flex: "1 1 680px",
   minWidth: 0,
-  padding: "clamp(12px,2vw,25px)",
+  padding:
+    "clamp(12px,2vw,25px)",
   boxSizing: "border-box",
 };
 
@@ -1677,12 +1787,14 @@ const shopCardStyle = {
   background:
     "linear-gradient(145deg,#17283a,#102031)",
   border: `1px solid ${C.border}`,
-  borderTop: `2px solid ${C.gold}`,
+  borderTop:
+    `2px solid ${C.gold}`,
 };
 
 const shopTitleStyle = {
   color: C.text,
-  fontSize: "clamp(15px,1.5vw,19px)",
+  fontSize:
+    "clamp(15px,1.5vw,19px)",
   fontWeight: 850,
   letterSpacing: ".04em",
   overflowWrap: "anywhere",
@@ -1712,7 +1824,8 @@ const infoTitleStyle = {
 
 const infoValueStyle = {
   color: C.text,
-  fontSize: "clamp(13px,1.4vw,17px)",
+  fontSize:
+    "clamp(13px,1.4vw,17px)",
   lineHeight: 1.3,
   fontWeight: 800,
   marginTop: 6,
@@ -1723,7 +1836,8 @@ const infoSubvalueStyle = {
   color: C.subtext,
   fontSize: 10,
   marginTop: 4,
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric:
+    "tabular-nums",
 };
 
 const greetingBannerStyle = {
@@ -1741,28 +1855,34 @@ const greetingBannerStyle = {
 const greetingWelcomeStyle = {
   background: "#101e2d",
   color: C.subtext,
-  border: `1px solid ${C.borderSoft}`,
-  borderLeft: `3px solid ${C.gold}`,
+  border:
+    `1px solid ${C.borderSoft}`,
+  borderLeft:
+    `3px solid ${C.gold}`,
 };
 
 const greetingGoodbyeStyle = {
   background: C.redBg,
   color: "#ffc3ce",
   border: "1px solid #774155",
-  borderLeft: `3px solid ${C.red}`,
+  borderLeft:
+    `3px solid ${C.red}`,
 };
 
 const shiftBannerStyle = {
   background: C.blueBg,
   color: C.subtext,
-  border: `1px solid ${C.border}`,
-  borderLeft: `3px solid ${C.blue}`,
+  border:
+    `1px solid ${C.border}`,
+  borderLeft:
+    `3px solid ${C.blue}`,
   padding: "10px 14px",
   borderRadius: 8,
   marginBottom: 12,
   display: "flex",
   flexWrap: "wrap",
-  justifyContent: "space-between",
+  justifyContent:
+    "space-between",
   gap: 10,
   fontSize: 12,
 };
@@ -1778,9 +1898,11 @@ const upperGridStyle = {
 const panelStyle = {
   minWidth: 0,
   background: C.panel,
-  border: `1px solid ${C.border}`,
+  border:
+    `1px solid ${C.border}`,
   borderRadius: 12,
-  boxShadow: "0 8px 25px rgba(0,0,0,.10)",
+  boxShadow:
+    "0 8px 25px rgba(0,0,0,.10)",
   overflowX: "auto",
   overflowY: "hidden",
   paddingBottom: 11,
@@ -1793,7 +1915,8 @@ const tableHeaderStyle = {
   gap: 8,
   alignItems: "center",
   padding: "10px 12px",
-  borderBottom: `1px solid ${C.borderSoft}`,
+  borderBottom:
+    `1px solid ${C.borderSoft}`,
   background: C.field,
   color: C.muted,
   fontSize: 9,
@@ -1809,7 +1932,8 @@ const incomeRowStyle = {
   alignItems: "center",
   padding: "8px 12px",
   minHeight: 38,
-  borderBottom: `1px solid ${C.borderSoft}`,
+  borderBottom:
+    `1px solid ${C.borderSoft}`,
   color: C.subtext,
   fontSize: 11,
 };
@@ -1822,7 +1946,8 @@ const moneyCell = {
   fontSize: 11,
   lineHeight: 1.4,
   fontWeight: 750,
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric:
+    "tabular-nums",
   textAlign: "right",
 };
 
@@ -1830,7 +1955,8 @@ const amountBoxStyle = {
   ...moneyCell,
   color: C.text,
   background: C.field,
-  border: `1px solid ${C.borderSoft}`,
+  border:
+    `1px solid ${C.borderSoft}`,
 };
 
 const savedMoneyStyle = {
@@ -1844,7 +1970,8 @@ const lockedMoneyStyle = {
   ...moneyCell,
   color: C.muted,
   background: "#0d1926",
-  border: `1px solid ${C.borderSoft}`,
+  border:
+    `1px solid ${C.borderSoft}`,
 };
 
 const readOnlyInlineStyle = {
@@ -1856,7 +1983,8 @@ const readOnlyInlineStyle = {
 const incomeTotalStyle = {
   display: "flex",
   flexWrap: "wrap",
-  justifyContent: "space-between",
+  justifyContent:
+    "space-between",
   gap: 8,
   margin: "9px 10px 0",
   padding: "11px 12px",
@@ -1865,7 +1993,8 @@ const incomeTotalStyle = {
   borderRadius: 7,
   color: "#b5f2dc",
   fontSize: 12,
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric:
+    "tabular-nums",
 };
 
 const panelButtonWrapStyle = {
@@ -1898,7 +2027,8 @@ const expenseHeaderStyle = {
   gap: 6,
   padding: "10px 12px",
   background: C.field,
-  borderBottom: `1px solid ${C.borderSoft}`,
+  borderBottom:
+    `1px solid ${C.borderSoft}`,
   color: C.muted,
   fontSize: 9,
   letterSpacing: ".05em",
@@ -1912,7 +2042,8 @@ const expenseRowStyle = {
   gap: 6,
   alignItems: "center",
   padding: "6px 11px",
-  borderBottom: `1px solid ${C.borderSoft}`,
+  borderBottom:
+    `1px solid ${C.borderSoft}`,
   fontSize: 11,
   color: C.muted,
 };
@@ -1925,7 +2056,8 @@ const expenseInputStyle = {
   boxSizing: "border-box",
   padding: "6px 8px",
   borderRadius: 6,
-  border: `1px solid ${C.border}`,
+  border:
+    `1px solid ${C.border}`,
   outlineOffset: 2,
   background: C.field,
   color: C.text,
@@ -1946,7 +2078,8 @@ const savedExpenseStyle = {
 const expenseTotalStyle = {
   display: "flex",
   flexWrap: "wrap",
-  justifyContent: "space-between",
+  justifyContent:
+    "space-between",
   gap: 7,
   margin: "11px 10px 0",
   padding: "11px 12px",
@@ -1955,10 +2088,9 @@ const expenseTotalStyle = {
   borderRadius: 7,
   color: "#ffc3ce",
   fontSize: 12,
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric:
+    "tabular-nums",
 };
-
-// OPERATIONS LAYOUT
 
 const operationsGridStyle = {
   display: "grid",
@@ -1978,7 +2110,8 @@ const sidePanelsStyle = {
   minWidth: 0,
   width: "100%",
   display: "grid",
-  gridTemplateColumns: "minmax(0,1fr)",
+  gridTemplateColumns:
+    "minmax(0,1fr)",
   alignContent: "start",
   gap: 14,
 };
@@ -1993,18 +2126,21 @@ const summaryGridStyle = {
 
 const summaryValueStyle = {
   marginTop: 7,
-  fontSize: "clamp(17px,1.9vw,24px)",
+  fontSize:
+    "clamp(17px,1.9vw,24px)",
   letterSpacing: "-.035em",
   fontWeight: 850,
   color: C.text,
-  fontVariantNumeric: "tabular-nums",
+  fontVariantNumeric:
+    "tabular-nums",
   overflowWrap: "anywhere",
 };
 
 const messageStyle = {
   padding: "10px 14px",
   borderRadius: 8,
-  border: `1px solid ${C.border}`,
+  border:
+    `1px solid ${C.border}`,
   fontSize: 12,
   fontWeight: 700,
   marginBottom: 12,
@@ -2016,16 +2152,20 @@ const informationStyle = {
   marginTop: 14,
   borderRadius: 12,
   overflow: "hidden",
-  border: `1px solid ${C.border}`,
-  boxShadow: "0 8px 25px rgba(0,0,0,.10)",
+  border:
+    `1px solid ${C.border}`,
+  boxShadow:
+    "0 8px 25px rgba(0,0,0,.10)",
 };
 
 const informationTitleStyle = {
   background: C.panelRaised,
   color: C.text,
   padding: "12px 14px",
-  borderBottom: `1px solid ${C.border}`,
-  borderLeft: `3px solid ${C.gold}`,
+  borderBottom:
+    `1px solid ${C.border}`,
+  borderLeft:
+    `3px solid ${C.gold}`,
   fontWeight: 850,
   fontSize: 11,
   letterSpacing: ".08em",
@@ -2038,10 +2178,13 @@ const informationBodyStyle = {
   color: C.subtext,
 };
 
+// ==============================================
 // THEME HELPERS
+// ==============================================
 
 function toneColor(tone) {
-  const t = String(tone || "").toLowerCase();
+  const t = String(tone || "")
+    .toLowerCase();
 
   if (t === "red") return C.red;
   if (t === "green") return C.teal;
@@ -2052,23 +2195,34 @@ function toneColor(tone) {
   return C.gold;
 }
 
-function getSidebarItemStyle(active = false) {
+function getSidebarItemStyle(
+  active = false
+) {
   return {
     display: "flex",
     alignItems: "center",
     gap: 8,
     borderRadius: 8,
     padding: "11px 10px",
-    background: active ? "#163846" : "transparent",
-    color: active ? "#eefaf7" : C.subtext,
-    border: active
-      ? "1px solid #326775"
-      : "1px solid transparent",
-    borderLeft: active
-      ? `3px solid ${C.teal}`
-      : "3px solid transparent",
+    background:
+      active
+        ? "#163846"
+        : "transparent",
+    color:
+      active
+        ? "#eefaf7"
+        : C.subtext,
+    border:
+      active
+        ? "1px solid #326775"
+        : "1px solid transparent",
+    borderLeft:
+      active
+        ? `3px solid ${C.teal}`
+        : "3px solid transparent",
     fontSize: 11,
-    fontWeight: active ? 800 : 650,
+    fontWeight:
+      active ? 800 : 650,
     minWidth: 0,
   };
 }
@@ -2077,8 +2231,10 @@ function getInfoCardStyle(tone) {
   return {
     ...baseTopCard,
     background: C.panel,
-    border: `1px solid ${C.border}`,
-    borderTop: `2px solid ${toneColor(tone)}`,
+    border:
+      `1px solid ${C.border}`,
+    borderTop:
+      `2px solid ${toneColor(tone)}`,
     overflow: "hidden",
   };
 }
@@ -2087,8 +2243,10 @@ function getPanelTitleStyle(tone) {
   return {
     color: C.text,
     background: "#152639",
-    borderBottom: `1px solid ${C.border}`,
-    borderLeft: `3px solid ${toneColor(tone)}`,
+    borderBottom:
+      `1px solid ${C.border}`,
+    borderLeft:
+      `3px solid ${toneColor(tone)}`,
     padding: "12px 13px",
     fontSize: 11,
     fontWeight: 850,
@@ -2100,8 +2258,10 @@ function getSummaryBoxStyle(tone) {
   return {
     background:
       "linear-gradient(130deg,#15283b,#101e2e)",
-    border: `1px solid ${C.border}`,
-    borderLeft: `3px solid ${toneColor(tone)}`,
+    border:
+      `1px solid ${C.border}`,
+    borderLeft:
+      `3px solid ${toneColor(tone)}`,
     borderRadius: 10,
     padding: "15px 16px",
     fontSize: 10,
