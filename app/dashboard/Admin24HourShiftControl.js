@@ -7,19 +7,12 @@ import {
   useState,
 } from "react";
 
-// ==========================================
-// TEAM LEGEND — 24-HOUR SHIFT CONTROL
-// ==========================================
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-const KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-async function callRpc(name, token, payload) {
+async function rpc(name, token, payload) {
   if (!URL || !KEY || !token) {
-    throw new Error("Admin login unavailable.");
+    throw new Error("Admin session unavailable.");
   }
 
   const response = await fetch(
@@ -36,25 +29,27 @@ async function callRpc(name, token, payload) {
     }
   );
 
-  const result = await response
-    .json()
-    .catch(() => null);
+  const data = await response.json().catch(() => null);
 
   if (!response.ok) {
     throw new Error(
-      result?.message ||
-      result?.details ||
-      result?.hint ||
-      "Database operation failed."
+      data?.message ||
+      data?.details ||
+      "Operation failed."
     );
   }
 
-  return result;
+  return data;
 }
 
-// ==========================================
-// MAIN PANEL
-// ==========================================
+function kes(value) {
+  if (value == null) return "—";
+
+  return `KES ${Number(value).toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
 export default function Admin24HourShiftControl({
   user,
@@ -63,80 +58,47 @@ export default function Admin24HourShiftControl({
 }) {
   const token = user?.access_token;
 
-  const availableShops = useMemo(
+  const shopOptions = useMemo(
     () =>
       shops.filter(
-        (shop) =>
-          String(shop.shop_type || "")
+        (s) =>
+          String(s.shop_type || "")
             .trim()
             .toUpperCase() === "24_HOUR" &&
-          shop.is_active !== false
+          s.is_active !== false
       ),
     [shops]
   );
 
   const [shopId, setShopId] = useState("");
+  const [status, setStatus] = useState(null);
 
-  const [snapshot, setSnapshot] =
-    useState(null);
+  const [selection, setSelection] = useState("AUTO");
+  const [cashierId, setCashierId] = useState("");
+  const [reason, setReason] = useState("");
 
-  const [selection, setSelection] =
-    useState("AUTO");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const [cashierId, setCashierId] =
-    useState("");
-
-  const [reason, setReason] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [notice, setNotice] =
-    useState("");
-
-  const [reload, setReload] =
-    useState(0);
-
-  // ========================================
-  // SELECT FIRST AVAILABLE SHOP
-  // ========================================
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    setShopId((current) => {
-      if (
-        availableShops.some(
-          (shop) => shop.id === current
-        )
-      ) {
-        return current;
-      }
-
-      return availableShops[0]?.id || "";
-    });
-  }, [availableShops]);
-
-  // ========================================
-  // REFRESH
-  // ========================================
+    setShopId((current) =>
+      shopOptions.some((s) => s.id === current)
+        ? current
+        : shopOptions[0]?.id || ""
+    );
+  }, [shopOptions]);
 
   const refresh = useCallback(() => {
-    setReload((current) => current + 1);
+    setReload((n) => n + 1);
   }, []);
-
-  // ========================================
-  // LOAD SHOP STATUS
-  // ========================================
 
   useEffect(() => {
     if (!shopId || !token) {
-      setSnapshot(null);
+      setStatus(null);
       return;
     }
 
@@ -147,45 +109,39 @@ export default function Admin24HourShiftControl({
       setError("");
 
       try {
-        const result = await callRpc(
-          "tl_admin_24h_control_snapshot_v1",
+        const result = await rpc(
+          "tl_admin_24h_recovery_status_v1",
           token,
-          {
-            p_shop_id: shopId,
-          }
+          { p_shop_id: shopId }
         );
 
         if (cancelled) return;
 
-        setSnapshot(result);
+        setStatus(result);
 
-        setCashierId((current) => {
-          const cashiers =
-            result?.cashiers || [];
+        setCashierId((previous) => {
+          const cashiers = result.cashiers || [];
+
+          if (cashiers.some((c) => c.id === previous)) {
+            return previous;
+          }
 
           if (
             cashiers.some(
-              (person) => person.id === current
+              (c) => c.id === result.source?.cashier_id
             )
           ) {
-            return current;
+            return result.source.cashier_id;
           }
 
           return cashiers[0]?.id || "";
         });
       } catch (err) {
         if (cancelled) return;
-
-        setSnapshot(null);
-
-        setError(
-          err?.message ||
-            "Unable to load shop."
-        );
+        setStatus(null);
+        setError(err.message);
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -196,379 +152,359 @@ export default function Admin24HourShiftControl({
     };
   }, [shopId, token, reload]);
 
-  // ========================================
-  // SELECTED SHIFT
-  // ========================================
+  const source = status?.source;
+  const active = status?.active_recovery === true;
 
   const selectedShift =
     selection === "AUTO"
-      ? snapshot?.auto_shift || "—"
+      ? status?.auto_shift || "—"
       : selection === "SHIFT 1 TODAY"
       ? "SHIFT 1"
       : "SHIFT 2";
 
   const selectedDate =
     selection === "AUTO"
-      ? snapshot?.auto_date || "—"
-      : todayNairobi();
+      ? status?.auto_date || "—"
+      : status?.today_date || "—";
 
-  const currentOpen =
-    snapshot?.open_shift || null;
+  const sameSlot =
+    source?.status === "OPEN" &&
+    source?.shift_name === selectedShift &&
+    source?.business_date === selectedDate;
 
   const canSave =
-    !loading &&
-    !saving &&
-    !!snapshot &&
+    active &&
+    Boolean(source) &&
     reason.trim().length >= 10 &&
     reason.trim().length <= 500 &&
-    (Boolean(currentOpen) ||
-      Boolean(cashierId));
+    !loading &&
+    !saving;
 
-  // ========================================
-  // ADMIN SAVE
-  // ========================================
-
-  async function saveSelection() {
-    if (!canSave) return;
-
-    const confirmed = window.confirm(
-      "CONFIRM ADMIN SHIFT SELECTION\n\n" +
-      `Shop: ${snapshot.shop_name}\n` +
-      `Shift: ${selectedShift}\n` +
-      `Date: ${selectedDate}\n\n` +
-      `Reason: ${reason.trim()}`
-    );
-
-    if (!confirmed) return;
+  async function finishRecovery() {
+    if (!canSave || !shopId || !token) return;
 
     setSaving(true);
     setError("");
-    setNotice("");
+    setSuccess("");
 
     try {
-      const result = await callRpc(
-        "tl_admin_24h_choose_today_v2",
+      // Refresh the financial preview immediately
+      // before asking Admin to finalize.
+
+      const latest = await rpc(
+        "tl_admin_24h_recovery_status_v1",
+        token,
+        { p_shop_id: shopId }
+      );
+
+      if (
+        latest.active_recovery !== true ||
+        !latest.source ||
+        latest.session_id !== status.session_id
+      ) {
+        throw new Error(
+          "Recovery changed. Refresh and review again."
+        );
+      }
+
+      const actualShift =
+        selection === "AUTO"
+          ? latest.auto_shift
+          : selection === "SHIFT 1 TODAY"
+          ? "SHIFT 1"
+          : "SHIFT 2";
+
+      const actualDate =
+        selection === "AUTO"
+          ? latest.auto_date
+          : latest.today_date;
+
+      const alreadyOpen =
+        latest.source.status === "OPEN" &&
+        latest.source.shift_name === actualShift &&
+        latest.source.business_date === actualDate;
+
+      const confirmation = [
+        "FINALIZE ADMIN RECOVERY",
+        "",
+        `SHOP: ${latest.shop_name}`,
+        `CORRECTED SHIFT: ${latest.source.shift_name}`,
+        `CORRECTED CLOSING: ${kes(
+          latest.source.closing_balance
+        )}`,
+        "",
+        `SELECTED: ${actualShift}`,
+        `DATE: ${actualDate}`,
+        "",
+        alreadyOpen
+          ? "Resume the corrected open shift."
+          : `OPENING B/F: ${kes(
+              latest.source.closing_balance
+            )}`,
+        "",
+        "Existing expenses remain on the source shift.",
+        "Admin corrections and handover are audited.",
+      ].join("\n");
+
+      if (!window.confirm(confirmation)) {
+        return;
+      }
+
+      const result = await rpc(
+        "tl_admin_24h_finish_and_open_v1",
         token,
         {
           p_shop_id: shopId,
           p_selection: selection,
-          p_cashier_id:
-            cashierId || null,
-          p_reason:
-            reason.trim(),
+          p_cashier_id: cashierId || null,
+          p_reason: reason.trim(),
         }
       );
 
       if (result?.ok !== true) {
-        throw new Error(
-          "Shift change was not confirmed."
-        );
+        throw new Error("Recovery could not be finalized.");
       }
 
-      setNotice(
-        `${result.shift_name} — ` +
-          `${result.business_date} — SAVED`
+      setSuccess(
+        `${result.shift_name} — ${result.business_date} OPEN`
       );
 
       setReason("");
-
       refresh();
 
       if (typeof onChanged === "function") {
         onChanged();
       }
     } catch (err) {
-      setError(
-        err?.message ||
-          "Unable to save shift selection."
-      );
+      setError(err?.message || "Save failed.");
     } finally {
       setSaving(false);
     }
   }
 
-  // ========================================
-  // DISPLAY
-  // ========================================
-
-  if (!availableShops.length) {
-    return null;
-  }
+  if (!shopOptions.length) return null;
 
   return (
-    <section style={panelStyle}>
-      <div style={headerStyle}>
-        24-HOUR SHIFT CONTROL
+    <section style={styles.panel}>
+      <div style={styles.header}>
+        24-HOUR ADMIN SHIFT CONTROL
       </div>
 
-      <div style={bodyStyle}>
-        {/* SHOP */}
-
-        <div style={formGridStyle}>
+      <div style={styles.content}>
+        <div style={styles.grid}>
           <div>
-            <label style={labelStyle}>
-              SHOP
-            </label>
+            <label style={styles.label}>SHOP</label>
 
             <select
-              style={fieldStyle}
+              style={styles.field}
               value={shopId}
               disabled={saving}
-              onChange={(event) => {
-                setShopId(
-                  event.target.value
-                );
-
-                setSnapshot(null);
+              onChange={(e) => {
+                setShopId(e.target.value);
+                setStatus(null);
                 setSelection("AUTO");
-                setCashierId("");
                 setReason("");
                 setError("");
-                setNotice("");
+                setSuccess("");
               }}
             >
-              {availableShops.map(
-                (shop) => (
-                  <option
-                    key={shop.id}
-                    value={shop.id}
-                  >
-                    {shop.shop_name}
-                  </option>
-                )
-              )}
+              {shopOptions.map((shop) => (
+                <option key={shop.id} value={shop.id}>
+                  {shop.shop_name}
+                </option>
+              ))}
             </select>
           </div>
 
-          {/* CURRENT OPEN SHIFT */}
-
           <div>
-            <label style={labelStyle}>
-              CURRENT SHIFT
+            <label style={styles.label}>
+              LAST SHIFT
             </label>
 
-            <div style={readOnlyStyle}>
-              {loading
+            <div style={styles.readOnly}>
+              {source
+                ? `${source.shift_name} — ${source.business_date}`
+                : loading
                 ? "Loading..."
-                : currentOpen
-                ? `${currentOpen.shift_name} — ${currentOpen.business_date}`
-                : "NO OPEN SHIFT"}
+                : "—"}
             </div>
           </div>
         </div>
 
-        {/* ==================================
-            THREE ADMIN OPTIONS
-            ================================== */}
-
-        <div style={choiceSectionStyle}>
-          <div style={sectionTitleStyle}>
-            SELECT SHIFT TO OPEN
-          </div>
-
-          <div style={choiceGridStyle}>
-            <ChoiceButton
-              title="AUTOMATIC SHIFT SELECTION"
-              active={selection === "AUTO"}
-              disabled={saving}
-              onClick={() => {
-                setSelection("AUTO");
-                setError("");
-              }}
+        {source && (
+          <div style={styles.summary}>
+            <Summary
+              label="STATUS"
+              value={
+                active
+                  ? "ADMIN RECOVERY"
+                  : source.status
+              }
             />
 
-            <ChoiceButton
-              title="SHIFT 1 TODAY"
-              subtitle="9:00 AM – 9:00 PM"
-              active={
-                selection ===
-                "SHIFT 1 TODAY"
-              }
-              disabled={saving}
-              onClick={() => {
-                setSelection(
-                  "SHIFT 1 TODAY"
-                );
-                setError("");
-              }}
+            <Summary
+              label="BALANCE B/F"
+              value={kes(source.opening_balance)}
             />
 
-            <ChoiceButton
-              title="SHIFT 2 TODAY"
-              subtitle="9:00 PM – 9:00 AM"
-              active={
-                selection ===
-                "SHIFT 2 TODAY"
-              }
-              disabled={saving}
-              onClick={() => {
-                setSelection(
-                  "SHIFT 2 TODAY"
-                );
-                setError("");
-              }}
+            <Summary
+              label="EXPENSES"
+              value={kes(source.total_expenses)}
             />
-          </div>
-        </div>
 
-        {/* SELECTED SHIFT */}
-
-        <div style={selectedBoxStyle}>
-          <div>
-            <span style={smallLabelStyle}>
-              SELECTED SHIFT
-            </span>
-
-            <strong style={selectedValueStyle}>
-              {selectedShift}
-            </strong>
-          </div>
-
-          <div>
-            <span style={smallLabelStyle}>
-              BUSINESS DATE
-            </span>
-
-            <strong style={selectedValueStyle}>
-              {selectedDate}
-            </strong>
-          </div>
-
-          <div>
-            <span style={smallLabelStyle}>
-              BALANCE B/F
-            </span>
-
-            <strong style={selectedValueStyle}>
-              {currentOpen
-                ? formatMoney(
-                    currentOpen.opening_balance
-                  )
-                : snapshot?.suggested_balance != null
-                ? formatMoney(
-                    snapshot.suggested_balance
-                  )
-                : "—"}
-            </strong>
-          </div>
-        </div>
-
-        {/* CASHIER FOR NEW SHIFT */}
-
-        {!currentOpen && snapshot && (
-          <div style={{ marginTop: 14 }}>
-            <label style={labelStyle}>
-              CASHIER
-            </label>
-
-            <select
-              style={fieldStyle}
-              value={cashierId}
-              disabled={saving}
-              onChange={(event) =>
-                setCashierId(
-                  event.target.value
-                )
-              }
-            >
-              <option value="">
-                Select Cashier
-              </option>
-
-              {(snapshot.cashiers || []).map(
-                (cashier) => (
-                  <option
-                    key={cashier.id}
-                    value={cashier.id}
-                  >
-                    {cashier.name}
-                  </option>
-                )
-              )}
-            </select>
+            <Summary
+              label="CORRECTED CLOSING"
+              value={kes(source.closing_balance)}
+            />
           </div>
         )}
 
-        {/* ADMIN REASON */}
+        <div style={styles.sectionTitle}>
+          SELECT NEXT SHIFT
+        </div>
 
-        <div style={{ marginTop: 14 }}>
-          <label style={labelStyle}>
-            ADMIN REASON
-          </label>
+        <div style={styles.choices}>
+          {[
+            {
+              value: "AUTO",
+              label: "AUTOMATIC SHIFT SELECTION",
+            },
+            {
+              value: "SHIFT 1 TODAY",
+              label: "SHIFT 1 TODAY",
+            },
+            {
+              value: "SHIFT 2 TODAY",
+              label: "SHIFT 2 TODAY",
+            },
+          ].map((option) => (
+            <button
+              type="button"
+              key={option.value}
+              disabled={saving}
+              onClick={() => {
+                setSelection(option.value);
+                setError("");
+              }}
+              style={{
+                ...styles.choice,
+                background:
+                  selection === option.value
+                    ? "#073b5c"
+                    : "#f8fafc",
+                color:
+                  selection === option.value
+                    ? "#ffffff"
+                    : "#334155",
+                borderColor:
+                  selection === option.value
+                    ? "#d4af37"
+                    : "#cbd5e1",
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={styles.summary}>
+          <Summary
+            label="SELECTED SHIFT"
+            value={selectedShift}
+          />
+          <Summary
+            label="BUSINESS DATE"
+            value={selectedDate}
+          />
+          <Summary
+            label={
+              sameSlot
+                ? "CORRECTED BALANCE"
+                : "OPENING BALANCE B/F"
+            }
+            value={kes(source?.closing_balance)}
+          />
+        </div>
+
+        {!sameSlot &&
+          (status?.cashiers || []).length > 0 && (
+            <div style={styles.section}>
+              <label style={styles.label}>CASHIER</label>
+
+              <select
+                style={styles.field}
+                value={cashierId}
+                disabled={saving}
+                onChange={(e) =>
+                  setCashierId(e.target.value)
+                }
+              >
+                <option value="">Not assigned</option>
+
+                {(status.cashiers || []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+        <div style={styles.section}>
+          <label style={styles.label}>ADMIN REASON</label>
 
           <textarea
             rows={2}
             maxLength={500}
             style={{
-              ...fieldStyle,
+              ...styles.field,
+              minHeight: 65,
               resize: "vertical",
-              minHeight: 70,
             }}
-            placeholder="Enter reason"
             value={reason}
             disabled={saving}
-            onChange={(event) => {
-              setReason(
-                event.target.value
-              );
-
+            onChange={(e) => {
+              setReason(e.target.value);
               setError("");
             }}
           />
         </div>
 
-        {/* ERRORS */}
-
         {error && (
-          <div
-            role="alert"
-            style={errorStyle}
-          >
+          <div role="alert" style={styles.error}>
             {error}
           </div>
         )}
 
-        {/* SUCCESS */}
-
-        {notice && (
-          <div
-            role="status"
-            style={successStyle}
-          >
-            {notice}
+        {success && (
+          <div role="status" style={styles.success}>
+            {success}
           </div>
         )}
 
-        {/* ACTIONS */}
-
-        <div style={actionGridStyle}>
+        <div style={styles.actions}>
           <button
             type="button"
-            style={{
-              ...saveButtonStyle,
-              opacity: canSave
-                ? 1
-                : 0.55,
-            }}
             disabled={!canSave}
-            onClick={saveSelection}
+            onClick={finishRecovery}
+            style={{
+              ...styles.save,
+              opacity: canSave ? 1 : 0.5,
+            }}
           >
             {saving
               ? "SAVING..."
-              : currentOpen
-              ? "SAVE SHIFT SELECTION"
-              : "OPEN SELECTED SHIFT"}
+              : active
+              ? "FINALIZE RECOVERY & OPEN SHIFT"
+              : "START ADMIN RECOVERY FIRST"}
           </button>
 
           <button
             type="button"
-            style={refreshButtonStyle}
-            disabled={
-              saving || loading
-            }
+            disabled={saving || loading}
+            style={styles.refresh}
             onClick={() => {
               setError("");
-              setNotice("");
               refresh();
             }}
           >
@@ -580,269 +516,162 @@ export default function Admin24HourShiftControl({
   );
 }
 
-// ==========================================
-// CHOICE BUTTON
-// ==========================================
-
-function ChoiceButton({
-  title,
-  subtitle,
-  active,
-  disabled,
-  onClick,
-}) {
+function Summary({ label, value }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        ...choiceButtonStyle,
+    <div style={styles.summaryItem}>
+      <small style={styles.summaryLabel}>
+        {label}
+      </small>
 
-        background: active
-          ? "#073b5c"
-          : "#f8fafc",
-
-        color: active
-          ? "#ffffff"
-          : "#334155",
-
-        borderColor: active
-          ? "#d4af37"
-          : "#cbd5e1",
-
-        boxShadow: active
-          ? "0 0 0 1px #d4af37"
-          : "none",
-      }}
-    >
-      <strong>{title}</strong>
-
-      {subtitle && (
-        <small
-          style={{
-            marginTop: 5,
-            opacity: 0.8,
-          }}
-        >
-          {subtitle}
-        </small>
-      )}
-    </button>
+      <strong style={styles.summaryValue}>
+        {value ?? "—"}
+      </strong>
+    </div>
   );
 }
 
-// ==========================================
-// NAIROBI DATE
-// ==========================================
-
-function todayNairobi() {
-  const parts =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone: "Africa/Nairobi",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }
-    ).formatToParts(new Date());
-
-  const values = {};
-
-  for (const part of parts) {
-    if (part.type !== "literal") {
-      values[part.type] = part.value;
-    }
-  }
-
-  return (
-    `${values.year}-` +
-    `${values.month}-` +
-    `${values.day}`
-  );
-}
-
-function formatMoney(value) {
-  return (
-    "KES " +
-    Number(value || 0).toLocaleString(
-      "en-KE",
-      {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }
-    )
-  );
-}
-
-// ==========================================
-// STYLES
-// ==========================================
-
-const panelStyle = {
-  background: "#ffffff",
-  border: "1px solid #cbd5e1",
-  borderRadius: 9,
-  marginBottom: 18,
-  overflow: "hidden",
-};
-
-const headerStyle = {
-  background:
-    "linear-gradient(90deg,#073b5c,#0b5677)",
-  color: "#ffffff",
-  padding: "14px 16px",
-  fontSize: 14,
-  fontWeight: 900,
-  letterSpacing: "0.4px",
-};
-
-const bodyStyle = {
-  padding: 15,
-};
-
-const formGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(220px,1fr))",
-  gap: 12,
-};
-
-const fieldStyle = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "11px 12px",
-  border: "1px solid #cbd5e1",
-  borderRadius: 7,
-  background: "#ffffff",
-  color: "#0f172a",
-  fontSize: 12,
-  fontFamily: "inherit",
-};
-
-const labelStyle = {
-  display: "block",
-  fontSize: 11,
-  fontWeight: 800,
-  color: "#334155",
-  marginBottom: 7,
-};
-
-const readOnlyStyle = {
-  ...fieldStyle,
-  background: "#f1f5f9",
-  fontWeight: 850,
-  minHeight: 41,
-};
-
-const choiceSectionStyle = {
-  marginTop: 16,
-  paddingTop: 14,
-  borderTop: "1px solid #e2e8f0",
-};
-
-const sectionTitleStyle = {
-  fontSize: 12,
-  fontWeight: 900,
-  color: "#073b5c",
-  marginBottom: 12,
-};
-
-const choiceGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(170px,1fr))",
-  gap: 10,
-};
-
-const choiceButtonStyle = {
-  border: "1px solid",
-  borderRadius: 8,
-  padding: "16px 12px",
-  minHeight: 74,
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  textAlign: "center",
-  gap: 2,
-  cursor: "pointer",
-  fontSize: 11,
-  fontWeight: 800,
-};
-
-const selectedBoxStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit,minmax(150px,1fr))",
-  gap: 12,
-  marginTop: 15,
-  padding: 13,
-  background: "#f1f5f9",
-  border: "1px solid #cbd5e1",
-  borderRadius: 8,
-};
-
-const smallLabelStyle = {
-  display: "block",
-  fontSize: 9,
-  color: "#64748b",
-  fontWeight: 800,
-  marginBottom: 5,
-};
-
-const selectedValueStyle = {
-  fontSize: 15,
-  fontWeight: 900,
-  color: "#073b5c",
-};
-
-const actionGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "minmax(0,2fr) minmax(90px,1fr)",
-  gap: 10,
-  marginTop: 17,
-};
-
-const saveButtonStyle = {
-  border: 0,
-  borderRadius: 7,
-  background: "#0f766e",
-  color: "#ffffff",
-  padding: "13px 12px",
-  fontSize: 12,
-  fontWeight: 900,
-  cursor: "pointer",
-};
-
-const refreshButtonStyle = {
-  border: 0,
-  borderRadius: 7,
-  background: "#475569",
-  color: "#ffffff",
-  padding: "13px 12px",
-  fontSize: 12,
-  fontWeight: 900,
-  cursor: "pointer",
-};
-
-const errorStyle = {
-  marginTop: 12,
-  padding: 11,
-  borderRadius: 7,
-  background: "#fef2f2",
-  color: "#991b1b",
-  fontSize: 12,
-};
-
-const successStyle = {
-  marginTop: 12,
-  padding: 11,
-  borderRadius: 7,
-  background: "#f0fdf4",
-  color: "#166534",
-  fontSize: 12,
-  fontWeight: 850,
+const styles = {
+  panel: {
+    background: "#ffffff",
+    border: "1px solid #cbd5e1",
+    borderRadius: 9,
+    overflow: "hidden",
+    marginBottom: 16,
+  },
+  header: {
+    padding: "14px 16px",
+    color: "#ffffff",
+    background: "#073b5c",
+    fontWeight: 900,
+    fontSize: 14,
+  },
+  content: {
+    padding: 14,
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(180px,1fr))",
+    gap: 10,
+  },
+  label: {
+    display: "block",
+    fontSize: 11,
+    fontWeight: 800,
+    color: "#334155",
+    marginBottom: 6,
+  },
+  field: {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: 11,
+    border: "1px solid #cbd5e1",
+    borderRadius: 7,
+    color: "#0f172a",
+    background: "#ffffff",
+    fontSize: 12,
+    fontFamily: "inherit",
+  },
+  readOnly: {
+    padding: 11,
+    border: "1px solid #cbd5e1",
+    borderRadius: 7,
+    background: "#f1f5f9",
+    fontWeight: 800,
+    fontSize: 12,
+    minHeight: 17,
+  },
+  summary: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(140px,1fr))",
+    gap: 9,
+    marginTop: 14,
+  },
+  summaryItem: {
+    padding: 11,
+    background: "#f1f5f9",
+    border: "1px solid #e2e8f0",
+    borderRadius: 7,
+    display: "grid",
+    gap: 5,
+  },
+  summaryLabel: {
+    fontSize: 10,
+    fontWeight: 800,
+    color: "#64748b",
+  },
+  summaryValue: {
+    fontSize: 13,
+    fontWeight: 900,
+    color: "#073b5c",
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "#073b5c",
+    marginTop: 18,
+    marginBottom: 11,
+  },
+  choices: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit,minmax(165px,1fr))",
+    gap: 10,
+  },
+  choice: {
+    minHeight: 69,
+    border: "1px solid",
+    borderRadius: 8,
+    padding: "12px 9px",
+    fontSize: 11,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  section: {
+    marginTop: 14,
+  },
+  actions: {
+    display: "grid",
+    gridTemplateColumns: "2fr 1fr",
+    gap: 9,
+    marginTop: 16,
+  },
+  save: {
+    background: "#0f766e",
+    color: "white",
+    border: 0,
+    borderRadius: 7,
+    padding: 13,
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  refresh: {
+    background: "#475569",
+    color: "white",
+    border: 0,
+    borderRadius: 7,
+    padding: 13,
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  error: {
+    background: "#fef2f2",
+    color: "#991b1b",
+    padding: 11,
+    borderRadius: 6,
+    marginTop: 12,
+    fontSize: 12,
+  },
+  success: {
+    background: "#ecfdf5",
+    color: "#166534",
+    padding: 11,
+    borderRadius: 6,
+    marginTop: 12,
+    fontSize: 12,
+    fontWeight: 800,
+  },
 };
