@@ -10,6 +10,19 @@ import {
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// Exclude the account-registration profile.
+function isActualCashier(person) {
+  const name = String(person?.name || "")
+    .trim()
+    .toUpperCase();
+
+  return (
+    Boolean(person?.id) &&
+    name !== "" &&
+    name !== "WELCOME"
+  );
+}
+
 async function rpc(name, token, payload) {
   if (!URL || !KEY || !token) {
     throw new Error("Admin session unavailable.");
@@ -84,6 +97,16 @@ export default function Admin24HourShiftControl({
 
   const [reload, setReload] = useState(0);
 
+  // Only eligible displayed cashiers.
+  // WELCOME is never included.
+  const actualCashiers = useMemo(
+    () =>
+      (status?.cashiers || []).filter(
+        isActualCashier
+      ),
+    [status]
+  );
+
   useEffect(() => {
     setShopId((current) =>
       shopOptions.some((s) => s.id === current)
@@ -99,6 +122,7 @@ export default function Admin24HourShiftControl({
   useEffect(() => {
     if (!shopId || !token) {
       setStatus(null);
+      setCashierId("");
       return;
     }
 
@@ -117,31 +141,48 @@ export default function Admin24HourShiftControl({
 
         if (cancelled) return;
 
+        const cashiers = (
+          result.cashiers || []
+        ).filter(isActualCashier);
+
         setStatus(result);
 
         setCashierId((previous) => {
-          const cashiers = result.cashiers || [];
-
-          if (cashiers.some((c) => c.id === previous)) {
+          // Retain an eligible selection.
+          if (
+            cashiers.some(
+              (c) => c.id === previous
+            )
+          ) {
             return previous;
           }
 
+          // Retain a genuine cashier on the
+          // recovered shift, when available.
           if (
             cashiers.some(
-              (c) => c.id === result.source?.cashier_id
+              (c) =>
+                c.id === result.source?.cashier_id
             )
           ) {
             return result.source.cashier_id;
           }
 
-          return cashiers[0]?.id || "";
+          // Do not automatically select a
+          // registration profile or another
+          // employee without Admin choosing.
+          return "";
         });
       } catch (err) {
         if (cancelled) return;
+
         setStatus(null);
+        setCashierId("");
         setError(err.message);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
@@ -188,9 +229,6 @@ export default function Admin24HourShiftControl({
     setSuccess("");
 
     try {
-      // Refresh the financial preview immediately
-      // before asking Admin to finalize.
-
       const latest = await rpc(
         "tl_admin_24h_recovery_status_v1",
         token,
@@ -224,6 +262,19 @@ export default function Admin24HourShiftControl({
         latest.source.shift_name === actualShift &&
         latest.source.business_date === actualDate;
 
+      // Verify selected cashier against
+      // fresh, eligible cashier records.
+      const latestCashiers = (
+        latest.cashiers || []
+      ).filter(isActualCashier);
+
+      const verifiedCashierId =
+        latestCashiers.some(
+          (c) => c.id === cashierId
+        )
+          ? cashierId
+          : null;
+
       const confirmation = [
         "FINALIZE ADMIN RECOVERY",
         "",
@@ -236,14 +287,19 @@ export default function Admin24HourShiftControl({
         `SELECTED: ${actualShift}`,
         `DATE: ${actualDate}`,
         "",
+        `CASHIER: ${
+          latestCashiers.find(
+            (c) => c.id === verifiedCashierId
+          )?.name || "Not assigned"
+        }`,
+        "",
         alreadyOpen
-          ? "Resume the corrected open shift."
+          ? "Resume corrected shift."
           : `OPENING B/F: ${kes(
               latest.source.closing_balance
             )}`,
         "",
-        "Existing expenses remain on the source shift.",
-        "Admin corrections and handover are audited.",
+        "Existing financial records remain on the recovered shift.",
       ].join("\n");
 
       if (!window.confirm(confirmation)) {
@@ -256,13 +312,15 @@ export default function Admin24HourShiftControl({
         {
           p_shop_id: shopId,
           p_selection: selection,
-          p_cashier_id: cashierId || null,
+          p_cashier_id: verifiedCashierId,
           p_reason: reason.trim(),
         }
       );
 
       if (result?.ok !== true) {
-        throw new Error("Recovery could not be finalized.");
+        throw new Error(
+          "Recovery could not be finalized."
+        );
       }
 
       setSuccess(
@@ -293,7 +351,9 @@ export default function Admin24HourShiftControl({
       <div style={styles.content}>
         <div style={styles.grid}>
           <div>
-            <label style={styles.label}>SHOP</label>
+            <label style={styles.label}>
+              SHOP
+            </label>
 
             <select
               style={styles.field}
@@ -303,13 +363,17 @@ export default function Admin24HourShiftControl({
                 setShopId(e.target.value);
                 setStatus(null);
                 setSelection("AUTO");
+                setCashierId("");
                 setReason("");
                 setError("");
                 setSuccess("");
               }}
             >
               {shopOptions.map((shop) => (
-                <option key={shop.id} value={shop.id}>
+                <option
+                  key={shop.id}
+                  value={shop.id}
+                >
                   {shop.shop_name}
                 </option>
               ))}
@@ -344,17 +408,23 @@ export default function Admin24HourShiftControl({
 
             <Summary
               label="BALANCE B/F"
-              value={kes(source.opening_balance)}
+              value={kes(
+                source.opening_balance
+              )}
             />
 
             <Summary
               label="EXPENSES"
-              value={kes(source.total_expenses)}
+              value={kes(
+                source.total_expenses
+              )}
             />
 
             <Summary
               label="CORRECTED CLOSING"
-              value={kes(source.closing_balance)}
+              value={kes(
+                source.closing_balance
+              )}
             />
           </div>
         )}
@@ -367,7 +437,8 @@ export default function Admin24HourShiftControl({
           {[
             {
               value: "AUTO",
-              label: "AUTOMATIC SHIFT SELECTION",
+              label:
+                "AUTOMATIC SHIFT SELECTION",
             },
             {
               value: "SHIFT 1 TODAY",
@@ -412,46 +483,68 @@ export default function Admin24HourShiftControl({
             label="SELECTED SHIFT"
             value={selectedShift}
           />
+
           <Summary
             label="BUSINESS DATE"
             value={selectedDate}
           />
+
           <Summary
             label={
               sameSlot
                 ? "CORRECTED BALANCE"
                 : "OPENING BALANCE B/F"
             }
-            value={kes(source?.closing_balance)}
+            value={kes(
+              source?.closing_balance
+            )}
           />
         </div>
 
-        {!sameSlot &&
-          (status?.cashiers || []).length > 0 && (
-            <div style={styles.section}>
-              <label style={styles.label}>CASHIER</label>
+        {!sameSlot && (
+          <div style={styles.section}>
+            <label style={styles.label}>
+              CASHIER
+            </label>
 
-              <select
-                style={styles.field}
-                value={cashierId}
-                disabled={saving}
-                onChange={(e) =>
-                  setCashierId(e.target.value)
+            <select
+              style={styles.field}
+              value={cashierId}
+              disabled={saving}
+              onChange={(e) => {
+                const selected =
+                  e.target.value;
+
+                if (
+                  selected === "" ||
+                  actualCashiers.some(
+                    (c) => c.id === selected
+                  )
+                ) {
+                  setCashierId(selected);
                 }
-              >
-                <option value="">Not assigned</option>
+              }}
+            >
+              <option value="">
+                Not assigned
+              </option>
 
-                {(status.cashiers || []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+              {actualCashiers.map((cashier) => (
+                <option
+                  key={cashier.id}
+                  value={cashier.id}
+                >
+                  {cashier.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div style={styles.section}>
-          <label style={styles.label}>ADMIN REASON</label>
+          <label style={styles.label}>
+            ADMIN REASON
+          </label>
 
           <textarea
             rows={2}
@@ -471,13 +564,19 @@ export default function Admin24HourShiftControl({
         </div>
 
         {error && (
-          <div role="alert" style={styles.error}>
+          <div
+            role="alert"
+            style={styles.error}
+          >
             {error}
           </div>
         )}
 
         {success && (
-          <div role="status" style={styles.success}>
+          <div
+            role="status"
+            style={styles.success}
+          >
             {success}
           </div>
         )}
@@ -489,7 +588,9 @@ export default function Admin24HourShiftControl({
             onClick={finishRecovery}
             style={{
               ...styles.save,
-              opacity: canSave ? 1 : 0.5,
+              opacity: canSave
+                ? 1
+                : 0.5,
             }}
           >
             {saving
@@ -538,6 +639,7 @@ const styles = {
     overflow: "hidden",
     marginBottom: 16,
   },
+
   header: {
     padding: "14px 16px",
     color: "#ffffff",
@@ -545,15 +647,18 @@ const styles = {
     fontWeight: 900,
     fontSize: 14,
   },
+
   content: {
     padding: 14,
   },
+
   grid: {
     display: "grid",
     gridTemplateColumns:
       "repeat(auto-fit,minmax(180px,1fr))",
     gap: 10,
   },
+
   label: {
     display: "block",
     fontSize: 11,
@@ -561,6 +666,7 @@ const styles = {
     color: "#334155",
     marginBottom: 6,
   },
+
   field: {
     width: "100%",
     boxSizing: "border-box",
@@ -572,6 +678,7 @@ const styles = {
     fontSize: 12,
     fontFamily: "inherit",
   },
+
   readOnly: {
     padding: 11,
     border: "1px solid #cbd5e1",
@@ -581,6 +688,7 @@ const styles = {
     fontSize: 12,
     minHeight: 17,
   },
+
   summary: {
     display: "grid",
     gridTemplateColumns:
@@ -588,6 +696,7 @@ const styles = {
     gap: 9,
     marginTop: 14,
   },
+
   summaryItem: {
     padding: 11,
     background: "#f1f5f9",
@@ -596,16 +705,19 @@ const styles = {
     display: "grid",
     gap: 5,
   },
+
   summaryLabel: {
     fontSize: 10,
     fontWeight: 800,
     color: "#64748b",
   },
+
   summaryValue: {
     fontSize: 13,
     fontWeight: 900,
     color: "#073b5c",
   },
+
   sectionTitle: {
     fontSize: 12,
     fontWeight: 900,
@@ -613,12 +725,14 @@ const styles = {
     marginTop: 18,
     marginBottom: 11,
   },
+
   choices: {
     display: "grid",
     gridTemplateColumns:
       "repeat(auto-fit,minmax(165px,1fr))",
     gap: 10,
   },
+
   choice: {
     minHeight: 69,
     border: "1px solid",
@@ -628,15 +742,18 @@ const styles = {
     fontWeight: 900,
     cursor: "pointer",
   },
+
   section: {
     marginTop: 14,
   },
+
   actions: {
     display: "grid",
     gridTemplateColumns: "2fr 1fr",
     gap: 9,
     marginTop: 16,
   },
+
   save: {
     background: "#0f766e",
     color: "white",
@@ -647,6 +764,7 @@ const styles = {
     fontWeight: 900,
     cursor: "pointer",
   },
+
   refresh: {
     background: "#475569",
     color: "white",
@@ -657,6 +775,7 @@ const styles = {
     fontWeight: 900,
     cursor: "pointer",
   },
+
   error: {
     background: "#fef2f2",
     color: "#991b1b",
@@ -665,6 +784,7 @@ const styles = {
     marginTop: 12,
     fontSize: 12,
   },
+
   success: {
     background: "#ecfdf5",
     color: "#166534",
