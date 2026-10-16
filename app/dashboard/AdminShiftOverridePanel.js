@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import AdminRecoveryReportEditor from "./AdminRecoveryReportEditor";
 import Admin24HourShiftControl from "./Admin24HourShiftControl";
@@ -14,53 +10,22 @@ const ZONE = "Africa/Nairobi";
 export default function AdminShiftOverridePanel({ user }) {
   const [shops, setShops] = useState([]);
   const [shopId, setShopId] = useState("");
-  const [businessDate, setBusinessDate] =
-    useState(todayNairobi);
+  const [businessDate, setBusinessDate] = useState(todayNairobi);
+  const [targetShifts, setTargetShifts] = useState([]);
+  const [openShifts, setOpenShifts] = useState([]);
+  const [targetId, setTargetId] = useState("");
+  const [recovery, setRecovery] = useState(null);
+  const [reason, setReason] = useState("");
+  const [endNote, setEndNote] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [version, setVersion] = useState(0);
 
-  const [targetShifts, setTargetShifts] =
-    useState([]);
-
-  const [openShifts, setOpenShifts] =
-    useState([]);
-
-  const [targetId, setTargetId] =
-    useState("");
-
-  const [recovery, setRecovery] =
-    useState(null);
-
-  const [reason, setReason] =
-    useState("");
-
-  // NEW:
-  // Admin verification note entered before
-  // ending an active Recovery session.
-  const [endNote, setEndNote] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [busy, setBusy] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [message, setMessage] =
-    useState("");
-
-  const [version, setVersion] =
-    useState(0);
-
-  const url =
-    process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-  const key =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const token =
-    user?.access_token;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const token = user?.access_token;
 
   const headers = useMemo(
     () => ({
@@ -71,63 +36,46 @@ export default function AdminShiftOverridePanel({ user }) {
     [key, token]
   );
 
-  const shop = shops.find(
-    (s) => s.id === shopId
-  );
+  const shop = shops.find((s) => s.id === shopId);
 
-  const target = targetShifts.find(
-    (s) => s.id === targetId
-  );
+  const shopType = String(shop?.shop_type || "")
+    .trim()
+    .toUpperCase();
 
-  const otherOpen = openShifts.filter(
-    (s) => s.id !== targetId
-  );
+  const is12HourShop = shopType === "12_HOUR";
+  const is24HourShop = shopType === "24_HOUR";
 
-  const multipleOpen =
-    otherOpen.length > 1;
+  const target = targetShifts.find((s) => s.id === targetId);
 
-  const returnShift =
-    otherOpen.length === 1
-      ? otherOpen[0]
-      : null;
-
-  const is12HourShop =
-    String(shop?.shop_type || "")
-      .trim()
-      .toUpperCase() === "12_HOUR";
+  const otherOpen = openShifts.filter((s) => s.id !== targetId);
+  const multipleOpen = otherOpen.length > 1;
+  const returnShift = otherOpen.length === 1 ? otherOpen[0] : null;
 
   // ==========================================
   // SUPABASE REQUEST
   // ==========================================
 
   async function request(path, body) {
-    const response = await fetch(
-      `${url}/rest/v1/${path}`,
-      {
-        method:
-          body === undefined
-            ? "GET"
-            : "POST",
+    if (!url || !key || !token) {
+      throw new Error("Admin login information is missing.");
+    }
 
-        headers,
-
-        ...(body === undefined
-          ? {}
-          : {
-              body: JSON.stringify(body),
-            }),
-
-        cache: "no-store",
-      }
-    );
+    const response = await fetch(`${url}/rest/v1/${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      ...(body === undefined
+        ? {}
+        : { body: JSON.stringify(body) }),
+      cache: "no-store",
+    });
 
     const result = await json(response);
 
     if (!response.ok) {
       throw new Error(
         result?.message ||
-        result?.details ||
-        "Database request failed."
+          result?.details ||
+          "Database request failed."
       );
     }
 
@@ -144,10 +92,7 @@ export default function AdminShiftOverridePanel({ user }) {
     async function loadShops() {
       if (!url || !key || !token) {
         if (!stopped) {
-          setError(
-            "Admin login information is missing."
-          );
-
+          setError("Admin login information is missing.");
           setLoading(false);
         }
 
@@ -157,29 +102,24 @@ export default function AdminShiftOverridePanel({ user }) {
       try {
         const result = await request(
           "shops?shop_type=in.(12_HOUR,24_HOUR)" +
-          "&select=id,shop_name,shop_type,is_active" +
-          "&order=shop_name.asc"
+            "&select=id,shop_name,shop_type,is_active" +
+            "&order=shop_name.asc"
         );
 
         if (stopped) return;
 
-        const list = Array.isArray(result)
-          ? result
-          : [];
+        const list = Array.isArray(result) ? result : [];
 
         setShops(list);
 
-        setShopId((old) =>
-          list.some((s) => s.id === old)
-            ? old
+        setShopId((current) =>
+          list.some((s) => s.id === current)
+            ? current
             : list[0]?.id || ""
         );
       } catch (e) {
         if (!stopped) {
-          setError(
-            e?.message ||
-            "Unable to load shops."
-          );
+          setError(e?.message || "Unable to load shops.");
         }
       } finally {
         if (!stopped) {
@@ -196,15 +136,14 @@ export default function AdminShiftOverridePanel({ user }) {
   }, [url, key, token]);
 
   // ==========================================
-  // LOAD HISTORICAL SHIFT AND RECOVERY
+  // LOAD SHIFT AND RECOVERY
+  //
+  // 12H: EXISTING DATE-SCOPED SELECTION
+  // 24H: LAST OPEN SHIFT FIRST
   // ==========================================
 
   useEffect(() => {
-    if (
-      !shopId ||
-      !businessDate ||
-      !token
-    ) {
+    if (!shopId || !token || (!businessDate && is12HourShop)) {
       return;
     }
 
@@ -215,76 +154,70 @@ export default function AdminShiftOverridePanel({ user }) {
       setError("");
 
       try {
-        const sid =
-          encodeURIComponent(shopId);
+        const sid = encodeURIComponent(shopId);
+        const date = encodeURIComponent(businessDate);
 
-        const date =
-          encodeURIComponent(businessDate);
-
-        const [
-          targets,
-          opens,
-          sessions,
-        ] = await Promise.all([
-          request(
-            `shifts?shop_id=eq.${sid}` +
+        const targetsPath = is24HourShop
+          ? `shifts?shop_id=eq.${sid}` +
+            "&select=id,shop_id,shift_name,business_date,status,opened_at,cashier_name" +
+            "&order=opened_at.desc.nullslast&limit=30"
+          : `shifts?shop_id=eq.${sid}` +
             `&business_date=eq.${date}` +
-            "&select=id,shop_id,shift_name,business_date," +
-            "status,opened_at,cashier_name" +
-            "&order=opened_at.desc"
-          ),
+            "&select=id,shop_id,shift_name,business_date,status,opened_at,cashier_name" +
+            "&order=opened_at.desc";
+
+        const [targets, opens, sessions] = await Promise.all([
+          request(targetsPath),
 
           request(
             `shifts?shop_id=eq.${sid}&status=eq.OPEN` +
-            "&select=id,shop_id,shift_name,business_date," +
-            "status,opened_at,cashier_name" +
-            "&order=opened_at.desc"
+              "&select=id,shop_id,shift_name,business_date,status,opened_at,cashier_name" +
+              "&order=opened_at.desc"
           ),
 
-          request(
-            "rpc/tl_admin_get_shift_recovery",
-            {
-              p_shop_id: shopId,
-            }
-          ),
+          request("rpc/tl_admin_get_shift_recovery", {
+            p_shop_id: shopId,
+          }),
         ]);
 
         if (stopped) return;
 
-        const list = Array.isArray(targets)
-          ? targets
-          : [];
+        const rows = Array.isArray(targets) ? targets : [];
+        const live = Array.isArray(opens) ? opens : [];
 
-        const currentRecovery =
-          Array.isArray(sessions)
-            ? sessions[0] || null
-            : null;
+        const list = is24HourShop
+          ? [
+              ...live.filter(
+                (s) => !rows.some((t) => t.id === s.id)
+              ),
+              ...rows,
+            ]
+          : rows;
+
+        const currentRecovery = Array.isArray(sessions)
+          ? sessions[0] || null
+          : sessions?.session_id
+          ? sessions
+          : null;
 
         setTargetShifts(list);
+        setOpenShifts(live);
+        setRecovery(currentRecovery);
 
-        setOpenShifts(
-          Array.isArray(opens)
-            ? opens
-            : []
-        );
+        setTargetId((current) => {
+          if (list.some((s) => s.id === current)) {
+            return current;
+          }
 
-        setRecovery(
-          currentRecovery
-        );
+          if (is24HourShop) {
+            return live[0]?.id || list[0]?.id || "";
+          }
 
-        setTargetId((old) =>
-          list.some((s) => s.id === old)
-            ? old
-            : ""
-        );
-
+          return "";
+        });
       } catch (e) {
         if (!stopped) {
-          setError(
-            e?.message ||
-            "Unable to load recovery."
-          );
-
+          setError(e?.message || "Unable to load recovery.");
           setTargetShifts([]);
           setOpenShifts([]);
           setRecovery(null);
@@ -304,15 +237,13 @@ export default function AdminShiftOverridePanel({ user }) {
   }, [
     shopId,
     businessDate,
+    is24HourShop,
+    is12HourShop,
     version,
     url,
     key,
     token,
   ]);
-
-  // ==========================================
-  // RESET VERIFICATION NOTE ON SESSION CHANGE
-  // ==========================================
 
   useEffect(() => {
     setEndNote("");
@@ -320,9 +251,6 @@ export default function AdminShiftOverridePanel({ user }) {
 
   // ==========================================
   // REFRESH
-  //
-  // Do not erase the success message immediately
-  // after starting or ending Recovery.
   // ==========================================
 
   function refresh() {
@@ -334,28 +262,15 @@ export default function AdminShiftOverridePanel({ user }) {
   // ==========================================
 
   async function startRecovery() {
-    if (
-      busy ||
-      loading ||
-      error ||
-      recovery
-    ) {
-      return;
-    }
+    if (busy || loading || error || recovery) return;
 
     if (!target || !shop) {
-      setError(
-        "Select the historical shift."
-      );
+      setError("Select the shift to recover.");
       return;
     }
 
-    if (
-      reason.trim().length < 10
-    ) {
-      setError(
-        "Enter a reason of at least 10 characters."
-      );
+    if (reason.trim().length < 10) {
+      setError("Enter a reason of at least 10 characters.");
       return;
     }
 
@@ -364,12 +279,10 @@ export default function AdminShiftOverridePanel({ user }) {
     setMessage("");
 
     try {
-      // Fresh shop-wide OPEN shift check.
-
       const opens = await request(
         `shifts?shop_id=eq.${encodeURIComponent(shopId)}` +
-        "&status=eq.OPEN" +
-        "&select=id,shift_name,business_date,status,opened_at"
+          "&status=eq.OPEN" +
+          "&select=id,shift_name,business_date,status,opened_at"
       );
 
       if (!Array.isArray(opens)) {
@@ -378,9 +291,7 @@ export default function AdminShiftOverridePanel({ user }) {
         );
       }
 
-      const others = opens.filter(
-        (s) => s.id !== target.id
-      );
+      const others = opens.filter((s) => s.id !== target.id);
 
       if (others.length > 1) {
         throw new Error(
@@ -388,145 +299,85 @@ export default function AdminShiftOverridePanel({ user }) {
         );
       }
 
-      const automaticReturn =
-        others[0] || null;
-
-      const confirmed =
-        window.confirm(
-          "START ADMIN RECOVERY?\n\n" +
-          `Shop: ${shop.shop_name}\n` +
-          `Target: ${describe(target)}\n` +
-          `Return: ${
-            automaticReturn
-              ? describe(automaticReturn)
-              : "Normal shift selection"
-          }`
+      if (is24HourShop && others.length > 0) {
+        throw new Error(
+          "Recover the current OPEN 24-hour shift first."
         );
-
-      if (!confirmed) {
-        return;
       }
 
-      await request(
-        "rpc/tl_admin_start_shift_recovery",
-        {
-          p_shop_id: shopId,
+      const automaticReturn = others[0] || null;
 
-          p_target_shift_id:
-            target.id,
-
-          p_return_shift_id:
-            automaticReturn?.id ||
-            null,
-
-          p_reason:
-            reason.trim(),
-        }
+      const confirmed = window.confirm(
+        "START ADMIN RECOVERY?\n\n" +
+          `Shop: ${shop.shop_name}\n` +
+          `Target: ${describe(target)}\n` +
+          (is12HourShop
+            ? `Return: ${
+                automaticReturn
+                  ? describe(automaticReturn)
+                  : "Normal shift selection"
+              }`
+            : "Correct this shift, then select the next shift.")
       );
+
+      if (!confirmed) return;
+
+      await request("rpc/tl_admin_start_shift_recovery", {
+        p_shop_id: shopId,
+        p_target_shift_id: target.id,
+        p_return_shift_id: is12HourShop
+          ? automaticReturn?.id || null
+          : null,
+        p_reason: reason.trim(),
+      });
 
       setReason("");
       setEndNote("");
-
-      setMessage(
-        "Recovery started."
-      );
-
+      setMessage("Recovery started.");
       refresh();
-
     } catch (e) {
-      setError(
-        e?.message ||
-        "Unable to start Recovery."
-      );
+      setError(e?.message || "Unable to start Recovery.");
     } finally {
       setBusy(false);
     }
   }
 
   // ==========================================
-  // END ADMIN RECOVERY
+  // END RECOVERY — 12-HOUR ONLY
   //
-  // UPDATED:
-  // Send the actual Admin verification note.
-  //
-  // Database Stage 8 handles:
-  // - Verify missing readings
-  // - Verify financial reconciliation
-  // - Resolve incident if valid
-  // - End recovery session atomically
-  //
-  // If verification fails:
-  // - Recovery stays ACTIVE
-  // - Incident stays PENDING_ADMIN
-  //
-  // Other 24-hour Recovery logic unchanged.
+  // ORIGINAL 12-HOUR VALIDATION PRESERVED
   // ==========================================
 
   async function endRecovery() {
-    if (
-      !recovery?.session_id ||
-      busy
-    ) {
+    if (!is12HourShop || !recovery?.session_id || busy) {
       return;
     }
 
-    const note =
-      endNote.trim();
+    const note = endNote.trim();
 
-    // The database determines whether a
-    // 12-hour incident is pending and requires
-    // a note of at least 10 characters.
-    // Ordinary recoveries and 24-hour recoveries
-    // retain their existing optional-note rule.
-
-    const confirmed =
-      window.confirm(
-        "END ADMIN RECOVERY?\n\n" +
-        `Shop: ${
-          shop?.shop_name || "Shop"
-        }\n` +
+    const confirmed = window.confirm(
+      "END ADMIN RECOVERY?\n\n" +
+        `Shop: ${shop?.shop_name || "Shop"}\n` +
         `Target: ${
-          recovery.target_shift_name ||
-          "Shift"
-        } | ${
-          recovery.target_business_date ||
-          "—"
-        }\n\n` +
+          recovery.target_shift_name || "Shift"
+        } | ${recovery.target_business_date || "—"}\n\n` +
         `Verification note:\n${
-          note ||
-          "(No note entered)"
+          note || "(No note entered)"
         }\n\n` +
-        (
-          is12HourShop
-            ? "If an incomplete closing is pending, Supabase must verify the readings and closing balance before ending this session."
-            : "The existing Recovery session will be ended."
-        )
-      );
+        "If an incomplete closing is pending, Supabase must verify the readings and closing balance before ending this session."
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setBusy(true);
     setError("");
     setMessage("");
 
     try {
-      // IMPORTANT:
-      // Do not send p_note:null unconditionally.
-      // This note is required by the strict
-      // 12-hour verification SQL.
-
-      await request(
-        "rpc/tl_admin_end_shift_recovery",
-        {
-          p_session_id:
-            recovery.session_id,
-
-          p_note:
-            note || null,
-        }
-      );
+      await request("rpc/tl_admin_end_shift_recovery", {
+        p_session_id: recovery.session_id,
+        p_note: note || null,
+      });
 
       setEndNote("");
 
@@ -535,15 +386,9 @@ export default function AdminShiftOverridePanel({ user }) {
       );
 
       refresh();
-
     } catch (e) {
-      // Supabase rejects ending a pending
-      // 12-hour incident without verification.
-      // Keep the user's note for correction.
-
       setError(
-        e?.message ||
-        "Unable to verify and end Recovery."
+        e?.message || "Unable to verify and end Recovery."
       );
     } finally {
       setBusy(false);
@@ -557,35 +402,22 @@ export default function AdminShiftOverridePanel({ user }) {
   return (
     <section style={panel}>
       <div style={heading}>
-        ADMIN SHIFT RECOVERY — 12H & 24H
+        ADMIN SHIFT RECOVERY — 12H &amp; 24H
       </div>
 
       <div style={{ padding: 14 }}>
-        {/* ORIGINAL 24-HOUR CONTROL */}
-
-        <Admin24HourShiftControl
-          user={user}
-          shops={shops}
-          onChanged={refresh}
-        />
-
-        {/* SHOP AND BUSINESS DATE */}
+        {/* SHOP SELECTION */}
 
         <div style={grid}>
           <div>
-            <label style={label}>
-              SHOP
-            </label>
+            <label style={label}>SHOP</label>
 
             <select
               style={field}
               value={shopId}
               disabled={busy}
               onChange={(e) => {
-                setShopId(
-                  e.target.value
-                );
-
+                setShopId(e.target.value);
                 setTargetId("");
                 setRecovery(null);
                 setEndNote("");
@@ -594,40 +426,34 @@ export default function AdminShiftOverridePanel({ user }) {
               }}
             >
               {shops.map((s) => (
-                <option
-                  key={s.id}
-                  value={s.id}
-                >
+                <option key={s.id} value={s.id}>
                   {s.shop_name} — {s.shop_type}
-                  {!s.is_active
-                    ? " (INACTIVE)"
-                    : ""}
+                  {!s.is_active ? " (INACTIVE)" : ""}
                 </option>
               ))}
             </select>
           </div>
 
-          <div>
-            <label style={label}>
-              BUSINESS DATE
-            </label>
+          {/* ORIGINAL 12-HOUR DATE CONTROL */}
 
-            <input
-              type="date"
-              style={field}
-              value={businessDate}
-              disabled={busy}
-              onChange={(e) => {
-                setBusinessDate(
-                  e.target.value
-                );
+          {is12HourShop && (
+            <div>
+              <label style={label}>BUSINESS DATE</label>
 
-                setTargetId("");
-                setError("");
-                setMessage("");
-              }}
-            />
-          </div>
+              <input
+                type="date"
+                style={field}
+                value={businessDate}
+                disabled={busy}
+                onChange={(e) => {
+                  setBusinessDate(e.target.value);
+                  setTargetId("");
+                  setError("");
+                  setMessage("");
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* STATUS */}
@@ -635,16 +461,12 @@ export default function AdminShiftOverridePanel({ user }) {
         <div style={stats}>
           <Info
             title="SHOP"
-            value={
-              shop?.shop_name || "-"
-            }
+            value={shop?.shop_name || "-"}
           />
 
           <Info
             title="TYPE"
-            value={
-              shop?.shop_type || "-"
-            }
+            value={shop?.shop_type || "-"}
           />
 
           <Info
@@ -654,35 +476,23 @@ export default function AdminShiftOverridePanel({ user }) {
 
           <Info
             title="RECOVERY"
-            value={
-              recovery
-                ? "ACTIVE"
-                : "NONE"
-            }
+            value={recovery ? "ACTIVE" : "NONE"}
           />
         </div>
 
         {error && (
-          <div
-            role="alert"
-            style={errorBox}
-          >
+          <div role="alert" style={errorBox}>
             {error}
           </div>
         )}
 
         {message && (
-          <div
-            role="status"
-            style={successBox}
-          >
+          <div role="status" style={successBox}>
             {message}
           </div>
         )}
 
-        {loading && (
-          <p>Loading shifts...</p>
-        )}
+        {loading && <p>Loading shifts...</p>}
 
         {/* =====================================
             ACTIVE RECOVERY
@@ -691,95 +501,82 @@ export default function AdminShiftOverridePanel({ user }) {
         {recovery ? (
           <div style={inner}>
             <strong>
-              {recovery.target_shift_name}
-              {" — "}
+              {recovery.target_shift_name} —{" "}
               {recovery.target_business_date}
             </strong>
 
             <div>
-              Status:{" "}
-              {recovery.target_status}
+              Status: {recovery.target_status}
             </div>
 
             <div>
-              Reason:{" "}
-              {recovery.reason}
+              Reason: {recovery.reason}
             </div>
 
-            <div>
-              Return:{" "}
-              {recovery.return_shift_name
-                ? (
-                    `${recovery.return_shift_name} | ` +
-                    `${recovery.return_business_date}`
-                  )
-                : "Normal shift selection"}
-            </div>
+            {/* ONLY 12-HOUR SHOPS HAVE THE
+                ORIGINAL END RECOVERY CONTROL */}
 
-            {/* NEW VERIFICATION NOTE FIELD */}
+            {is12HourShop && (
+              <>
+                <div>
+                  Return:{" "}
+                  {recovery.return_shift_name
+                    ? `${recovery.return_shift_name} | ${recovery.return_business_date}`
+                    : "Normal shift selection"}
+                </div>
 
-            <div style={verificationSection}>
-              <label
-                htmlFor="tl-admin-recovery-end-note"
-                style={verificationLabel}
-              >
-                {is12HourShop
-                  ? "ADMIN VERIFICATION NOTE"
-                  : "END RECOVERY NOTE"}
-              </label>
+                <div style={verificationSection}>
+                  <label
+                    htmlFor="tl-admin-recovery-end-note"
+                    style={verificationLabel}
+                  >
+                    ADMIN VERIFICATION NOTE
+                  </label>
 
-              <textarea
-                id="tl-admin-recovery-end-note"
-                rows={3}
-                style={verificationInput}
-                value={endNote}
-                disabled={busy}
-                maxLength={2000}
-                onChange={(e) => {
-                  setEndNote(
-                    e.target.value
-                  );
+                  <textarea
+                    id="tl-admin-recovery-end-note"
+                    rows={3}
+                    style={verificationInput}
+                    value={endNote}
+                    disabled={busy}
+                    maxLength={2000}
+                    onChange={(e) => {
+                      setEndNote(e.target.value);
+                      setError("");
+                    }}
+                    placeholder="Example: Verified all six closing readings, expenses and final Balance B/F for this shop."
+                  />
 
-                  setError("");
-                }}
-                placeholder={
-                  is12HourShop
-                    ? "Example: Verified all six closing readings, expenses and final Balance B/F for this shop."
-                    : "Optional reason or summary of the completed recovery"
-                }
-              />
+                  <div style={verificationHelp}>
+                    For an incomplete 12-hour closing,
+                    enter at least 10 characters.
+                    Supabase will verify the readings
+                    and balance before unlocking.
+                  </div>
 
-              <div style={verificationHelp}>
-                {is12HourShop
-                  ? "For an incomplete 12-hour closing, enter at least 10 characters. Supabase will verify the readings and balance before unlocking."
-                  : "Optional for ordinary 24-hour Recovery."}
-              </div>
+                  <div style={verificationCount}>
+                    {endNote.trim().length} characters
+                  </div>
+                </div>
 
-              <div style={verificationCount}>
-                {endNote.trim().length}
-                {" characters"}
-              </div>
-            </div>
-
-            {/* END RECOVERY BUTTON */}
-
-            <button
-              type="button"
-              disabled={busy || loading}
-              onClick={endRecovery}
-              style={{
-                ...button,
-
-                background:
-                  busy || loading
-                    ? "#94a3b8"
-                    : "#0f766e",
-              }}
-            >
-              {busy
-                ? "VERIFYING RECOVERY..."
-                : "END RECOVERY SESSION"}
-            </button>
+                <button
+                  type="button"
+                  disabled={busy || loading}
+                  onClick={endRecovery}
+                  style={{
+                    ...button,
+                    background:
+                      busy || loading
+                        ? "#94a3b8"
+                        : "#0f766e",
+                  }}
+                >
+                  {busy
+                    ? "VERIFYING RECOVERY..."
+                    : "END RECOVERY SESSION"}
+                </button>
+              </>
+            )}
           </div>
         ) : (
           /* =====================================
@@ -788,60 +585,49 @@ export default function AdminShiftOverridePanel({ user }) {
 
           <div style={inner}>
             <label style={label}>
-              SHIFT TO RECOVER
+              {is24HourShop
+                ? "LAST SHIFT TO RECOVER"
+                : "SHIFT TO RECOVER"}
             </label>
 
             <select
               style={field}
               value={targetId}
-              disabled={
-                busy ||
-                loading ||
-                !!error
-              }
-              onChange={(e) =>
-                setTargetId(
-                  e.target.value
-                )
-              }
+              disabled={busy || loading || !!error}
+              onChange={(e) => {
+                setTargetId(e.target.value);
+              }}
             >
               <option value="">
                 Select shift...
               </option>
 
               {targetShifts.map((s) => (
-                <option
-                  key={s.id}
-                  value={s.id}
-                >
+                <option key={s.id} value={s.id}>
                   {describe(s)}
                 </option>
               ))}
             </select>
 
-            {!loading &&
-              targetShifts.length === 0 && (
-                <small>
-                  No shifts found for this date.
-                </small>
-              )}
+            {!loading && targetShifts.length === 0 && (
+              <small>No shifts found.</small>
+            )}
 
-            <div
-              style={{
-                margin: "10px 0",
-                fontSize: 12,
-              }}
-            >
-              <strong>
-                Automatic return:
-              </strong>{" "}
-
-              {multipleOpen
-                ? "Multiple OPEN shifts — resolve first"
-                : returnShift
-                ? describe(returnShift)
-                : "Normal shift selection"}
-            </div>
+            {is12HourShop && (
+              <div
+                style={{
+                  margin: "10px 0",
+                  fontSize: 12,
+                }}
+              >
+                <strong>Automatic return:</strong>{" "}
+                {multipleOpen
+                  ? "Multiple OPEN shifts — resolve first"
+                  : returnShift
+                  ? describe(returnShift)
+                  : "Normal shift selection"}
+              </div>
+            )}
 
             <label style={label}>
               REASON (ONE ONLY)
@@ -852,11 +638,9 @@ export default function AdminShiftOverridePanel({ user }) {
               style={field}
               value={reason}
               disabled={busy}
-              onChange={(e) =>
-                setReason(
-                  e.target.value
-                )
-              }
+              onChange={(e) => {
+                setReason(e.target.value);
+              }}
               placeholder="Reason for recovering this shift"
             />
 
@@ -870,6 +654,8 @@ export default function AdminShiftOverridePanel({ user }) {
                 !!error ||
                 !target ||
                 multipleOpen ||
+                (is24HourShop &&
+                  otherOpen.length > 0) ||
                 reason.trim().length < 10
               }
             >
@@ -880,7 +666,10 @@ export default function AdminShiftOverridePanel({ user }) {
           </div>
         )}
 
-        {/* ORIGINAL RECOVERY REPORT */}
+        {/* =====================================
+            STEP 1: FINANCIAL CORRECTIONS
+            SAME EXISTING REPORT EDITOR
+            ===================================== */}
 
         {recovery && shop && (
           <AdminRecoveryReportEditor
@@ -888,6 +677,31 @@ export default function AdminShiftOverridePanel({ user }) {
             user={user}
             recovery={recovery}
             shop={shop}
+          />
+        )}
+
+        {/* =====================================
+            STEP 2: 24-HOUR SHIFT SELECTION
+
+            THIS IS SHOWN AFTER THE
+            FINANCIAL RECOVERY REPORT.
+
+            EXACTLY THREE OPTIONS.
+
+            NO SEPARATE END RECOVERY BUTTON.
+            ===================================== */}
+
+        {is24HourShop && recovery && shop && (
+          <Admin24HourShiftControl
+            key={`${shopId}:${recovery.session_id}`}
+            user={user}
+            shops={[shop]}
+            onChanged={() => {
+              setMessage(
+                "24-hour recovery finalized. Shift status updated."
+              );
+              refresh();
+            }}
           />
         )}
 
@@ -914,7 +728,7 @@ export default function AdminShiftOverridePanel({ user }) {
 }
 
 // ==========================================
-// EXISTING HELPERS
+// HELPERS
 // ==========================================
 
 function Info({ title, value }) {
@@ -928,43 +742,28 @@ function Info({ title, value }) {
 
 function describe(shift) {
   return (
-    `${shift.shift_name} | ` +
-    `${shift.business_date} | ` +
-    `${shift.status} | ` +
-    `${String(shift.id).slice(-8)}`
+    `${shift.shift_name} | ${shift.business_date} | ` +
+    `${shift.status} | ${String(shift.id).slice(-8)}`
   );
 }
 
 function todayNairobi() {
-  const parts =
-    new Intl.DateTimeFormat(
-      "en-GB",
-      {
-        timeZone: ZONE,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }
-    ).formatToParts(
-      new Date()
-    );
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
 
   const values = {};
 
   for (const p of parts) {
-    if (
-      p.type !== "literal"
-    ) {
-      values[p.type] =
-        p.value;
+    if (p.type !== "literal") {
+      values[p.type] = p.value;
     }
   }
 
-  return (
-    `${values.year}-` +
-    `${values.month}-` +
-    `${values.day}`
-  );
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 async function json(response) {
@@ -976,7 +775,7 @@ async function json(response) {
 }
 
 // ==========================================
-// ORIGINAL STYLES
+// STYLES
 // ==========================================
 
 const panel = {
@@ -1069,10 +868,6 @@ const successBox = {
   padding: 10,
   margin: "10px 0",
 };
-
-// ==========================================
-// NEW VERIFICATION NOTE STYLES
-// ==========================================
 
 const verificationSection = {
   display: "grid",
