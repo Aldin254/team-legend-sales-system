@@ -1,327 +1,848 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// ==========================================
+// TEAM LEGEND — 24-HOUR SHIFT CONTROL
+// ==========================================
 
-const base = {
-  background: "#fff",
-  border: "1px solid #cbd5e1",
-  borderRadius: 8,
-  padding: 14,
-  marginBottom: 16,
-  color: "#0f172a",
-};
-const field = {
-  width: "100%",
-  boxSizing: "border-box",
-  border: "1px solid #94a3b8",
-  borderRadius: 6,
-  padding: 10,
-  background: "#fff",
-  color: "#0f172a",
-  fontSize: 12,
-};
-const label = { display: "block", fontWeight: 800, fontSize: 11, marginBottom: 5 };
-const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 };
-const action = {
-  padding: "11px 14px",
-  border: 0,
-  borderRadius: 6,
-  background: "#073b5c",
-  color: "white",
-  fontWeight: 800,
-  cursor: "pointer",
-};
+const URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-async function rpc(name, token, payload) {
-  if (!URL || !KEY || !token) throw new Error("Admin session unavailable.");
-  const response = await fetch(`${URL}/rest/v1/rpc/${name}`, {
-    method: "POST",
-    headers: {
-      apikey: KEY,
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    cache: "no-store",
-  });
-  const result = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(result?.message || result?.details || `${name} failed.`);
+const KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+async function callRpc(name, token, payload) {
+  if (!URL || !KEY || !token) {
+    throw new Error("Admin login unavailable.");
   }
+
+  const response = await fetch(
+    `${URL}/rest/v1/rpc/${name}`,
+    {
+      method: "POST",
+      headers: {
+        apikey: KEY,
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    }
+  );
+
+  const result = await response
+    .json()
+    .catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      result?.message ||
+      result?.details ||
+      result?.hint ||
+      "Database operation failed."
+    );
+  }
+
   return result;
 }
 
-export default function Admin24HourShiftControl({ user, shops = [], onChanged }) {
-  const twentyFour = shops.filter(
-    (s) => String(s.shop_type).toUpperCase() === "24_HOUR" && s.is_active !== false
-  );
-  const [shopId, setShopId] = useState("");
-  const [data, setData] = useState(null);
-  const [mode, setMode] = useState("AUTO");
-  const [date, setDate] = useState("");
-  const [shift, setShift] = useState("SHIFT 1");
-  const [cashierId, setCashierId] = useState("");
-  const [balance, setBalance] = useState("");
-  const [readings, setReadings] = useState({});
-  const [markMissed, setMarkMissed] = useState(false);
-  const [confirmTest, setConfirmTest] = useState(false);
-  const [reason, setReason] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [reload, setReload] = useState(0);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+// ==========================================
+// MAIN PANEL
+// ==========================================
+
+export default function Admin24HourShiftControl({
+  user,
+  shops = [],
+  onChanged,
+}) {
   const token = user?.access_token;
 
-  useEffect(() => {
-    if (!twentyFour.some((s) => s.id === shopId)) {
-      setShopId(twentyFour[0]?.id || "");
-    }
-  }, [shops, shopId]);
+  const availableShops = useMemo(
+    () =>
+      shops.filter(
+        (shop) =>
+          String(shop.shop_type || "")
+            .trim()
+            .toUpperCase() === "24_HOUR" &&
+          shop.is_active !== false
+      ),
+    [shops]
+  );
+
+  const [shopId, setShopId] = useState("");
+
+  const [snapshot, setSnapshot] =
+    useState(null);
+
+  const [selection, setSelection] =
+    useState("AUTO");
+
+  const [cashierId, setCashierId] =
+    useState("");
+
+  const [reason, setReason] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [notice, setNotice] =
+    useState("");
+
+  const [reload, setReload] =
+    useState(0);
+
+  // ========================================
+  // SELECT FIRST AVAILABLE SHOP
+  // ========================================
 
   useEffect(() => {
-    if (!shopId || !token) return;
+    setShopId((current) => {
+      if (
+        availableShops.some(
+          (shop) => shop.id === current
+        )
+      ) {
+        return current;
+      }
+
+      return availableShops[0]?.id || "";
+    });
+  }, [availableShops]);
+
+  // ========================================
+  // REFRESH
+  // ========================================
+
+  const refresh = useCallback(() => {
+    setReload((current) => current + 1);
+  }, []);
+
+  // ========================================
+  // LOAD SHOP STATUS
+  // ========================================
+
+  useEffect(() => {
+    if (!shopId || !token) {
+      setSnapshot(null);
+      return;
+    }
+
     let cancelled = false;
-    setLoading(true);
-    setError("");
-    rpc("tl_admin_24h_control_snapshot_v1", token, { p_shop_id: shopId })
-      .then((result) => {
-        if (cancelled) return;
-        setData(result);
-        setDate(result.auto_date || "");
-        setShift(result.auto_shift || "SHIFT 1");
-        setCashierId(result.cashiers?.[0]?.id || "");
-        setBalance(
-          result.suggested_balance == null
-            ? ""
-            : String(result.suggested_balance)
+
+    async function load() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const result = await callRpc(
+          "tl_admin_24h_control_snapshot_v1",
+          token,
+          {
+            p_shop_id: shopId,
+          }
         );
-        setReadings(Object.fromEntries(
-          (result.platforms || []).map((p) => [
-            p.id,
-            p.suggested_value == null ? "" : String(p.suggested_value),
-          ])
-        ));
-        setMarkMissed(false);
-        setConfirmTest(false);
-      })
-      .catch((err) => { if (!cancelled) setError(err.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+
+        if (cancelled) return;
+
+        setSnapshot(result);
+
+        setCashierId((current) => {
+          const cashiers =
+            result?.cashiers || [];
+
+          if (
+            cashiers.some(
+              (person) => person.id === current
+            )
+          ) {
+            return current;
+          }
+
+          return cashiers[0]?.id || "";
+        });
+      } catch (err) {
+        if (cancelled) return;
+
+        setSnapshot(null);
+
+        setError(
+          err?.message ||
+            "Unable to load shop."
+        );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [shopId, token, reload]);
 
-  const canSubmit =
-    !!data && !data.open_shift && !busy && !loading &&
-    !!cashierId && reason.trim().length >= 10 &&
-    balance.trim() !== "" && Number.isFinite(Number(balance)) &&
-    (data.platforms || []).length > 0 &&
-    (data.platforms || []).every((p) =>
-      readings[p.id] !== undefined &&
-      String(readings[p.id]).trim() !== "" &&
-      Number.isFinite(Number(readings[p.id]))
+  // ========================================
+  // SELECTED SHIFT
+  // ========================================
+
+  const selectedShift =
+    selection === "AUTO"
+      ? snapshot?.auto_shift || "—"
+      : selection === "SHIFT 1 TODAY"
+      ? "SHIFT 1"
+      : "SHIFT 2";
+
+  const selectedDate =
+    selection === "AUTO"
+      ? snapshot?.auto_date || "—"
+      : todayNairobi();
+
+  const currentOpen =
+    snapshot?.open_shift || null;
+
+  const canSave =
+    !loading &&
+    !saving &&
+    !!snapshot &&
+    reason.trim().length >= 10 &&
+    reason.trim().length <= 500 &&
+    (Boolean(currentOpen) ||
+      Boolean(cashierId));
+
+  // ========================================
+  // ADMIN SAVE
+  // ========================================
+
+  async function saveSelection() {
+    if (!canSave) return;
+
+    const confirmed = window.confirm(
+      "CONFIRM ADMIN SHIFT SELECTION\n\n" +
+      `Shop: ${snapshot.shop_name}\n` +
+      `Shift: ${selectedShift}\n` +
+      `Date: ${selectedDate}\n\n` +
+      `Reason: ${reason.trim()}`
     );
 
-  function refresh() { setReload((v) => v + 1); }
+    if (!confirmed) return;
 
-  async function openShift() {
-    if (!canSubmit) return;
-    const selected = mode === "AUTO"
-      ? `${data.auto_shift} • ${data.auto_date}`
-      : `${shift} • ${date}`;
-    if (!window.confirm(`OPEN VERIFIED 24-HOUR SHIFT?\n\n${selected}\n\n${reason.trim()}`)) return;
-    setBusy(true); setError(""); setMessage("");
+    setSaving(true);
+    setError("");
+    setNotice("");
+
     try {
-      const result = await rpc("tl_admin_24h_open_verified_shift_v1", token, {
-        p_shop_id: shopId,
-        p_mode: mode,
-        p_business_date: mode === "MANUAL" ? date : null,
-        p_shift_name: mode === "MANUAL" ? shift : null,
-        p_cashier_id: cashierId,
-        p_opening_balance: Number(balance),
-        p_readings: (data.platforms || []).map((p) => ({
-          platform_id: p.id,
-          value: Number(readings[p.id]),
-        })),
-        p_mark_missed: markMissed,
-        p_reason: reason.trim(),
-      });
-      setMessage(`${result.shift_name} • ${result.business_date} OPEN`);
+      const result = await callRpc(
+        "tl_admin_24h_choose_today_v2",
+        token,
+        {
+          p_shop_id: shopId,
+          p_selection: selection,
+          p_cashier_id:
+            cashierId || null,
+          p_reason:
+            reason.trim(),
+        }
+      );
+
+      if (result?.ok !== true) {
+        throw new Error(
+          "Shift change was not confirmed."
+        );
+      }
+
+      setNotice(
+        `${result.shift_name} — ` +
+          `${result.business_date} — SAVED`
+      );
+
       setReason("");
+
       refresh();
-      onChanged?.();
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
+
+      if (typeof onChanged === "function") {
+        onChanged();
+      }
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Unable to save shift selection."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
-  async function flagTestShift() {
-    if (!data?.open_shift || !confirmTest || reason.trim().length < 10 || busy) return;
-    if (!window.confirm(
-      `FLAG TEST SHIFT?\n\n${data.open_shift.shift_name} • ${data.open_shift.business_date}\n\nAll readings remain saved. This is an Admin audit action.`
-    )) return;
-    setBusy(true); setError(""); setMessage("");
-    try {
-      await rpc("tl_admin_24h_flag_test_shift_v1", token, {
-        p_shop_id: shopId,
-        p_shift_id: data.open_shift.id,
-        p_confirm_test_readings: true,
-        p_reason: reason.trim(),
-      });
-      setMessage("TEST SHIFT FLAGGED");
-      setReason("");
-      refresh();
-      onChanged?.();
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  }
+  // ========================================
+  // DISPLAY
+  // ========================================
 
-  if (!twentyFour.length) return null;
+  if (!availableShops.length) {
+    return null;
+  }
 
   return (
-    <section style={base}>
-      <div style={{
-        margin: -14, marginBottom: 14, padding: "13px 15px",
-        background: "#073b5c", color: "white", fontWeight: 900, fontSize: 14,
-      }}>
+    <section style={panelStyle}>
+      <div style={headerStyle}>
         24-HOUR SHIFT CONTROL
       </div>
 
-      <div style={grid}>
-        <div>
-          <label style={label}>SHOP</label>
-          <select style={field} value={shopId} disabled={busy}
-            onChange={(e) => { setShopId(e.target.value); setData(null); setReason(""); setMessage(""); }}>
-            {twentyFour.map((s) => <option key={s.id} value={s.id}>{s.shop_name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={label}>NAIROBI SCHEDULE</label>
-          <div style={{ ...field, background: "#f1f5f9", fontWeight: 800 }}>
-            {data ? `${data.auto_shift} • ${data.auto_date}` : "—"}
-          </div>
-        </div>
-      </div>
+      <div style={bodyStyle}>
+        {/* SHOP */}
 
-      {loading && <p>Loading...</p>}
-      {error && <div role="alert" style={{ padding: 10, color: "#991b1b", background: "#fef2f2", marginTop: 12 }}>{error}</div>}
-      {message && <div role="status" style={{ padding: 10, color: "#166534", background: "#f0fdf4", marginTop: 12 }}>{message}</div>}
-
-      {data?.open_shift ? (
-        <div style={{ marginTop: 14, padding: 12, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 7 }}>
-          <strong>OPEN: {data.open_shift.shift_name} • {data.open_shift.business_date}</strong>
-          <div style={{ marginTop: 10 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700 }}>
-              <input type="checkbox" checked={confirmTest} disabled={busy}
-                onChange={(e) => setConfirmTest(e.target.checked)} />
-              READINGS ARE TEST ONLY — NO REAL FINANCIAL ACTIVITY
+        <div style={formGridStyle}>
+          <div>
+            <label style={labelStyle}>
+              SHOP
             </label>
-          </div>
-          <div style={{ marginTop: 10 }}>
-            <label style={label}>ADMIN REASON</label>
-            <textarea style={field} rows={2} maxLength={500} value={reason} disabled={busy}
-              onChange={(e) => setReason(e.target.value)} />
-          </div>
-          <button type="button" style={{ ...action, background: "#9f1239", marginTop: 12 }}
-            disabled={busy || !confirmTest || reason.trim().length < 10}
-            onClick={flagTestShift}>
-            {busy ? "SAVING..." : "FLAG TEST SHIFT"}
-          </button>
-        </div>
-      ) : data && (
-        <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {[
-              ["AUTO", "AUTOMATIC"],
-              ["MANUAL", "ADMIN MANUAL"],
-            ].map(([value, text]) => (
-              <button type="button" key={value} disabled={busy}
-                onClick={() => {
-                  if (value === "MANUAL") {
-                    setBalance("");
-                    setReadings(Object.fromEntries((data.platforms || []).map((p) => [p.id, ""])));
-                  }
-                  if (value === "AUTO") refresh();
-                  setMode(value);
-                }}
-                style={{ ...action, background: mode === value ? "#073b5c" : "#64748b" }}>
-                {text}
-              </button>
-            ))}
+
+            <select
+              style={fieldStyle}
+              value={shopId}
+              disabled={saving}
+              onChange={(event) => {
+                setShopId(
+                  event.target.value
+                );
+
+                setSnapshot(null);
+                setSelection("AUTO");
+                setCashierId("");
+                setReason("");
+                setError("");
+                setNotice("");
+              }}
+            >
+              {availableShops.map(
+                (shop) => (
+                  <option
+                    key={shop.id}
+                    value={shop.id}
+                  >
+                    {shop.shop_name}
+                  </option>
+                )
+              )}
+            </select>
           </div>
 
-          {mode === "MANUAL" && (
-            <div style={grid}>
-              <div>
-                <label style={label}>BUSINESS DATE</label>
-                <input type="date" style={field} value={date} disabled={busy}
-                  onChange={(e) => { setDate(e.target.value); setBalance(""); setReadings({}); }} />
-              </div>
-              <div>
-                <label style={label}>SHIFT</label>
-                <select style={field} value={shift} disabled={busy}
-                  onChange={(e) => { setShift(e.target.value); setBalance(""); setReadings({}); }}>
-                  <option value="SHIFT 1">SHIFT 1 — 9AM–9PM</option>
-                  <option value="SHIFT 2">SHIFT 2 — 9PM–9AM</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          <div style={grid}>
-            <div>
-              <label style={label}>CASHIER</label>
-              <select style={field} value={cashierId} disabled={busy}
-                onChange={(e) => setCashierId(e.target.value)}>
-                <option value="">Select cashier</option>
-                {(data.cashiers || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={label}>VERIFIED BALANCE B/F (KES)</label>
-              <input type="number" step="0.01" style={field} value={balance} disabled={busy}
-                onChange={(e) => setBalance(e.target.value)} />
-            </div>
-          </div>
-
-          <div style={{ border: "1px solid #cbd5e1", borderRadius: 6, padding: 10 }}>
-            <strong style={{ fontSize: 12 }}>VERIFIED OPENING READINGS</strong>
-            <div style={{ ...grid, marginTop: 10 }}>
-              {(data.platforms || []).map((p) => (
-                <div key={p.id}>
-                  <label style={label}>{p.name}</label>
-                  <input type="number" step="0.01" style={field}
-                    value={readings[p.id] ?? ""} disabled={busy}
-                    onChange={(e) => setReadings((old) => ({ ...old, [p.id]: e.target.value }))} />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700 }}>
-            <input type="checkbox" checked={markMissed} disabled={busy}
-              onChange={(e) => setMarkMissed(e.target.checked)} />
-            CONFIRM ANY MISSED SHIFTS WERE NOT OPERATED
-          </label>
+          {/* CURRENT OPEN SHIFT */}
 
           <div>
-            <label style={label}>ADMIN REASON</label>
-            <textarea style={field} rows={2} maxLength={500} value={reason} disabled={busy}
-              onChange={(e) => setReason(e.target.value)} />
+            <label style={labelStyle}>
+              CURRENT SHIFT
+            </label>
+
+            <div style={readOnlyStyle}>
+              {loading
+                ? "Loading..."
+                : currentOpen
+                ? `${currentOpen.shift_name} — ${currentOpen.business_date}`
+                : "NO OPEN SHIFT"}
+            </div>
+          </div>
+        </div>
+
+        {/* ==================================
+            THREE ADMIN OPTIONS
+            ================================== */}
+
+        <div style={choiceSectionStyle}>
+          <div style={sectionTitleStyle}>
+            SELECT SHIFT TO OPEN
           </div>
 
-          <button type="button" style={{ ...action, background: "#0f766e" }}
-            disabled={!canSubmit} onClick={openShift}>
-            {busy ? "OPENING..." : "VERIFY & OPEN SHIFT"}
+          <div style={choiceGridStyle}>
+            <ChoiceButton
+              title="AUTOMATIC SHIFT SELECTION"
+              active={selection === "AUTO"}
+              disabled={saving}
+              onClick={() => {
+                setSelection("AUTO");
+                setError("");
+              }}
+            />
+
+            <ChoiceButton
+              title="SHIFT 1 TODAY"
+              subtitle="9:00 AM – 9:00 PM"
+              active={
+                selection ===
+                "SHIFT 1 TODAY"
+              }
+              disabled={saving}
+              onClick={() => {
+                setSelection(
+                  "SHIFT 1 TODAY"
+                );
+                setError("");
+              }}
+            />
+
+            <ChoiceButton
+              title="SHIFT 2 TODAY"
+              subtitle="9:00 PM – 9:00 AM"
+              active={
+                selection ===
+                "SHIFT 2 TODAY"
+              }
+              disabled={saving}
+              onClick={() => {
+                setSelection(
+                  "SHIFT 2 TODAY"
+                );
+                setError("");
+              }}
+            />
+          </div>
+        </div>
+
+        {/* SELECTED SHIFT */}
+
+        <div style={selectedBoxStyle}>
+          <div>
+            <span style={smallLabelStyle}>
+              SELECTED SHIFT
+            </span>
+
+            <strong style={selectedValueStyle}>
+              {selectedShift}
+            </strong>
+          </div>
+
+          <div>
+            <span style={smallLabelStyle}>
+              BUSINESS DATE
+            </span>
+
+            <strong style={selectedValueStyle}>
+              {selectedDate}
+            </strong>
+          </div>
+
+          <div>
+            <span style={smallLabelStyle}>
+              BALANCE B/F
+            </span>
+
+            <strong style={selectedValueStyle}>
+              {currentOpen
+                ? formatMoney(
+                    currentOpen.opening_balance
+                  )
+                : snapshot?.suggested_balance != null
+                ? formatMoney(
+                    snapshot.suggested_balance
+                  )
+                : "—"}
+            </strong>
+          </div>
+        </div>
+
+        {/* CASHIER FOR NEW SHIFT */}
+
+        {!currentOpen && snapshot && (
+          <div style={{ marginTop: 14 }}>
+            <label style={labelStyle}>
+              CASHIER
+            </label>
+
+            <select
+              style={fieldStyle}
+              value={cashierId}
+              disabled={saving}
+              onChange={(event) =>
+                setCashierId(
+                  event.target.value
+                )
+              }
+            >
+              <option value="">
+                Select Cashier
+              </option>
+
+              {(snapshot.cashiers || []).map(
+                (cashier) => (
+                  <option
+                    key={cashier.id}
+                    value={cashier.id}
+                  >
+                    {cashier.name}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+        )}
+
+        {/* ADMIN REASON */}
+
+        <div style={{ marginTop: 14 }}>
+          <label style={labelStyle}>
+            ADMIN REASON
+          </label>
+
+          <textarea
+            rows={2}
+            maxLength={500}
+            style={{
+              ...fieldStyle,
+              resize: "vertical",
+              minHeight: 70,
+            }}
+            placeholder="Enter reason"
+            value={reason}
+            disabled={saving}
+            onChange={(event) => {
+              setReason(
+                event.target.value
+              );
+
+              setError("");
+            }}
+          />
+        </div>
+
+        {/* ERRORS */}
+
+        {error && (
+          <div
+            role="alert"
+            style={errorStyle}
+          >
+            {error}
+          </div>
+        )}
+
+        {/* SUCCESS */}
+
+        {notice && (
+          <div
+            role="status"
+            style={successStyle}
+          >
+            {notice}
+          </div>
+        )}
+
+        {/* ACTIONS */}
+
+        <div style={actionGridStyle}>
+          <button
+            type="button"
+            style={{
+              ...saveButtonStyle,
+              opacity: canSave
+                ? 1
+                : 0.55,
+            }}
+            disabled={!canSave}
+            onClick={saveSelection}
+          >
+            {saving
+              ? "SAVING..."
+              : currentOpen
+              ? "SAVE SHIFT SELECTION"
+              : "OPEN SELECTED SHIFT"}
+          </button>
+
+          <button
+            type="button"
+            style={refreshButtonStyle}
+            disabled={
+              saving || loading
+            }
+            onClick={() => {
+              setError("");
+              setNotice("");
+              refresh();
+            }}
+          >
+            REFRESH
           </button>
         </div>
-      )}
-
-      <button type="button" disabled={busy || loading}
-        onClick={refresh} style={{ ...action, background: "#475569", marginTop: 12 }}>
-        REFRESH
-      </button>
+      </div>
     </section>
   );
 }
+
+// ==========================================
+// CHOICE BUTTON
+// ==========================================
+
+function ChoiceButton({
+  title,
+  subtitle,
+  active,
+  disabled,
+  onClick,
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        ...choiceButtonStyle,
+
+        background: active
+          ? "#073b5c"
+          : "#f8fafc",
+
+        color: active
+          ? "#ffffff"
+          : "#334155",
+
+        borderColor: active
+          ? "#d4af37"
+          : "#cbd5e1",
+
+        boxShadow: active
+          ? "0 0 0 1px #d4af37"
+          : "none",
+      }}
+    >
+      <strong>{title}</strong>
+
+      {subtitle && (
+        <small
+          style={{
+            marginTop: 5,
+            opacity: 0.8,
+          }}
+        >
+          {subtitle}
+        </small>
+      )}
+    </button>
+  );
+}
+
+// ==========================================
+// NAIROBI DATE
+// ==========================================
+
+function todayNairobi() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone: "Africa/Nairobi",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }
+    ).formatToParts(new Date());
+
+  const values = {};
+
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      values[part.type] = part.value;
+    }
+  }
+
+  return (
+    `${values.year}-` +
+    `${values.month}-` +
+    `${values.day}`
+  );
+}
+
+function formatMoney(value) {
+  return (
+    "KES " +
+    Number(value || 0).toLocaleString(
+      "en-KE",
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }
+    )
+  );
+}
+
+// ==========================================
+// STYLES
+// ==========================================
+
+const panelStyle = {
+  background: "#ffffff",
+  border: "1px solid #cbd5e1",
+  borderRadius: 9,
+  marginBottom: 18,
+  overflow: "hidden",
+};
+
+const headerStyle = {
+  background:
+    "linear-gradient(90deg,#073b5c,#0b5677)",
+  color: "#ffffff",
+  padding: "14px 16px",
+  fontSize: 14,
+  fontWeight: 900,
+  letterSpacing: "0.4px",
+};
+
+const bodyStyle = {
+  padding: 15,
+};
+
+const formGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(220px,1fr))",
+  gap: 12,
+};
+
+const fieldStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "11px 12px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 7,
+  background: "#ffffff",
+  color: "#0f172a",
+  fontSize: 12,
+  fontFamily: "inherit",
+};
+
+const labelStyle = {
+  display: "block",
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#334155",
+  marginBottom: 7,
+};
+
+const readOnlyStyle = {
+  ...fieldStyle,
+  background: "#f1f5f9",
+  fontWeight: 850,
+  minHeight: 41,
+};
+
+const choiceSectionStyle = {
+  marginTop: 16,
+  paddingTop: 14,
+  borderTop: "1px solid #e2e8f0",
+};
+
+const sectionTitleStyle = {
+  fontSize: 12,
+  fontWeight: 900,
+  color: "#073b5c",
+  marginBottom: 12,
+};
+
+const choiceGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(170px,1fr))",
+  gap: 10,
+};
+
+const choiceButtonStyle = {
+  border: "1px solid",
+  borderRadius: 8,
+  padding: "16px 12px",
+  minHeight: 74,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  gap: 2,
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 800,
+};
+
+const selectedBoxStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(150px,1fr))",
+  gap: 12,
+  marginTop: 15,
+  padding: 13,
+  background: "#f1f5f9",
+  border: "1px solid #cbd5e1",
+  borderRadius: 8,
+};
+
+const smallLabelStyle = {
+  display: "block",
+  fontSize: 9,
+  color: "#64748b",
+  fontWeight: 800,
+  marginBottom: 5,
+};
+
+const selectedValueStyle = {
+  fontSize: 15,
+  fontWeight: 900,
+  color: "#073b5c",
+};
+
+const actionGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(0,2fr) minmax(90px,1fr)",
+  gap: 10,
+  marginTop: 17,
+};
+
+const saveButtonStyle = {
+  border: 0,
+  borderRadius: 7,
+  background: "#0f766e",
+  color: "#ffffff",
+  padding: "13px 12px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const refreshButtonStyle = {
+  border: 0,
+  borderRadius: 7,
+  background: "#475569",
+  color: "#ffffff",
+  padding: "13px 12px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const errorStyle = {
+  marginTop: 12,
+  padding: 11,
+  borderRadius: 7,
+  background: "#fef2f2",
+  color: "#991b1b",
+  fontSize: 12,
+};
+
+const successStyle = {
+  marginTop: 12,
+  padding: 11,
+  borderRadius: 7,
+  background: "#f0fdf4",
+  color: "#166534",
+  fontSize: 12,
+  fontWeight: 850,
+};
