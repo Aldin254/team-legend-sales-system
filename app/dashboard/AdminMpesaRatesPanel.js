@@ -749,7 +749,7 @@ export default function AdminMpesaRatesPanel({ user }) {
           {message}
         </div>
       )}
-
+      <AdminBankingModePanel user={user} />
       <details style={dropdownStyle}>
         <summary style={{ ...cashierTitleStyle, ...dropdownHeadingStyle }}>
           <span>SHOP PAYMENT ACCOUNTS</span>
@@ -2164,3 +2164,275 @@ const emptyStyle = {
   color: "#64748b",
   fontSize: "12px",
 };
+function AdminBankingModePanel({ user }) {
+  const [mode, setMode] = useState("MANUAL");
+  const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const token = user?.access_token;
+
+  const call = useCallback(
+    async (name, body = {}) => {
+      if (!url || !key || !token) {
+        throw new Error("Admin session unavailable.");
+      }
+
+      const response = await fetch(
+        `${url}/rest/v1/rpc/${name}`,
+        {
+          method: "POST",
+          headers: {
+            apikey: key,
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          cache: "no-store",
+        }
+      );
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+          result?.details ||
+          "Banking operation failed."
+        );
+      }
+
+      return result;
+    },
+    [url, key, token]
+  );
+
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const result = await call("tl_banking_mode_snapshot");
+
+      setMode(result?.mode || "MANUAL");
+      setReady(result?.automatic_ready === true);
+    } catch (err) {
+      setError(err?.message || "Unable to load Banking mode.");
+    } finally {
+      setLoading(false);
+    }
+  }, [call]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function changeMode(target) {
+    if (saving || target === mode) return;
+
+    if (target === "AUTOMATIC" && !ready) {
+      setError("Bank integration is not yet ready.");
+      return;
+    }
+
+    if (!reason.trim()) {
+      setError("Enter a reason for changing Banking mode.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+      setMessage("");
+
+      const result = await call(
+        "tl_admin_set_banking_mode",
+        {
+          p_mode: target,
+          p_reason: reason.trim(),
+        }
+      );
+
+      setMode(result.mode);
+      setReady(result.automatic_ready === true);
+      setReason("");
+      setMessage(`Banking mode: ${result.mode}`);
+    } catch (err) {
+      setError(err?.message || "Unable to change Banking mode.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const card = {
+    flex: "1 1 250px",
+    padding: "17px",
+    borderRadius: "9px",
+    border: "1px solid #cbd5e1",
+    background: "#f8fafc",
+    display: "grid",
+    gap: "9px",
+  };
+
+  const button = {
+    padding: "11px",
+    border: "none",
+    borderRadius: "6px",
+    color: "white",
+    fontSize: "12px",
+    fontWeight: "bold",
+    cursor: "pointer",
+  };
+
+  return (
+    <section
+      style={{
+        background: "white",
+        border: "1px solid #cbd5e1",
+        borderRadius: "8px",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "13px",
+          background: "#0f172a",
+          color: "white",
+          fontSize: "13px",
+          fontWeight: "900",
+        }}
+      >
+        BANKING CONFIRMATION MODE
+      </div>
+
+      <div style={{ padding: "15px" }}>
+        {error && (
+          <p role="alert" style={{ color: "#dc2626" }}>
+            {error}
+          </p>
+        )}
+
+        {message && (
+          <p role="status" style={{ color: "#047857" }}>
+            {message}
+          </p>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div style={card}>
+            <strong>MANUAL BANKING</strong>
+
+            <span style={{ fontSize: "12px" }}>
+              Accountant confirms Banking payment requests.
+            </span>
+
+            <button
+              type="button"
+              disabled={loading || saving || mode === "MANUAL"}
+              onClick={() => changeMode("MANUAL")}
+              style={{
+                ...button,
+                background: mode === "MANUAL"
+                  ? "#047857"
+                  : "#334155",
+                opacity: loading || saving ? 0.6 : 1,
+              }}
+            >
+              {mode === "MANUAL"
+                ? "ACTIVE ✓"
+                : "ACTIVATE MANUAL"}
+            </button>
+          </div>
+
+          <div style={card}>
+            <strong>AUTOMATIC BANKING</strong>
+
+            <span style={{ fontSize: "12px" }}>
+              Consolidated Bank verification without
+              Accountant approval.
+            </span>
+
+            <button
+              type="button"
+              disabled={
+                loading ||
+                saving ||
+                !ready ||
+                mode === "AUTOMATIC"
+              }
+              onClick={() => changeMode("AUTOMATIC")}
+              style={{
+                ...button,
+                background: mode === "AUTOMATIC"
+                  ? "#047857"
+                  : ready
+                  ? "#0284c7"
+                  : "#94a3b8",
+                cursor: ready ? "pointer" : "not-allowed",
+              }}
+            >
+              {mode === "AUTOMATIC"
+                ? "ACTIVE ✓"
+                : ready
+                ? "ACTIVATE AUTOMATIC"
+                : "BANK INTEGRATION PENDING"}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: "12px" }}>
+          <label
+            style={{
+              fontSize: "11px",
+              fontWeight: "bold",
+            }}
+          >
+            REASON FOR MODE CHANGE
+          </label>
+
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Enter reason"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "10px",
+              marginTop: "5px",
+              border: "1px solid #94a3b8",
+              borderRadius: "6px",
+            }}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={loading || saving}
+          style={{
+            marginTop: "12px",
+            padding: "9px 14px",
+            background: "#e2e8f0",
+            border: "none",
+            borderRadius: "6px",
+            fontWeight: "bold",
+            cursor: "pointer",
+          }}
+        >
+          {loading ? "LOADING..." : "REFRESH MODE"}
+        </button>
+      </div>
+    </section>
+  );
+}
