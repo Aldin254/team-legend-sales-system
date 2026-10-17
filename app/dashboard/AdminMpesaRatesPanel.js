@@ -730,7 +730,11 @@ export default function AdminMpesaRatesPanel({ user }) {
                   type="number"
                   min="0.01"
                   step="0.01"
-                  value={r.min_amount}
+                  value={
+  r.min_amount === ""
+    ? ""
+    : Math.ceil(Number(r.min_amount))
+}
                   style={smallInputStyle}
                   aria-label="Minimum amount"
                   onChange={(e) =>
