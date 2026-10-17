@@ -827,7 +827,7 @@ _jsxs("div",{style:savingsPaymentActionsStyle,children:[
 _jsx("button",{type:"button",onClick:()=>confirmSavingsPayment(request),disabled:busy,style:savingsConfirmButtonStyle,children:confirming?"Confirming...":`Confirm ${request.category} Paid`}),
 _jsx("input",{type:"text",value:form.rejectionReason||"",disabled:busy,onChange:event=>updateSavingsPaymentForm(request.id,"rejectionReason",event.target.value),placeholder:"Reason if rejecting",style:savingsRejectReasonStyle}),
 _jsx("button",{type:"button",onClick:()=>rejectSavingsPayment(request),disabled:busy,style:savingsRejectButtonStyle,children:rejecting?"Rejecting...":"Reject"})
-])
+]})
 ]},request.id)
 })}),
 
