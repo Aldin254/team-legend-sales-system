@@ -1,7 +1,8 @@
 "use client";
-import AdminMasterLunchOverridePanel from "./AdminMasterLunchOverridePanel";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminHolidayEventsPanel from "./AdminHolidayEventsPanel";
+
 // TEAM LEGEND — MEALS / BONUS (professional navy + gold layout)
 // Design-only replacement: preserves Stage 1 snapshot/save RPCs.
 // Master Employee is the source of identity. Salary routing is read-only.
@@ -422,18 +423,9 @@ export default function AdminMealsBonusPanel({ user }) {
                 </div>
               </div>
             </>
-      )}
+          )}
         </div>
       </section>
-
-      {/* DATE-SPECIFIC LUNCH CONTROL */}
-
-      {employee && (
-        <AdminMasterLunchOverridePanel
-          user={user}
-          employee={employee}
-        />
-      )}
 
       {employee && draft && (
         <section className="mb-preview">
@@ -450,7 +442,7 @@ export default function AdminMealsBonusPanel({ user }) {
             )}
           </div>
         </section>
-   )}
+      )}
 
       {/* Independent company-wide Holiday Bonus administration. */}
       <AdminHolidayEventsPanel user={user} />
