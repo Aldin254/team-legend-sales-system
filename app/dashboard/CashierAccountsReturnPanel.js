@@ -694,7 +694,7 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
                 />
 
                 <Detail
-                  label="VERIFY ACCOUNT NAME"
+                  label="ACCOUNT NAME"
                   value={
                     prepared.company_account_name || "-"
                   }
