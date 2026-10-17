@@ -18,6 +18,15 @@ const EMPTY_IM_ACCOUNT = {
   is_active: true,
 };
 
+const EMPTY_MPESA_ACCOUNT = {
+  id: null,
+  account_name: "",
+  account_type: "",
+  destination_number: "",
+  account_reference: "",
+  is_active: true,
+};
+
 const EMPTY_CONSOLIDATED_ACCOUNT = {
   id: null,
   account_name: "",
@@ -52,6 +61,15 @@ export default function AdminMpesaRatesPanel({ user }) {
   const [removedIds, setRemovedIds] = useState([]);
 
   const [imAccount, setImAccount] = useState(EMPTY_IM_ACCOUNT);
+
+  const [mpesaAccount, setMpesaAccount] = useState(EMPTY_MPESA_ACCOUNT);
+  const [mpesaConnected, setMpesaConnected] = useState(false);
+  const [mpesaChanged, setMpesaChanged] = useState(false);
+  const [savingMpesa, setSavingMpesa] = useState(false);
+
+  const [activePayment, setActivePayment] = useState(null);
+  const [activatingMode, setActivatingMode] = useState(false);
+
   const [consolidatedAccount, setConsolidatedAccount] = useState(
     EMPTY_CONSOLIDATED_ACCOUNT
   );
@@ -64,10 +82,12 @@ export default function AdminMpesaRatesPanel({ user }) {
 
   useEffect(() => {
     if (!message) return;
+
     const timer = setTimeout(() => {
       setMessage("");
       setMessageType("");
     }, 5000);
+
     return () => clearTimeout(timer);
   }, [message, messageType]);
 
@@ -149,6 +169,7 @@ export default function AdminMpesaRatesPanel({ user }) {
         imAccountsResult,
         accountsResult,
         bankingModeResult,
+        activeModeResult,
       ] = await Promise.all([
         restGet(
           "payment_tariff_bands?select=*&order=payment_method.asc,min_amount.asc",
@@ -160,6 +181,10 @@ export default function AdminMpesaRatesPanel({ user }) {
         ),
         callRpc("tl_admin_shop_payment_snapshot", {}),
         callRpc("tl_banking_mode_snapshot", {}),
+        restGet(
+          "payment_system_settings?id=eq.1&select=collection_method,float_send_method,updated_at",
+          "Unable to read active payment mode."
+        ),
       ]);
 
       if (!Array.isArray(accountsResult)) {
@@ -176,6 +201,12 @@ export default function AdminMpesaRatesPanel({ user }) {
 
       setRemovedIds([]);
       setChanged(false);
+
+      const currentMode = Array.isArray(activeModeResult)
+        ? activeModeResult[0]
+        : null;
+
+      setActivePayment(currentMode || null);
 
       const bankingState = Array.isArray(bankingModeResult)
         ? bankingModeResult[0]
@@ -201,6 +232,64 @@ export default function AdminMpesaRatesPanel({ user }) {
         is_active: im.is_active !== false,
       } : { ...EMPTY_IM_ACCOUNT });
 
+      // Existing Company M-PESA account.
+      // A secure snapshot RPC is the fallback if direct
+      // table access is unavailable.
+
+      try {
+        let mpesaRows;
+
+        try {
+          mpesaRows = await restGet(
+            "mpesa_company_accounts?select=*&order=is_active.desc,updated_at.desc",
+            "Unable to read company M-PESA account."
+          );
+        } catch {
+          mpesaRows = await callRpc(
+            "tl_admin_mpesa_company_account_snapshot",
+            {}
+          );
+        }
+
+        if (Array.isArray(mpesaRows) && mpesaRows.length === 0) {
+          mpesaRows = await callRpc(
+            "tl_admin_mpesa_company_account_snapshot",
+            {}
+          );
+        }
+
+        const accounts = Array.isArray(mpesaRows)
+          ? mpesaRows
+          : mpesaRows ? [mpesaRows] : [];
+
+        const account = accounts.find(
+          (item) => item?.is_active === true
+        ) || accounts[0] || null;
+
+        setMpesaAccount(account ? {
+          id: account.id || null,
+          account_name: String(account.account_name || ""),
+          account_type: String(account.account_type || ""),
+          destination_number: String(account.destination_number || ""),
+          account_reference: String(account.account_reference || ""),
+          is_active: account.is_active === true,
+        } : { ...EMPTY_MPESA_ACCOUNT });
+
+        setMpesaConnected(Boolean(account?.id));
+        setMpesaChanged(false);
+      } catch (error) {
+        console.warn(
+          "Company M-PESA account snapshot unavailable:",
+          error
+        );
+
+        setMpesaAccount({ ...EMPTY_MPESA_ACCOUNT });
+        setMpesaConnected(false);
+        setMpesaChanged(false);
+      }
+
+      // Existing Consolidated Banking section stays separate.
+
       try {
         const result = await callRpc(
           "tl_admin_consolidated_company_account_snapshot",
@@ -221,7 +310,11 @@ export default function AdminMpesaRatesPanel({ user }) {
       } catch (error) {
         setConsolidatedConnected(false);
         setConsolidatedAccount({ ...EMPTY_CONSOLIDATED_ACCOUNT });
-        console.warn("Consolidated account backend not installed:", error);
+
+        console.warn(
+          "Consolidated account backend not installed:",
+          error
+        );
       }
 
       setRecipients(
@@ -333,6 +426,7 @@ export default function AdminMpesaRatesPanel({ user }) {
     setRows((old) => old.map((r) =>
       r._key === key ? { ...r, [field]: value } : r
     ));
+
     setChanged(true);
   }
 
@@ -368,7 +462,145 @@ export default function AdminMpesaRatesPanel({ user }) {
         ...new Set([...old, String(row.id)]),
       ]);
     }
+
     setChanged(true);
+  }
+
+  function setMpesa(key, value) {
+    setMpesaAccount((old) => ({ ...old, [key]: value }));
+    setMpesaChanged(true);
+  }
+
+  async function saveMpesaDetails() {
+    if (busy || savingMpesa || activatingMode) return;
+
+    try {
+      if (!mpesaConnected || !mpesaAccount.id) {
+        throw new Error(
+          "Company M-PESA account is not available for editing."
+        );
+      }
+
+      if (!mpesaChanged) {
+        throw new Error("No M-PESA account changes to save.");
+      }
+
+      if (!reason.trim()) {
+        throw new Error(
+          "Enter a reason for the M-PESA account changes."
+        );
+      }
+
+      if (
+        !mpesaAccount.account_name.trim() ||
+        !mpesaAccount.destination_number.trim()
+      ) {
+        throw new Error(
+          "Enter Company M-PESA name and destination number."
+        );
+      }
+
+      if (!window.confirm(
+        "Save the Company M-PESA account details?"
+      )) return;
+
+      setSavingMpesa(true);
+
+      await callRpc("tl_admin_mpesa_company_account_save", {
+        p_id: mpesaAccount.id,
+        p_account_name: mpesaAccount.account_name.trim(),
+        p_destination_number: mpesaAccount.destination_number.trim(),
+        p_account_reference:
+          mpesaAccount.account_reference.trim() || null,
+        p_is_active: mpesaAccount.is_active === true,
+        p_reason: reason.trim(),
+      });
+
+      setReason("");
+      await loadAll({ silent: true });
+      updateMessage("Company M-PESA details saved.");
+    } catch (error) {
+      showError(
+        error?.message || "Unable to save Company M-PESA details."
+      );
+    } finally {
+      setSavingMpesa(false);
+    }
+  }
+
+  async function activateMode() {
+    if (busy || activatingMode || savingMpesa) return;
+
+    try {
+      if (!["MPESA_TO_MPESA", "MPESA_TO_IM"].includes(route)) {
+        throw new Error(
+          "Select M-PESA → M-PESA or M-PESA → I&M to activate."
+        );
+      }
+
+      if (!activePayment) {
+        throw new Error("Active payment mode has not loaded.");
+      }
+
+      if (changed || mpesaChanged) {
+        throw new Error(
+          "Save or discard unsaved edits before activating a mode."
+        );
+      }
+
+      if (!reason.trim()) {
+        throw new Error(
+          "Enter a reason in the field below before activating."
+        );
+      }
+
+      if (route === activePayment.collection_method) {
+        throw new Error(
+          "This cashier collection mode is already active."
+        );
+      }
+
+      const accountantRoute = route === "MPESA_TO_MPESA"
+        ? "M-PESA → M-PESA"
+        : "I&M → M-PESA";
+
+      if (!window.confirm(
+        `Activate ${ROUTES.find((x) => x.id === route)?.label} for cashiers ` +
+        `and ${accountantRoute} for Accountant payouts? ` +
+        "Existing expenses and pending transaction fees will remain unchanged."
+      )) return;
+
+      setActivatingMode(true);
+
+      const result = await callRpc(
+        "tl_admin_activate_payment_mode",
+        {
+          p_collection_method: route,
+          p_reason: reason.trim(),
+        }
+      );
+
+      if (result?.success !== true) {
+        throw new Error(
+          result?.message || "Payment mode activation failed."
+        );
+      }
+
+      setReason("");
+      await loadAll({ silent: true });
+
+      updateMessage(
+        result?.changed === false
+          ? "Selected payment mode was already active."
+          : "Cashier and Accountant payment modes activated together."
+      );
+    } catch (error) {
+      showError(
+        error?.message || "Unable to activate payment mode."
+      );
+    } finally {
+      setActivatingMode(false);
+    }
   }
 
   function setIm(key, value) {
@@ -385,7 +617,9 @@ export default function AdminMpesaRatesPanel({ user }) {
     for (const r of rows) {
       if (r.id && removedIds.includes(String(r.id))) continue;
 
-      if (!ROUTES.some((option) => option.id === r.payment_method)) {
+      if (!ROUTES.some(
+        (option) => option.id === r.payment_method
+      )) {
         throw new Error("Unknown payment route.");
       }
 
@@ -420,24 +654,35 @@ export default function AdminMpesaRatesPanel({ user }) {
           r.is_active !== false &&
           !(r.id && removedIds.includes(String(r.id)))
         )
-        .sort((a, b) => Number(a.min_amount) - Number(b.min_amount));
+        .sort(
+          (a, b) =>
+            Number(a.min_amount) - Number(b.min_amount)
+        );
 
       if (!active.length) {
-        if (rows.some((r) => r.payment_method === option.id)) {
-          throw new Error(`Missing active rates: ${option.label}.`);
+        if (rows.some((r) =>
+          r.payment_method === option.id
+        )) {
+          throw new Error(
+            `Missing active rates: ${option.label}.`
+          );
         }
         continue;
       }
 
       if (Number(active[0].min_amount) !== 1) {
-        throw new Error(`${option.label}: first band must start at KES 1.`);
+        throw new Error(
+          `${option.label}: first band must start at KES 1.`
+        );
       }
 
       for (let i = 1; i < active.length; i++) {
         const previousMax = Number(active[i - 1].max_amount);
         const nextMin = Number(active[i].min_amount);
         const difference =
-          Math.round((nextMin - previousMax) * 100) / 100;
+          Math.round(
+            (nextMin - previousMax) * 100
+          ) / 100;
 
         if (difference <= 0 || difference > 1) {
           throw new Error(
@@ -452,21 +697,39 @@ export default function AdminMpesaRatesPanel({ user }) {
     if (busy) return;
 
     try {
-      if (!changed) throw new Error("No changes to save.");
-      if (!reason.trim()) throw new Error("Enter one reason for these changes.");
+      if (!changed) {
+        throw new Error(
+          "No tariff or bank changes to save."
+        );
+      }
 
-      if (bankingMode === "AUTOMATIC" && !automaticReady) {
-        throw new Error("Automatic Banking integration is not ready.");
+      if (!reason.trim()) {
+        throw new Error(
+          "Enter one reason for these changes."
+        );
+      }
+
+      if (
+        bankingMode === "AUTOMATIC" &&
+        !automaticReady
+      ) {
+        throw new Error(
+          "Automatic Banking integration is not ready."
+        );
       }
 
       validateRows();
 
       if (
         !imAccount.account_name.trim() ||
-        (!imAccount.paybill_number.trim() &&
-          !imAccount.account_number.trim())
+        (
+          !imAccount.paybill_number.trim() &&
+          !imAccount.account_number.trim()
+        )
       ) {
-        throw new Error("I&M company account details are incomplete.");
+        throw new Error(
+          "I&M company account details are incomplete."
+        );
       }
 
       if (!consolidatedConnected) {
@@ -477,8 +740,10 @@ export default function AdminMpesaRatesPanel({ user }) {
 
       if (
         !consolidatedAccount.account_name.trim() ||
-        (!consolidatedAccount.paybill_number.trim() &&
-          !consolidatedAccount.account_number.trim())
+        (
+          !consolidatedAccount.paybill_number.trim() &&
+          !consolidatedAccount.account_number.trim()
+        )
       ) {
         throw new Error(
           "Enter the Consolidated Bank company account details."
@@ -492,34 +757,43 @@ export default function AdminMpesaRatesPanel({ user }) {
       setBusy(true);
       setMessage("");
 
-      await callRpc("tl_admin_payment_routes_save_all", {
-        p_bands: rows
-          .filter((r) => !r.id || !removedIds.includes(String(r.id)))
-          .map((r) => ({
-            id: r.id || null,
-            payment_method: r.payment_method,
-            min_amount: Number(r.min_amount),
-            max_amount: Number(r.max_amount),
-            fee: Number(r.fee),
-            is_active: r.is_active !== false,
-          })),
-        p_removed_ids: removedIds,
-        p_im_account: imAccount,
-        p_consolidated_account: consolidatedAccount,
-        p_banking_mode: bankingMode,
-        p_reason: reason.trim(),
-      });
+      await callRpc(
+        "tl_admin_payment_routes_save_all",
+        {
+          p_bands: rows
+            .filter(
+              (r) =>
+                !r.id ||
+                !removedIds.includes(String(r.id))
+            )
+            .map((r) => ({
+              id: r.id || null,
+              payment_method: r.payment_method,
+              min_amount: Number(r.min_amount),
+              max_amount: Number(r.max_amount),
+              fee: Number(r.fee),
+              is_active: r.is_active !== false,
+            })),
+          p_removed_ids: removedIds,
+          p_im_account: imAccount,
+          p_consolidated_account: consolidatedAccount,
+          p_banking_mode: bankingMode,
+          p_reason: reason.trim(),
+        }
+      );
 
       setReason("");
       updateMessage("Payment settings saved.");
       await loadAll({ silent: true });
     } catch (error) {
-      showError(error?.message || "Unable to save payment settings.");
+      showError(
+        error?.message ||
+        "Unable to save payment settings."
+      );
     } finally {
       setBusy(false);
     }
   }
-
   if (loading) {
     return (
       <div style={loadingStyle}>
@@ -535,11 +809,13 @@ export default function AdminMpesaRatesPanel({ user }) {
           appearance: textfield;
           -moz-appearance: textfield;
         }
+
         .tl-payment-admin input[type="number"]::-webkit-inner-spin-button,
         .tl-payment-admin input[type="number"]::-webkit-outer-spin-button {
           -webkit-appearance: none;
           margin: 0;
         }
+
         .tl-payment-admin button:disabled {
           cursor: not-allowed;
           opacity: .55;
@@ -548,15 +824,23 @@ export default function AdminMpesaRatesPanel({ user }) {
 
       <section style={heroStyle}>
         <strong>BANKING & PAYMENT SETTINGS</strong>
+
         <button
           type="button"
           onClick={() => {
-            if (changed && !window.confirm(
-              "Discard unsaved changes?"
-            )) return;
+            if (
+              (changed || mpesaChanged) &&
+              !window.confirm("Discard unsaved changes?")
+            ) return;
+
             loadAll({ silent: true });
           }}
-          disabled={refreshing || busy}
+          disabled={
+            refreshing ||
+            busy ||
+            activatingMode ||
+            savingMpesa
+          }
           style={refreshButtonStyle}
         >
           {refreshing ? "REFRESHING..." : "REFRESH ALL"}
@@ -565,11 +849,21 @@ export default function AdminMpesaRatesPanel({ user }) {
 
       {message && (
         <div
-          role={messageType === "error" ? "alert" : "status"}
+          role={
+            messageType === "error"
+              ? "alert"
+              : "status"
+          }
           style={{
             ...messageStyle,
-            color: messageType === "error" ? "#991b1b" : "#166534",
-            background: messageType === "error" ? "#fef2f2" : "#ecfdf5",
+            color:
+              messageType === "error"
+                ? "#991b1b"
+                : "#166534",
+            background:
+              messageType === "error"
+                ? "#fef2f2"
+                : "#ecfdf5",
           }}
         >
           {message}
@@ -579,7 +873,12 @@ export default function AdminMpesaRatesPanel({ user }) {
       {/* SHOP PAYMENT ACCOUNTS — UNCHANGED */}
 
       <details style={dropdownStyle}>
-        <summary style={{ ...cashierTitleStyle, ...dropdownHeadingStyle }}>
+        <summary
+          style={{
+            ...cashierTitleStyle,
+            ...dropdownHeadingStyle,
+          }}
+        >
           <span>SHOP PAYMENT ACCOUNTS</span>
           <span aria-hidden="true">▾</span>
         </summary>
@@ -587,18 +886,37 @@ export default function AdminMpesaRatesPanel({ user }) {
         <div style={bodyStyle}>
           <div style={cashierWrapStyle}>
             <div style={cashierHeaderStyle}>
-              <div style={{ textAlign: "left" }}>SHOP</div>
-              <div style={{ textAlign: "left" }}>CASHIER — DUTY ROTA</div>
-              <div style={{ textAlign: "left" }}>M-PESA</div>
-              <div style={{ textAlign: "left" }}>I&M REF</div>
-              <div style={{ textAlign: "center" }}>M→M</div>
-              <div style={{ textAlign: "center" }}>I&M→M</div>
-              <div style={{ textAlign: "center" }}>SAVE</div>
-              <div style={{ textAlign: "center" }}>REMOVE</div>
+              <div style={{ textAlign: "left" }}>
+                SHOP
+              </div>
+              <div style={{ textAlign: "left" }}>
+                CASHIER — DUTY ROTA
+              </div>
+              <div style={{ textAlign: "left" }}>
+                M-PESA
+              </div>
+              <div style={{ textAlign: "left" }}>
+                I&M REF
+              </div>
+              <div style={{ textAlign: "center" }}>
+                M→M
+              </div>
+              <div style={{ textAlign: "center" }}>
+                I&M→M
+              </div>
+              <div style={{ textAlign: "center" }}>
+                SAVE
+              </div>
+              <div style={{ textAlign: "center" }}>
+                REMOVE
+              </div>
             </div>
 
             {sortedRecipients.map((recipient) => (
-              <div key={recipient.shop_id} style={cashierRowStyle}>
+              <div
+                key={recipient.shop_id}
+                style={cashierRowStyle}
+              >
                 <strong>{recipient.shop_name}</strong>
 
                 <div style={dutyNameStyle}>
@@ -631,7 +949,9 @@ export default function AdminMpesaRatesPanel({ user }) {
                 />
 
                 <CenterCheck
-                  checked={recipient.allow_mpesa_to_mpesa !== false}
+                  checked={
+                    recipient.allow_mpesa_to_mpesa !== false
+                  }
                   onChange={(checked) =>
                     updateRecipientField(
                       recipient.shop_id,
@@ -642,7 +962,9 @@ export default function AdminMpesaRatesPanel({ user }) {
                 />
 
                 <CenterCheck
-                  checked={recipient.allow_im_to_mpesa !== false}
+                  checked={
+                    recipient.allow_im_to_mpesa !== false
+                  }
                   onChange={(checked) =>
                     updateRecipientField(
                       recipient.shop_id,
@@ -654,59 +976,177 @@ export default function AdminMpesaRatesPanel({ user }) {
 
                 <button
                   type="button"
-                  onClick={() => saveRecipientRecord(recipient)}
-                  disabled={savingRecipientId === String(recipient.shop_id)}
+                  onClick={() =>
+                    saveRecipientRecord(recipient)
+                  }
+                  disabled={
+                    savingRecipientId ===
+                    String(recipient.shop_id)
+                  }
                   style={saveButtonStyle}
                 >
-                  {savingRecipientId === String(recipient.shop_id)
-                    ? "SAVING..." : "SAVE"}
+                  {savingRecipientId ===
+                  String(recipient.shop_id)
+                    ? "SAVING..."
+                    : "SAVE"}
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => disableRecipient(recipient)}
-                  disabled={deletingRecipientId === String(recipient.shop_id)}
+                  onClick={() =>
+                    disableRecipient(recipient)
+                  }
+                  disabled={
+                    deletingRecipientId ===
+                    String(recipient.shop_id)
+                  }
                   style={deleteButtonStyle}
                 >
-                  {deletingRecipientId === String(recipient.shop_id)
-                    ? "REMOVING..." : "REMOVE"}
+                  {deletingRecipientId ===
+                  String(recipient.shop_id)
+                    ? "REMOVING..."
+                    : "REMOVE"}
                 </button>
               </div>
             ))}
           </div>
         </div>
       </details>
-{/* ONE ROUTE AT A TIME — ONE TABLE */}
+
+      {/* ONE ROUTE AT A TIME — ONE TABLE */}
 
       <section style={panelStyle}>
-        <div style={sectionTitle}>PAYMENT RATES</div>
+        <div style={sectionTitle}>
+          PAYMENT RATES
+        </div>
 
         <div style={bodyStyle}>
-          <div style={formGrid}>
+          {/* PAYMENT DROPDOWN AND ACTIVATION */}
+
+          <div style={modeToolbarStyle}>
             <Field label="PAYMENT METHOD">
               <select
                 style={inputStyle}
                 value={route}
-                onChange={(e) => setRoute(e.target.value)}
+                onChange={(event) =>
+                  setRoute(event.target.value)
+                }
               >
                 {ROUTES.map((item) => (
-                  <option key={item.id} value={item.id}>
+                  <option
+                    key={item.id}
+                    value={item.id}
+                  >
                     {item.label}
                   </option>
                 ))}
               </select>
             </Field>
 
-            <div style={{ display: "flex", alignItems: "end" }}>
+            <button
+              type="button"
+              style={activateButtonStyle}
+              disabled={
+                busy ||
+                activatingMode ||
+                savingMpesa ||
+                refreshing ||
+                changed ||
+                mpesaChanged ||
+                !activePayment ||
+                ![
+                  "MPESA_TO_MPESA",
+                  "MPESA_TO_IM",
+                ].includes(route) ||
+                activePayment?.collection_method === route
+              }
+              onClick={activateMode}
+            >
+              {activatingMode
+                ? "ACTIVATING..."
+                : activePayment?.collection_method === route
+                ? "ACTIVE MODE"
+                : "ACTIVATE MODE"}
+            </button>
+          </div>
+
+          {/* CURRENT LIVE PAYMENT CONFIGURATION */}
+
+          <div style={modeSummaryStyle}>
+            <strong>ACTIVE:</strong>{" "}
+
+            {activePayment
+              ? `${
+                  ROUTES.find(
+                    (item) =>
+                      item.id ===
+                      activePayment.collection_method
+                  )?.label ||
+                  activePayment.collection_method
+                } (Cashier) · ${
+                  ROUTES.find(
+                    (item) =>
+                      item.id ===
+                      activePayment.float_send_method
+                  )?.label ||
+                  activePayment.float_send_method
+                } (Accountant)`
+              : "Not loaded — activation unavailable"}
+          </div>
+
+          {/* ONE SHARED REASON */}
+
+          <div
+            style={{
+              ...formGrid,
+              marginTop: 6,
+            }}
+          >
+            <Field label="ONE REASON FOR MODE ACTIVATION OR CHANGES">
+              <textarea
+                rows={2}
+                style={textareaStyle}
+                placeholder="Reason for activation or account / fee changes"
+                value={reason}
+                onChange={(event) =>
+                  setReason(event.target.value)
+                }
+              />
+            </Field>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "end",
+              }}
+            >
               <button
                 type="button"
                 style={outlineButton}
                 onClick={addRow}
+                disabled={
+                  busy ||
+                  activatingMode ||
+                  savingMpesa
+                }
               >
                 + ADD FEE BAND
               </button>
             </div>
           </div>
+
+          {(
+            route === "IM_TO_MPESA" ||
+            route === "MPESA_TO_CONSOLIDATED"
+          ) && (
+            <div style={smallTextStyle}>
+              {route === "IM_TO_MPESA"
+                ? "I&M → M-PESA activates automatically with M-PESA → I&M."
+                : "Consolidated Banking mode is separate and is not activated here."}
+            </div>
+          )}
+
+          {/* UNIFIED PAYMENT FEE TABLE */}
 
           <div style={tableWrap}>
             <div style={tableHeader}>
@@ -725,20 +1165,29 @@ export default function AdminMpesaRatesPanel({ user }) {
             )}
 
             {visibleRows.map((r) => (
-              <div key={r._key} style={tableRow}>
+              <div
+                key={r._key}
+                style={tableRow}
+              >
                 <input
                   type="number"
                   min="0.01"
                   step="0.01"
                   value={
-  r.min_amount === ""
-    ? ""
-    : Math.ceil(Number(r.min_amount))
-}
+                    r.min_amount === ""
+                      ? ""
+                      : Math.ceil(
+                          Number(r.min_amount)
+                        )
+                  }
                   style={smallInputStyle}
                   aria-label="Minimum amount"
-                  onChange={(e) =>
-                    updateRow(r._key, "min_amount", e.target.value)
+                  onChange={(event) =>
+                    updateRow(
+                      r._key,
+                      "min_amount",
+                      event.target.value
+                    )
                   }
                 />
 
@@ -749,8 +1198,12 @@ export default function AdminMpesaRatesPanel({ user }) {
                   value={r.max_amount}
                   style={smallInputStyle}
                   aria-label="Maximum amount"
-                  onChange={(e) =>
-                    updateRow(r._key, "max_amount", e.target.value)
+                  onChange={(event) =>
+                    updateRow(
+                      r._key,
+                      "max_amount",
+                      event.target.value
+                    )
                   }
                 />
 
@@ -761,15 +1214,23 @@ export default function AdminMpesaRatesPanel({ user }) {
                   value={r.fee}
                   style={smallInputStyle}
                   aria-label="Transaction fee"
-                  onChange={(e) =>
-                    updateRow(r._key, "fee", e.target.value)
+                  onChange={(event) =>
+                    updateRow(
+                      r._key,
+                      "fee",
+                      event.target.value
+                    )
                   }
                 />
 
                 <CenterCheck
                   checked={r.is_active !== false}
                   onChange={(checked) =>
-                    updateRow(r._key, "is_active", checked)
+                    updateRow(
+                      r._key,
+                      "is_active",
+                      checked
+                    )
                   }
                 />
 
@@ -784,93 +1245,20 @@ export default function AdminMpesaRatesPanel({ user }) {
             ))}
           </div>
 
-          {/* I&M ACCOUNT — SEND MONEY */}
+          {/* COMPANY M-PESA ACCOUNT */}
 
-          {route === "MPESA_TO_IM" && (
+          {route === "MPESA_TO_MPESA" && (
             <div style={subPanelStyle}>
-              <strong>I&M COMPANY ACCOUNT — SEND MONEY</strong>
+              <strong>
+                COMPANY M-PESA ACCOUNT — CASHIER SEND MONEY
+              </strong>
 
-              <div style={formGrid}>
-                <Field label="ACCOUNT NAME">
-                  <input
-                    style={inputStyle}
-                    value={imAccount.account_name}
-                    onChange={(e) =>
-                      setIm("account_name", e.target.value)
-                    }
-                  />
-                </Field>
-
-                <Field label="PAYBILL NUMBER">
-                  <input
-                    style={inputStyle}
-                    value={imAccount.paybill_number}
-                    onChange={(e) =>
-                      setIm("paybill_number", e.target.value)
-                    }
-                  />
-                </Field>
-
-                <Field label="ACCOUNT NUMBER">
-                  <input
-                    style={inputStyle}
-                    value={imAccount.account_number}
-                    onChange={(e) =>
-                      setIm("account_number", e.target.value)
-                    }
-                  />
-                </Field>
-              </div>
-
-              <label style={checkboxLineStyle}>
-                <input
-                  type="checkbox"
-                  checked={imAccount.is_active !== false}
-                  onChange={(e) =>
-                    setIm("is_active", e.target.checked)
-                  }
-                />
-                ACTIVE I&M COMPANY ACCOUNT
-              </label>
-            </div>
-          )}
-
-          {/* CONSOLIDATED — MANUAL / AUTOMATIC BANKING */}
-
-          {route === "MPESA_TO_CONSOLIDATED" && (
-            <div style={subPanelStyle}>
-              <strong>CONSOLIDATED BANK COMPANY ACCOUNT</strong>
-
-              <div style={smallTextStyle}>
-                BOTH BANKING MODES USE THESE CONSOLIDATED FEES
-              </div>
-
-              <Field label="BANKING CONFIRMATION MODE">
-                <select
-                  style={inputStyle}
-                  value={bankingMode}
-                  onChange={(e) => {
-                    setBankingMode(e.target.value);
-                    setChanged(true);
-                  }}
-                >
-                  <option value="MANUAL">
-                    MANUAL — ANONYMOUS REFERENCE
-                  </option>
-                  <option
-                    value="AUTOMATIC"
-                    disabled={!automaticReady}
-                  >
-                    AUTOMATIC
-                    {!automaticReady ? " — NOT CONNECTED" : ""}
-                  </option>
-                </select>
-              </Field>
-
-              {!consolidatedConnected && (
+              {!mpesaConnected && (
                 <div style={warningStyle}>
-                  Account setup pending in Supabase.
-                  Do not save account changes yet.
+                  Company M-PESA account cannot be
+                  loaded. Check Admin account read
+                  permissions or install its
+                  snapshot RPC.
                 </div>
               )}
 
@@ -878,9 +1266,136 @@ export default function AdminMpesaRatesPanel({ user }) {
                 <Field label="ACCOUNT NAME">
                   <input
                     style={inputStyle}
-                    value={consolidatedAccount.account_name}
-                    onChange={(e) =>
-                      setConsolidated("account_name", e.target.value)
+                    value={
+                      mpesaAccount.account_name
+                    }
+                    disabled={!mpesaConnected}
+                    onChange={(event) =>
+                      setMpesa(
+                        "account_name",
+                        event.target.value
+                      )
+                    }
+                  />
+                </Field>
+
+                <Field label="M-PESA DESTINATION NUMBER">
+                  <input
+                    type="tel"
+                    style={inputStyle}
+                    value={
+                      mpesaAccount.destination_number
+                    }
+                    disabled={!mpesaConnected}
+                    onChange={(event) =>
+                      setMpesa(
+                        "destination_number",
+                        event.target.value
+                      )
+                    }
+                  />
+                </Field>
+
+                <Field label="ACCOUNT REFERENCE">
+                  <input
+                    style={inputStyle}
+                    value={
+                      mpesaAccount.account_reference
+                    }
+                    disabled={!mpesaConnected}
+                    onChange={(event) =>
+                      setMpesa(
+                        "account_reference",
+                        event.target.value
+                      )
+                    }
+                  />
+                </Field>
+
+                <Field label="ACCOUNT TYPE">
+                  <input
+                    style={{
+                      ...inputStyle,
+                      background: "#f1f5f9",
+                    }}
+                    value={
+                      mpesaAccount.account_type
+                    }
+                    readOnly
+                  />
+                </Field>
+              </div>
+
+              <label style={checkboxLineStyle}>
+                <input
+                  type="checkbox"
+                  checked={
+                    mpesaAccount.is_active === true
+                  }
+                  disabled={!mpesaConnected}
+                  onChange={(event) =>
+                    setMpesa(
+                      "is_active",
+                      event.target.checked
+                    )
+                  }
+                />
+
+                ACTIVE COMPANY M-PESA ACCOUNT
+              </label>
+
+              <button
+                type="button"
+                style={{
+                  ...outlineButton,
+                  justifySelf: "start",
+                }}
+                disabled={
+                  !mpesaConnected ||
+                  !mpesaChanged ||
+                  savingMpesa ||
+                  busy ||
+                  activatingMode ||
+                  changed
+                }
+                onClick={saveMpesaDetails}
+              >
+                {savingMpesa
+                  ? "SAVING..."
+                  : "SAVE M-PESA DETAILS"}
+              </button>
+
+              <div style={smallTextStyle}>
+                Cashiers receive the current
+                company destination when preparing
+                new M-PESA → M-PESA returns.
+                Prepared transactions retain
+                their original saved destination
+                and fee.
+              </div>
+            </div>
+          )}
+
+          {/* I&M ACCOUNT — SEND MONEY */}
+
+          {route === "MPESA_TO_IM" && (
+            <div style={subPanelStyle}>
+              <strong>
+                I&M COMPANY ACCOUNT — SEND MONEY
+              </strong>
+
+              <div style={formGrid}>
+                <Field label="ACCOUNT NAME">
+                  <input
+                    style={inputStyle}
+                    value={
+                      imAccount.account_name
+                    }
+                    onChange={(event) =>
+                      setIm(
+                        "account_name",
+                        event.target.value
+                      )
                     }
                   />
                 </Field>
@@ -888,9 +1403,14 @@ export default function AdminMpesaRatesPanel({ user }) {
                 <Field label="PAYBILL NUMBER">
                   <input
                     style={inputStyle}
-                    value={consolidatedAccount.paybill_number}
-                    onChange={(e) =>
-                      setConsolidated("paybill_number", e.target.value)
+                    value={
+                      imAccount.paybill_number
+                    }
+                    onChange={(event) =>
+                      setIm(
+                        "paybill_number",
+                        event.target.value
+                      )
                     }
                   />
                 </Field>
@@ -898,9 +1418,14 @@ export default function AdminMpesaRatesPanel({ user }) {
                 <Field label="ACCOUNT NUMBER">
                   <input
                     style={inputStyle}
-                    value={consolidatedAccount.account_number}
-                    onChange={(e) =>
-                      setConsolidated("account_number", e.target.value)
+                    value={
+                      imAccount.account_number
+                    }
+                    onChange={(event) =>
+                      setIm(
+                        "account_number",
+                        event.target.value
+                      )
                     }
                   />
                 </Field>
@@ -909,35 +1434,152 @@ export default function AdminMpesaRatesPanel({ user }) {
               <label style={checkboxLineStyle}>
                 <input
                   type="checkbox"
-                  checked={consolidatedAccount.is_active !== false}
-                  onChange={(e) =>
-                    setConsolidated("is_active", e.target.checked)
+                  checked={
+                    imAccount.is_active !== false
+                  }
+                  onChange={(event) =>
+                    setIm(
+                      "is_active",
+                      event.target.checked
+                    )
                   }
                 />
+
+                ACTIVE I&M COMPANY ACCOUNT
+              </label>
+            </div>
+          )}
+
+          {/* CONSOLIDATED BANKING — PRESERVED */}
+
+          {route === "MPESA_TO_CONSOLIDATED" && (
+            <div style={subPanelStyle}>
+              <strong>
+                CONSOLIDATED BANK COMPANY ACCOUNT
+              </strong>
+
+              <div style={smallTextStyle}>
+                BOTH BANKING MODES USE THESE
+                CONSOLIDATED FEES
+              </div>
+
+              <Field label="BANKING CONFIRMATION MODE">
+                <select
+                  style={inputStyle}
+                  value={bankingMode}
+                  onChange={(event) => {
+                    setBankingMode(
+                      event.target.value
+                    );
+                    setChanged(true);
+                  }}
+                >
+                  <option value="MANUAL">
+                    MANUAL — ANONYMOUS REFERENCE
+                  </option>
+
+                  <option
+                    value="AUTOMATIC"
+                    disabled={!automaticReady}
+                  >
+                    AUTOMATIC
+                    {!automaticReady
+                      ? " — NOT CONNECTED"
+                      : ""}
+                  </option>
+                </select>
+              </Field>
+
+              {!consolidatedConnected && (
+                <div style={warningStyle}>
+                  Account setup pending in
+                  Supabase. Do not save account
+                  changes yet.
+                </div>
+              )}
+
+              <div style={formGrid}>
+                <Field label="ACCOUNT NAME">
+                  <input
+                    style={inputStyle}
+                    value={
+                      consolidatedAccount.account_name
+                    }
+                    onChange={(event) =>
+                      setConsolidated(
+                        "account_name",
+                        event.target.value
+                      )
+                    }
+                  />
+                </Field>
+
+                <Field label="PAYBILL NUMBER">
+                  <input
+                    style={inputStyle}
+                    value={
+                      consolidatedAccount.paybill_number
+                    }
+                    onChange={(event) =>
+                      setConsolidated(
+                        "paybill_number",
+                        event.target.value
+                      )
+                    }
+                  />
+                </Field>
+
+                <Field label="ACCOUNT NUMBER">
+                  <input
+                    style={inputStyle}
+                    value={
+                      consolidatedAccount.account_number
+                    }
+                    onChange={(event) =>
+                      setConsolidated(
+                        "account_number",
+                        event.target.value
+                      )
+                    }
+                  />
+                </Field>
+              </div>
+
+              <label style={checkboxLineStyle}>
+                <input
+                  type="checkbox"
+                  checked={
+                    consolidatedAccount.is_active !== false
+                  }
+                  onChange={(event) =>
+                    setConsolidated(
+                      "is_active",
+                      event.target.checked
+                    )
+                  }
+                />
+
                 ACTIVE CONSOLIDATED BANK COMPANY ACCOUNT
               </label>
             </div>
           )}
 
-          {/* ONE REASON AND ONE SAVE BUTTON */}
-
-          <Field label="ONE REASON FOR ALL CHANGES">
-            <textarea
-              rows={2}
-              style={textareaStyle}
-              placeholder="Reason for changes"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            />
-          </Field>
+          {/* MAIN RATE / BANK SETTINGS SAVE */}
 
           <button
             type="button"
             style={saveAllButton}
-            disabled={busy || !changed}
+            disabled={
+              busy ||
+              activatingMode ||
+              savingMpesa ||
+              !changed
+            }
             onClick={saveAll}
           >
-            {busy ? "SAVING..." : "SAVE ALL CHANGES"}
+            {busy
+              ? "SAVING..."
+              : "SAVE ALL CHANGES"}
           </button>
         </div>
       </section>
@@ -945,10 +1587,14 @@ export default function AdminMpesaRatesPanel({ user }) {
   );
 }
 
+// SUPPORT COMPONENTS
+
 function Field({ label, children }) {
   return (
     <div>
-      <label style={labelStyle}>{label}</label>
+      <label style={labelStyle}>
+        {label}
+      </label>
       {children}
     </div>
   );
@@ -960,7 +1606,9 @@ function CenterCheck({ checked, onChange }) {
       <input
         type="checkbox"
         checked={Boolean(checked)}
-        onChange={(e) => onChange(e.target.checked)}
+        onChange={(event) =>
+          onChange(event.target.checked)
+        }
       />
     </div>
   );
@@ -990,7 +1638,8 @@ const loadingStyle = {
 const heroStyle = {
   padding: 16,
   borderRadius: 7,
-  background: "linear-gradient(90deg,#047857,#0f766e)",
+  background:
+    "linear-gradient(90deg,#047857,#0f766e)",
   color: "white",
   display: "flex",
   justifyContent: "space-between",
@@ -1033,9 +1682,40 @@ const bodyStyle = {
   padding: "13px",
 };
 
+const modeToolbarStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(0,1fr) auto",
+  gap: 10,
+  alignItems: "end",
+  marginTop: 12,
+};
+
+const activateButtonStyle = {
+  padding: "10px 13px",
+  borderRadius: 5,
+  border: "none",
+  background: "#0f766e",
+  color: "white",
+  fontWeight: 900,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  fontSize: 11,
+};
+
+const modeSummaryStyle = {
+  fontSize: 11,
+  color: "#475569",
+  background: "#f1f5f9",
+  borderRadius: 5,
+  padding: "9px 10px",
+  marginTop: 10,
+};
+
 const formGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+  gridTemplateColumns:
+    "repeat(auto-fit,minmax(220px,1fr))",
   gap: 12,
   margin: "12px 0",
 };
@@ -1132,7 +1812,8 @@ const tableWrap = {
   marginBottom: 16,
 };
 
-const tableCols = "1fr 1fr 1fr 70px 86px";
+const tableCols =
+  "1fr 1fr 1fr 70px 86px";
 
 const tableHeader = {
   display: "grid",
@@ -1152,7 +1833,8 @@ const tableRow = {
   minWidth: 540,
   alignItems: "center",
   padding: 8,
-  borderBottom: "1px solid #e2e8f0",
+  borderBottom:
+    "1px solid #e2e8f0",
 };
 
 const emptyStyle = {
@@ -1214,7 +1896,8 @@ const cashierColumns =
 
 const cashierHeaderStyle = {
   display: "grid",
-  gridTemplateColumns: cashierColumns,
+  gridTemplateColumns:
+    cashierColumns,
   gap: "5px",
   minWidth: "940px",
   padding: "7px",
@@ -1226,11 +1909,13 @@ const cashierHeaderStyle = {
 
 const cashierRowStyle = {
   display: "grid",
-  gridTemplateColumns: cashierColumns,
+  gridTemplateColumns:
+    cashierColumns,
   gap: "5px",
   minWidth: "940px",
   padding: "7px",
-  borderTop: "1px solid #e2e8f0",
+  borderTop:
+    "1px solid #e2e8f0",
   alignItems: "center",
   fontSize: "11px",
 };
