@@ -984,10 +984,9 @@ export default function AdminMpesaRatesPanel({ user }) {
           </button>
         </div>
       </details>
-
-      <details style={dropdownStyle}>
+<details style={dropdownStyle}>
         <summary style={{ ...orangeTitleStyle, ...dropdownHeadingStyle }}>
-          <span>I&M & M-PESA CHARGES</span>
+          <span>BANKING TRANSACTION CHARGES</span>
           <span aria-hidden="true">▾</span>
         </summary>
 
@@ -1003,6 +1002,7 @@ export default function AdminMpesaRatesPanel({ user }) {
               >
                 <option value="MPESA_TO_IM">M-PESA → I&M</option>
                 <option value="IM_TO_MPESA">I&M → M-PESA</option>
+                <option value="MPESA_TO_CONSOLIDATED">M-PESA → CONSOLIDATED</option>
               </select>
             </Field>
 
@@ -1071,6 +1071,17 @@ export default function AdminMpesaRatesPanel({ user }) {
             onDelete={deletePaymentTariff}
           />
 
+          <PaymentTariffTable
+            title="M-PESA → CONSOLIDATED BANK CHARGES"
+            method="MPESA_TO_CONSOLIDATED"
+            rows={paymentTariffs}
+            savingId={savingPaymentTariffId}
+            deletingId={deletingPaymentTariffId}
+            onChange={updatePaymentTariffField}
+            onSave={savePaymentTariff}
+            onDelete={deletePaymentTariff}
+          />
+
           <div style={testerPanelStyle}>
             <div style={threeGridStyle}>
               <Field label="TEST METHOD">
@@ -1084,6 +1095,7 @@ export default function AdminMpesaRatesPanel({ user }) {
                 >
                   <option value="MPESA_TO_IM">M-PESA → I&M</option>
                   <option value="IM_TO_MPESA">I&M → M-PESA</option>
+                  <option value="MPESA_TO_CONSOLIDATED">M-PESA → CONSOLIDATED</option>
                 </select>
               </Field>
 
@@ -1710,6 +1722,8 @@ function methodLabel(value) {
       return "M-PESA → I&M";
     case "IM_TO_MPESA":
       return "I&M → M-PESA";
+    case "MPESA_TO_CONSOLIDATED":
+      return "M-PESA → CONSOLIDATED BANK";
     default:
       return value || "-";
   }
