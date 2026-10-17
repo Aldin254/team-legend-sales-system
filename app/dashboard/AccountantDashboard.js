@@ -233,9 +233,40 @@ historyCollapseTimerRef.current=setTimeout(()=>setShowTransactionHistory(false),
 useEffect(()=>{if(showSavingsPayments)armSavingsCollapseTimer();else clearSavingsCollapseTimer();return clearSavingsCollapseTimer},[showSavingsPayments,armSavingsCollapseTimer,clearSavingsCollapseTimer]);
 useEffect(()=>{if(showTransactionHistory)armHistoryCollapseTimer();else clearHistoryCollapseTimer();return clearHistoryCollapseTimer},[showTransactionHistory,armHistoryCollapseTimer,clearHistoryCollapseTimer]);
 
-const shopMap=useMemo(()=>{const map=new Map();for(const shop of shops)map.set(shop.id,shop);return map},[shops]);
-const sortedRecipients=useMemo(()=>[...recipients].sort((a,b)=>String(a.shop_name||shopMap.get(a.shop_id)?.shop_name||"").localeCompare(String(b.shop_name||shopMap.get(b.shop_id)?.shop_name||"")),[recipients,shopMap]);
-const selectedRecipient=useMemo(()=>recipients.find(item=>String(item.id)===String(selectedRecipientId))||null,[recipients,selectedRecipientId]);
+const shopMap = useMemo(() => {
+  const map = new Map();
+
+  for (const shop of shops) {
+    map.set(shop.id, shop);
+  }
+
+  return map;
+}, [shops]);
+
+const sortedRecipients = useMemo(() => {
+  return [...recipients].sort((a, b) => {
+    const nameA = String(
+      a.shop_name ||
+      shopMap.get(a.shop_id)?.shop_name ||
+      ""
+    );
+
+    const nameB = String(
+      b.shop_name ||
+      shopMap.get(b.shop_id)?.shop_name ||
+      ""
+    );
+
+    return nameA.localeCompare(nameB);
+  });
+}, [recipients, shopMap]);
+
+const selectedRecipient = useMemo(() => {
+  return recipients.find(
+    (item) =>
+      String(item.id) === String(selectedRecipientId)
+  ) || null;
+}, [recipients, selectedRecipientId]);
 const currentSendRoute=useMemo(()=>getAccountantSendRoute(null,floatSendMethod),[floatSendMethod]);
 const preparedSendRoute=useMemo(()=>getAccountantSendRoute(preparedSend,floatSendMethod),[preparedSend,floatSendMethod]);
 const bankingPendingCount=savingsPaymentSnapshot?.banking_pending_count;
