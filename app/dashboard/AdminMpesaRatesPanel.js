@@ -56,7 +56,7 @@ export default function AdminMpesaRatesPanel({ user }) {
   const [savingRecipientId, setSavingRecipientId] = useState("");
   const [deletingRecipientId, setDeletingRecipientId] = useState("");
 
-  const [route, setRoute] = useState("MPESA_TO_CONSOLIDATED");
+  const [route, setRoute] = useState("MPESA_TO_MPESA");
   const [rows, setRows] = useState([]);
   const [removedIds, setRemovedIds] = useState([]);
 
@@ -74,6 +74,7 @@ export default function AdminMpesaRatesPanel({ user }) {
     EMPTY_CONSOLIDATED_ACCOUNT
   );
   const [consolidatedConnected, setConsolidatedConnected] = useState(false);
+  const [consolidatedChanged, setConsolidatedChanged] = useState(false);
   const [bankingMode, setBankingMode] = useState("MANUAL");
   const [automaticReady, setAutomaticReady] = useState(false);
 
@@ -201,6 +202,7 @@ export default function AdminMpesaRatesPanel({ user }) {
 
       setRemovedIds([]);
       setChanged(false);
+      setConsolidatedChanged(false);
 
       const currentMode = Array.isArray(activeModeResult)
         ? activeModeResult[0]
@@ -481,10 +483,6 @@ export default function AdminMpesaRatesPanel({ user }) {
         );
       }
 
-      if (!mpesaChanged) {
-        throw new Error("No M-PESA account changes to save.");
-      }
-
       if (!reason.trim()) {
         throw new Error(
           "Enter a reason for the M-PESA account changes."
@@ -506,7 +504,7 @@ export default function AdminMpesaRatesPanel({ user }) {
 
       setSavingMpesa(true);
 
-      await callRpc("tl_admin_mpesa_company_account_save", {
+      const result = await callRpc("tl_admin_mpesa_company_account_save", {
         p_id: mpesaAccount.id,
         p_account_name: mpesaAccount.account_name.trim(),
         p_destination_number: mpesaAccount.destination_number.trim(),
@@ -516,9 +514,19 @@ export default function AdminMpesaRatesPanel({ user }) {
         p_reason: reason.trim(),
       });
 
+      if (result?.success !== true) {
+        throw new Error(
+          result?.message || "Company M-PESA save was not confirmed."
+        );
+      }
+
       setReason("");
       await loadAll({ silent: true });
-      updateMessage("Company M-PESA details saved.");
+      updateMessage(
+        result.changed === false
+          ? "Account details are already current. Nothing was changed."
+          : "Company M-PESA details saved."
+      );
     } catch (error) {
       showError(
         error?.message || "Unable to save Company M-PESA details."
@@ -610,6 +618,7 @@ export default function AdminMpesaRatesPanel({ user }) {
 
   function setConsolidated(key, value) {
     setConsolidatedAccount((old) => ({ ...old, [key]: value }));
+    setConsolidatedChanged(true);
     setChanged(true);
   }
 
@@ -732,17 +741,23 @@ export default function AdminMpesaRatesPanel({ user }) {
         );
       }
 
-      if (!consolidatedConnected) {
+      // Consolidated Banking is a separate pending integration.
+      // Its missing backend does not block unrelated edits.
+
+      if (consolidatedChanged && !consolidatedConnected) {
         throw new Error(
-          "Consolidated Bank account backend is not connected yet. Install the Supabase account functions first."
+          "Consolidated Bank account backend is not connected yet. Install its Supabase account functions before editing Consolidated Banking."
         );
       }
 
       if (
-        !consolidatedAccount.account_name.trim() ||
+        consolidatedChanged &&
         (
-          !consolidatedAccount.paybill_number.trim() &&
-          !consolidatedAccount.account_number.trim()
+          !consolidatedAccount.account_name.trim() ||
+          (
+            !consolidatedAccount.paybill_number.trim() &&
+            !consolidatedAccount.account_number.trim()
+          )
         )
       ) {
         throw new Error(
@@ -1028,9 +1043,11 @@ export default function AdminMpesaRatesPanel({ user }) {
               <select
                 style={inputStyle}
                 value={route}
-                onChange={(event) =>
-                  setRoute(event.target.value)
-                }
+                onChange={(event) => {
+                  setRoute(event.target.value);
+                  setMessage("");
+                  setMessageType("");
+                }}
               >
                 {ROUTES.map((item) => (
                   <option
@@ -1352,7 +1369,6 @@ export default function AdminMpesaRatesPanel({ user }) {
                 }}
                 disabled={
                   !mpesaConnected ||
-                  !mpesaChanged ||
                   savingMpesa ||
                   busy ||
                   activatingMode ||
@@ -1471,6 +1487,7 @@ export default function AdminMpesaRatesPanel({ user }) {
                     setBankingMode(
                       event.target.value
                     );
+                    setConsolidatedChanged(true);
                     setChanged(true);
                   }}
                 >
