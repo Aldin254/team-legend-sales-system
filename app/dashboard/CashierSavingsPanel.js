@@ -41,13 +41,12 @@ export default function CashierSavingsPanel({
   const [bankingEmployees, setBankingEmployees] = useState([]);
   const [bankingMode, setBankingMode] = useState(null);
   const [employeeId, setEmployeeId] = useState("");
+  const [bankingReference, setBankingReference] = useState("");
   const [inputs, setInputs] = useState(makeInputs);
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState("");
   const [notice, setNotice] = useState(null);
-
-  const [paymentStatusOpen, setPaymentStatusOpen] =
-    useState(true);
+  const [paymentStatusOpen, setPaymentStatusOpen] = useState(true);
 
   const busyRef = useRef(false);
 
@@ -56,23 +55,15 @@ export default function CashierSavingsPanel({
   const token = user?.access_token || null;
   const shiftId = currentShift?.id || null;
 
-  // ==========================================
-  // FIVE-SECOND TEMPORARY NOTIFICATIONS
-  // ==========================================
+  // FIVE-SECOND NOTIFICATIONS
 
   useEffect(() => {
     if (!notice) return;
-
-    const timer = setTimeout(() => {
-      setNotice(null);
-    }, 5000);
-
+    const timer = setTimeout(() => setNotice(null), 5000);
     return () => clearTimeout(timer);
   }, [notice]);
 
-  // ==========================================
   // PAYMENT STATUS AUTO-COLLAPSE
-  // ==========================================
 
   useEffect(() => {
     setPaymentStatusOpen(true);
@@ -83,28 +74,20 @@ export default function CashierSavingsPanel({
       !paymentStatusOpen ||
       loading ||
       paymentRequests.length === 0
-    ) {
-      return;
-    }
+    ) return;
 
     const timer = setTimeout(() => {
       setPaymentStatusOpen(false);
     }, PAYMENT_STATUS_SECONDS * 1000);
 
     return () => clearTimeout(timer);
-  }, [
-    paymentStatusOpen,
-    loading,
-    paymentRequests.length,
-  ]);
+  }, [paymentStatusOpen, loading, paymentRequests.length]);
 
   function notify(text, type = "error") {
     setNotice({ text, type });
   }
 
-  // ==========================================
   // LOAD SAVINGS AND BANKING
-  // ==========================================
 
   const loadSavings = useCallback(
     async (silent = false) => {
@@ -131,7 +114,6 @@ export default function CashierSavingsPanel({
                 cache: "no-store",
               }
             ),
-
             fetch(
               `${supabaseUrl}/rest/v1/rpc/tl_cashier_banking_directory`,
               {
@@ -196,22 +178,16 @@ export default function CashierSavingsPanel({
 
           return nextEmployees.some(
             (employee) =>
-              String(employee.employee_id) ===
-              String(previous)
+              String(employee.employee_id) === String(previous)
           )
             ? previous
             : "";
         });
       } catch (error) {
-        console.error(
-          "LOAD CASHIER SAVINGS ERROR:",
-          error
-        );
+        console.error("LOAD CASHIER SAVINGS ERROR:", error);
 
         if (!silent) {
-          notify(
-            error?.message || "Unable to load Savings."
-          );
+          notify(error?.message || "Unable to load Savings.");
         }
       } finally {
         if (!silent) setLoading(false);
@@ -220,9 +196,7 @@ export default function CashierSavingsPanel({
     [shiftId, token, supabaseUrl, anonKey]
   );
 
-  // ==========================================
-  // ADMIN BANKING MODE (READ-ONLY)
-  // ==========================================
+  // ADMIN BANKING MODE
 
   const loadBankingMode = useCallback(async () => {
     if (!token || !supabaseUrl || !anonKey) {
@@ -242,12 +216,14 @@ export default function CashierSavingsPanel({
       );
 
       const data = await safeJson(response);
+
       if (!response.ok) {
         throw new Error(data?.message || "Banking mode unavailable.");
       }
 
       const record = Array.isArray(data) ? data[0] : data;
       const mode = String(record?.mode || "").toUpperCase();
+
       if (mode !== "MANUAL" && mode !== "AUTOMATIC") {
         throw new Error("Invalid Banking mode.");
       }
@@ -256,6 +232,7 @@ export default function CashierSavingsPanel({
         mode,
         automaticReady: record?.automatic_ready === true,
       };
+
       setBankingMode(current);
       return current;
     } catch (error) {
@@ -271,9 +248,7 @@ export default function CashierSavingsPanel({
     return () => clearInterval(timer);
   }, [loadBankingMode]);
 
-  // ==========================================
   // AUTO REFRESH
-  // ==========================================
 
   useEffect(() => {
     loadSavings();
@@ -285,9 +260,7 @@ export default function CashierSavingsPanel({
     return () => clearInterval(timer);
   }, [loadSavings]);
 
-  // ==========================================
   // BANKING EMPLOYEES
-  // ==========================================
 
   const sortedEmployees = useMemo(
     () =>
@@ -298,9 +271,7 @@ export default function CashierSavingsPanel({
 
         if (mobile) return mobile;
 
-        const shop = String(
-          a?.shop_name || ""
-        ).localeCompare(
+        const shop = String(a?.shop_name || "").localeCompare(
           String(b?.shop_name || "")
         );
 
@@ -318,15 +289,12 @@ export default function CashierSavingsPanel({
     () =>
       bankingEmployees.find(
         (employee) =>
-          String(employee.employee_id) ===
-          String(employeeId)
+          String(employee.employee_id) === String(employeeId)
       ) || null,
     [bankingEmployees, employeeId]
   );
 
-  // ==========================================
   // SAVINGS CATEGORIES
-  // ==========================================
 
   const rows = useMemo(
     () =>
@@ -334,17 +302,11 @@ export default function CashierSavingsPanel({
         if (config.key === "BANKING") {
           return {
             ...config,
-
-            balance: Number(
-              selectedEmployee?.saved_balance || 0
-            ),
-
+            balance: Number(selectedEmployee?.saved_balance || 0),
             obligationAmount: null,
-
             pendingPaymentAmount: Number(
               selectedEmployee?.pending_payment_amount || 0
             ),
-
             availableBalance: Number(
               selectedEmployee?.available_balance || 0
             ),
@@ -353,25 +315,19 @@ export default function CashierSavingsPanel({
 
         const found = categories.find(
           (item) =>
-            String(
-              item?.category || ""
-            ).toUpperCase() === config.key
+            String(item?.category || "").toUpperCase() === config.key
         );
 
         return {
           ...config,
-
           balance: Number(found?.balance || 0),
-
           obligationAmount:
             found?.obligation_amount == null
               ? null
               : Number(found.obligation_amount),
-
           pendingPaymentAmount: Number(
             found?.pending_payment_amount || 0
           ),
-
           availableBalance: Number(
             found?.available_balance || 0
           ),
@@ -384,17 +340,14 @@ export default function CashierSavingsPanel({
     () => ({
       saved: roundMoney(
         rows.reduce(
-          (sum, row) =>
-            sum + Number(row.balance || 0),
+          (sum, row) => sum + Number(row.balance || 0),
           0
         )
       ),
-
       reserved: roundMoney(
         rows.reduce(
           (sum, row) =>
-            sum +
-            Number(row.pendingPaymentAmount || 0),
+            sum + Number(row.pendingPaymentAmount || 0),
           0
         )
       ),
@@ -402,14 +355,11 @@ export default function CashierSavingsPanel({
     [rows]
   );
 
-  // ==========================================
   // INPUT HELPERS
-  // ==========================================
 
   function setInput(category, field, value) {
     setInputs((old) => ({
       ...old,
-
       [category]: {
         ...old[category],
         [field]: value,
@@ -422,7 +372,6 @@ export default function CashierSavingsPanel({
   function clearInput(category, field) {
     setInputs((old) => ({
       ...old,
-
       [category]: {
         ...old[category],
         [field]: "",
@@ -432,10 +381,10 @@ export default function CashierSavingsPanel({
 
   function selectEmployee(id) {
     setEmployeeId(id);
+    setBankingReference("");
 
     setInputs((old) => ({
       ...old,
-
       BANKING: {
         save: "",
         pay: "",
@@ -447,10 +396,7 @@ export default function CashierSavingsPanel({
   }
 
   function bankingReady(row) {
-    if (
-      row.key !== "BANKING" ||
-      selectedEmployee
-    ) {
+    if (row.key !== "BANKING" || selectedEmployee) {
       return true;
     }
 
@@ -458,9 +404,7 @@ export default function CashierSavingsPanel({
     return false;
   }
 
-  // ==========================================
   // SUPABASE FINANCIAL OPERATIONS
-  // ==========================================
 
   async function postMoney({
     row,
@@ -482,6 +426,7 @@ export default function CashierSavingsPanel({
           method: "POST",
           headers: authHeaders(anonKey, token),
           body: JSON.stringify(body),
+          cache: "no-store",
         }
       );
 
@@ -499,10 +444,7 @@ export default function CashierSavingsPanel({
       onSuccess(result);
       await loadSavings(true);
     } catch (error) {
-      console.error(
-        `${action} SAVINGS ERROR:`,
-        error
-      );
+      console.error(`${action} SAVINGS ERROR:`, error);
 
       notify(
         error?.message ||
@@ -514,17 +456,10 @@ export default function CashierSavingsPanel({
     }
   }
 
-  // ==========================================
   // SAVE
-  // ==========================================
 
   async function saveMoney(row) {
-    if (
-      busyRef.current ||
-      !bankingReady(row)
-    ) {
-      return;
-    }
+    if (busyRef.current || !bankingReady(row)) return;
 
     const raw = inputs[row.key]?.save;
     const amount = Number(raw);
@@ -534,9 +469,7 @@ export default function CashierSavingsPanel({
       !Number.isFinite(amount) ||
       roundMoney(amount) <= 0
     ) {
-      notify(
-        `Enter a valid ${row.label} save amount.`
-      );
+      notify(`Enter a valid ${row.label} save amount.`);
       return;
     }
 
@@ -556,16 +489,13 @@ export default function CashierSavingsPanel({
     await postMoney({
       row,
       action: "SAVE",
-
       rpc: banking
         ? "tl_cashier_save_banking_employee"
         : "tl_cashier_save_savings",
-
       body: banking
         ? {
             p_shift_id: shiftId,
-            p_employee_id:
-              selectedEmployee.employee_id,
+            p_employee_id: selectedEmployee.employee_id,
             p_amount: roundMoney(amount),
           }
         : {
@@ -579,9 +509,7 @@ export default function CashierSavingsPanel({
 
         notify(
           `${
-            banking
-              ? selectedEmployee.employee_name
-              : row.label
+            banking ? selectedEmployee.employee_name : row.label
           }: KES ${money(amount)} saved.`,
           "success"
         );
@@ -589,25 +517,16 @@ export default function CashierSavingsPanel({
     });
   }
 
-  // ==========================================
-  // REQUEST ACCOUNTANT PAYMENT
-  // ==========================================
+  // REQUEST PAYMENT
 
   async function requestPayment(row) {
-    if (
-      busyRef.current ||
-      !bankingReady(row)
-    ) {
-      return;
-    }
+    if (busyRef.current || !bankingReady(row)) return;
 
     if (
       row.fixedPayment &&
       (
         row.obligationAmount == null ||
-        !Number.isFinite(
-          row.obligationAmount
-        ) ||
+        !Number.isFinite(row.obligationAmount) ||
         row.obligationAmount <= 0
       )
     ) {
@@ -625,39 +544,41 @@ export default function CashierSavingsPanel({
       !Number.isFinite(amount) ||
       roundMoney(amount) <= 0
     ) {
-      notify(
-        `Enter a valid ${row.label} payment amount.`
-      );
+      notify(`Enter a valid ${row.label} payment amount.`);
       return;
     }
 
     if (amount > row.availableBalance) {
       notify(
-        `${row.label}: Available KES ${money(
-          row.availableBalance
-        )}.`
+        `${row.label}: Available KES ${money(row.availableBalance)}.`
       );
       return;
     }
 
     const banking = row.key === "BANKING";
+    const reference = String(bankingReference || "")
+      .trim()
+      .toUpperCase();
 
-    // Never send an automatic Banking payment to the Accountant-only RPC.
-    // The existing cashier Banking request RPC only creates a PENDING
-    // Accountant request; automatic bank initiation needs its own
-    // server-side implementation and verified bank integration.
     if (banking) {
       const currentMode = await loadBankingMode();
+
       if (!currentMode) {
         notify("Unable to verify Banking mode. Try again.");
         return;
       }
+
       if (currentMode.mode === "AUTOMATIC") {
         notify(
           currentMode.automaticReady
             ? "Automatic Banking PAY is not connected yet."
             : "Automatic Banking is not ready. Contact Admin."
         );
+        return;
+      }
+
+      if (!/^[A-Z0-9]{8,16}$/.test(reference)) {
+        notify("Enter a valid M-PESA reference.");
         return;
       }
     }
@@ -667,9 +588,13 @@ export default function CashierSavingsPanel({
       : "";
 
     const confirmed = window.confirm(
-      `Request ${row.label} payment?${employeeText}\n\n` +
-        `Amount: KES ${money(amount)}\n\n` +
-        "The Accountant must confirm the actual payment before this amount leaves Savings."
+      banking
+        ? `Submit Banking PAY?${employeeText}\n\n` +
+          `Amount: KES ${money(amount)}\n` +
+          `M-PESA Ref: ${reference}`
+        : `Request ${row.label} payment?${employeeText}\n\n` +
+          `Amount: KES ${money(amount)}\n\n` +
+          "The Accountant must confirm the actual payment before this amount leaves Savings."
     );
 
     if (!confirmed) return;
@@ -677,17 +602,15 @@ export default function CashierSavingsPanel({
     await postMoney({
       row,
       action: "PAY",
-
       rpc: banking
         ? "tl_cashier_request_banking_payment_employee"
         : "tl_cashier_request_savings_payment",
-
       body: banking
         ? {
             p_shift_id: shiftId,
-            p_employee_id:
-              selectedEmployee.employee_id,
+            p_employee_id: selectedEmployee.employee_id,
             p_amount: roundMoney(amount),
+            p_mpesa_reference: reference,
           }
         : {
             p_shift_id: shiftId,
@@ -700,25 +623,22 @@ export default function CashierSavingsPanel({
           clearInput(row.key, "pay");
         }
 
+        if (banking) setBankingReference("");
+
         notify(
-          `${row.label}: Payment request sent to Accountant.`,
+          banking
+            ? "Banking request submitted."
+            : `${row.label}: Payment request sent to Accountant.`,
           "success"
         );
       },
     });
   }
 
-  // ==========================================
   // WITHDRAW TO M-SHWARI FLOAT
-  // ==========================================
 
   async function withdrawMoney(row) {
-    if (
-      busyRef.current ||
-      !bankingReady(row)
-    ) {
-      return;
-    }
+    if (busyRef.current || !bankingReady(row)) return;
 
     const raw = inputs[row.key]?.withdraw;
     const amount = Number(raw);
@@ -728,17 +648,13 @@ export default function CashierSavingsPanel({
       !Number.isFinite(amount) ||
       roundMoney(amount) <= 0
     ) {
-      notify(
-        `Enter a valid ${row.label} withdrawal amount.`
-      );
+      notify(`Enter a valid ${row.label} withdrawal amount.`);
       return;
     }
 
     if (amount > row.availableBalance) {
       notify(
-        `${row.label}: Available KES ${money(
-          row.availableBalance
-        )}.`
+        `${row.label}: Available KES ${money(row.availableBalance)}.`
       );
       return;
     }
@@ -759,16 +675,13 @@ export default function CashierSavingsPanel({
     await postMoney({
       row,
       action: "WITHDRAW",
-
       rpc: banking
         ? "tl_cashier_withdraw_banking_employee"
         : "tl_cashier_withdraw_savings",
-
       body: banking
         ? {
             p_shift_id: shiftId,
-            p_employee_id:
-              selectedEmployee.employee_id,
+            p_employee_id: selectedEmployee.employee_id,
             p_amount: roundMoney(amount),
           }
         : {
@@ -781,9 +694,7 @@ export default function CashierSavingsPanel({
         clearInput(row.key, "withdraw");
 
         notify(
-          `${row.label}: KES ${money(
-            amount
-          )} withdrawn to M-Shwari Float ${
+          `${row.label}: KES ${money(amount)} withdrawn to M-Shwari Float ${
             result?.mshwari_slot || ""
           }.`,
           "success"
@@ -792,9 +703,7 @@ export default function CashierSavingsPanel({
     });
   }
 
-  // ==========================================
   // DISPLAY
-  // ==========================================
 
   return (
     <section
@@ -813,7 +722,6 @@ export default function CashierSavingsPanel({
           aria-live="polite"
           style={{
             ...s.message,
-
             ...(notice.type === "success"
               ? s.success
               : s.error),
@@ -824,27 +732,18 @@ export default function CashierSavingsPanel({
       )}
 
       {loading ? (
-        <div style={s.loading}>
-          Loading...
-        </div>
+        <div style={s.loading}>Loading...</div>
       ) : (
         <>
           <div style={s.categoryGrid}>
             {rows.map((row) => {
-              const banking =
-                row.key === "BANKING";
-
-              const ready =
-                !banking ||
-                Boolean(selectedEmployee);
-
+              const banking = row.key === "BANKING";
+              const ready = !banking || Boolean(selectedEmployee);
               const busy = actionKey !== "";
 
               const fixedReady =
                 row.obligationAmount != null &&
-                Number.isFinite(
-                  row.obligationAmount
-                ) &&
+                Number.isFinite(row.obligationAmount) &&
                 row.obligationAmount > 0;
 
               const disablePay =
@@ -855,8 +754,7 @@ export default function CashierSavingsPanel({
                   row.fixedPayment &&
                   (
                     !fixedReady ||
-                    row.availableBalance <
-                      row.obligationAmount
+                    row.availableBalance < row.obligationAmount
                   )
                 );
 
@@ -865,22 +763,18 @@ export default function CashierSavingsPanel({
                 !ready ||
                 row.availableBalance <= 0;
 
-              const input =
-                inputs[row.key] || {
-                  save: "",
-                  pay: "",
-                  withdraw: "",
-                };
+              const input = inputs[row.key] || {
+                save: "",
+                pay: "",
+                withdraw: "",
+              };
 
               return (
                 <article
                   key={row.key}
                   style={{
                     ...s.categoryCard,
-
-                    ...(banking
-                      ? s.bankingCard
-                      : {}),
+                    ...(banking ? s.bankingCard : {}),
                   }}
                 >
                   <div style={s.categoryHead}>
@@ -905,7 +799,6 @@ export default function CashierSavingsPanel({
                     <span style={s.balanceLabel}>
                       SAVED
                     </span>
-
                     <strong style={s.balanceAmount}>
                       KES {money(row.balance)}
                     </strong>
@@ -918,41 +811,59 @@ export default function CashierSavingsPanel({
                       value={employeeId}
                       disabled={busy}
                       onChange={(event) =>
-                        selectEmployee(
-                          event.target.value
-                        )
+                        selectEmployee(event.target.value)
                       }
                     >
                       <option value="">
                         Select employee
                       </option>
 
-                      {sortedEmployees.map(
-                        (employee) => (
-                          <option
-                            key={employee.employee_id}
-                            value={employee.employee_id}
-                          >
-                            {employee.is_mobile
-                              ? `★ MOBILE — ${employee.employee_name}`
-                              : `${
-                                  employee.shop_name ||
-                                  "UNASSIGNED"
-                                } — ${
-                                  employee.employee_name
-                                }`}
-                          </option>
-                        )
-                      )}
+                      {sortedEmployees.map((employee) => (
+                        <option
+                          key={employee.employee_id}
+                          value={employee.employee_id}
+                        >
+                          {employee.is_mobile
+                            ? `★ MOBILE — ${employee.employee_name}`
+                            : `${
+                                employee.shop_name || "UNASSIGNED"
+                              } — ${employee.employee_name}`}
+                        </option>
+                      ))}
                     </select>
+                  )}
+
+                  {banking && bankingMode?.mode === "MANUAL" && (
+                    <input
+                      type="text"
+                      aria-label="M-PESA reference for Banking PAY"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      spellCheck={false}
+                      maxLength={16}
+                      style={{
+                        ...s.input,
+                        marginBottom: 10,
+                        textAlign: "left",
+                      }}
+                      placeholder="M-PESA reference"
+                      value={bankingReference}
+                      disabled={busy || !ready}
+                      onChange={(event) => {
+                        setBankingReference(
+                          event.target.value
+                            .replace(/\s+/g, "")
+                            .toUpperCase()
+                        );
+                        setNotice(null);
+                      }}
+                    />
                   )}
 
                   {row.pendingPaymentAmount > 0 && (
                     <div style={s.pending}>
                       PENDING: KES{" "}
-                      {money(
-                        row.pendingPaymentAmount
-                      )}
+                      {money(row.pendingPaymentAmount)}
                     </div>
                   )}
 
@@ -971,9 +882,7 @@ export default function CashierSavingsPanel({
                         value={input.save}
                         disabled={busy || !ready}
                         placeholder={
-                          ready
-                            ? "Amount"
-                            : "Select employee"
+                          ready ? "Amount" : "Select employee"
                         }
                         onChange={(event) =>
                           setInput(
@@ -993,8 +902,7 @@ export default function CashierSavingsPanel({
                           ...s.saveButton,
                         }}
                       >
-                        {actionKey ===
-                        `SAVE-${row.key}`
+                        {actionKey === `SAVE-${row.key}`
                           ? "Saving..."
                           : "Save"}
                       </button>
@@ -1016,9 +924,7 @@ export default function CashierSavingsPanel({
                           aria-label={`${row.label} fixed payment amount`}
                           value={
                             fixedReady
-                              ? money(
-                                  row.obligationAmount
-                                )
+                              ? money(row.obligationAmount)
                               : ""
                           }
                           placeholder="Not set"
@@ -1033,9 +939,7 @@ export default function CashierSavingsPanel({
                           value={input.pay}
                           disabled={busy || !ready}
                           placeholder={
-                            ready
-                              ? "Amount"
-                              : "Select employee"
+                            ready ? "Amount" : "Select employee"
                           }
                           onChange={(event) =>
                             setInput(
@@ -1049,17 +953,14 @@ export default function CashierSavingsPanel({
 
                       <button
                         type="button"
-                        onClick={() =>
-                          requestPayment(row)
-                        }
+                        onClick={() => requestPayment(row)}
                         disabled={disablePay}
                         style={{
                           ...s.button,
                           ...s.payButton,
                         }}
                       >
-                        {actionKey ===
-                        `PAY-${row.key}`
+                        {actionKey === `PAY-${row.key}`
                           ? "Sending..."
                           : "Request Pay"}
                       </button>
@@ -1079,9 +980,7 @@ export default function CashierSavingsPanel({
                         value={input.withdraw}
                         disabled={disableWithdraw}
                         placeholder={
-                          ready
-                            ? "Amount"
-                            : "Select employee"
+                          ready ? "Amount" : "Select employee"
                         }
                         onChange={(event) =>
                           setInput(
@@ -1094,17 +993,14 @@ export default function CashierSavingsPanel({
 
                       <button
                         type="button"
-                        onClick={() =>
-                          withdrawMoney(row)
-                        }
+                        onClick={() => withdrawMoney(row)}
                         disabled={disableWithdraw}
                         style={{
                           ...s.button,
                           ...s.withdrawButton,
                         }}
                       >
-                        {actionKey ===
-                        `WITHDRAW-${row.key}`
+                        {actionKey === `WITHDRAW-${row.key}`
                           ? "Working..."
                           : "Withdraw"}
                       </button>
@@ -1129,8 +1025,6 @@ export default function CashierSavingsPanel({
             )}
           </div>
 
-          {/* PAYMENT STATUS: AUTO-COLLAPSES AFTER 15 SECONDS */}
-
           {paymentRequests.length > 0 && (
             <div style={s.history}>
               <button
@@ -1139,16 +1033,12 @@ export default function CashierSavingsPanel({
                 aria-expanded={paymentStatusOpen}
                 aria-controls="tl-payment-status-list"
                 onClick={() =>
-                  setPaymentStatusOpen(
-                    (value) => !value
-                  )
+                  setPaymentStatusOpen((value) => !value)
                 }
               >
                 <span>
-                  PAYMENT STATUS (
-                  {paymentRequests.length})
+                  PAYMENT STATUS ({paymentRequests.length})
                 </span>
-
                 <span aria-hidden="true">
                   {paymentStatusOpen ? "▲" : "▼"}
                 </span>
@@ -1170,26 +1060,18 @@ export default function CashierSavingsPanel({
                           <strong>
                             {request.category}
                           </strong>
-
-                          <span
-                            style={s.historyDate}
-                          >
+                          <span style={s.historyDate}>
                             {formatDateTime(
                               request.requested_at
                             )}
                           </span>
                         </div>
 
-                        <strong
-                          style={s.historyAmount}
-                        >
-                          KES{" "}
-                          {money(request.amount)}
+                        <strong style={s.historyAmount}>
+                          KES {money(request.amount)}
                         </strong>
 
-                        <StatusBadge
-                          status={request.status}
-                        />
+                        <StatusBadge status={request.status} />
                       </div>
                     ))}
                 </div>
@@ -1202,17 +1084,12 @@ export default function CashierSavingsPanel({
   );
 }
 
-// ==========================================
 // DISPLAY HELPERS
-// ==========================================
 
 function TotalTile({ label, amount }) {
   return (
     <div style={s.totalTile}>
-      <span style={s.totalLabel}>
-        {label}
-      </span>
-
+      <span style={s.totalLabel}>{label}</span>
       <strong style={s.totalAmount}>
         KES {money(amount)}
       </strong>
@@ -1221,20 +1098,14 @@ function TotalTile({ label, amount }) {
 }
 
 function StatusBadge({ status }) {
-  const value = String(
-    status || ""
-  ).toUpperCase();
+  const value = String(status || "").toUpperCase();
 
   const appearance =
     value === "CONFIRMED"
       ? s.confirmed
       : value === "PROCESSING"
       ? s.processing
-      : [
-          "REJECTED",
-          "FAILED",
-          "CANCELLED",
-        ].includes(value)
+      : ["REJECTED", "FAILED", "CANCELLED"].includes(value)
       ? s.rejected
       : s.pendingStatus;
 
@@ -1250,9 +1121,7 @@ function StatusBadge({ status }) {
   );
 }
 
-// ==========================================
 // SUPABASE HELPERS
-// ==========================================
 
 function authHeaders(anonKey, token) {
   return {
@@ -1270,18 +1139,13 @@ async function safeJson(response) {
   }
 }
 
-// ==========================================
 // MONEY AND DATE HELPERS
-// ==========================================
 
 function money(value) {
-  return Number(value || 0).toLocaleString(
-    "en-KE",
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }
-  );
+  return Number(value || 0).toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function roundMoney(value) {
@@ -1296,24 +1160,19 @@ function formatDateTime(value) {
   if (!value) return "";
 
   try {
-    return new Intl.DateTimeFormat(
-      "en-KE",
-      {
-        timeZone: "Africa/Nairobi",
-        day: "2-digit",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      }
-    ).format(new Date(value));
+    return new Intl.DateTimeFormat("en-KE", {
+      timeZone: "Africa/Nairobi",
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
   } catch {
     return "";
   }
 }
 
-// ==========================================
 // INPUT STYLING
-// ==========================================
 
 const css = `
 .tl-shared-savings input[type="number"] {
@@ -1338,9 +1197,7 @@ const css = `
 }
 `;
 
-// ==========================================
 // PROFESSIONAL NAVY STYLES
-// ==========================================
 
 const s = {
   panel: {
