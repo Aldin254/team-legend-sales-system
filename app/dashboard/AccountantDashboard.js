@@ -943,7 +943,7 @@ _jsx(TableCell,{children:_jsx(StatusText,{status:transaction.status})})
 )})
 ]})
 })
-)}
+)
 ]}),
 
 _jsxs("section",{style:closingPanelStyle,children:[
