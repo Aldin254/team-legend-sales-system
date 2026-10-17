@@ -39,6 +39,7 @@ export default function CashierSavingsPanel({
   const [categories, setCategories] = useState([]);
   const [paymentRequests, setPaymentRequests] = useState([]);
   const [bankingEmployees, setBankingEmployees] = useState([]);
+  const [bankingMode, setBankingMode] = useState(null);
   const [employeeId, setEmployeeId] = useState("");
   const [inputs, setInputs] = useState(makeInputs);
   const [loading, setLoading] = useState(true);
@@ -218,6 +219,57 @@ export default function CashierSavingsPanel({
     },
     [shiftId, token, supabaseUrl, anonKey]
   );
+
+  // ==========================================
+  // ADMIN BANKING MODE (READ-ONLY)
+  // ==========================================
+
+  const loadBankingMode = useCallback(async () => {
+    if (!token || !supabaseUrl || !anonKey) {
+      setBankingMode(null);
+      return null;
+    }
+
+    try {
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/rpc/tl_banking_mode_snapshot`,
+        {
+          method: "POST",
+          headers: authHeaders(anonKey, token),
+          body: "{}",
+          cache: "no-store",
+        }
+      );
+
+      const data = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(data?.message || "Banking mode unavailable.");
+      }
+
+      const record = Array.isArray(data) ? data[0] : data;
+      const mode = String(record?.mode || "").toUpperCase();
+      if (mode !== "MANUAL" && mode !== "AUTOMATIC") {
+        throw new Error("Invalid Banking mode.");
+      }
+
+      const current = {
+        mode,
+        automaticReady: record?.automatic_ready === true,
+      };
+      setBankingMode(current);
+      return current;
+    } catch (error) {
+      console.error("LOAD BANKING MODE ERROR:", error);
+      setBankingMode(null);
+      return null;
+    }
+  }, [token, supabaseUrl, anonKey]);
+
+  useEffect(() => {
+    loadBankingMode();
+    const timer = setInterval(loadBankingMode, 30000);
+    return () => clearInterval(timer);
+  }, [loadBankingMode]);
 
   // ==========================================
   // AUTO REFRESH
@@ -590,6 +642,26 @@ export default function CashierSavingsPanel({
 
     const banking = row.key === "BANKING";
 
+    // Never send an automatic Banking payment to the Accountant-only RPC.
+    // The existing cashier Banking request RPC only creates a PENDING
+    // Accountant request; automatic bank initiation needs its own
+    // server-side implementation and verified bank integration.
+    if (banking) {
+      const currentMode = await loadBankingMode();
+      if (!currentMode) {
+        notify("Unable to verify Banking mode. Try again.");
+        return;
+      }
+      if (currentMode.mode === "AUTOMATIC") {
+        notify(
+          currentMode.automaticReady
+            ? "Automatic Banking PAY is not connected yet."
+            : "Automatic Banking is not ready. Contact Admin."
+        );
+        return;
+      }
+    }
+
     const employeeText = banking
       ? `\nEmployee: ${selectedEmployee.employee_name}`
       : "";
@@ -815,6 +887,12 @@ export default function CashierSavingsPanel({
                     <strong style={s.categoryName}>
                       {row.label}
                     </strong>
+
+                    {banking && bankingMode && (
+                      <span style={s.fixedTag}>
+                        {bankingMode.mode}
+                      </span>
+                    )}
 
                     {row.fixedPayment && (
                       <span style={s.fixedTag}>
