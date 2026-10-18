@@ -115,17 +115,11 @@ function errorMessage(
 // SECRET SERVER HEADERS
 // ==================================================
 
-function serviceHeaders(
-  config,
-  extra = {}
-) {
+function serviceHeaders(config, extra = {}) {
   return {
-    apikey:
-      config.serviceKey,
-
-    "Content-Type":
-      "application/json",
-
+    apikey: config.serviceKey,
+    Authorization: `Bearer ${config.serviceKey}`,
+    "Content-Type": "application/json",
     ...extra,
   };
 }
