@@ -48,11 +48,12 @@ export default function AccountantDashboard({ user }) {
   const [transactions, setTransactions] = useState([]);
   const [expenses, setExpenses] = useState([]);
 
-  const [savingsPaymentSnapshot, setSavingsPaymentSnapshot] = useState({
-    pending_requests: [],
-    recent_requests: [],
-    banking_pending_count: null,
-  });
+ const [savingsPaymentSnapshot, setSavingsPaymentSnapshot] = useState({
+  pending_requests: [],
+  recent_requests: [],
+});
+
+const [savingsPaymentForms, setSavingsPaymentForms] = useState({});
   const [bankingReference, setBankingReference] = useState("");
   const [checkingBankingReference, setCheckingBankingReference] =
     useState(false);
@@ -327,31 +328,29 @@ export default function AccountantDashboard({ user }) {
   );
 
   const loadSavingsPayments = useCallback(async () => {
-    const result = await callRpc(
-      "tl_accountant_savings_payment_snapshot_private",
-      {}
-    );
-    const pending = result?.pending_requests;
-    const recent = result?.recent_requests;
-    const count = result?.banking_pending_count;
+  const result = await callRpc(
+    "tl_accountant_savings_payment_snapshot_private",
+    {}
+  );
 
-    if (
-      !Array.isArray(pending) ||
-      !Array.isArray(recent) ||
-      !Number.isSafeInteger(count) ||
-      count < 0 ||
-      [...pending, ...recent].some(
-        (r) => String(r?.category || "").toUpperCase() === "BANKING"
-      )
-    ) {
-      throw new Error("Private Banking snapshot is not configured.");
-    }
-    return {
-      pending_requests: pending,
-      recent_requests: recent,
-      banking_pending_count: count,
-    };
-  }, [callRpc]);
+  const pending = result?.pending_requests;
+  const recent = result?.recent_requests;
+
+  if (
+    !Array.isArray(pending) ||
+    !Array.isArray(recent) ||
+    [...pending, ...recent].some(
+      (r) => String(r?.category || "").toUpperCase() === "BANKING"
+    )
+  ) {
+    throw new Error("Private Savings snapshot is not configured.");
+  }
+
+  return {
+    pending_requests: pending,
+    recent_requests: recent,
+  };
+}, [callRpc]);
 
   const openToday = useCallback(
     async () => await callRpc("tl_accountant_open_today", {}),
@@ -382,10 +381,10 @@ export default function AccountantDashboard({ user }) {
           loadTransactions(),
           loadSavingsPayments().catch((error) => {
             console.error("PRIVATE SAVINGS SNAPSHOT ERROR:", error);
-            return {
-              pending_requests: [],
-              recent_requests: [],
-              banking_pending_count: null,
+           return {
+  pending_requests: [],
+  recent_requests: [],
+};
             };
           }),
         ]);
@@ -700,9 +699,6 @@ export default function AccountantDashboard({ user }) {
     () => getAccountantSendRoute(preparedSend, null),
     [preparedSend]
   );
-
-  const bankingPendingCount =
-    savingsPaymentSnapshot?.banking_pending_count;
 
   const pendingSavingsPayments = useMemo(
     () =>
@@ -1226,78 +1222,6 @@ export default function AccountantDashboard({ user }) {
       setCancellingTransactionId(null);
     }
   }
-
-  async function verifyBankingReference() {
-    if (bankingVerificationBusyRef.current) return;
-    const reference = String(bankingReference || "").trim().toUpperCase();
-
-    if (!/^[A-Z0-9]{8,16}$/.test(reference)) {
-      setBankingVerificationResult({
-        type: "error",
-        text: "DECLINED — Invalid reference.",
-      });
-      return;
-    }
-
-    bankingVerificationBusyRef.current = true;
-    setCheckingBankingReference(true);
-    setBankingVerificationResult(null);
-    setMessage("");
-
-    try {
-      const response = await callRpc(
-        "tl_accountant_banking_match_reference",
-        { p_reference: reference }
-      );
-      const status = String(response?.status || "").toUpperCase();
-
-      if (status === "MATCHED") {
-        setBankingVerificationResult({
-          type: "success",
-          text: "MATCHED",
-        });
-      } else if (
-        status === "DECLINED" ||
-        status === "DUPLICATE"
-      ) {
-        setBankingVerificationResult({
-          type: "error",
-          text: "DECLINED",
-        });
-      } else {
-        throw new Error("Verification unavailable.");
-      }
-
-      setBankingReference("");
-
-      try {
-        await refreshData({ silent: true });
-      } catch (refreshError) {
-        console.error(
-          "BANKING QUEUE REFRESH ERROR:",
-          refreshError
-        );
-      }
-    } catch (error) {
-      console.error("BANKING REFERENCE ERROR:", error);
-      setBankingVerificationResult({
-        type: "error",
-        text: "Verification unavailable.",
-      });
-    } finally {
-      bankingVerificationBusyRef.current = false;
-      setCheckingBankingReference(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!bankingVerificationResult) return;
-    const timer = setTimeout(
-      () => setBankingVerificationResult(null),
-      5000
-    );
-    return () => clearTimeout(timer);
-  }, [bankingVerificationResult]);
 
   async function confirmSavingsPayment(request) {
     if (
@@ -2467,15 +2391,10 @@ export default function AccountantDashboard({ user }) {
                   _jsxs("div", {
                     style: sectionHeaderActionsStyle,
                     children: [
-                      _jsx("div", {
-                        style: savingsPendingBadgeStyle,
-                        children: `${
-                          bankingPendingCount == null
-                            ? "—"
-                            : bankingPendingCount +
-                              pendingSavingsPayments.length
-                        } PENDING`,
-                      }),
+                     _jsx("div", {
+  style: savingsPendingBadgeStyle,
+  children: `${pendingSavingsPayments.length} PENDING`,
+}),
                       _jsx("button", {
                         type: "button",
                         style: sectionToggleStyle,
@@ -2494,89 +2413,7 @@ export default function AccountantDashboard({ user }) {
               showSavingsPayments &&
                 _jsxs(_Fragment, {
                   children: [
-                    _jsxs("div", {
-                      style: savingsRequestCardStyle,
-                      children: [
-                        _jsxs("div", {
-                          style: savingsRequestHeaderStyle,
-                          children: [
-                            _jsx("div", {
-                              style: savingsCategoryStyle,
-                              children: "BANKING VERIFICATION",
-                            }),
-                            _jsx("div", {
-                              style: savingsPendingBadgeStyle,
-                              children: `${
-                                bankingPendingCount == null
-                                  ? "—"
-                                  : bankingPendingCount
-                              } PENDING`,
-                            }),
-                          ],
-                        }),
-                        _jsxs("form", {
-                          onSubmit: (event) => {
-                            event.preventDefault();
-                            verifyBankingReference();
-                          },
-                          style: {
-                            display: "grid",
-                            gap: 8,
-                            marginTop: 10,
-                          },
-                          children: [
-                            _jsx("label", {
-                              style: labelStyle,
-                              htmlFor: "banking-reference-input",
-                              children: "M-PESA REFERENCE",
-                            }),
-                            _jsx("input", {
-                              id: "banking-reference-input",
-                              type: "text",
-                              autoComplete: "off",
-                              autoCapitalize: "characters",
-                              spellCheck: false,
-                              maxLength: 16,
-                              value: bankingReference,
-                              onChange: (event) => {
-                                setBankingReference(
-                                  event.target.value.toUpperCase()
-                                );
-                                setBankingVerificationResult(null);
-                              },
-                              placeholder: "Reference number",
-                              disabled:
-                                checkingBankingReference ||
-                                bankingPendingCount == null,
-                              style: inputStyle,
-                            }),
-                            _jsx("button", {
-                              type: "submit",
-                              disabled:
-                                checkingBankingReference ||
-                                bankingPendingCount == null ||
-                                !bankingReference.trim(),
-                              style: savingsConfirmButtonStyle,
-                              children: checkingBankingReference
-                                ? "Checking..."
-                                : "DONE",
-                            }),
-                            bankingVerificationResult &&
-                              _jsx("div", {
-                                role: "status",
-                                style:
-                                  bankingVerificationResult.type ===
-                                  "success"
-                                    ? successStyle
-                                    : errorStyle,
-                                children:
-                                  bankingVerificationResult.text,
-                              }),
-                          ],
-                        }),
-                      ],
-                    }),
-
+                   
                     pendingSavingsPayments.length === 0
                       ? _jsx("div", {
                           style: emptyStyle,
