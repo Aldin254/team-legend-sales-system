@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -296,20 +297,22 @@ export default function AdminDashboard({ user }) {
             </>
           )}
 
-          {/* SAVINGS / BANKING */}
+         {/* SAVINGS / BANKING */}
 
-          {activeSection === "SAVINGS_BANKING" && (
-            <>
-              <PageHeading
-                title="Savings / Banking"
-                subtitle="Live Savings balances, payment activity, Accountant confirmations and permanent ledger audit."
-              />
+{activeSection === "SAVINGS_BANKING" && (
+  <>
+    <PageHeading
+      title="Savings / Banking"
+      subtitle="Live Savings balances, payment activity, Admin banking verification and permanent ledger audit."
+    />
 
-              <AdminSavingsPanel
-                user={user}
-              />
-            </>
-          )}
+    <AdminBankingVerificationPanel user={user} />
+
+    <AdminSavingsPanel
+      user={user}
+    />
+  </>
+)}
 
           {/* FINANCIAL PERFORMANCE */}
 
@@ -433,7 +436,329 @@ export default function AdminDashboard({ user }) {
     </main>
   );
 }
+function AdminBankingVerificationPanel({ user }) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const accessToken = user?.access_token || null;
 
+  const [reference, setReference] = useState("");
+  const [pendingCount, setPendingCount] = useState(null);
+  const [loadingCount, setLoadingCount] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [error, setError] = useState("");
+
+  const activeRequest = useRef(false);
+
+  const rpc = useCallback(async (name, payload = {}, signal) => {
+    if (!supabaseUrl || !supabaseAnonKey || !accessToken) {
+      throw new Error("Admin session is incomplete.");
+    }
+
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/rpc/${name}`,
+      {
+        method: "POST",
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        cache: "no-store",
+        ...(signal ? { signal } : {}),
+      }
+    );
+
+    const body = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        body?.message ||
+        body?.details ||
+        `${name} failed (${response.status}).`
+      );
+    }
+
+    return body;
+  }, [supabaseUrl, supabaseAnonKey, accessToken]);
+
+  const loadCount = useCallback(async (signal) => {
+    const result = await rpc(
+      "tl_admin_banking_verification_snapshot",
+      {},
+      signal
+    );
+
+    const count = Number(result?.banking_pending_count);
+
+    if (
+      result?.banking_pending_count == null ||
+      !Number.isSafeInteger(count) ||
+      count < 0
+    ) {
+      throw new Error(
+        "Admin banking verification snapshot is unavailable."
+      );
+    }
+
+    return count;
+  }, [rpc]);
+
+  useEffect(() => {
+    let mounted = true;
+    const controller = new AbortController();
+
+    const refresh = async () => {
+      try {
+        const count = await loadCount(controller.signal);
+
+        if (!mounted) return;
+
+        setPendingCount(count);
+        setError("");
+      } catch (err) {
+        if (!mounted || err?.name === "AbortError") return;
+
+        setPendingCount(null);
+        setError(
+          err?.message ||
+          "Unable to load Admin banking verification."
+        );
+      } finally {
+        if (mounted) setLoadingCount(false);
+      }
+    };
+
+    refresh();
+
+    const timer = setInterval(refresh, 15000);
+
+    return () => {
+      mounted = false;
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, [loadCount]);
+
+  useEffect(() => {
+    if (!notice) return;
+
+    const timer = setTimeout(
+      () => setNotice(null),
+      5000
+    );
+
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  async function verifyReference(event) {
+    event.preventDefault();
+
+    if (
+      activeRequest.current ||
+      checking ||
+      pendingCount == null
+    ) return;
+
+    const cleaned = reference.trim().toUpperCase();
+
+    if (!/^[A-Z0-9]{8,16}$/.test(cleaned)) {
+      setNotice({
+        ok: false,
+        message: "DECLINED — Invalid reference.",
+      });
+      return;
+    }
+
+    activeRequest.current = true;
+    setChecking(true);
+    setNotice(null);
+    setError("");
+
+    try {
+      const result = await rpc(
+        "tl_admin_banking_match_reference",
+        { p_reference: cleaned }
+      );
+
+      const status = String(
+        result?.status || ""
+      ).toUpperCase();
+
+      if (
+        !["MATCHED", "DECLINED", "DUPLICATE"].includes(status)
+      ) {
+        throw new Error(
+          "Unexpected banking verification response."
+        );
+      }
+
+      setNotice({
+        ok: status === "MATCHED",
+        message:
+          status === "MATCHED" ? "MATCHED" : "DECLINED",
+      });
+
+      setReference("");
+
+      try {
+        setPendingCount(await loadCount());
+      } catch {
+        setPendingCount(null);
+        setError("Could not refresh pending banking count.");
+      }
+    } catch (err) {
+      setNotice({
+        ok: false,
+        message:
+          err?.message || "Verification unavailable.",
+      });
+    } finally {
+      activeRequest.current = false;
+      setChecking(false);
+    }
+  }
+
+  const card = {
+    border: "1px solid #bcd9ce",
+    borderRadius: 9,
+    background: "#f4fbf7",
+    padding: "16px",
+    marginBottom: 16,
+    color: "#143d33",
+    fontSize: 12,
+  };
+
+  return (
+    <section
+      style={card}
+      aria-label="Admin banking verification"
+    >
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 10,
+        marginBottom: 12,
+      }}>
+        <strong style={{
+          fontSize: 13,
+          fontWeight: 900,
+        }}>
+          BANKING VERIFICATION
+        </strong>
+
+        <span style={{
+          borderRadius: 15,
+          padding: "5px 10px",
+          background: "#a72525",
+          color: "#fff",
+          fontSize: 11,
+          fontWeight: 800,
+        }}>
+          {loadingCount || pendingCount == null
+            ? "—"
+            : pendingCount} PENDING
+        </span>
+      </div>
+
+      <form
+        onSubmit={verifyReference}
+        style={{
+          display: "grid",
+          gap: 9,
+        }}
+      >
+        <label
+          htmlFor="admin-banking-reference"
+          style={{ fontWeight: 800 }}
+        >
+          M-PESA REFERENCE
+        </label>
+
+        <input
+          id="admin-banking-reference"
+          value={reference}
+          type="text"
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          maxLength={16}
+          placeholder="Reference number"
+          onChange={(event) => {
+            setReference(
+              event.target.value.toUpperCase()
+            );
+            setNotice(null);
+          }}
+          disabled={checking || pendingCount == null}
+          style={{
+            padding: "11px 12px",
+            border: "1px solid #b7cdc4",
+            borderRadius: 5,
+            background: "#fff",
+            color: "#1c2d26",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        />
+
+        <button
+          type="submit"
+          disabled={
+            checking ||
+            pendingCount == null ||
+            !reference.trim()
+          }
+          style={{
+            border: 0,
+            borderRadius: 5,
+            padding: "11px 14px",
+            background: "#059669",
+            color: "white",
+            fontWeight: 900,
+            cursor: checking ? "wait" : "pointer",
+            opacity:
+              checking ||
+              pendingCount == null ||
+              !reference.trim()
+                ? 0.55
+                : 1,
+          }}
+        >
+          {checking ? "Checking..." : "DONE"}
+        </button>
+
+        {notice && (
+          <div
+            role="status"
+            style={{
+              color: notice.ok
+                ? "#087948"
+                : "#b42318",
+              fontWeight: 800,
+            }}
+          >
+            {notice.message}
+          </div>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            style={{
+              color: "#b42318",
+              fontWeight: 700,
+            }}
+          >
+            {error}
+          </div>
+        )}
+      </form>
+    </section>
+  );
+}
 // ==================================================
 // NEW: 12-HOUR INCOMPLETE CLOSING ALERTS
 //
