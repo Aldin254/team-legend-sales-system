@@ -384,8 +384,7 @@ const [savingsPaymentForms, setSavingsPaymentForms] = useState({});
            return {
   pending_requests: [],
   recent_requests: [],
-};
-            };
+          };
           }),
         ]);
 
