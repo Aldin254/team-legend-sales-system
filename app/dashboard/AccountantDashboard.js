@@ -54,18 +54,12 @@ const [savingsPaymentSnapshot, setSavingsPaymentSnapshot] = useState({
 });
 
 const [savingsPaymentForms, setSavingsPaymentForms] = useState({});
-  const [bankingReference, setBankingReference] = useState("");
-  const [checkingBankingReference, setCheckingBankingReference] =
-    useState(false);
-  const [bankingVerificationResult, setBankingVerificationResult] =
-    useState(null);
-  const bankingVerificationBusyRef = useRef(false);
-  const [savingsPaymentForms, setSavingsPaymentForms] = useState({});
-  const [confirmingSavingsPaymentId, setConfirmingSavingsPaymentId] =
-    useState(null);
-  const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
-    useState(null);
 
+const [confirmingSavingsPaymentId, setConfirmingSavingsPaymentId] =
+  useState(null);
+
+const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
+  useState(null);
   // Never assume M-PESA→M-PESA before the Admin route loads.
   const [floatSendMethod, setFloatSendMethod] = useState("");
   const [selectedRecipientId, setSelectedRecipientId] = useState("");
