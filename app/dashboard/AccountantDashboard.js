@@ -48,7 +48,7 @@ export default function AccountantDashboard({ user }) {
   const [transactions, setTransactions] = useState([]);
   const [expenses, setExpenses] = useState([]);
 
- const [savingsPaymentSnapshot, setSavingsPaymentSnapshot] = useState({
+const [savingsPaymentSnapshot, setSavingsPaymentSnapshot] = useState({
   pending_requests: [],
   recent_requests: [],
 });
