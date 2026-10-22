@@ -6,7 +6,8 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-
+import CashierSafaricomWithdrawalPanel
+  from "./CashierSafaricomWithdrawalPanel";
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
 import CashierLiveFeedPanel from "./CashierLiveFeedPanel";
@@ -1441,6 +1442,11 @@ export default function Cashier24HourReport({
                   refresh24HourReport
                 }
               />
+                  <CashierSafaricomWithdrawalPanel
+  user={user}
+  currentShift={currentShift}
+  onWithdrawalChanged={refreshReport}
+/>
             </div>
           </div>
 
