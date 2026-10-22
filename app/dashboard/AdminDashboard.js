@@ -1148,6 +1148,57 @@ function AdminClosingAlertsPanel({
                         }}>
                           LOCKED
                         </span>
+}>
+                          {incident.shop_name ||
+                            "Unknown Shop"}
+                        </div>
+
+                        <div style={
+                          closingIncidentDateStyle
+                        }>
+                          Business Date:{" "}
+                          {incident.business_date ||
+                            "—"}
+                        </div>
+                      </div>
+
+                      <span style={
+                        closingPendingBadgeStyle
+                      }>
+                        PENDING ADMIN
+                      </span>
+                    </div>
+
+                    <div style={
+                      closingIncidentDetailsStyle
+                    }>
+                      <div>
+                        <strong>
+                          Missing readings:
+                        </strong>{" "}
+                        {incident.missing_count ??
+                          platforms.length}
+                      </div>
+
+                      <div style={{
+                        marginTop: 5,
+                        overflowWrap: "anywhere",
+                      }}>
+                        {platforms.length > 0
+                          ? platforms.join(" • ")
+                          : "No missing platform names supplied"}
+                      </div>
+
+                      <div style={{ marginTop: 9 }}>
+                        <strong>
+                          Financial access:
+                        </strong>{" "}
+                        <span style={{
+                          color: "#b91c1c",
+                          fontWeight: 900,
+                        }}>
+                          LOCKED
+                        </span>
 </div>
 
                       <div style={{ marginTop: 5 }}>
@@ -2388,6 +2439,146 @@ function AdminSafaricomWithdrawalsPanel({ user }) {
         </table>
         {!loading && !error && rows.length === 0 && <div style={{ padding: 18, textAlign: "center" }}>No transactions.</div>}
       </div>
+    </section>
+  );
+}
+
+
+// ==================================================
+// SAFARICOM WITHDRAWAL RATES — ADMIN EDITOR
+// Uses existing Admin-only RPC functions.
+// ==================================================
+function AdminSafaricomRatesPanel({ user }) {
+  const [rows, setRows] = useState([]);
+  const [original, setOriginal] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const requestLock = useRef(false);
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const token = user?.access_token;
+
+  const rpc = useCallback(async (name, payload = {}, signal) => {
+    if (!url || !key || !token) throw new Error("Admin session unavailable.");
+    const response = await fetch(`${url.replace(/\/+$/, "")}/rest/v1/rpc/${name}`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(body?.message || body?.details || `${name} failed (${response.status}).`);
+    return body;
+  }, [url, key, token]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let mounted = true;
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const data = await rpc("tl_admin_safaricom_rates_list", {}, controller.signal);
+        if (!Array.isArray(data)) throw new Error("Unexpected Safaricom rates response.");
+        if (mounted) {
+          const normalized = data.map(r => ({ ...r, min_amount: String(r.min_amount), max_amount: String(r.max_amount), fee: String(r.fee) }));
+          setRows(normalized);
+          setOriginal(normalized);
+        }
+      } catch (err) {
+        if (mounted && err?.name !== "AbortError") setError(err?.message || "Unable to load withdrawal rates.");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    load();
+    return () => { mounted = false; controller.abort(); };
+  }, [rpc, refreshKey]);
+
+  function edit(id, field, value) {
+    setRows(current => current.map(row => row.id === id ? { ...row, [field]: value } : row));
+    setError("");
+    setNotice("");
+  }
+
+  const validMoney = value => /^\d+(?:\.\d{1,2})?$/.test(String(value).trim()) && Number.isFinite(Number(value));
+  const changed = row => {
+    const old = original.find(r => r.id === row.id);
+    return old && (String(row.min_amount) !== String(old.min_amount) || String(row.max_amount) !== String(old.max_amount) || String(row.fee) !== String(old.fee) || row.is_active !== old.is_active);
+  };
+
+  async function save(row) {
+    if (requestLock.current || loading) return;
+    if (![row.min_amount, row.max_amount, row.fee].every(validMoney) ||
+        Number(row.min_amount) <= 0 || Number(row.max_amount) < Number(row.min_amount) || Number(row.fee) < 0) {
+      setError("Enter valid minimum, maximum and fee amounts (up to 2 decimal places).");
+      return;
+    }
+    if (row.is_active && rows.some(other => other.id !== row.id && other.is_active &&
+        Number(row.min_amount) <= Number(other.max_amount) && Number(row.max_amount) >= Number(other.min_amount))) {
+      setError("This active range overlaps another active fee band.");
+      return;
+    }
+    requestLock.current = true;
+    setSavingId(row.id);
+    setError("");
+    setNotice("");
+    try {
+      const result = await rpc("tl_admin_safaricom_rate_save", {
+        p_id: row.id,
+        p_min_amount: Number(row.min_amount),
+        p_max_amount: Number(row.max_amount),
+        p_fee: Number(row.fee),
+        p_is_active: row.is_active,
+      });
+      if (result?.success !== true) throw new Error("Database did not confirm the rate change.");
+      setNotice("Safaricom withdrawal rate saved.");
+      setRefreshKey(n => n + 1);
+    } catch (err) {
+      setError(err?.message || "Unable to save withdrawal rate.");
+    } finally {
+      requestLock.current = false;
+      setSavingId(null);
+    }
+  }
+
+  const cell = { padding: "9px 10px", borderBottom: "1px solid #e2e8f0", textAlign: "left", fontSize: 12 };
+  const field = { width: "100%", minWidth: 88, padding: "8px", border: "1px solid #cbd5e1", borderRadius: 5, color: "#172b3e", background: "#fff", boxSizing: "border-box" };
+  return (
+    <section style={{ background: "#fff", color: "#172b3e", padding: 18, borderRadius: 10, border: "1px solid #d8e1eb", marginTop: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 17 }}>Safaricom Withdrawal Rates</h2>
+          <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>Admin tariff management · KES · {rows.length} fee bands</div>
+        </div>
+        <button type="button" disabled={loading || !!savingId} onClick={() => setRefreshKey(n => n + 1)} style={{ padding: "9px 16px", borderRadius: 6, background: "#475569", color: "white", border: 0 }}>Refresh Rates</button>
+      </div>
+      {error && <div role="alert" style={{ color: "#b42318", marginBottom: 12 }}>{error}</div>}
+      {notice && <div role="status" style={{ color: "#047857", marginBottom: 12 }}>{notice}</div>}
+      {loading ? <div>Loading rates...</div> : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr style={{ background: "#edf2f7" }}>
+              {["Minimum (KES)", "Maximum (KES)", "Fee (KES)", "Active", "Action"].map(title => <th key={title} style={cell}>{title}</th>)}
+            </tr></thead>
+            <tbody>{rows.map(row => (
+              <tr key={row.id} style={{ background: changed(row) ? "#f0f9ff" : "#fff" }}>
+                {(["min_amount", "max_amount", "fee"]).map(name => (
+                  <td key={name} style={cell}><input aria-label={name.replace("_", " ")} type="number" min="0" step="0.01" value={row[name]} disabled={!!savingId} onChange={e => edit(row.id, name, e.target.value)} style={field} /></td>
+                ))}
+                <td style={cell}><input type="checkbox" aria-label="Active rate" checked={row.is_active} disabled={!!savingId} onChange={e => edit(row.id, "is_active", e.target.checked)} /></td>
+                <td style={cell}><button type="button" disabled={!changed(row) || !!savingId} onClick={() => save(row)} style={{ padding: "8px 14px", background: "#0f766e", color: "#fff", border: 0, borderRadius: 5, opacity: !changed(row) || !!savingId ? 0.5 : 1, cursor: "pointer" }}>{savingId === row.id ? "Saving..." : "Save"}</button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+          {rows.length === 0 && <div style={{ padding: 15 }}>No fee bands found.</div>}
+        </div>
+      )}
+      <p style={{ color: "#64748b", fontSize: 12, marginBottom: 0 }}>Changes apply to future withdrawal fee lookups. Completed withdrawal records retain their saved fees. Edit one range at a time; keep all active ranges non-overlapping.</p>
     </section>
   );
 }
