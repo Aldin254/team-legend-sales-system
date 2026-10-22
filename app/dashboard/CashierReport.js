@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-
+import CashierSafaricomWithdrawalPanel
+  from "./CashierSafaricomWithdrawalPanel";
 import CashierSavingsPanel from "./CashierSavingsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
@@ -1823,6 +1824,11 @@ export default function CashierReport({ user, currentShift }) {
               currentShift={activeShift}
               onReturnChanged={loadReport}
             />
+           <CashierSafaricomWithdrawalPanel
+           user={user}
+          currentShift={currentShift}
+          onWithdrawalChanged={refreshReport}
+           />
           </div>
 
           <CashierCloseShiftButton
