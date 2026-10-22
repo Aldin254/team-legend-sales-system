@@ -122,6 +122,11 @@ const menuItems = [
     icon: "₭",
   },
   {
+    id: "SAFARICOM_WITHDRAWALS",
+    label: "Safaricom Withdrawals",
+    icon: "⇄",
+  },
+  {
     id: "MPESA_RATES",
     label: "M-Pesa Rates",
     icon: "M",
@@ -406,6 +411,13 @@ export default function AdminDashboard({ user }) {
               <AdminAccountantPanel
                 user={user}
               />
+            </>
+          )}
+
+          {activeSection === "SAFARICOM_WITHDRAWALS" && (
+            <>
+              <PageHeading title="Safaricom Withdrawals" subtitle="Withdrawal transaction ledger and fees." />
+              <AdminSafaricomWithdrawalsPanel user={user} />
             </>
           )}
 
@@ -1136,7 +1148,7 @@ function AdminClosingAlertsPanel({
                         }}>
                           LOCKED
                         </span>
-                      </div>
+</div>
 
                       <div style={{ marginTop: 5 }}>
                         <strong>
@@ -2077,6 +2089,13 @@ function DashboardHome({
       "ACCOUNTANT",
     ],
     [
+      "SAFARICOM WITHDRAWALS",
+      "Review withdrawal receipts, principals and Safaricom fees.",
+      "#0f766e",
+      "View Withdrawals",
+      "SAFARICOM_WITHDRAWALS",
+    ],
+    [
       "M-PESA RATES",
       "Manage Safaricom transaction-fee bands and test fees when tariffs change.",
       "#059669",
@@ -2276,6 +2295,100 @@ function StatusItem({
         {status} ✓
       </strong>
     </div>
+  );
+}
+// ==================================================
+// SAFARICOM WITHDRAWALS — ADMIN READ-ONLY LEDGER
+// ==================================================
+
+function AdminSafaricomWithdrawalsPanel({ user }) {
+  const [fromDate, setFromDate] = useState(() =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()).replace(/\//g, "-")
+  );
+  const [toDate, setToDate] = useState(() =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()).replace(/\//g, "-")
+  );
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+
+  const money = (value) => Number(value || 0).toLocaleString("en-KE", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const token = user?.access_token;
+        if (!url || !key || !token) throw new Error("Admin session unavailable.");
+        if (fromDate > toDate) throw new Error("Invalid date range.");
+        const response = await fetch(`${url.replace(/\/+$/, "")}/rest/v1/rpc/tl_admin_withdrawal_report`, {
+          method: "POST",
+          headers: { apikey: key, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ p_from_date: fromDate, p_to_date: toDate }),
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        const body = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(body?.message || `Unable to load withdrawals (${response.status}).`);
+        const result = Array.isArray(body) ? body : Array.isArray(body?.rows) ? body.rows : Array.isArray(body?.withdrawals) ? body.withdrawals : null;
+        if (!result) throw new Error("Unexpected withdrawal report response.");
+        setRows(result);
+      } catch (err) {
+        if (err?.name !== "AbortError") setError(err?.message || "Unable to load withdrawals.");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    load();
+    return () => controller.abort();
+  }, [user?.access_token, fromDate, toDate, reload]);
+
+  const principalTotal = rows.reduce((sum, row) => sum + Number(row.amount ?? row.withdrawal_amount ?? 0), 0);
+  const feeTotal = rows.reduce((sum, row) => sum + Number(row.fee ?? row.withdrawal_fee ?? 0), 0);
+  const cell = { padding: "10px 12px", borderBottom: "1px solid #e2e8f0", textAlign: "left", fontSize: 12, whiteSpace: "nowrap" };
+  return (
+    <section style={{ background: "#fff", color: "#172b3e", padding: 18, borderRadius: 10, border: "1px solid #d8e1eb" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 12, marginBottom: 18 }}>
+        <label>From <input aria-label="From date" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} style={{ display: "block", padding: 9 }} /></label>
+        <label>To <input aria-label="To date" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} style={{ display: "block", padding: 9 }} /></label>
+        <button type="button" onClick={() => setReload((n) => n + 1)} disabled={loading} style={{ padding: "10px 18px", background: "#0f766e", color: "white", border: 0, borderRadius: 6, cursor: "pointer" }}>Refresh</button>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 20, marginBottom: 16, fontWeight: 800, fontSize: 13 }}>
+        <span>Transactions: {rows.length}</span>
+        <span>Withdrawals: KES {money(principalTotal)}</span>
+        <span>Fees: KES {money(feeTotal)}</span>
+      </div>
+      {error && <div role="alert" style={{ color: "#b42318", marginBottom: 12 }}>{error}</div>}
+      {loading && <div style={{ marginBottom: 12 }}>Loading...</div>}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr style={{ background: "#edf2f7" }}>
+            {["Date / Time", "Shop", "Cashier", "Shift", "Receipt", "Withdrawal (KES)", "Fee (KES)"].map((title) => <th key={title} style={cell}>{title}</th>)}
+          </tr></thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.id || row.withdrawal_id || `${row.receipt_no}-${index}`}>
+                <td style={cell}>{row.created_at ? new Date(row.created_at).toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : row.business_date || "—"}</td>
+                <td style={cell}>{row.shop_name || row.shop || "—"}</td>
+                <td style={cell}>{row.cashier_name || row.cashier || "—"}</td>
+                <td style={cell}>{row.shift_name || "—"}</td>
+                <td style={cell}>{row.receipt_no || "—"}</td>
+                <td style={cell}>{money(row.amount ?? row.withdrawal_amount)}</td>
+                <td style={cell}>{money(row.fee ?? row.withdrawal_fee)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!loading && !error && rows.length === 0 && <div style={{ padding: 18, textAlign: "center" }}>No transactions.</div>}
+      </div>
+    </section>
   );
 }
 
