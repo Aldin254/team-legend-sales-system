@@ -1824,11 +1824,11 @@ export default function CashierReport({ user, currentShift }) {
               currentShift={activeShift}
               onReturnChanged={loadReport}
             />
-           <CashierSafaricomWithdrawalPanel
-           user={user}
-          currentShift={currentShift}
-          onWithdrawalChanged={refreshReport}
-           />
+          <CashierSafaricomWithdrawalPanel
+  user={user}
+  currentShift={activeShift}
+  onWithdrawalChanged={loadReport}
+/>
           </div>
 
           <CashierCloseShiftButton
