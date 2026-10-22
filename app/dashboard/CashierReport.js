@@ -1135,7 +1135,6 @@ export default function CashierReport({ user, currentShift }) {
 
       const patchResult =
         await safeJson(patchResponse);
-
       if (
         !patchResponse.ok ||
         !Array.isArray(patchResult) ||
@@ -1254,6 +1253,12 @@ export default function CashierReport({ user, currentShift }) {
           .tl-cashier-lower-grid {
             grid-template-columns:
               minmax(0, 1fr) !important;
+          }
+        }
+
+        @media (max-width: 650px) {
+          .tl-cashier-salary-withdrawal-row {
+            grid-template-columns: minmax(0, 1fr) !important;
           }
         }
       `}</style>
@@ -1810,25 +1815,49 @@ export default function CashierReport({ user, currentShift }) {
               currentShift={activeShift}
             />
 
-            <CashierSalaryPanel
-              user={user}
-              currentShift={activeShift}
-            />
+            {/* Salary left; withdrawal and float return stacked on right. */}
+            <div
+              className="tl-cashier-salary-withdrawal-row"
+              style={{
+                gridColumn: "1 / -1",
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 12,
+                alignItems: "start",
+                minWidth: 0,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <CashierSalaryPanel
+                  user={user}
+                  currentShift={activeShift}
+                />
+              </div>
 
-            <CashierSafaricomWithdrawalPanel
-              user={user}
-              currentShift={activeShift}
-              onWithdrawalChanged={loadReport}
-            />
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                  minWidth: 0,
+                }}
+              >
+                <CashierSafaricomWithdrawalPanel
+                  user={user}
+                  currentShift={activeShift}
+                  onWithdrawalChanged={loadReport}
+                />
+
+                <CashierAccountsReturnPanel
+                  user={user}
+                  currentShift={activeShift}
+                  onReturnChanged={loadReport}
+                />
+              </div>
+            </div>
 
             <CashierAccountsPanel
               user={user}
-            />
-
-            <CashierAccountsReturnPanel
-              user={user}
-              currentShift={activeShift}
-              onReturnChanged={loadReport}
             />
           </div>
 
