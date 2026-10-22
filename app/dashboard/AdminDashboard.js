@@ -418,6 +418,7 @@ export default function AdminDashboard({ user }) {
             <>
               <PageHeading title="Safaricom Withdrawals" subtitle="Withdrawal transaction ledger and fees." />
               <AdminSafaricomWithdrawalsPanel user={user} />
+               <AdminSafaricomRatesPanel user={user} />
             </>
           )}
 
@@ -1098,57 +1099,6 @@ function AdminClosingAlertsPanel({
                         <div style={
                           closingIncidentShopStyle
                         }>
-                          {incident.shop_name ||
-                            "Unknown Shop"}
-                        </div>
-
-                        <div style={
-                          closingIncidentDateStyle
-                        }>
-                          Business Date:{" "}
-                          {incident.business_date ||
-                            "—"}
-                        </div>
-                      </div>
-
-                      <span style={
-                        closingPendingBadgeStyle
-                      }>
-                        PENDING ADMIN
-                      </span>
-                    </div>
-
-                    <div style={
-                      closingIncidentDetailsStyle
-                    }>
-                      <div>
-                        <strong>
-                          Missing readings:
-                        </strong>{" "}
-                        {incident.missing_count ??
-                          platforms.length}
-                      </div>
-
-                      <div style={{
-                        marginTop: 5,
-                        overflowWrap: "anywhere",
-                      }}>
-                        {platforms.length > 0
-                          ? platforms.join(" • ")
-                          : "No missing platform names supplied"}
-                      </div>
-
-                      <div style={{ marginTop: 9 }}>
-                        <strong>
-                          Financial access:
-                        </strong>{" "}
-                        <span style={{
-                          color: "#b91c1c",
-                          fontWeight: 900,
-                        }}>
-                          LOCKED
-                        </span>
-}>
                           {incident.shop_name ||
                             "Unknown Shop"}
                         </div>
@@ -2048,7 +1998,6 @@ function AdminMasterEmployeeList({
 // ==================================================
 // DASHBOARD HOME
 // ==================================================
-
 function DashboardHome({
   user,
   adminName,
