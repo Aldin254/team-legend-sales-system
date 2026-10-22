@@ -311,7 +311,9 @@ export default function AdminDashboard({ user }) {
       subtitle="Live Savings balances, payment activity, Admin banking verification and permanent ledger audit."
     />
 
-    <AdminBankingVerificationPanel user={user} />
+   <AdminBankingModePanel user={user} />
+
+<AdminBankingVerificationPanel user={user} />
 
     <AdminSavingsPanel
       user={user}
@@ -447,6 +449,215 @@ export default function AdminDashboard({ user }) {
         </section>
       </div>
     </main>
+  );
+}
+function AdminBankingModePanel({ user }) {
+  const [mode, setMode] = useState(null);
+  const [automaticReady, setAutomaticReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [reason, setReason] = useState("");
+  const [message, setMessage] = useState("");
+
+  const accessToken = user?.access_token;
+
+  const rpc = useCallback(async (name, payload = {}) => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!url || !key || !accessToken) {
+      throw new Error("Admin session unavailable.");
+    }
+
+    const response = await fetch(
+      `${url}/rest/v1/rpc/${name}`,
+      {
+        method: "POST",
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        cache: "no-store",
+      }
+    );
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        result?.message || "Banking mode request failed."
+      );
+    }
+
+    return result;
+  }, [accessToken]);
+
+  const loadMode = useCallback(async () => {
+    const result = await rpc("tl_banking_mode_snapshot");
+
+    const currentMode = String(result?.mode || "").toUpperCase();
+
+    if (!["MANUAL", "AUTOMATIC"].includes(currentMode)) {
+      throw new Error("Invalid banking mode response.");
+    }
+
+    setMode(currentMode);
+    setAutomaticReady(result?.automatic_ready === true);
+  }, [rpc]);
+
+  useEffect(() => {
+    let active = true;
+
+    rpc("tl_banking_mode_snapshot")
+      .then((result) => {
+        if (!active) return;
+        const currentMode = String(result?.mode || "").toUpperCase();
+        if (!["MANUAL", "AUTOMATIC"].includes(currentMode)) {
+          throw new Error("Invalid banking mode response.");
+        }
+        setMode(currentMode);
+        setAutomaticReady(result?.automatic_ready === true);
+      })
+      .catch((err) => {
+        if (active) setMessage(err.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [rpc]);
+
+  async function changeMode(nextMode) {
+    if (saving || loading || !mode || nextMode === mode) return;
+    if (nextMode === "AUTOMATIC" && !automaticReady) return;
+
+    setSaving(true);
+    setMessage("");
+
+    try {
+      await rpc("tl_admin_set_banking_mode", {
+        p_mode: nextMode,
+        p_reason: reason.trim() || null,
+      });
+
+      await loadMode();
+      setReason("");
+      setMessage("Banking mode updated successfully.");
+    } catch (err) {
+      setMessage(err.message || "Unable to update banking mode.");
+      try {
+        await loadMode();
+      } catch {
+        setMode(null);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const buttonStyle = (selected, disabled) => ({
+    flex: 1,
+    padding: "12px",
+    borderRadius: 6,
+    border: selected ? "2px solid #059669" : "1px solid #cbd5d1",
+    background: selected ? "#e4f6ed" : "#ffffff",
+    color: "#173e33",
+    fontWeight: 800,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+  });
+
+  return (
+    <section style={{
+      border: "1px solid #cbd5d1",
+      borderRadius: 9,
+      background: "#f5f7f6",
+      padding: 16,
+      marginBottom: 16,
+      color: "#173e33",
+      fontSize: 12,
+    }}>
+      <strong style={{ fontSize: 13 }}>
+        BANKING CONFIRMATION MODE
+      </strong>
+
+      <div style={{ marginTop: 8, marginBottom: 12 }}>
+        Global setting — all shops
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          type="button"
+          disabled={loading || saving || !mode || mode === "MANUAL"}
+          onClick={() => changeMode("MANUAL")}
+          style={buttonStyle(
+            mode === "MANUAL",
+            loading || saving || !mode || mode === "MANUAL"
+          )}
+        >
+          MANUAL
+        </button>
+
+        <button
+          type="button"
+          disabled={
+            loading || saving || !mode ||
+            !automaticReady || mode === "AUTOMATIC"
+          }
+          onClick={() => changeMode("AUTOMATIC")}
+          style={buttonStyle(
+            mode === "AUTOMATIC",
+            loading || saving || !mode ||
+            !automaticReady || mode === "AUTOMATIC"
+          )}
+        >
+          AUTOMATIC
+        </button>
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        {loading
+          ? "Loading banking mode..."
+          : mode
+            ? `CURRENT MODE: ${mode}`
+            : "Banking mode unavailable"}
+      </div>
+
+      {!automaticReady && (
+        <div style={{ marginTop: 6, color: "#a72525" }}>
+          AUTOMATIC — NOT CONNECTED
+        </div>
+      )}
+
+      <input
+        type="text"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Reason for changing banking mode (optional)"
+        disabled={saving}
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          padding: 10,
+          marginTop: 12,
+          border: "1px solid #cbd5d1",
+          borderRadius: 5,
+          background: "#fff",
+          color: "#173e33",
+        }}
+      />
+
+      {message && (
+        <div role="status" style={{ marginTop: 10 }}>
+          {message}
+        </div>
+      )}
+    </section>
   );
 }
 function AdminBankingVerificationPanel({ user }) {
