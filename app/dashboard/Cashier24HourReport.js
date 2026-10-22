@@ -1442,10 +1442,10 @@ export default function Cashier24HourReport({
                   refresh24HourReport
                 }
               />
- <CashierSafaricomWithdrawalPanel
+<CashierSafaricomWithdrawalPanel
   user={user}
-  currentShift={activeShift}
-  onWithdrawalChanged={loadReport}
+  currentShift={shift || currentShift}
+  onWithdrawalChanged={refresh24HourReport}
 />
             </div>
           </div>
