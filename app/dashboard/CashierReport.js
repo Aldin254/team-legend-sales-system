@@ -1135,6 +1135,7 @@ export default function CashierReport({ user, currentShift }) {
 
       const patchResult =
         await safeJson(patchResponse);
+
       if (
         !patchResponse.ok ||
         !Array.isArray(patchResult) ||
@@ -1815,7 +1816,7 @@ export default function CashierReport({ user, currentShift }) {
               currentShift={activeShift}
             />
 
-            {/* Salary left; withdrawal and float return stacked on right. */}
+            {/* Salary and accounts information stacked left; withdrawal and float return stacked right. */}
             <div
               className="tl-cashier-salary-withdrawal-row"
               style={{
@@ -1827,11 +1828,20 @@ export default function CashierReport({ user, currentShift }) {
                 minWidth: 0,
               }}
             >
-              <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                  minWidth: 0,
+                }}
+              >
                 <CashierSalaryPanel
                   user={user}
                   currentShift={activeShift}
                 />
+
+                <CashierAccountsPanel user={user} />
               </div>
 
               <div
@@ -1856,9 +1866,6 @@ export default function CashierReport({ user, currentShift }) {
               </div>
             </div>
 
-            <CashierAccountsPanel
-              user={user}
-            />
           </div>
 
           <CashierCloseShiftButton
