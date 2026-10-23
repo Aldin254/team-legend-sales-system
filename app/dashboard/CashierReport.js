@@ -514,14 +514,11 @@ export default function CashierReport({ user, currentShift }) {
     platforms.length > 0 &&
     savedClosingCount === platforms.length;
 
-  const showClosing =
-    closingWindowOpen ||
-    savedClosingCount > 0 ||
-    shiftStatus === "CLOSED";
+  // Keep all four platform columns visible for every 12-hour shop.
+  // Closing inputs remain disabled until the existing closing window opens.
+  const showClosing = true;
 
-  const platformGridColumns = showClosing
-    ? "1.25fr 1fr 1fr 1fr"
-    : "1.25fr 1fr 1fr";
+  const platformGridColumns = "1.25fr 1fr 1fr 1fr";
 
   const floatData = useMemo(() => {
     const companyEntries = incomeEntries.filter(
@@ -1201,7 +1198,6 @@ export default function CashierReport({ user, currentShift }) {
     activeShift?.opened_at ||
     new Date()
   );
-
   const reportDay = formatReportDay(
     activeShift?.business_date ||
     activeShift?.opened_at ||
