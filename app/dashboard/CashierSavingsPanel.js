@@ -1428,7 +1428,7 @@ export default function CashierSavingsPanel({
   }
 
   // ==========================================
-  // DISPLAY
+// DISPLAY
   // ==========================================
 
   return (
@@ -1660,9 +1660,12 @@ export default function CashierSavingsPanel({
                         <input
                           type="text"
                           readOnly
+                          disabled={dstvLocked}
+                          tabIndex={dstvLocked ? -1 : undefined}
                           style={{
                             ...s.input,
                             ...s.readOnly,
+                            ...(dstvLocked ? { pointerEvents: "none", cursor: "not-allowed" } : {}),
                           }}
                           aria-label={`${row.label} fixed payment amount`}
                           value={
