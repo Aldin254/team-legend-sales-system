@@ -132,6 +132,132 @@ function recordedName(shift) {
 }
 
 // ==================================================
+// READ-ONLY SAVINGS / EXPENSE REPORT HELPERS
+// ==================================================
+
+const SAVINGS_CATEGORIES = ["WIFI", "DSTV", "RENT", "ELECTRICITY", "BANKING"];
+const SAVINGS_LABELS = { WIFI: "WiFi", DSTV: "DStv", RENT: "Rent", ELECTRICITY: "Electricity", BANKING: "Banking" };
+
+// Business-day boundaries are Nairobi-local, including 24-hour shop reports.
+function nairobiBusinessDayBounds(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) {
+    throw new Error("Invalid report business date.");
+  }
+  return {
+    start: `${date}T00:00:00+03:00`,
+    end: `${addDays(date, 1)}T00:00:00+03:00`,
+  };
+}
+
+function classifyExpense(expense) {
+  const source = upper(expense.source_type);
+  const desc = upper(expense.description);
+  if (source === "SAVINGS_SAVE") {
+    const category = SAVINGS_CATEGORIES.find((c) => desc.startsWith(`${c} `));
+    return { key: category ? `SAVE_${category}` : "OTHER", fee: false };
+  }
+  if (source === "SAVINGS_PAYMENT_FEE" || source === "CONSOLIDATED_BANKING_FEE") {
+    const category = source === "CONSOLIDATED_BANKING_FEE"
+      ? "BANKING" : SAVINGS_CATEGORIES.find((c) => desc.startsWith(`${c} `));
+    return { key: category ? `SAVE_${category}` : "OTHER", fee: true };
+  }
+  if (source === "ACCOUNTANT_RETURN") return { key: "RETURN", fee: false, transfer: true };
+  if (source === "SAFARICOM_WITHDRAWAL") return { key: "WITHDRAWAL", fee: true };
+  if (source === "SALARY") return { key: "SALARY", fee: false };
+  if (source === "HOLIDAY_BONUS_AUTO") return { key: "HOLIDAY", fee: false };
+  if (source === "MEALS_BONUS_AUTO") {
+    if (desc.startsWith("LUNCH -")) return { key: "LUNCH", fee: false };
+    if (desc.startsWith("SUPPER -")) return { key: "SUPPER", fee: false };
+    if (desc.startsWith("MONDAY BONUS -")) return { key: "MONDAY", fee: false };
+    if (desc.startsWith("FRIDAY BONUS -")) return { key: "FRIDAY", fee: false };
+  }
+  return { key: "OTHER", fee: false };
+}
+
+function isManualExpense(expense) {
+  const source = upper(expense.source_type);
+  return (!source || source === "MANUAL") &&
+    expense.is_private === false && expense.source_record_id == null;
+}
+
+function buildExpenseSummary(expenses) {
+  const labels = [
+    ...SAVINGS_CATEGORIES.map((c) => ({ key: `SAVE_${c}`, label: `${SAVINGS_LABELS[c]} — Savings / Payment Fee` })),
+    { key: "RETURN", label: "Send Float to Legend Accounts (transfer)" },
+    { key: "WITHDRAWAL", label: "Safaricom Withdrawal Fee" },
+    { key: "SALARY", label: "Salary" },
+    { key: "LUNCH", label: "Lunch" },
+    { key: "SUPPER", label: "Supper" },
+    { key: "MONDAY", label: "Monday Bonus" },
+    { key: "FRIDAY", label: "Friday Bonus" },
+    { key: "HOLIDAY", label: "Holiday Bonus" },
+    { key: "OTHER", label: "Other Automatic / Unclassified" },
+  ];
+  const rows = labels.map((x) => ({ ...x, amount: 0, fee: 0 }));
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  const manual = [];
+  for (const expense of expenses) {
+    if (isManualExpense(expense)) {
+      manual.push(expense);
+      continue;
+    }
+    const kind = classifyExpense(expense);
+    const row = byKey.get(kind.key);
+    row[kind.fee ? "fee" : "amount"] += Number(expense.amount || 0);
+  }
+  for (const row of rows) {
+    row.amount = roundMoney(row.amount);
+    row.fee = roundMoney(row.fee);
+  }
+  return { rows, manual };
+}
+
+// Ledger is the source for saved/paid amounts and historical wallet balances.
+// Never sum expense SAVINGS_SAVE with ledger SAVE as that would double count.
+function buildSavingsSummary(ledger, businessDate) {
+  const { start, end } = nairobiBusinessDayBounds(businessDate);
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  const rows = SAVINGS_CATEGORIES.map((category) => ({
+    category, label: SAVINGS_LABELS[category], saved: 0, paid: 0, balance: 0,
+  }));
+  const byCategory = new Map(rows.map((row) => [row.category, row]));
+  const lastByAccount = new Map();
+  for (const entry of ledger) {
+    const timestamp = Date.parse(entry.created_at || "");
+    if (!Number.isFinite(timestamp) || timestamp >= endMs) continue;
+    const row = byCategory.get(upper(entry.category));
+    if (!row) continue;
+    const type = upper(entry.transaction_type);
+    const amount = Number(entry.amount || 0);
+    if (timestamp >= startMs && timestamp < endMs) {
+      if (type === "SAVE") row.saved += amount;
+      if (type === "PAYMENT") row.paid += amount;
+    }
+    if (entry.savings_account_id && entry.balance_after != null) {
+      const key = String(entry.savings_account_id);
+      const prior = lastByAccount.get(key);
+      if (!prior || timestamp > prior.timestamp ||
+        (timestamp === prior.timestamp && String(entry.id) > String(prior.id))) {
+        lastByAccount.set(key, {
+          id: entry.id, timestamp, category: row.category,
+          balance: Number(entry.balance_after || 0),
+        });
+      }
+    }
+  }
+  for (const entry of lastByAccount.values()) {
+    byCategory.get(entry.category).balance += entry.balance;
+  }
+  for (const row of rows) {
+    row.saved = roundMoney(row.saved);
+    row.paid = roundMoney(row.paid);
+    row.balance = roundMoney(row.balance);
+  }
+  return rows;
+}
+
+// ==================================================
 // DUTY ROTA NAME RESOLUTION
 // ==================================================
 
@@ -172,6 +298,7 @@ async function buildDutyNameMap(
     const params = {
       p_start_date: range.start,
       p_days: range.days,
+    };
     };
 
     requests.push({
@@ -763,6 +890,21 @@ export default function AdminReportsPanel({
     [headers, accessToken]
   );
 
+  // PostgREST defaults to 1,000 rows. Page to avoid silently truncated history.
+  const fetchAll = useCallback(async (path) => {
+    const rows = [];
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      const join = path.includes("?") ? "&" : "?";
+      const batch = await fetchJson(`${path}${join}limit=${pageSize}&offset=${offset}`);
+      if (!Array.isArray(batch)) throw new Error("Unexpected database response.");
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
+      if (offset >= 99000) throw new Error("Savings history exceeds report safety limit.");
+    }
+    return rows;
+  }, [fetchJson]);
+
   const callRpc = useCallback(
     (name, args = {}) =>
       fetchJson(
@@ -1056,7 +1198,6 @@ export default function AdminReportsPanel({
     selectedCashier,
     loadingRota,
   ]);
-
   // ==================================================
   // FIRST MATCHING SHIFT
   // ==================================================
@@ -1109,7 +1250,7 @@ export default function AdminReportsPanel({
           readingResult,
           floatResult,
           expenseResult,
-          savingsResult,
+          ledgerResult,
         ] = await Promise.all([
           fetchJson(
             `shifts?id=eq.${id}&select=*&limit=1`
@@ -1137,14 +1278,19 @@ export default function AdminReportsPanel({
 
           fetchJson(
             `expenses?shift_id=eq.${id}` +
-              `&select=id,shift_id,description,amount,created_at,created_by` +
+              `&select=id,shift_id,description,amount,created_at,created_by,source_type,source_record_id,is_private` +
               `&order=created_at.asc`
           ),
 
-          fetchJson(
-            `shift_savings?shift_id=eq.${id}` +
-              `&select=id,shift_id,description,amount,payment_status,created_at` +
-              `&order=created_at.asc`
+          // Entire shop ledger up to the selected business day's end.
+          // This supports historical balances and both shifts of 24H shops.
+          fetchAll(
+            `savings_ledger?shop_id=eq.${shop}` +
+              `&created_at=lt.${encodeURIComponent(nairobiBusinessDayBounds(
+                shifts.find((s) => String(s.id) === String(selectedShiftId))?.business_date
+              ).end)}` +
+              `&select=id,savings_account_id,category,transaction_type,amount,balance_after,created_at` +
+              `&order=created_at.asc,id.asc`
           ),
         ]);
 
@@ -1185,10 +1331,7 @@ export default function AdminReportsPanel({
             ? expenseResult
             : [];
 
-        const savings =
-          Array.isArray(savingsResult)
-            ? savingsResult
-            : [];
+        const ledger = Array.isArray(ledgerResult) ? ledgerResult : [];
 
         // ==================================================
         // PLATFORM READINGS
@@ -1210,7 +1353,6 @@ export default function AdminReportsPanel({
             readingMap[key] = r;
           }
         }
-
         const platformRows = platforms.map(
           (platform) => {
             const opening =
@@ -1244,59 +1386,18 @@ export default function AdminReportsPanel({
           }
         );
 
-        // ==================================================
-        // SAVINGS
-        // ==================================================
-
-        let totalSavings = 0;
-        let paidSavings = 0;
-        let pendingSavings = 0;
-
-        for (const saving of savings) {
-          const amount = Number(
-            saving.amount || 0
-          );
-
-          totalSavings += amount;
-
-          if (
-            upper(saving.payment_status) ===
-            "PAID"
-          ) {
-            paidSavings += amount;
-          } else {
-            pendingSavings += amount;
-          }
-        }
+        // The Savings table is business-day scoped. Expense records remain
+        // strictly shift scoped; 24H Shift 1 and Shift 2 are not mixed.
+        const savingsRows = buildSavingsSummary(ledger, shift.business_date);
+        const expenseSummary = buildExpenseSummary(expenses);
 
         setReport({
           shift,
           platformRows,
-
-          companyFloats: floats.filter(
-            (x) =>
-              x.entry_type === "COMPANY_FLOAT"
-          ),
-
-          mshwariFloats: floats.filter(
-            (x) =>
-              x.entry_type === "MSHWARI_FLOAT"
-          ),
-
-          expenses,
-          savings,
-
-          totalSavings: roundMoney(
-            totalSavings
-          ),
-
-          paidSavings: roundMoney(
-            paidSavings
-          ),
-
-          pendingSavings: roundMoney(
-            pendingSavings
-          ),
+          companyFloats: floats.filter((x) => x.entry_type === "COMPANY_FLOAT"),
+          mshwariFloats: floats.filter((x) => x.entry_type === "MSHWARI_FLOAT"),
+          savingsRows,
+          expenseSummary,
         });
       } catch (e) {
         if (
@@ -1325,6 +1426,8 @@ export default function AdminReportsPanel({
       selectedShiftId,
       selectedShopId,
       fetchJson,
+      fetchAll,
+      shifts,
     ]
   );
 
@@ -1548,7 +1651,6 @@ export default function AdminReportsPanel({
 // ==================================================
 // DISPLAY COMPONENTS
 // ==================================================
-
 function FilterField({
   label,
   children,
@@ -1698,11 +1800,8 @@ function ReportDisplay({
     platformRows,
     companyFloats,
     mshwariFloats,
-    expenses,
-    savings,
-    totalSavings,
-    paidSavings,
-    pendingSavings,
+    savingsRows,
+    expenseSummary,
   } = report;
 
   // Financial calculations unchanged.
@@ -1967,128 +2066,82 @@ function ReportDisplay({
         </div>
       </div>
 
-      {/* EXPENSES */}
-
+      {/* SAVINGS / BANKING — BUSINESS DATE */}
       <div style={styles.section}>
-        <SectionTitle background="#be123c">
-          EXPENSES
-        </SectionTitle>
-
-        <div style={styles.expenseGridHeader}>
-          <div>NO.</div>
-          <div>DESCRIPTION</div>
-          <div>AMOUNT (KES)</div>
+        <SectionTitle background="#0e7490">SAVINGS / BANKING — BUSINESS DATE</SectionTitle>
+        <div style={styles.tableScroll}>
+          <div style={styles.fourColumnHeader}>
+            <span style={{ textAlign: "left" }}>CATEGORY</span><span>SAVED TODAY</span><span>PAID TODAY</span><span>BALANCE</span>
+          </div>
+          {savingsRows.map((row) => (
+            <div key={row.category} style={styles.fourColumnRow}>
+              <strong style={{ textAlign: "left" }}>{row.label}</strong>
+              <span>{money(row.saved)}</span>
+              <span>{money(row.paid)}</span>
+              <strong>{money(row.balance)}</strong>
+            </div>
+          ))}
+          <div style={styles.fourColumnTotal}>
+            <strong style={{ textAlign: "left" }}>TOTAL (KES)</strong>
+            <strong>{money(savingsRows.reduce((sum, row) => sum + row.saved, 0))}</strong>
+            <strong>{money(savingsRows.reduce((sum, row) => sum + row.paid, 0))}</strong>
+            <strong>{money(savingsRows.reduce((sum, row) => sum + row.balance, 0))}</strong>
+          </div>
         </div>
-
-        {!expenses.length && (
-          <div style={styles.emptyRow}>
-            No expenses recorded.
+        <div style={styles.savingsNotice}>
+          Saved principal is already posted as an automatic expense when saved.
+          Paid principal moves out of the savings wallet and is not expensed again.
+          Balance is reconstructed from the last recorded ledger balance per account
+          at the end of this business date. Both shifts share this daily savings view.
+        </div>
+      </div>
+{/* AUTOMATIC EXPENSES — SELECTED SHIFT */}
+      <div style={styles.section}>
+        <SectionTitle background="#be123c">AUTOMATIC EXPENSES — SELECTED SHIFT</SectionTitle>
+        <div style={styles.tableScroll}>
+          <div style={styles.threeColumnHeader}>
+            <span style={{ textAlign: "left" }}>DESCRIPTION</span><span>PAID AMOUNT (KES)</span><span>TRANSACTION FEE (KES)</span>
           </div>
-        )}
-
-        {expenses.map((expense, i) => (
-          <div
-            key={expense.id}
-            style={styles.expenseGridRow}
-          >
-            <span>{i + 1}</span>
-
-            <span>
-              {expense.description || "-"}
-            </span>
-
-            <strong>
-              {money(expense.amount)}
-            </strong>
+          {expenseSummary.rows.map((row) => (
+            <div key={row.key} style={styles.threeColumnRow}>
+              <span style={{ textAlign: "left" }}>{row.label}</span><strong>{money(row.amount)}</strong><strong>{money(row.fee)}</strong>
+            </div>
+          ))}
+          <div style={styles.threeColumnTotal}>
+            <strong style={{ textAlign: "left" }}>TOTAL RECORDED</strong>
+            <strong>{money(expenseSummary.rows.reduce((sum, row) => sum + row.amount, 0))}</strong>
+            <strong>{money(expenseSummary.rows.reduce((sum, row) => sum + row.fee, 0))}</strong>
           </div>
-        ))}
-
-        <MoneyRow
-          label="TOTAL EXPENSES"
-          value={shift.total_expenses}
-          strong
-        />
+        </div>
+        <div style={styles.savingsNotice}>
+          Company float returns are transfers, not additional operating costs.
+          Safaricom withdrawal entries in this report are recorded fees only.
+          The authoritative shift Total Expenses remains unchanged below.
+        </div>
       </div>
 
-      {/* SAVINGS / BANKING */}
-
+      {/* MANUAL EXPENSES — SELECTED SHIFT */}
       <div style={styles.section}>
-        <SectionTitle background="#0e7490">
-          SAVINGS / BANKING
-        </SectionTitle>
-
-        <div style={styles.savingsSummary}>
-          <InfoLine
-            label="Total Savings"
-            value={`KES ${money(
-              totalSavings
-            )}`}
-          />
-
-          <InfoLine
-            label="Paid"
-            value={`KES ${money(
-              paidSavings
-            )}`}
-          />
-
-          <InfoLine
-            label="Pending"
-            value={`KES ${money(
-              pendingSavings
-            )}`}
-          />
+        <SectionTitle background="#334155">MANUAL EXPENSES — SELECTED SHIFT</SectionTitle>
+        <div style={styles.expenseGridHeader}>
+          <div>NO.</div><div>DESCRIPTION</div><div>AMOUNT (KES)</div>
         </div>
-
-        <div style={styles.savingsHeader}>
-          <div>DESCRIPTION</div>
-          <div>AMOUNT</div>
-          <div>STATUS</div>
-        </div>
-
-        {!savings.length && (
-          <div style={styles.emptyRow}>
-            No Savings / Banking records.
-          </div>
+        {!expenseSummary.manual.length && (
+          <div style={styles.emptyRow}>No manual expenses recorded.</div>
         )}
-
-        {savings.map((saving) => {
-          const paid =
-            upper(saving.payment_status) ===
-            "PAID";
-
-          return (
-            <div
-              key={saving.id}
-              style={styles.savingsRow}
-            >
-              <span>
-                {saving.description || "-"}
-              </span>
-
-              <strong>
-                KES {money(saving.amount)}
-              </strong>
-
-              <span
-                style={
-                  paid
-                    ? styles.paid
-                    : styles.pending
-                }
-              >
-                {paid
-                  ? "PAID"
-                  : "PENDING"}
-              </span>
-            </div>
-          );
-        })}
-
-        <div style={styles.savingsNotice}>
-          Savings / Banking does not reduce
-          Closing Balance.
-        </div>
+        {expenseSummary.manual.map((expense, index) => (
+          <div key={expense.id} style={styles.expenseGridRow}>
+            <span>{index + 1}</span>
+            <span>{expense.description || "-"}</span>
+            <strong>{money(expense.amount)}</strong>
+          </div>
+        ))}
+        <MoneyRow
+          label="TOTAL MANUAL EXPENSES"
+          value={expenseSummary.manual.reduce((sum, item) => sum + Number(item.amount || 0), 0)}
+          strong
+        />
+        <MoneyRow label="AUTHORITATIVE SHIFT TOTAL EXPENSES" value={shift.total_expenses} strong />
       </div>
 
       {/* FINAL TOTALS */}
@@ -2489,6 +2542,37 @@ const styles = {
     fontVariantNumeric: "tabular-nums",
   },
 
+  tableScroll: { width: "100%", overflowX: "auto" },
+  fourColumnHeader: {
+    display: "grid", gridTemplateColumns: "1.5fr repeat(3,1fr)",
+    minWidth: 500, gap: 10, padding: "9px 10px", backgroundColor: "#cffafe",
+    color: "#155e75", fontWeight: "bold", fontSize: 10, textAlign: "right",
+  },
+  fourColumnRow: {
+    display: "grid", gridTemplateColumns: "1.5fr repeat(3,1fr)",
+    minWidth: 500, gap: 10, padding: "9px 10px", borderTop: "1px solid #e2e8f0",
+    fontSize: 11, textAlign: "right", fontVariantNumeric: "tabular-nums",
+  },
+  fourColumnTotal: {
+    display: "grid", gridTemplateColumns: "1.5fr repeat(3,1fr)",
+    minWidth: 500, gap: 10, padding: "10px", backgroundColor: "#cffafe",
+    fontSize: 11, textAlign: "right", fontVariantNumeric: "tabular-nums",
+  },
+  threeColumnHeader: {
+    display: "grid", gridTemplateColumns: "2fr 1fr 1fr", minWidth: 500,
+    gap: 10, padding: "9px 10px", backgroundColor: "#ffe4e6",
+    color: "#9f1239", fontWeight: "bold", fontSize: 10, textAlign: "right",
+  },
+  threeColumnRow: {
+    display: "grid", gridTemplateColumns: "2fr 1fr 1fr", minWidth: 500,
+    gap: 10, padding: "9px 10px", borderTop: "1px solid #e2e8f0",
+    fontSize: 11, textAlign: "right", fontVariantNumeric: "tabular-nums",
+  },
+  threeColumnTotal: {
+    display: "grid", gridTemplateColumns: "2fr 1fr 1fr", minWidth: 500,
+    gap: 10, padding: "10px", backgroundColor: "#ffe4e6",
+    fontSize: 11, fontWeight: "bold", textAlign: "right",
+  },
   expenseGridHeader: {
     display: "grid",
     gridTemplateColumns: "0.4fr 3fr 1fr",
