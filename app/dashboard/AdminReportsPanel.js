@@ -1280,16 +1280,16 @@ export default function AdminReportsPanel({
               `&order=created_at.asc`
           ),
 
-          // Entire shop ledger up to the selected business day's end.
-          // This supports historical balances and both shifts of 24H shops.
-          fetchAll(
-            `savings_ledger?shop_id=eq.${shop}` +
-              `&created_at=lt.${encodeURIComponent(nairobiBusinessDayBounds(
-                shifts.find((s) => String(s.id) === String(selectedShiftId))?.business_date
-              ).end)}` +
-              `&select=id,savings_account_id,category,transaction_type,amount,balance_after,created_at` +
-              `&order=created_at.asc,id.asc`
-          ),
+          // Admin-only savings ledger report.
+callRpc("tl_admin_daily_savings_ledger", {
+  p_shop_id: selectedShopId,
+  p_before: nairobiBusinessDayBounds(
+    shifts.find(
+      (s) =>
+        String(s.id) === String(selectedShiftId)
+    )?.business_date
+  ).end,
+}),
         ]);
 
         if (
@@ -1420,13 +1420,14 @@ export default function AdminReportsPanel({
         }
       }
     },
-    [
-      selectedShiftId,
-      selectedShopId,
-      fetchJson,
-      fetchAll,
-      shifts,
-    ]
+   [
+  selectedShiftId,
+  selectedShopId,
+  fetchJson,
+  fetchAll,
+  callRpc,
+  shifts,
+]
   );
 
   useEffect(() => {
