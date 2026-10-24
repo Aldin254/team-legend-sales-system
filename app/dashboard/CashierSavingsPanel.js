@@ -9,14 +9,35 @@ import {
 } from "react";
 
 // TEAM LEGEND — Shared 12H / 24H Savings and Banking.
-// Manual Banking:
-// - SAVE expenses principal immediately.
-// - Request Pay shows reference and read-only tariff fee.
-// - Confirmation posts only the frozen transaction fee.
-// - No changes to Automatic Banking.
+//
+// Utility Payment Control:
+// - Electricity PAY accepts exact approved amounts.
+// - REQUEST PAY previews Admin-configured fee.
+// - Cashier reviews principal, fee and total.
+// - Fee is rechecked before submitting.
+// - Backend freezes fee when request is inserted.
+// - Accountant confirmation expenses fee only.
+//
+// Banking:
+// - Existing Manual Banking workflow preserved.
+// - Existing Automatic Banking mode preserved.
+// - Banking tariffs remain separate.
 
 const PAYMENT_STATUS_SECONDS = 15;
 const BANKING_ROUTE = "MPESA_TO_CONSOLIDATED";
+
+const ELECTRICITY_AMOUNTS = [
+  500,
+  1000,
+  1500,
+  2000,
+  2500,
+  3000,
+  3500,
+  4000,
+  4500,
+  5000,
+];
 
 const CATEGORIES = [
   { key: "WIFI", label: "WiFi", fixedPayment: true },
@@ -75,8 +96,6 @@ export default function CashierSavingsPanel({
     setPaymentStatusOpen,
   ] = useState(true);
 
-  // Banking reference is now held inside this popup.
-  // It is not displayed permanently in the Banking card.
   const [
     bankingPayModal,
     setBankingPayModal,
@@ -85,6 +104,17 @@ export default function CashierSavingsPanel({
   const [
     bankingModalError,
     setBankingModalError,
+  ] = useState("");
+
+  // NEW: Utility confirmation popup.
+  const [
+    utilityPayModal,
+    setUtilityPayModal,
+  ] = useState(null);
+
+  const [
+    utilityModalError,
+    setUtilityModalError,
   ] = useState("");
 
   const busyRef = useRef(false);
@@ -98,6 +128,10 @@ export default function CashierSavingsPanel({
 
   const token = user?.access_token || null;
   const shiftId = currentShift?.id || null;
+
+  const utilityBusy =
+    actionKey.startsWith("QUOTE-UTILITY") ||
+    actionKey.startsWith("PAY-UTILITY");
 
   // FIVE-SECOND NOTIFICATIONS
 
@@ -138,7 +172,7 @@ export default function CashierSavingsPanel({
     paymentRequests.length,
   ]);
 
-  // Focus reference only when popup opens.
+  // BANKING REFERENCE FOCUS
 
   useEffect(() => {
     if (bankingPayModal) {
@@ -146,16 +180,55 @@ export default function CashierSavingsPanel({
     }
   }, [Boolean(bankingPayModal)]);
 
-  // Do not retain an unsent popup between shifts.
+  // CLOSE UNSENT POPUPS WHEN SHIFT CHANGES
 
   useEffect(() => {
     setBankingPayModal(null);
     setBankingModalError("");
+
+    setUtilityPayModal(null);
+    setUtilityModalError("");
   }, [shiftId]);
 
   function notify(text, type = "error") {
     setNotice({ text, type });
   }
+
+  // SUPABASE RPC HELPER
+
+  const callRpc = useCallback(
+    async (rpc, body) => {
+      if (!supabaseUrl || !anonKey || !token) {
+        throw new Error(
+          "Payment service unavailable. Please sign in again."
+        );
+      }
+
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/rpc/${rpc}`,
+        {
+          method: "POST",
+          headers: authHeaders(anonKey, token),
+          body: JSON.stringify(body),
+          cache: "no-store",
+        }
+      );
+
+      const result = await safeJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            "Payment operation failed."
+        );
+      }
+
+      return result;
+    },
+    [supabaseUrl, anonKey, token]
+  );
 
   // LOAD SAVINGS AND BANKING
 
@@ -191,7 +264,6 @@ export default function CashierSavingsPanel({
               cache: "no-store",
             }
           ),
-
           fetch(
             `${supabaseUrl}/rest/v1/rpc/tl_cashier_banking_directory`,
             {
@@ -283,7 +355,7 @@ export default function CashierSavingsPanel({
     [shiftId, token, supabaseUrl, anonKey]
   );
 
-  // ADMIN BANKING MODE — PRESERVED
+  // BANKING MODE — PRESERVED
 
   const loadBankingMode = useCallback(async () => {
     if (!token || !supabaseUrl || !anonKey) {
@@ -323,9 +395,7 @@ export default function CashierSavingsPanel({
         mode !== "MANUAL" &&
         mode !== "AUTOMATIC"
       ) {
-        throw new Error(
-          "Invalid Banking mode."
-        );
+        throw new Error("Invalid Banking mode.");
       }
 
       const current = {
@@ -370,7 +440,7 @@ export default function CashierSavingsPanel({
     return () => clearInterval(timer);
   }, [loadSavings]);
 
-  // EMPLOYEE DIRECTORY — PRESERVED
+  // EMPLOYEE DIRECTORY
 
   const sortedEmployees = useMemo(
     () =>
@@ -538,8 +608,7 @@ export default function CashierSavingsPanel({
     return false;
   }
 
-  // SUPABASE FINANCIAL OPERATIONS
-  // EXISTING SAVE / PAY / WITHDRAW HANDLER
+  // EXISTING FINANCIAL OPERATIONS
 
   async function postMoney({
     row,
@@ -556,26 +625,7 @@ export default function CashierSavingsPanel({
     setNotice(null);
 
     try {
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/rpc/${rpc}`,
-        {
-          method: "POST",
-          headers: authHeaders(anonKey, token),
-          body: JSON.stringify(body),
-          cache: "no-store",
-        }
-      );
-
-      const result = await safeJson(response);
-
-      if (!response.ok) {
-        throw new Error(
-          result?.message ||
-            result?.details ||
-            result?.hint ||
-            `Unable to ${action.toLowerCase()} ${row.label}.`
-        );
-      }
+      const result = await callRpc(rpc, body);
 
       onSuccess(result);
       await loadSavings(true);
@@ -668,21 +718,7 @@ export default function CashierSavingsPanel({
     });
   }
 
-  // ==========================================
-  // UNIFIED CONSOLIDATED BANKING FEE
-  // ==========================================
-  //
-  // Read directly through the installed
-  // server-side fee function.
-  //
-  // The backend function reads:
-  // public.payment_tariff_bands
-  //
-  // Never use local hardcoded fee bands.
-  // Never silently assume KES 0.
-  //
-  // The request RPC freezes the fee again
-  // when the payment request is inserted.
+  // BANKING TARIFF — PRESERVED
 
   async function fetchBankingFee(amount) {
     if (
@@ -725,9 +761,6 @@ export default function CashierSavingsPanel({
       );
     }
 
-    // PostgREST normally returns the numeric
-    // RPC result as a JSON number or string.
-
     const fee = Number(result);
 
     if (
@@ -745,9 +778,7 @@ export default function CashierSavingsPanel({
     return fee;
   }
 
-  // ==========================================
   // OPEN BANKING PAYMENT POPUP
-  // ==========================================
 
   async function openBankingPay(row, amount) {
     if (busyRef.current) return;
@@ -757,8 +788,6 @@ export default function CashierSavingsPanel({
     setNotice(null);
 
     try {
-      // Manual Banking must remain active.
-
       const currentMode =
         await loadBankingMode();
 
@@ -775,8 +804,6 @@ export default function CashierSavingsPanel({
             : "Automatic Banking is not ready. Contact Admin."
         );
       }
-
-      // Quote from the unified tariff source.
 
       const fee = await fetchBankingFee(
         amount
@@ -808,10 +835,6 @@ export default function CashierSavingsPanel({
     }
   }
 
-  // ==========================================
-  // CLOSE BANKING PAYMENT POPUP
-  // ==========================================
-
   function closeBankingPay() {
     if (busyRef.current) return;
 
@@ -819,9 +842,7 @@ export default function CashierSavingsPanel({
     setBankingModalError("");
   }
 
-  // ==========================================
   // CONFIRM MANUAL BANKING REQUEST
-  // ==========================================
 
   async function submitBankingPayment() {
     if (
@@ -874,8 +895,6 @@ export default function CashierSavingsPanel({
     setBankingModalError("");
 
     try {
-      // Revalidate Banking mode before submitting.
-
       const currentMode =
         await loadBankingMode();
 
@@ -887,10 +906,6 @@ export default function CashierSavingsPanel({
           "Manual Banking is not currently available."
         );
       }
-
-      // If Admin changed the tariff while the
-      // popup was open, refresh the displayed fee
-      // and require the cashier to review again.
 
       const latestFee = await fetchBankingFee(
         payment.amount
@@ -913,55 +928,16 @@ export default function CashierSavingsPanel({
         return;
       }
 
-      // EXISTING FOUR-ARGUMENT BANKING RPC.
-      // Does not alter the SAVE expense.
-      // Does not deduct Savings at request time.
-      // Freezes the fee in Supabase.
-
-      const response = await fetch(
-        `${supabaseUrl}/rest/v1/rpc/tl_cashier_request_banking_payment_employee`,
+      const result = await callRpc(
+        "tl_cashier_request_banking_payment_employee",
         {
-          method: "POST",
-
-          headers: authHeaders(
-            anonKey,
-            token
-          ),
-
-          body: JSON.stringify({
-            p_shift_id: shiftId,
-
-            p_employee_id:
-              payment.employeeId,
-
-            p_amount:
-              payment.amount,
-
-            p_mpesa_reference:
-              reference,
-          }),
-
-          cache: "no-store",
+          p_shift_id: shiftId,
+          p_employee_id:
+            payment.employeeId,
+          p_amount: payment.amount,
+          p_mpesa_reference: reference,
         }
       );
-
-      const result = await safeJson(
-        response
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          result?.message ||
-            result?.details ||
-            result?.hint ||
-            "Unable to submit Banking payment."
-        );
-      }
-
-      // The actual frozen fee is the figure
-      // returned by the payment-request backend.
-      // Do not claim it equals our preview unless
-      // both values were actually checked.
 
       const savedFee = Number(
         result?.quoted_transaction_fee
@@ -1013,10 +989,261 @@ export default function CashierSavingsPanel({
     }
   }
 
+  // ==========================================
+  // NEW: UTILITY PAYMENT FEE PREVIEW
+  // ==========================================
+
+  async function fetchUtilityFee(category, amount) {
+    const result = await callRpc(
+      "tl_cashier_utility_fee_preview",
+      {
+        p_shift_id: shiftId,
+        p_category: category,
+        p_amount: roundMoney(amount),
+      }
+    );
+
+    if (
+      result?.success !== true ||
+      String(result?.category || "").toUpperCase() !==
+        category ||
+      Number(result?.payment_amount) !==
+        roundMoney(amount)
+    ) {
+      throw new Error(
+        "Unable to verify the utility payment quotation."
+      );
+    }
+
+    const fee = Number(
+      result?.transaction_fee
+    );
+
+    if (
+      result?.transaction_fee == null ||
+      !Number.isFinite(fee) ||
+      fee < 0 ||
+      roundMoney(fee) !== fee
+    ) {
+      throw new Error(
+        "Admin-configured transaction fee is invalid."
+      );
+    }
+
+    return fee;
+  }
+
+  // OPEN UTILITY CONFIRMATION WINDOW
+
+  async function openUtilityPay(row, amount) {
+    if (busyRef.current) return;
+
+    busyRef.current = true;
+    setActionKey(`QUOTE-UTILITY-${row.key}`);
+    setNotice(null);
+
+    try {
+      const fee = await fetchUtilityFee(
+        row.key,
+        amount
+      );
+
+      setUtilityModalError("");
+
+      setUtilityPayModal({
+        shiftId,
+        category: row.key,
+        label: row.label,
+        amount: roundMoney(amount),
+        quotedFee: fee,
+      });
+    } catch (error) {
+      console.error(
+        "UTILITY FEE PREVIEW ERROR:",
+        error
+      );
+
+      notify(
+        error?.message ||
+          "Unable to prepare payment request."
+      );
+    } finally {
+      busyRef.current = false;
+      setActionKey("");
+    }
+  }
+
+  function closeUtilityPay() {
+    if (busyRef.current) return;
+
+    setUtilityPayModal(null);
+    setUtilityModalError("");
+  }
+
+  // SUBMIT UTILITY PAYMENT REQUEST
+  // Fee is rechecked before submission.
+
+  async function submitUtilityPayment() {
+    if (
+      busyRef.current ||
+      !utilityPayModal
+    ) {
+      return;
+    }
+
+    const payment = utilityPayModal;
+
+    if (payment.shiftId !== shiftId) {
+      setUtilityModalError(
+        "The cashier shift has changed. Close and reopen the payment."
+      );
+      return;
+    }
+
+    busyRef.current = true;
+    setActionKey(
+      `PAY-UTILITY-${payment.category}`
+    );
+    setUtilityModalError("");
+
+    let requestCreated = false;
+
+    try {
+      const latestFee = await fetchUtilityFee(
+        payment.category,
+        payment.amount
+      );
+
+      // Admin changed the fee while popup was open.
+      // Show new fee and require a second confirmation.
+
+      if (latestFee !== payment.quotedFee) {
+        setUtilityPayModal((old) =>
+          old
+            ? {
+                ...old,
+                quotedFee: latestFee,
+              }
+            : old
+        );
+
+        setUtilityModalError(
+          "Admin has changed the transaction fee. Review the updated amount and confirm again."
+        );
+
+        return;
+      }
+
+      // REQUEST PAY only reserves the principal.
+      // It does not expense the principal again.
+      // Backend freezes the actual fee.
+
+      const result = await callRpc(
+        "tl_cashier_request_savings_payment",
+        {
+          p_shift_id: shiftId,
+          p_category: payment.category,
+          p_amount: payment.amount,
+        }
+      );
+
+      requestCreated = true;
+
+      // Verify what the backend actually froze.
+      // Never submit a second request automatically.
+
+      const savedFee = Number(
+        result?.quoted_transaction_fee
+      );
+
+      const validSavedFee =
+        result?.quoted_transaction_fee !== null &&
+        result?.quoted_transaction_fee !== undefined &&
+        result?.quoted_transaction_fee !== "" &&
+        Number.isFinite(savedFee) &&
+        savedFee >= 0 &&
+        roundMoney(savedFee) === savedFee;
+
+      const feeMatched =
+        validSavedFee &&
+        savedFee === payment.quotedFee;
+
+      if (!feeMatched) {
+        setUtilityModalError(
+          validSavedFee
+            ? `Payment request was created, but the frozen fee is KES ${money(savedFee)} instead of KES ${money(payment.quotedFee)}. Do not submit again. Contact Admin or Accountant.`
+            : "Payment request was created, but the frozen fee could not be verified. Do not submit again. Contact Admin."
+        );
+
+        // Leave modal open as an explicit warning.
+        setUtilityPayModal((old) =>
+          old
+            ? {
+                ...old,
+                submitted: true,
+              }
+            : old
+        );
+
+        await loadSavings(true);
+        return;
+      }
+
+      if (
+        !result?.request_id ||
+        result?.success !== true
+      ) {
+        setUtilityModalError(
+          "Payment request response could not be verified. Check Payment Status before attempting again."
+        );
+
+        setUtilityPayModal((old) =>
+          old
+            ? {
+                ...old,
+                submitted: true,
+              }
+            : old
+        );
+
+        await loadSavings(true);
+        return;
+      }
+
+      if (payment.category === "ELECTRICITY") {
+        clearInput("ELECTRICITY", "pay");
+      }
+
+      setUtilityPayModal(null);
+      setUtilityModalError("");
+
+      notify(
+        `${payment.label}: Payment request sent. Frozen transaction fee KES ${money(savedFee)}.`,
+        "success"
+      );
+
+      await loadSavings(true);
+    } catch (error) {
+      console.error(
+        "UTILITY PAYMENT REQUEST ERROR:",
+        error
+      );
+
+      setUtilityModalError(
+        requestCreated
+          ? "The request may have been created. Check Payment Status before attempting again."
+          : error?.message ||
+              "Unable to submit utility payment."
+      );
+    } finally {
+      busyRef.current = false;
+      setActionKey("");
+    }
+  }
+
+  // ==========================================
   // REQUEST PAYMENT
-  //
-  // Banking opens its special popup.
-  // Other categories preserve existing workflow.
+  // ==========================================
 
   async function requestPayment(row) {
     if (
@@ -1030,26 +1257,19 @@ export default function CashierSavingsPanel({
       row.fixedPayment &&
       (
         row.obligationAmount == null ||
-        !Number.isFinite(
-          row.obligationAmount
-        ) ||
+        !Number.isFinite(row.obligationAmount) ||
         row.obligationAmount <= 0
       )
     ) {
       notify(
         `${row.label} fixed payment is not configured by Admin.`
       );
-
       return;
     }
 
     const amount = row.fixedPayment
-      ? Number(
-          row.obligationAmount || 0
-        )
-      : Number(
-          inputs[row.key]?.pay || 0
-        );
+      ? Number(row.obligationAmount || 0)
+      : Number(inputs[row.key]?.pay || 0);
 
     if (
       !Number.isFinite(amount) ||
@@ -1058,65 +1278,39 @@ export default function CashierSavingsPanel({
       notify(
         `Enter a valid ${row.label} payment amount.`
       );
-
       return;
     }
 
     if (
-      amount > row.availableBalance
+      row.key === "ELECTRICITY" &&
+      !ELECTRICITY_AMOUNTS.includes(amount)
     ) {
       notify(
-        `${row.label}: Available KES ${money(row.availableBalance)}.`
+        "Select an approved Electricity amount."
       );
-
       return;
     }
 
-    // NEW: Banking reference is requested
-    // only after clicking Request Pay.
+    if (amount > row.availableBalance) {
+      notify(
+        `${row.label}: Available KES ${money(row.availableBalance)}.`
+      );
+      return;
+    }
+
+    // Banking remains on its original workflow.
 
     if (row.key === "BANKING") {
       await openBankingPay(row, amount);
       return;
     }
 
-    // ORIGINAL OTHER-SAVINGS FLOW
+    // New utility confirmation popup.
 
-    const confirmed = window.confirm(
-      `Request ${row.label} payment?\n\n` +
-        `Amount: KES ${money(amount)}\n\n` +
-        "The Accountant must confirm the actual payment before this amount leaves Savings."
-    );
-
-    if (!confirmed) return;
-
-    await postMoney({
-      row,
-      action: "PAY",
-
-      rpc: "tl_cashier_request_savings_payment",
-
-      body: {
-        p_shift_id: shiftId,
-        p_category: row.key,
-        p_amount: roundMoney(amount),
-      },
-
-      onSuccess: () => {
-        if (!row.fixedPayment) {
-          clearInput(row.key, "pay");
-        }
-
-        notify(
-          `${row.label}: Payment request sent to Accountant.`,
-          "success"
-        );
-      },
-    });
+    await openUtilityPay(row, amount);
   }
 
-  // WITHDRAW TO M-SHWARI FLOAT
-  // PRESERVED
+  // WITHDRAW TO M-SHWARI FLOAT — PRESERVED
 
   async function withdrawMoney(row) {
     if (
@@ -1139,17 +1333,13 @@ export default function CashierSavingsPanel({
       notify(
         `Enter a valid ${row.label} withdrawal amount.`
       );
-
       return;
     }
 
-    if (
-      amount > row.availableBalance
-    ) {
+    if (amount > row.availableBalance) {
       notify(
         `${row.label}: Available KES ${money(row.availableBalance)}.`
       );
-
       return;
     }
 
@@ -1178,12 +1368,9 @@ export default function CashierSavingsPanel({
       body: banking
         ? {
             p_shift_id: shiftId,
-
             p_employee_id:
               selectedEmployee.employee_id,
-
-            p_amount:
-              roundMoney(amount),
+            p_amount: roundMoney(amount),
           }
         : {
             p_shift_id: shiftId,
@@ -1207,7 +1394,9 @@ export default function CashierSavingsPanel({
     });
   }
 
+  // ==========================================
   // DISPLAY
+  // ==========================================
 
   return (
     <section
@@ -1226,7 +1415,6 @@ export default function CashierSavingsPanel({
           aria-live="polite"
           style={{
             ...s.message,
-
             ...(notice.type === "success"
               ? s.success
               : s.error),
@@ -1291,7 +1479,6 @@ export default function CashierSavingsPanel({
                   key={row.key}
                   style={{
                     ...s.categoryCard,
-
                     ...(banking
                       ? s.bankingCard
                       : {}),
@@ -1363,9 +1550,6 @@ export default function CashierSavingsPanel({
                       )}
                     </select>
                   )}
-
-                  {/* Reference is no longer
-                      permanently displayed here. */}
 
                   {row.pendingPaymentAmount > 0 && (
                     <div style={s.pending}>
@@ -1449,6 +1633,39 @@ export default function CashierSavingsPanel({
                           }
                           placeholder="Not set"
                         />
+                      ) : row.key ===
+                        "ELECTRICITY" ? (
+                        <select
+                          aria-label="Electricity payment amount"
+                          style={s.input}
+                          value={input.pay}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setInput(
+                              "ELECTRICITY",
+                              "pay",
+                              event.target.value
+                            )
+                          }
+                        >
+                          <option value="">
+                            Select amount
+                          </option>
+
+                          {ELECTRICITY_AMOUNTS.map(
+                            (amount) => (
+                              <option
+                                key={amount}
+                                value={amount}
+                              >
+                                KES{" "}
+                                {amount.toLocaleString(
+                                  "en-KE"
+                                )}
+                              </option>
+                            )
+                          )}
+                        </select>
                       ) : (
                         <input
                           type="number"
@@ -1487,11 +1704,15 @@ export default function CashierSavingsPanel({
                         }}
                       >
                         {actionKey ===
-                        "QUOTE-BANKING" &&
-                        banking
+                          `QUOTE-UTILITY-${row.key}` ||
+                        (actionKey ===
+                          "QUOTE-BANKING" &&
+                          banking)
                           ? "Checking..."
                           : actionKey ===
-                            `PAY-${row.key}`
+                              `PAY-UTILITY-${row.key}` ||
+                            actionKey ===
+                              `PAY-${row.key}`
                           ? "Sending..."
                           : "Request Pay"}
                       </button>
@@ -1635,9 +1856,160 @@ export default function CashierSavingsPanel({
         </>
       )}
 
-      {/* =======================================
+      {/* =====================================
+          NEW UTILITY PAYMENT CONFIRMATION
+          ===================================== */}
+
+      {utilityPayModal && (
+        <div className="tl-banking-modal-backdrop">
+          <div
+            className="tl-banking-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tl-utility-modal-title"
+          >
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitUtilityPayment();
+              }}
+            >
+              <div style={s.modalHeading}>
+                <strong id="tl-utility-modal-title">
+                  {utilityPayModal.category} — REQUEST PAY
+                </strong>
+
+                <span style={s.fixedTag}>
+                  🔒 ADMIN FEE
+                </span>
+              </div>
+
+              <div style={s.modalSummary}>
+                <div style={s.modalSummaryRow}>
+                  <span>PAYMENT AMOUNT</span>
+
+                  <strong>
+                    KES{" "}
+                    {money(
+                      utilityPayModal.amount
+                    )}
+                  </strong>
+                </div>
+
+                <div style={s.modalSummaryRow}>
+                  <span>TRANSACTION FEE</span>
+
+                  <strong
+                    style={{
+                      color: "#F2DA91",
+                    }}
+                  >
+                    KES{" "}
+                    {money(
+                      utilityPayModal.quotedFee
+                    )}
+                  </strong>
+                </div>
+
+                <div style={s.modalDivider} />
+
+                <div style={s.modalSummaryRow}>
+                  <strong>
+                    TOTAL PAYMENT COST
+                  </strong>
+
+                  <strong
+                    style={{
+                      color: C.text,
+                      fontSize: 17,
+                    }}
+                  >
+                    KES{" "}
+                    {money(
+                      roundMoney(
+                        utilityPayModal.amount +
+                          utilityPayModal.quotedFee
+                      )
+                    )}
+                  </strong>
+                </div>
+              </div>
+
+              <p style={s.modalHint}>
+                Verify the payment amount and
+                transaction fee before requesting
+                payment. If the fee does not match
+                the actual charges, go back and
+                contact Admin.
+              </p>
+
+              <p
+                style={{
+                  ...s.modalHint,
+                  color: C.gold,
+                }}
+              >
+                Only the payment principal will
+                leave Savings after Accountant
+                confirmation. The transaction fee
+                is recorded separately as an
+                expense.
+              </p>
+
+              {utilityModalError && (
+                <div
+                  role="alert"
+                  style={{
+                    ...s.message,
+                    ...s.error,
+                    margin: "0 0 12px",
+                  }}
+                >
+                  {utilityModalError}
+                </div>
+              )}
+
+              <div style={s.modalActions}>
+                <button
+                  type="button"
+                  style={{
+                    ...s.button,
+                    ...s.modalCancel,
+                  }}
+                  disabled={utilityBusy}
+                  onClick={closeUtilityPay}
+                >
+                  {utilityPayModal.submitted
+                    ? "Close"
+                    : "Go Back"}
+                </button>
+
+                <button
+                  type="submit"
+                  style={{
+                    ...s.button,
+                    ...s.modalConfirm,
+                  }}
+                  disabled={
+                    utilityBusy ||
+                    utilityPayModal.submitted === true
+                  }
+                >
+                  {utilityBusy
+                    ? "Submitting..."
+                    : utilityPayModal.submitted
+                    ? "Request Submitted"
+                    : "Confirm Request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================
           MANUAL BANKING PAYMENT POPUP
-          ======================================= */}
+          ===================================== */}
 
       {bankingPayModal && (
         <div className="tl-banking-modal-backdrop">
@@ -1939,7 +2311,7 @@ function formatDateTime(value) {
 }
 
 // ============================================
-// INPUT STYLING
+// CSS
 // ============================================
 
 const css = `
@@ -2364,7 +2736,7 @@ const s = {
     border: "1px solid #774155",
   },
 
-  // BANKING PAYMENT MODAL
+  // PAYMENT MODALS
 
   modalHeading: {
     display: "flex",
@@ -2393,6 +2765,12 @@ const s = {
     gap: 12,
     fontSize: 12,
     color: C.sub,
+  },
+
+  modalDivider: {
+   height: 1,
+    background: C.border,
+    margin: "3px 0",
   },
 
   modalField: {
@@ -2424,7 +2802,7 @@ const s = {
   },
 
   modalHint: {
-    margin: "3px 0 14px",
+    margin: "12px 0 14px",
     fontSize: 11,
     lineHeight: 1.6,
     color: C.sub,
