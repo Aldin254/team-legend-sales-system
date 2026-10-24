@@ -79,6 +79,8 @@ export default function CashierSavingsPanel({
   currentShift,
 }) {
   const [categories, setCategories] = useState([]);
+  // Null means the server has not supplied a verified DStv setting.
+  const [dstvEnabled, setDstvEnabled] = useState(null);
   const [paymentRequests, setPaymentRequests] =
     useState([]);
   const [bankingEmployees, setBankingEmployees] =
@@ -322,6 +324,12 @@ export default function CashierSavingsPanel({
           : [];
 
         setCategories(nextCategories);
+        // Fail closed until the savings snapshot returns a real boolean.
+        setDstvEnabled(
+          typeof savingsResult?.dstv_enabled === "boolean"
+            ? savingsResult.dstv_enabled
+            : null
+        );
         setPaymentRequests(nextRequests);
         setBankingEmployees(nextEmployees);
 
@@ -354,6 +362,20 @@ export default function CashierSavingsPanel({
     },
     [shiftId, token, supabaseUrl, anonKey]
   );
+
+  // Prevent an old DStv confirmation popup remaining open after Admin locks it.
+  useEffect(() => {
+    if (dstvEnabled !== true && utilityPayModal?.category === "DSTV") {
+      setUtilityPayModal(null);
+      setUtilityModalError("");
+    }
+  }, [dstvEnabled, utilityPayModal?.category]);
+
+  function dstvAllowed(row) {
+    if (row.key !== "DSTV" || dstvEnabled === true) return true;
+    notify("DStv is locked by Admin or its status is unavailable.");
+    return false;
+  }
 
   // BANKING MODE — PRESERVED
 
@@ -648,6 +670,8 @@ export default function CashierSavingsPanel({
   // SAVE — UNCHANGED FINANCIAL RULE
 
   async function saveMoney(row) {
+    if (!dstvAllowed(row)) return;
+
     if (
       busyRef.current ||
       !bankingReady(row)
@@ -1036,6 +1060,7 @@ export default function CashierSavingsPanel({
   // OPEN UTILITY CONFIRMATION WINDOW
 
   async function openUtilityPay(row, amount) {
+    if (!dstvAllowed(row)) return;
     if (busyRef.current) return;
 
     busyRef.current = true;
@@ -1092,6 +1117,10 @@ export default function CashierSavingsPanel({
     }
 
     const payment = utilityPayModal;
+    if (payment.category === "DSTV" && dstvEnabled !== true) {
+      setUtilityModalError("DStv is locked by Admin.");
+      return;
+    }
 
     if (payment.shiftId !== shiftId) {
       setUtilityModalError(
@@ -1246,6 +1275,8 @@ export default function CashierSavingsPanel({
   // ==========================================
 
   async function requestPayment(row) {
+    if (!dstvAllowed(row)) return;
+
     if (
       busyRef.current ||
       !bankingReady(row)
@@ -1313,6 +1344,8 @@ export default function CashierSavingsPanel({
   // WITHDRAW TO M-SHWARI FLOAT — PRESERVED
 
   async function withdrawMoney(row) {
+    if (!dstvAllowed(row)) return;
+
     if (
       busyRef.current ||
       !bankingReady(row)
@@ -1400,7 +1433,7 @@ export default function CashierSavingsPanel({
 
   return (
     <section
-      className="tl-shared-savings"
+  className="tl-shared-savings"
       style={s.panel}
     >
       <style>{css}</style>
@@ -1434,6 +1467,7 @@ export default function CashierSavingsPanel({
             {rows.map((row) => {
               const banking =
                 row.key === "BANKING";
+              const dstvLocked = row.key === "DSTV" && dstvEnabled !== true;
 
               const ready =
                 !banking ||
@@ -1450,6 +1484,7 @@ export default function CashierSavingsPanel({
                 row.obligationAmount > 0;
 
               const disablePay =
+                dstvLocked ||
                 busy ||
                 !ready ||
                 row.availableBalance <= 0 ||
@@ -1463,6 +1498,7 @@ export default function CashierSavingsPanel({
                 );
 
               const disableWithdraw =
+                dstvLocked ||
                 busy ||
                 !ready ||
                 row.availableBalance <= 0;
@@ -1496,6 +1532,11 @@ export default function CashierSavingsPanel({
                         </span>
                       )}
 
+                    {dstvLocked && (
+                      <span style={{ ...s.fixedTag, color: "#FCA5A5", borderColor: "#7F1D1D" }}>
+                        {dstvEnabled === false ? "LOCKED BY ADMIN" : "DSTV STATUS UNAVAILABLE"}
+                      </span>
+                    )}
                     {row.fixedPayment && (
                       <span style={s.fixedTag}>
                         FIXED
@@ -1575,7 +1616,7 @@ export default function CashierSavingsPanel({
                         style={s.input}
                         aria-label={`${row.label} save amount`}
                         value={input.save}
-                        disabled={busy || !ready}
+                        disabled={busy || !ready || dstvLocked}
                         placeholder={
                           ready
                             ? "Amount"
@@ -1595,7 +1636,7 @@ export default function CashierSavingsPanel({
                         onClick={() =>
                           saveMoney(row)
                         }
-                        disabled={busy || !ready}
+                        disabled={busy || !ready || dstvLocked}
                         style={{
                           ...s.button,
                           ...s.saveButton,
