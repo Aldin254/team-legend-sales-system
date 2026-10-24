@@ -299,8 +299,6 @@ async function buildDutyNameMap(
       p_start_date: range.start,
       p_days: range.days,
     };
-    };
-
     requests.push({
       type: "extras",
       promise: callRpc(
