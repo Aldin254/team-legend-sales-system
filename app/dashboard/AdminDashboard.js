@@ -132,6 +132,11 @@ const menuItems = [
     icon: "M",
   },
   {
+  id: "PAYMENT_CONTROL",
+  label: "Payment Control",
+  icon: "▣",
+},
+  {
     id: "SETTINGS",
     label: "Settings",
     icon: "⚙",
@@ -438,7 +443,20 @@ export default function AdminDashboard({ user }) {
               />
             </>
           )}
+{/* ============================================
+    LEGEND PAYMENT CONTROL
+    ============================================ */}
 
+{activeSection === "PAYMENT_CONTROL" && (
+  <>
+    <PageHeading
+      title="LEGEND PAYMENT CONTROL"
+      subtitle="Manage transaction fees for DStv, WiFi, Rent and Electricity across all shops."
+    />
+
+    <AdminPaymentControlPanel user={user} />
+  </>
+)}
           {/* SETTINGS */}
 
           {activeSection === "SETTINGS" && (
@@ -2223,6 +2241,13 @@ function DashboardHome({
       "CLOSING_ALERTS",
     ],
     [
+  "PAYMENT CONTROL",
+  "Configure DStv, WiFi, Rent and Electricity transaction fees for all shops.",
+  "#D9B66C",
+  "Manage Payment Fees",
+  "PAYMENT_CONTROL",
+],
+    [
       "VIEW REPORTS",
       "View OPEN and CLOSED sales reports by shop, date and shift.",
       "#0891b2",
@@ -3555,3 +3580,486 @@ const closingLastUpdatedStyle = {
   textAlign: "right",
   fontSize: 10,
 };
+function AdminPaymentControlPanel({ user }) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const accessToken = user?.access_token || null;
+
+  const [shops, setShops] = useState([]);
+  const [destinations, setDestinations] = useState([]);
+  const [fees, setFees] = useState([]);
+  const [selectedShop, setSelectedShop] = useState("");
+  const [drafts, setDrafts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [savingKey, setSavingKey] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const electricityTiers = [
+    500, 1000, 1500, 2000, 2500,
+    3000, 3500, 4000, 4500, 5000
+  ];
+
+  const money = (amount) =>
+    Number(amount).toLocaleString("en-KE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+
+  const rpc = useCallback(
+    async (name, payload = {}) => {
+      if (!supabaseUrl || !supabaseAnonKey || !accessToken) {
+        throw new Error("Admin session unavailable.");
+      }
+
+      const response = await fetch(
+        `${supabaseUrl.replace(/\/+$/, "")}/rest/v1/rpc/${name}`,
+        {
+          method: "POST",
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload),
+          cache: "no-store"
+        }
+      );
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+          result?.details ||
+          `${name} failed (${response.status}).`
+        );
+      }
+
+      return result;
+    },
+    [supabaseUrl, supabaseAnonKey, accessToken]
+  );
+
+  const feeKey = (category, shopId, amount = null) =>
+    `${category}:${shopId || "GLOBAL"}:${amount ?? "STANDARD"}`;
+
+  const loadData = useCallback(async () => {
+    const result = await rpc("tl_admin_payment_fees_snapshot");
+
+    if (
+      result?.success !== true ||
+      !Array.isArray(result.shops) ||
+      !Array.isArray(result.fees) ||
+      !Array.isArray(result.destinations)
+    ) {
+      throw new Error("Invalid Payment Control response.");
+    }
+
+    setShops(result.shops);
+    setDestinations(result.destinations);
+    setFees(result.fees);
+
+    setSelectedShop((previous) => {
+      if (result.shops.some((shop) => shop.id === previous)) {
+        return previous;
+      }
+      return result.shops[0]?.id || "";
+    });
+
+    setDrafts((previous) => {
+      const next = { ...previous };
+
+      for (const fee of result.fees) {
+        const key = feeKey(
+          fee.category,
+          fee.shop_id,
+          fee.payment_amount
+        );
+
+        if (!(key in next)) {
+          next[key] =
+            fee.transaction_fee == null
+              ? ""
+              : String(fee.transaction_fee);
+        }
+      }
+
+      return next;
+    });
+  }, [rpc]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    setLoading(true);
+
+    loadData()
+      .catch((err) => {
+        if (mounted) {
+          setError(err.message || "Unable to load Payment Control.");
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [loadData]);
+
+  const selectedShopName =
+    shops.find((shop) => shop.id === selectedShop)?.shop_name ||
+    "Select shop";
+
+  const findFee = (category, shopId, amount = null) =>
+    fees.find(
+      (fee) =>
+        fee.category === category &&
+        (fee.shop_id || null) === (shopId || null) &&
+        (fee.payment_amount == null
+          ? null
+          : Number(fee.payment_amount)) === amount
+    );
+
+  const findDestinations = (category) =>
+    destinations.filter(
+      (destination) =>
+        destination.shop_id === selectedShop &&
+        destination.category === category
+    );
+
+  const updateDraft = (key, value) => {
+    setDrafts((previous) => ({
+      ...previous,
+      [key]: value
+    }));
+    setError("");
+    setNotice("");
+  };
+
+  async function saveFee(category, shopId, amount = null) {
+    const key = feeKey(category, shopId, amount);
+    const raw = String(drafts[key] ?? "").trim();
+
+    if (!/^\d+(\.\d{1,2})?$/.test(raw)) {
+      setError("Enter a valid transaction fee with up to 2 decimals.");
+      return;
+    }
+
+    const value = Number(raw);
+
+    if (!Number.isFinite(value) || value > 9999999999.99) {
+      setError("Invalid transaction fee amount.");
+      return;
+    }
+
+    setSavingKey(key);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await rpc("tl_admin_payment_fee_save", {
+        p_shop_id: shopId,
+        p_category: category,
+        p_payment_amount: amount,
+        p_transaction_fee: value
+      });
+
+      if (result?.success !== true) {
+        throw new Error("Database did not confirm the fee update.");
+      }
+
+      await loadData();
+
+      setDrafts((previous) => ({
+        ...previous,
+        [key]: String(result.transaction_fee)
+      }));
+
+      setNotice(`${category} transaction fee saved successfully.`);
+    } catch (err) {
+      setError(err.message || "Unable to save transaction fee.");
+    } finally {
+      setSavingKey("");
+    }
+  }
+
+  const outer = {
+    background: "#E8EDF2",
+    border: "1px solid #C8D1DA",
+    borderRadius: 12,
+    padding: 18,
+    color: "#101F30"
+  };
+
+  const section = {
+    background: "#FFFFFF",
+    border: "1px solid #D7DFE7",
+    borderRadius: 9,
+    padding: 15,
+    marginTop: 14
+  };
+
+  const inputStyle = {
+    width: "100%",
+    maxWidth: 180,
+    boxSizing: "border-box",
+    padding: "10px 12px",
+    borderRadius: 6,
+    border: "1px solid #B8C6D4",
+    background: "#F8FAFC",
+    color: "#101F30",
+    fontWeight: 700
+  };
+
+  const buttonStyle = {
+    background: "#15263A",
+    color: "#FFFFFF",
+    border: "1px solid #2A3D52",
+    borderRadius: 6,
+    padding: "10px 16px",
+    fontWeight: 800,
+    cursor: "pointer"
+  };
+
+  function destinationBlock(category) {
+    const rows = findDestinations(category);
+
+    if (!rows.length) {
+      return (
+        <div style={{ color: "#64748B", fontSize: 12 }}>
+          No active payment destination configured for this shop.
+        </div>
+      );
+    }
+
+    return rows.map((row, index) => (
+      <div
+        key={`${category}-${index}`}
+        style={{
+          background: "#F1F5F9",
+          borderRadius: 6,
+          padding: 10,
+          marginBottom: 7,
+          fontSize: 12
+        }}
+      >
+        <strong>{row.description || category}</strong>
+        <div>Account: {row.account_number || "—"}</div>
+        <div>Paybill / Till: {row.paybill_till || "—"}</div>
+        <div>Bank: {row.bank || "—"}</div>
+        {row.obligation_amount != null && (
+          <div>Obligation: KES {money(row.obligation_amount)}</div>
+        )}
+      </div>
+    ));
+  }
+
+  function feeRow(category, amount = null) {
+    const shopId = category === "DSTV" ? null : selectedShop;
+    const key = feeKey(category, shopId, amount);
+    const saved = findFee(category, shopId, amount);
+
+    const value =
+      drafts[key] ??
+      (saved?.transaction_fee == null
+        ? ""
+        : String(saved.transaction_fee));
+
+    const isSaving = savingKey === key;
+
+    return (
+      <div
+        key={key}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 12,
+          padding: "11px 0",
+          borderBottom: "1px solid #E2E8F0"
+        }}
+      >
+        <div style={{ flex: "1 1 180px", fontWeight: 800 }}>
+          {amount == null
+            ? `${category} Transaction Fee`
+            : `Electricity KES ${money(amount)}`}
+        </div>
+
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={value}
+          placeholder="Fee (KES)"
+          onChange={(event) =>
+            updateDraft(key, event.target.value)
+          }
+          disabled={Boolean(savingKey)}
+          style={inputStyle}
+        />
+
+        <button
+          type="button"
+          disabled={Boolean(savingKey) || !selectedShop}
+          onClick={() => saveFee(category, shopId, amount)}
+          style={{
+            ...buttonStyle,
+            opacity: savingKey || !selectedShop ? 0.5 : 1
+          }}
+        >
+          {isSaving ? "Saving..." : "SAVE"}
+        </button>
+
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 800,
+            color: saved?.is_active ? "#047857" : "#64748B"
+          }}
+        >
+          {saved?.is_active ? "CONFIGURED" : "NOT SET"}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <section style={outer}>
+      <div
+        style={{
+          background: "#101F30",
+          color: "#FFFFFF",
+          padding: 17,
+          borderRadius: 8
+        }}
+      >
+        <strong style={{ fontSize: 17 }}>
+          LEGEND PAYMENT CONTROL
+        </strong>
+        <div
+          style={{
+            marginTop: 5,
+            fontSize: 12,
+            color: "#CBD5E1"
+          }}
+        >
+          Admin transaction fee configuration
+        </div>
+      </div>
+
+      {error && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 12,
+            padding: 12,
+            background: "#FEE2E2",
+            color: "#991B1B",
+            borderRadius: 6
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {notice && (
+        <div
+          role="status"
+          style={{
+            marginTop: 12,
+            padding: 12,
+            background: "#DCFCE7",
+            color: "#166534",
+            borderRadius: 6
+          }}
+        >
+          {notice}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ padding: 20 }}>
+          Loading Payment Control...
+        </div>
+      ) : (
+        <>
+          <div style={section}>
+            <label
+              htmlFor="legend-payment-shop"
+              style={{
+                display: "block",
+                fontWeight: 800,
+                marginBottom: 8
+              }}
+            >
+              SELECT SHOP
+            </label>
+
+            <select
+              id="legend-payment-shop"
+              value={selectedShop}
+              onChange={(event) =>
+                setSelectedShop(event.target.value)
+              }
+              style={{
+                ...inputStyle,
+                maxWidth: 420
+              }}
+            >
+              {shops.length === 0 && (
+                <option value="">No active shops</option>
+              )}
+              {shops.map((shop) => (
+                <option key={shop.id} value={shop.id}>
+                  {shop.shop_name} — {shop.shop_type}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedShop && (
+            <>
+              <div style={section}>
+                <h3>DStv — Global Transaction Fee</h3>
+                <p style={{ fontSize: 12, color: "#64748B" }}>
+                  One fee shared by every shop.
+                </p>
+                {destinationBlock("DSTV")}
+                {feeRow("DSTV")}
+              </div>
+
+              <div style={section}>
+                <h3>WiFi — {selectedShopName}</h3>
+                {destinationBlock("WIFI")}
+                {feeRow("WIFI")}
+              </div>
+
+              <div style={section}>
+                <h3>Rent — {selectedShopName}</h3>
+                {destinationBlock("RENT")}
+                {feeRow("RENT")}
+              </div>
+
+              <div style={section}>
+                <h3>Electricity — {selectedShopName}</h3>
+                {destinationBlock("ELECTRICITY")}
+
+                <p style={{ fontSize: 12, color: "#64748B" }}>
+                  Set the transaction fee for each electricity
+                  payment amount.
+                </p>
+
+                {electricityTiers.map((amount) =>
+                  feeRow("ELECTRICITY", amount)
+                )}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
