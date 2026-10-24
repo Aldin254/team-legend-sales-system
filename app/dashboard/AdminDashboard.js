@@ -1398,7 +1398,7 @@ function AdminClosingAlertsPanel({
                           marginTop: 5,
                           color: "#92400e",
                         }}>
-                          Automatic closure not yet
+Automatic closure not yet
                           recorded
                         </div>
                       )}
@@ -2798,7 +2798,7 @@ function SettingsPanel({ user }) {
           value={
             user?.role ||
             "ADMIN"
-          }
+}
         />
 
         <SettingRow
