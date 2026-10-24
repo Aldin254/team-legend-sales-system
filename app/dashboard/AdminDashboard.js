@@ -1379,8 +1379,7 @@ function AdminClosingAlertsPanel({
                           LOCKED
                         </span>
 </div>
-
-                      <div style={{ marginTop: 5 }}>
+<div style={{ marginTop: 5 }}>
                         <strong>
                           Balance B/F:
                         </strong>{" "}
@@ -2760,7 +2759,7 @@ function AdminSafaricomRatesPanel({ user }) {
               </tr>
             ))}</tbody>
           </table>
-          {rows.length === 0 && <div style={{ padding: 15 }}>No fee bands found.</div>}
+{rows.length === 0 && <div style={{ padding: 15 }}>No fee bands found.</div>}
         </div>
       )}
       <p style={{ color: "#64748b", fontSize: 12, marginBottom: 0 }}>Changes apply to future withdrawal fee lookups. Completed withdrawal records retain their saved fees. Edit one range at a time; keep all active ranges non-overlapping.</p>
@@ -3588,6 +3587,8 @@ function AdminPaymentControlPanel({ user }) {
   const [shops, setShops] = useState([]);
   const [destinations, setDestinations] = useState([]);
   const [fees, setFees] = useState([]);
+  const [dstvControls, setDstvControls] = useState(null);
+  const [dstvReason, setDstvReason] = useState("");
   const [selectedShop, setSelectedShop] = useState("");
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -3659,6 +3660,7 @@ function AdminPaymentControlPanel({ user }) {
     setShops(result.shops);
     setDestinations(result.destinations);
     setFees(result.fees);
+    setDstvControls(Array.isArray(result.dstv_controls) ? result.dstv_controls : null);
 
     setSelectedShop((previous) => {
       if (result.shops.some((shop) => shop.id === previous)) {
@@ -3781,6 +3783,41 @@ function AdminPaymentControlPanel({ user }) {
       setNotice(`${category} transaction fee saved successfully.`);
     } catch (err) {
       setError(err.message || "Unable to save transaction fee.");
+    } finally {
+      setSavingKey("");
+    }
+  }
+
+  const selectedDstvControl = dstvControls?.find(
+    (item) => item.shop_id === selectedShop
+  );
+  const dstvEnabled = selectedDstvControl?.is_enabled === true;
+
+  async function saveDstvStatus(nextEnabled) {
+    if (!selectedShop || !dstvControls) return;
+    const reason = dstvReason.trim();
+    if (reason.length < 3 || reason.length > 500) {
+      setError("Enter a reason between 3 and 500 characters.");
+      return;
+    }
+    const key = "DSTV_CONTROL";
+    setSavingKey(key);
+    setError("");
+    setNotice("");
+    try {
+      const result = await rpc("tl_admin_dstv_control_save", {
+        p_shop_id: selectedShop,
+        p_is_enabled: nextEnabled,
+        p_reason: reason
+      });
+      if (result?.success !== true) {
+        throw new Error("Database did not confirm the DStv status change.");
+      }
+      await loadData();
+      setDstvReason("");
+      setNotice(`DStv ${nextEnabled ? "enabled" : "disabled"} for ${selectedShopName}.`);
+    } catch (err) {
+      setError(err.message || "Unable to change DStv status.");
     } finally {
       setSavingKey("");
     }
@@ -4029,6 +4066,47 @@ function AdminPaymentControlPanel({ user }) {
                 </p>
                 {destinationBlock("DSTV")}
                 {feeRow("DSTV")}
+                <div style={{ marginTop: 16, borderTop: "1px solid #E2E8F0", paddingTop: 14 }}>
+                  <h3>DStv Access — {selectedShopName}</h3>
+                  {dstvControls === null ? (
+                    <p style={{ color: "#92400E", fontSize: 12 }}>
+                      DStv access controls are unavailable until the Admin snapshot
+                      includes dstv_controls. No setting has been changed.
+                    </p>
+                  ) : (
+                    <>
+                      <p style={{ fontWeight: 800, color: dstvEnabled ? "#047857" : "#B91C1C" }}>
+                        {dstvEnabled ? "ENABLED" : "LOCKED BY ADMIN"}
+                      </p>
+                      <label htmlFor="legend-dstv-reason" style={{ display: "block", fontSize: 12, fontWeight: 800 }}>
+                        Reason for change
+                      </label>
+                      <input
+                        id="legend-dstv-reason"
+                        type="text"
+                        maxLength={500}
+                        value={dstvReason}
+                        onChange={(event) => setDstvReason(event.target.value)}
+                        placeholder="Enter Admin reason"
+                        disabled={Boolean(savingKey)}
+                        style={{ ...inputStyle, maxWidth: 420, marginTop: 7 }}
+                      />
+                      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                        <button type="button" style={buttonStyle}
+                          disabled={Boolean(savingKey) || dstvEnabled || dstvReason.trim().length < 3}
+                          onClick={() => saveDstvStatus(true)}>
+                          ENABLE DSTV
+                        </button>
+                        <button type="button"
+                          style={{ ...buttonStyle, background: "#991B1B" }}
+                          disabled={Boolean(savingKey) || !dstvEnabled || dstvReason.trim().length < 3}
+                          onClick={() => saveDstvStatus(false)}>
+                          DISABLE DSTV
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div style={section}>
