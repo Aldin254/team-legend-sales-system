@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -42,6 +43,9 @@ export default function Cashier24HourReport({
 
   const [expenses, setExpenses] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const reportInFlightRef = useRef(null);
+  const reportControllerRef = useRef(null);
+  const reportGenerationRef = useRef(0);
   const [loading, setLoading] = useState(true);
 
   const [savingExpenses, setSavingExpenses] =
@@ -378,7 +382,18 @@ export default function Cashier24HourReport({
   // LOAD SHIFT / FLOATS / EXPENSES
   // ==============================================
 
-  const loadReport = useCallback(async () => {
+  const loadReport = useCallback(async (force = false) => {
+    if (reportInFlightRef.current) {
+      if (!force) return false;
+      // Financial-action refreshes wait for an older request, then reload.
+      await reportInFlightRef.current;
+    }
+
+    const generation = reportGenerationRef.current;
+    const controller = new AbortController();
+    reportControllerRef.current = controller;
+
+    const work = (async () => {
     if (
       !shiftId ||
       !shopId ||
@@ -407,6 +422,7 @@ export default function Cashier24HourReport({
           method: "GET",
           headers,
           cache: "no-store",
+          signal: controller.signal,
         }
       );
 
@@ -443,6 +459,7 @@ export default function Cashier24HourReport({
           method: "GET",
           headers,
           cache: "no-store",
+          signal: controller.signal,
         }
       );
 
@@ -473,6 +490,7 @@ export default function Cashier24HourReport({
           method: "GET",
           headers,
           cache: "no-store",
+          signal: controller.signal,
         }
       );
 
@@ -509,6 +527,8 @@ export default function Cashier24HourReport({
           );
         });
 
+      if (controller.signal.aborted || generation !== reportGenerationRef.current) return false;
+
       setShift(latestShift);
       setIncomeEntries(loadedIncome);
       setExpenses(loadedExpenses);
@@ -541,7 +561,9 @@ export default function Cashier24HourReport({
         return next;
       });
 
+      return true;
     } catch (error) {
+      if (controller.signal.aborted || generation !== reportGenerationRef.current) return false;
       console.error(
         "24H CASHIER REPORT ERROR:",
         error
@@ -553,8 +575,20 @@ export default function Cashier24HourReport({
       );
 
       setMessageType("error");
+      return false;
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && generation === reportGenerationRef.current) {
+        setLoading(false);
+      }
+    }
+    })();
+
+    reportInFlightRef.current = work;
+    try {
+      return await work;
+    } finally {
+      if (reportInFlightRef.current === work) reportInFlightRef.current = null;
+      if (reportControllerRef.current === controller) reportControllerRef.current = null;
     }
   }, [
     shiftId,
@@ -565,26 +599,42 @@ export default function Cashier24HourReport({
   ]);
 
   // ==============================================
-  // REFRESH EVERY 5 SECONDS
+  // OPTIMIZED 30-SECOND REPORT REFRESH
   // ==============================================
 
-  const refresh24HourReport =
-    useCallback(async () => {
-      await loadReport();
-
-      setRefreshKey(
-        (previous) => previous + 1
-      );
-    }, [loadReport]);
+  const refresh24HourReport = useCallback(async (force = true) => {
+    const loaded = await loadReport(force);
+    if (loaded) {
+      // Child components only receive a new key after fresh report data.
+      setRefreshKey((previous) => previous + 1);
+    }
+  }, [loadReport]);
 
   useEffect(() => {
-    void refresh24HourReport();
+    // New shift / credentials invalidate any previous in-flight report.
+    reportGenerationRef.current += 1;
+    if (reportControllerRef.current) reportControllerRef.current.abort();
+    void refresh24HourReport(true);
 
     const timer = setInterval(() => {
-      void refresh24HourReport();
-    }, 5000);
+      if (document.visibilityState === "visible") {
+        void refresh24HourReport(false);
+      }
+    }, 30000);
 
-    return () => clearInterval(timer);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refresh24HourReport(true);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      reportGenerationRef.current += 1;
+      if (reportControllerRef.current) reportControllerRef.current.abort();
+    };
   }, [refresh24HourReport]);
 
   // ==============================================
