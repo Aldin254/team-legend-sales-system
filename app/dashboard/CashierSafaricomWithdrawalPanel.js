@@ -40,6 +40,12 @@ export default function CashierSafaricomWithdrawalPanel({
 
   const busyRef = useRef(false);
   const historyRequestRef = useRef(0);
+  const historyBusyRef = useRef(false);
+  const historyAbortRef = useRef(null);
+  const historyScopeRef = useRef(null);
+  historyScopeRef.current = JSON.stringify([shiftId, token]);
+
+  const HISTORY_REFRESH_MS = 30000;
 
   const notify = useCallback((message, type = "error") => {
     setNotice({ message, type });
@@ -56,7 +62,7 @@ export default function CashierSafaricomWithdrawalPanel({
   }, [notice]);
 
   const callRpc = useCallback(
-    async (name, body = {}) => {
+    async (name, body = {}, signal) => {
       if (!url || !anonKey || !token) {
         throw new Error(
           "Session expired. Please log in again."
@@ -74,6 +80,7 @@ export default function CashierSafaricomWithdrawalPanel({
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
+          ...(signal ? { signal } : {}),
         }
       );
 
@@ -101,47 +108,53 @@ export default function CashierSafaricomWithdrawalPanel({
         return;
       }
 
+      // Do not overlap background history requests. The next scheduled
+      // refresh will pick up changes after the current request finishes.
+      if (historyBusyRef.current) return;
+      historyBusyRef.current = true;
+
+      const expectedScope = JSON.stringify([shiftId, token]);
       const requestId = ++historyRequestRef.current;
+      const controller = new AbortController();
+      historyAbortRef.current = controller;
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const isCurrent = () =>
+        historyRequestRef.current === requestId &&
+        historyScopeRef.current === expectedScope &&
+        !controller.signal.aborted;
 
       try {
-        if (!silent) {
-          setHistoryLoading(true);
-        }
+        if (!silent) setHistoryLoading(true);
 
         const result = await callRpc(
           "tl_cashier_withdrawal_history",
-          {
-            p_shift_id: shiftId,
-          }
+          { p_shift_id: shiftId },
+          controller.signal
         );
 
-        if (requestId !== historyRequestRef.current) {
-          return;
-        }
-
-        setHistory(
-          Array.isArray(result) ? result : []
-        );
+        if (!isCurrent()) return;
+        setHistory(Array.isArray(result) ? result : []);
       } catch (error) {
-        if (!silent) {
-          notify(
-            error?.message ||
-            "Unable to load transactions."
-          );
+        if (isCurrent() && !silent) {
+          notify(error?.message || "Unable to load transactions.");
         }
       } finally {
-        if (
-          !silent &&
-          requestId === historyRequestRef.current
-        ) {
-          setHistoryLoading(false);
+        clearTimeout(timeout);
+        if (historyRequestRef.current === requestId) {
+          historyBusyRef.current = false;
+          if (historyAbortRef.current === controller) {
+            historyAbortRef.current = null;
+          }
+          if (!silent && historyScopeRef.current === expectedScope) {
+            setHistoryLoading(false);
+          }
         }
       }
     },
     [shiftId, token, callRpc, notify]
   );
 
-  // Reset form when changing shifts.
+  // Clear private history when switching shifts or sessions.
   useEffect(() => {
     setAmount("");
     setFee(null);
@@ -149,21 +162,37 @@ export default function CashierSafaricomWithdrawalPanel({
     setReceipt("");
     setHistory([]);
     setHistoryOpen(false);
-
+    setHistoryLoading(false);
     historyRequestRef.current += 1;
-  }, [shiftId]);
+    historyBusyRef.current = false;
+    if (historyAbortRef.current) {
+      historyAbortRef.current.abort();
+      historyAbortRef.current = null;
+    }
+  }, [shiftId, token]);
 
-  // Load and refresh transaction history.
+  // Initial load, 30-second visible-tab polling, and refresh on return.
   useEffect(() => {
-    loadHistory();
+    void loadHistory();
 
-    const timer = setInterval(() => {
-      loadHistory({ silent: true });
-    }, 5000);
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        void loadHistory({ silent: true });
+      }
+    };
+
+    const timer = setInterval(refreshIfVisible, HISTORY_REFRESH_MS);
+    document.addEventListener("visibilitychange", refreshIfVisible);
 
     return () => {
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
       historyRequestRef.current += 1;
+      historyBusyRef.current = false;
+      if (historyAbortRef.current) {
+        historyAbortRef.current.abort();
+        historyAbortRef.current = null;
+      }
     };
   }, [loadHistory]);
 
