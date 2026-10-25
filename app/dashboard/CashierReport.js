@@ -32,6 +32,7 @@ import {
 } from "./CashierProfessionalTheme";
 
 const EXPENSE_ROW_COUNT = 10;
+const PLATFORM_CONFIG_TTL_MS = 5 * 60 * 1000;
 
 const emptyExpenses = () =>
   Array.from(
@@ -60,6 +61,8 @@ export default function CashierReport({ user, currentShift }) {
   const requestIdRef = useRef(0);
   const reportControllerRef = useRef(null);
   const expenseSavingRef = useRef(false);
+  const platformConfigCacheRef = useRef(null);
+  const lastReportRefreshRef = useRef(0);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -228,6 +231,7 @@ export default function CashierReport({ user, currentShift }) {
     reportControllerRef.current?.abort();
     reportControllerRef.current = null;
 
+    platformConfigCacheRef.current = null;
     setShift(currentShift || null);
     setPlatforms([]);
     setReadings([]);
@@ -281,63 +285,52 @@ export default function CashierReport({ user, currentShift }) {
     const encodedId = encodeURIComponent(shiftId);
 
     try {
-      const responses = await Promise.all([
+      // Shop platform assignments change infrequently. Cache only this
+      // configuration; shift, readings, floats and expenses stay fresh.
+      const configKey = `${supabaseUrl}|${shopId}|${accessToken}`;
+      const cachedConfig = platformConfigCacheRef.current;
+      const useCachedConfig =
+        cachedConfig?.key === configKey &&
+        Date.now() - cachedConfig.fetchedAt < PLATFORM_CONFIG_TTL_MS;
+
+      const requests = [
         fetch(
           `${base}/shifts?id=eq.${encodedId}&select=*&limit=1`,
-          {
-            headers,
-            cache: "no-store",
-            signal: controller.signal,
-          }
+          { headers, cache: "no-store", signal: controller.signal }
         ),
-
-        fetch(
-          `${base}/shop_platforms?shop_id=eq.${encodeURIComponent(shopId)}` +
-            `&is_active=eq.true&select=id,platform_name,reading_type,display_order` +
-            `&order=display_order.asc`,
-          {
-            headers,
-            cache: "no-store",
-            signal: controller.signal,
-          }
-        ),
-
+        useCachedConfig
+          ? Promise.resolve(null)
+          : fetch(
+              `${base}/shop_platforms?shop_id=eq.${encodeURIComponent(shopId)}` +
+                `&is_active=eq.true&select=id,platform_name,reading_type,display_order` +
+                `&order=display_order.asc`,
+              { headers, cache: "no-store", signal: controller.signal }
+            ),
         fetch(
           `${base}/platform_readings?shift_id=eq.${encodedId}` +
             `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
-          {
-            headers,
-            cache: "no-store",
-            signal: controller.signal,
-          }
+          { headers, cache: "no-store", signal: controller.signal }
         ),
-
         fetch(
           `${base}/shift_income_entries?shift_id=eq.${encodedId}` +
             `&select=id,entry_type,description,amount,created_at&order=created_at.asc`,
-          {
-            headers,
-            cache: "no-store",
-            signal: controller.signal,
-          }
+          { headers, cache: "no-store", signal: controller.signal }
         ),
-
         fetch(
           `${base}/expenses?shift_id=eq.${encodedId}` +
             `&select=id,description,amount,created_at,source_type,source_record_id,is_private` +
             `&order=created_at.asc,id.asc`,
-          {
-            headers,
-            cache: "no-store",
-            signal: controller.signal,
-          }
+          { headers, cache: "no-store", signal: controller.signal }
         ),
-      ]);
-
+      ];
+      const responses = await Promise.all(requests);
       const results = await Promise.all(
-        responses.map(safeJson)
+        responses.map((response, index) =>
+          index === 1 && useCachedConfig
+            ? Promise.resolve(cachedConfig.data)
+            : safeJson(response)
+        )
       );
-
       const errors = [
         "Unable to load shift.",
         "Unable to load platforms.",
@@ -345,16 +338,21 @@ export default function CashierReport({ user, currentShift }) {
         "Unable to load float entries.",
         "Unable to load expenses.",
       ];
-
       responses.forEach((response, index) => {
-        if (!response.ok) {
+        if (response && !response.ok) {
           throw new Error(
-            results[index]?.message ||
-            results[index]?.details ||
-            errors[index]
+            results[index]?.message || results[index]?.details || errors[index]
           );
         }
       });
+      if (!isCurrent()) return;
+      if (!useCachedConfig && Array.isArray(results[1])) {
+        platformConfigCacheRef.current = {
+          key: configKey,
+          data: results[1],
+          fetchedAt: Date.now(),
+        };
+      }
 
       const latestShift = Array.isArray(results[0])
         ? results[0][0]
@@ -404,6 +402,7 @@ export default function CashierReport({ user, currentShift }) {
         }
       }
 
+      lastReportRefreshRef.current = Date.now();
       setShift(latestShift);
       setPlatforms(nextPlatforms);
       setReadings(nextReadings);
@@ -490,13 +489,20 @@ export default function CashierReport({ user, currentShift }) {
         void loadReport(false);
       }
     };
+    const onVisibilityChange = () => {
+      // Avoid an immediate duplicate after a recent successful refresh.
+      if (document.visibilityState === "visible" &&
+          Date.now() - lastReportRefreshRef.current >= 30000) {
+        void loadReport(false);
+      }
+    };
 
     const timer = setInterval(refreshIfVisible, 30000);
-    document.addEventListener("visibilitychange", refreshIfVisible);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       clearInterval(timer);
-      document.removeEventListener("visibilitychange", refreshIfVisible);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       requestIdRef.current += 1;
       reportControllerRef.current?.abort();
       reportControllerRef.current = null;
