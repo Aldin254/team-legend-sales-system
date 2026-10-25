@@ -30,7 +30,7 @@ import AdminFinancialPerformancePanel from "./AdminFinancialPerformancePanel";
 // UPDATED:
 // 12-hour incomplete closing alerts
 // Separate Closing Alerts menu
-// Live refresh every 45 seconds
+// Visible-only, guarded background refresh every 60 seconds
 // Navigation to existing Shift Corrections
 //
 // PRESERVED:
@@ -54,6 +54,8 @@ import AdminFinancialPerformancePanel from "./AdminFinancialPerformancePanel";
 // It does not automatically close shifts,
 // post financial records, or resolve incidents.
 // ==================================================
+
+const ADMIN_BACKGROUND_REFRESH_MS = 60000;
 
 const menuItems = [
   {
@@ -750,36 +752,40 @@ function AdminBankingVerificationPanel({ user }) {
   useEffect(() => {
     let mounted = true;
     const controller = new AbortController();
+    let inFlight = false;
+    let lastRefreshAt = 0;
+    let requestVersion = 0;
 
-    const refresh = async () => {
+    const refresh = async (force = false) => {
+      if (!mounted || inFlight || document.visibilityState === "hidden") return;
+      if (!force && Date.now() - lastRefreshAt < ADMIN_BACKGROUND_REFRESH_MS) return;
+      inFlight = true;
+      const version = ++requestVersion;
       try {
         const count = await loadCount(controller.signal);
-
-        if (!mounted) return;
-
+        if (!mounted || version !== requestVersion || activeRequest.current) return;
         setPendingCount(count);
         setError("");
       } catch (err) {
-        if (!mounted || err?.name === "AbortError") return;
-
+        if (!mounted || err?.name === "AbortError" || version !== requestVersion || activeRequest.current) return;
         setPendingCount(null);
-        setError(
-          err?.message ||
-          "Unable to load Admin banking verification."
-        );
+        setError(err?.message || "Unable to load Admin banking verification.");
       } finally {
+        lastRefreshAt = Date.now();
+        inFlight = false;
         if (mounted) setLoadingCount(false);
       }
     };
 
-    refresh();
-
-    const timer = setInterval(refresh, 15000);
-
+    refresh(true);
+    const timer = setInterval(() => refresh(), ADMIN_BACKGROUND_REFRESH_MS);
+    const onVisibility = () => refresh();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       mounted = false;
       controller.abort();
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [loadCount]);
 
@@ -1025,7 +1031,6 @@ function AdminClosingAlertsPanel({
 
   const accessToken =
     user?.access_token || null;
-
   const [incidents, setIncidents] =
     useState([]);
 
@@ -1113,53 +1118,40 @@ function AdminClosingAlertsPanel({
 
   useEffect(() => {
     let mounted = true;
+    let inFlight = false;
+    let lastRefreshAt = 0;
+    const controller = new AbortController();
 
-    const controller =
-      new AbortController();
-
-    async function refresh() {
+    async function refresh(force = false) {
+      if (!mounted || inFlight || document.visibilityState === "hidden") return;
+      if (!force && Date.now() - lastRefreshAt < ADMIN_BACKGROUND_REFRESH_MS) return;
+      inFlight = true;
       try {
-        const rows = await loadIncidents(
-          controller.signal
-        );
-
+        const rows = await loadIncidents(controller.signal);
         if (!mounted) return;
-
         setIncidents(rows);
         setLastUpdated(new Date());
         setError("");
       } catch (err) {
-        if (
-          !mounted ||
-          err?.name === "AbortError"
-        ) {
-          return;
-        }
-
-        setError(
-          err?.message ||
-          "Unable to load closing alerts."
-        );
+        if (!mounted || err?.name === "AbortError") return;
+        setError(err?.message || "Unable to load closing alerts.");
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        lastRefreshAt = Date.now();
+        inFlight = false;
+        if (mounted) setLoading(false);
       }
     }
 
     setLoading(true);
-
-    refresh();
-
-    const interval = setInterval(
-      refresh,
-      45000
-    );
-
+    refresh(true);
+    const interval = setInterval(() => refresh(), ADMIN_BACKGROUND_REFRESH_MS);
+    const onVisibility = () => refresh();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       mounted = false;
       controller.abort();
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [loadIncidents, refreshKey]);
 
