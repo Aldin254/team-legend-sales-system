@@ -300,6 +300,9 @@ export default function CashierMealsRotaPanel({
   ] = useState("");
 
   const requestIdRef = useRef(0);
+  const inFlightRef = useRef(false);
+  const lastRequestAtRef = useRef(0);
+
 
   const supabaseUrl = String(
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -338,6 +341,12 @@ export default function CashierMealsRotaPanel({
       ) {
         return;
       }
+
+      // One in-flight snapshot per panel. A slow response must not
+      // cause a backlog of requests from the 30-second timer.
+      if (inFlightRef.current || signal.aborted) return;
+      inFlightRef.current = true;
+      lastRequestAtRef.current = Date.now();
 
       const requestId =
         ++requestIdRef.current;
@@ -434,6 +443,12 @@ export default function CashierMealsRotaPanel({
           err?.message ||
             "Meals & Bonuses unavailable."
         );
+      } finally {
+        // The effect cleanup invalidates this request ID when
+        // the shift or credentials change.
+        if (requestId === requestIdRef.current) {
+          inFlightRef.current = false;
+        }
       }
     },
     [
@@ -450,45 +465,46 @@ export default function CashierMealsRotaPanel({
   // ====================================================
 
   useEffect(() => {
-    const controller =
-      new AbortController();
+    const controller = new AbortController();
 
     requestIdRef.current += 1;
+    inFlightRef.current = false;
+    lastRequestAtRef.current = 0;
 
     setEmployees([]);
     setHolidayEvents([]);
     setError("");
 
-    if (isShiftOpen) {
-      void loadMeals(
-        controller.signal
-      );
-    }
+    const refresh = () => {
+      if (!isShiftOpen || controller.signal.aborted) return;
+      if (document.visibilityState !== "visible") return;
+      void loadMeals(controller.signal);
+    };
 
-    const timer = setInterval(
-      () => {
-        if (
-          isShiftOpen &&
-          document.visibilityState ===
-            "visible"
-        ) {
-          void loadMeals(
-            controller.signal
-          );
-        }
-      },
-      REFRESH_MS
-    );
+    // Initial snapshot and regular updates while the tab is visible.
+    refresh();
+    const timer = setInterval(refresh, REFRESH_MS);
+
+    // If the browser suspended timers while hidden, resume promptly.
+    // Avoid duplicate RPCs when the latest request just started.
+    const onVisibilityChange = () => {
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastRequestAtRef.current >= REFRESH_MS
+      ) {
+        refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       controller.abort();
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       requestIdRef.current += 1;
+      inFlightRef.current = false;
     };
-  }, [
-    isShiftOpen,
-    loadMeals,
-  ]);
+  }, [isShiftOpen, loadMeals]);
 
   if (
     !shiftId ||
