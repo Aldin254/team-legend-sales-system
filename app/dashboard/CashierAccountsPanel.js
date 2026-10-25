@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // TEAM LEGEND — Accounts Information.
 // Same read-only Supabase data and Nairobi due-date calculations.
+
+const ACCOUNTS_REFRESH_MS = 60 * 60 * 1000;
+const ACCOUNTS_VISIBILITY_MIN_MS = ACCOUNTS_REFRESH_MS;
 
 const ACCOUNT_ORDER = ["RENT", "WIFI", "DSTV", "ELECTRICITY", "BANKING"];
 
@@ -109,6 +112,8 @@ export default function CashierAccountsPanel({ user }) {
   const [error, setError] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
   const [today, setToday] = useState(() => todayNairobi());
+  const lastRefreshRef = useRef(0);
+  const inFlightRef = useRef(false);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -128,12 +133,15 @@ export default function CashierAccountsPanel({ user }) {
 
   // Fetch only this shop's active accounts.
   const loadAccounts = useCallback(async (signal) => {
+    if (signal.aborted || inFlightRef.current) return;
+    inFlightRef.current = true;
     setToday(todayNairobi());
 
     if (!shopId || !accessToken || !supabaseUrl || !supabaseAnonKey) {
       setAccounts([]);
       setHasLoaded(false);
       setLoading(false);
+      inFlightRef.current = false;
       return;
     }
 
@@ -175,6 +183,7 @@ export default function CashierAccountsPanel({ user }) {
 
       setAccounts(Array.isArray(result) ? result : []);
       setHasLoaded(true);
+      lastRefreshRef.current = Date.now();
       setError("");
     } catch (err) {
       if (signal?.aborted || err?.name === "AbortError") return;
@@ -182,14 +191,18 @@ export default function CashierAccountsPanel({ user }) {
       console.error("ACCOUNTS INFORMATION ERROR:", err);
       setError(err?.message || "Unable to load account information.");
     } finally {
+      inFlightRef.current = false;
       if (!signal?.aborted) setLoading(false);
     }
   }, [shopId, accessToken, supabaseUrl, supabaseAnonKey]);
 
-  // Refresh account information every five seconds.
+  // Account configuration changes infrequently. Refresh while visible,
+  // and recheck on return to a tab if the last check is old enough.
   useEffect(() => {
     const controller = new AbortController();
 
+    lastRefreshRef.current = 0;
+    inFlightRef.current = false;
     setLoading(true);
     setHasLoaded(false);
     setAccounts([]);
@@ -197,12 +210,26 @@ export default function CashierAccountsPanel({ user }) {
     void loadAccounts(controller.signal);
 
     const timer = setInterval(() => {
-      void loadAccounts(controller.signal);
-    }, 5000);
+      setToday(todayNairobi());
+      if (document.visibilityState === "visible") {
+        void loadAccounts(controller.signal);
+      }
+    }, ACCOUNTS_REFRESH_MS);
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      setToday(todayNairobi());
+      if (Date.now() - lastRefreshRef.current >= ACCOUNTS_VISIBILITY_MIN_MS) {
+        void loadAccounts(controller.signal);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       controller.abort();
+      inFlightRef.current = false;
     };
   }, [loadAccounts]);
 
