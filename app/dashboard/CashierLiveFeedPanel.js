@@ -12,7 +12,8 @@ import {
 // Time-aware half-day duties and resilient Supabase refresh.
 // Existing Rota, Admin announcements and database unchanged.
 
-const REFRESH_MS = 30000;
+const REFRESH_MS = 60000; // Shared feed: 2 RPCs once per minute while visible.
+const MIN_VISIBLE_REFRESH_MS = 15000;
 const CLOCK_REFRESH_MS = 10000;
 const FETCH_TIMEOUT_MS = 15000;
 
@@ -412,6 +413,7 @@ export default function CashierLiveFeedPanel({
     useState(() => new Date());
 
   const inFlight = useRef(false);
+  const lastFetchAt = useRef(0);
 
   // ==================================================
   // SUPABASE RPC
@@ -484,7 +486,8 @@ export default function CashierLiveFeedPanel({
     );
 
     return () => {
-      clearInterval(interval);
+      clearTimeout(staggerTimer);
+      if (interval !== null) clearInterval(interval);
     };
   }, []);
 
@@ -514,8 +517,9 @@ export default function CashierLiveFeedPanel({
     setLoading(true);
     setConnectionProblem("");
     inFlight.current = false;
+    lastFetchAt.current = 0;
 
-    async function loadFeed() {
+    async function loadFeed(force = false) {
       if (
         cancelled ||
         inFlight.current
@@ -531,6 +535,13 @@ export default function CashierLiveFeedPanel({
         return;
       }
 
+      // A tab becoming visible shortly after a fetch must not trigger
+      // duplicate RPCs. Regular polling remains at 60 seconds.
+      const currentTime = Date.now();
+      if (!force && currentTime - lastFetchAt.current < MIN_VISIBLE_REFRESH_MS) {
+        return;
+      }
+      lastFetchAt.current = currentTime;
       inFlight.current = true;
 
       const controller =
@@ -652,10 +663,16 @@ export default function CashierLiveFeedPanel({
 
     void loadFeed();
 
-    const interval = setInterval(
-      () => void loadFeed(),
-      REFRESH_MS
-    );
+    // Stagger recurring fetches across cashier browsers to avoid all
+    // clients hitting Supabase at the same instant.
+    const staggerMs = Math.floor(Math.random() * 12000);
+    let interval = null;
+    const staggerTimer = setTimeout(() => {
+      if (!cancelled) {
+        void loadFeed();
+        interval = setInterval(() => void loadFeed(), REFRESH_MS);
+      }
+    }, REFRESH_MS + staggerMs);
 
     const onVisible = () => {
       if (
@@ -672,7 +689,8 @@ export default function CashierLiveFeedPanel({
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearTimeout(staggerTimer);
+      if (interval !== null) clearInterval(interval);
 
       document.removeEventListener(
         "visibilitychange",
