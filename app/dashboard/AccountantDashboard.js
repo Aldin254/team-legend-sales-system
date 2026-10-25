@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 const INACTIVITY_MS = 30000;
 const PREPARED_TIMEOUT_MS = 30000;
 const SECTION_COLLAPSE_MS = 30000;
+const DASHBOARD_REFRESH_MS = 60000;
 
 export default function AccountantDashboard({ user }) {
   const router = useRouter();
@@ -87,6 +88,7 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
   const preparedTimeoutRef = useRef(null);
   const preparedIntervalRef = useRef(null);
   const autoCancelInFlightRef = useRef(false);
+  const backgroundRefreshInFlightRef = useRef(false);
 
   const clearPreparedTimers = useCallback(() => {
     if (preparedTimeoutRef.current) {
@@ -447,9 +449,33 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
     refreshData();
   }, [refreshData]);
 
+  // Refresh the live dashboard only while visible. Keep manual and
+  // post-transaction refreshes independent of this background throttle.
   useEffect(() => {
-    const timer = setInterval(() => refreshData({ silent: true }), 15000);
-    return () => clearInterval(timer);
+    let disposed = false;
+    let lastBackgroundRefreshAt = Date.now();
+
+    const backgroundRefresh = async () => {
+      if (disposed || document.visibilityState !== "visible") return;
+      if (backgroundRefreshInFlightRef.current) return;
+      if (Date.now() - lastBackgroundRefreshAt < DASHBOARD_REFRESH_MS) return;
+
+      backgroundRefreshInFlightRef.current = true;
+      lastBackgroundRefreshAt = Date.now();
+      try {
+        await refreshData({ silent: true });
+      } finally {
+        backgroundRefreshInFlightRef.current = false;
+      }
+    };
+
+    const timer = setInterval(backgroundRefresh, DASHBOARD_REFRESH_MS);
+    document.addEventListener("visibilitychange", backgroundRefresh);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", backgroundRefresh);
+    };
   }, [refreshData]);
 
   useEffect(() => {
@@ -471,7 +497,8 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
         setDeclinedSendMessage("");
         setMessage("");
       }
-      await refreshData({ silent: true });
+      // The separate visible-only refresh handles data synchronization.
+      // Inactivity only clears abandoned form fields.
     };
 
     const armTimer = () => {
@@ -1066,7 +1093,6 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
       setCompletingSend(false);
     }
   }
-
   async function cancelPreparedFloatSend() {
     if (!preparedSend?.transaction_id || cancellingTransactionId) return;
 
@@ -2162,7 +2188,7 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
                             },
                             transaction.id
                           )
-                      ),
+                        ),
                     }),
                   ],
                 }),
