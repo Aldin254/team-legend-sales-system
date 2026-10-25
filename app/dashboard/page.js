@@ -770,7 +770,7 @@ export default function DashboardPage() {
   ]);
 
   // ==================================================
-  // LIVE RECOVERY CHECK — EVERY 8 SECONDS
+  // LIVE RECOVERY CHECK — EVERY 30 SECONDS
   // ==================================================
 
   useEffect(() => {
@@ -791,6 +791,7 @@ export default function DashboardPage() {
     let cancelled = false;
 
     async function poll() {
+      if (document.visibilityState === "hidden") return;
       if (recoveryPollRef.current) {
         return;
       }
@@ -851,17 +852,23 @@ export default function DashboardPage() {
 
     const timer = setInterval(
       poll,
-      8000
+      30000
     );
 
     const onFocus = () => {
       void poll();
     };
 
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void poll();
+    };
+
     window.addEventListener(
       "focus",
       onFocus
     );
+
+    document.addEventListener("visibilitychange", onVisibility);
 
     void poll();
 
@@ -874,6 +881,8 @@ export default function DashboardPage() {
         "focus",
         onFocus
       );
+
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [
     user?.access_token,
@@ -910,6 +919,7 @@ export default function DashboardPage() {
     const token = user.access_token;
 
     async function pollOpenShift() {
+      if (document.visibilityState === "hidden") return;
       if (inFlight) return;
 
       inFlight = true;
@@ -962,17 +972,23 @@ export default function DashboardPage() {
 
     const timer = setInterval(
       pollOpenShift,
-      8000
+      30000
     );
 
     const onFocus = () => {
       void pollOpenShift();
     };
 
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void pollOpenShift();
+    };
+
     window.addEventListener(
       "focus",
       onFocus
     );
+
+    document.addEventListener("visibilitychange", onVisibility);
 
     void pollOpenShift();
 
@@ -985,6 +1001,8 @@ export default function DashboardPage() {
         "focus",
         onFocus
       );
+
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [
     loading,
@@ -1015,6 +1033,7 @@ export default function DashboardPage() {
     let cancelled = false;
 
     async function pollGate() {
+      if (document.visibilityState === "hidden") return;
       if (closingGatePollRef.current) {
         return;
       }
@@ -1069,10 +1088,16 @@ export default function DashboardPage() {
       void pollGate();
     };
 
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void pollGate();
+    };
+
     window.addEventListener(
       "focus",
       onFocus
     );
+
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       cancelled = true;
@@ -1083,6 +1108,8 @@ export default function DashboardPage() {
         "focus",
         onFocus
       );
+
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [
     shopType,
@@ -2209,7 +2236,7 @@ async function getClosedShiftForDate(
   );
 
   return rows?.[0] || null;
-}
+  }
 
 // ==================================================
 // LAST CLOSED SHIFT
