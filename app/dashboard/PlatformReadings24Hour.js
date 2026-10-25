@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const TABLE_NAME = "TABLE";
 
@@ -266,6 +266,11 @@ export default function PlatformReadings24Hour({
 
   const [now, setNow] = useState(() => new Date());
 
+  // Platform definitions change rarely. Recheck periodically and whenever
+  // the shop/session changes; saved financial readings still refresh normally.
+  const platformCacheRef = useRef(null);
+  const PLATFORM_CACHE_MS = 5 * 60 * 1000;
+
   // ==================================================
   // SUPABASE
   // ==================================================
@@ -357,114 +362,99 @@ export default function PlatformReadings24Hour({
       return;
     }
 
+    const controller = new AbortController();
     let cancelled = false;
 
     async function loadData() {
       try {
-        const [
-          platformResponse,
-          readingResponse,
-        ] = await Promise.all([
-          fetch(
-            `${supabaseUrl}/rest/v1/shop_platforms` +
-              `?shop_id=eq.${encodeURIComponent(shopId)}` +
-              `&is_active=eq.true` +
-              `&select=id,shop_id,platform_name,reading_type,display_order,is_active` +
-              `&order=display_order.asc`,
-            {
-              method: "GET",
-              headers: requestHeaders,
-              cache: "no-store",
-            }
-          ),
+        const cacheKey = `${supabaseUrl}:${shopId}:${accessToken}`;
+        const cached = platformCacheRef.current;
+        const useCachedPlatforms =
+          cached?.key === cacheKey &&
+          Date.now() - cached.loadedAt < PLATFORM_CACHE_MS;
 
-          fetch(
-            `${supabaseUrl}/rest/v1/platform_readings` +
-              `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-              `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
-              `&order=recorded_at.asc`,
-            {
-              method: "GET",
-              headers: requestHeaders,
-              cache: "no-store",
-            }
-          ),
+        const platformPromise = useCachedPlatforms
+          ? Promise.resolve(cached.data)
+          : fetch(
+              `${supabaseUrl}/rest/v1/shop_platforms` +
+                `?shop_id=eq.${encodeURIComponent(shopId)}` +
+                `&is_active=eq.true` +
+                `&select=id,shop_id,platform_name,reading_type,display_order,is_active` +
+                `&order=display_order.asc`,
+              {
+                method: "GET",
+                headers: requestHeaders,
+                cache: "no-store",
+                signal: controller.signal,
+              }
+            ).then(async (response) => {
+              const data = await safeJson(response);
+              if (!response.ok) {
+                throw new Error(
+                  data?.message || data?.details ||
+                    "Unable to load shop platforms."
+                );
+              }
+              return Array.isArray(data) ? data : [];
+            });
+
+        const readingsPromise = fetch(
+          `${supabaseUrl}/rest/v1/platform_readings` +
+            `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+            `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
+            `&order=recorded_at.asc`,
+          {
+            method: "GET",
+            headers: requestHeaders,
+            cache: "no-store",
+            signal: controller.signal,
+          }
+        ).then(async (response) => {
+          const data = await safeJson(response);
+          if (!response.ok) {
+            throw new Error(
+              data?.message || data?.details ||
+                "Unable to load platform readings."
+            );
+          }
+          return Array.isArray(data) ? data : [];
+        });
+
+        const [platformData, readingData] = await Promise.all([
+          platformPromise,
+          readingsPromise,
         ]);
-
-        const [
-          platformData,
-          readingData,
-        ] = await Promise.all([
-          safeJson(platformResponse),
-          safeJson(readingResponse),
-        ]);
-
-        if (!platformResponse.ok) {
-          throw new Error(
-            platformData?.message ||
-              platformData?.details ||
-              "Unable to load shop platforms."
-          );
-        }
-
-        if (!readingResponse.ok) {
-          throw new Error(
-            readingData?.message ||
-              readingData?.details ||
-              "Unable to load platform readings."
-          );
-        }
 
         if (cancelled) return;
 
+        if (!useCachedPlatforms) {
+          platformCacheRef.current = {
+            key: cacheKey,
+            data: platformData,
+            loadedAt: Date.now(),
+          };
+        }
+
         const readingMap = {};
-
-        for (
-          const row of Array.isArray(readingData)
-            ? readingData
-            : []
-        ) {
-          if (
-            !row.platform_id ||
-            !row.reading_kind
-          ) {
-            continue;
-          }
-
+        for (const row of readingData) {
+          if (!row.platform_id || !row.reading_kind) continue;
           if (!readingMap[row.platform_id]) {
             readingMap[row.platform_id] = {};
           }
-
-          readingMap[row.platform_id][
-            row.reading_kind
-          ] = row;
+          readingMap[row.platform_id][row.reading_kind] = row;
         }
 
-        setPlatforms(
-          Array.isArray(platformData)
-            ? platformData
-            : []
-        );
-
+        setPlatforms(platformData);
         setRows(readingMap);
       } catch (error) {
-        console.error(
-          "24H PLATFORM LOAD ERROR:",
-          error
+        if (cancelled || error?.name === "AbortError") return;
+        console.error("24H PLATFORM LOAD ERROR:", error);
+        setMessage(
+          error?.message || "Unable to load 24-hour platform readings."
         );
-
-        if (!cancelled) {
-          setMessage(
-            error?.message ||
-              "Unable to load 24-hour platform readings."
-          );
-
-          setMessageType("error");
-        }
+        setMessageType("error");
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -472,6 +462,7 @@ export default function PlatformReadings24Hour({
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [
     shopId,
@@ -482,6 +473,7 @@ export default function PlatformReadings24Hour({
     refreshKey,
   ]);
 
+  // ==================================================
   // ==================================================
   // SAVED STATUS
   // ==================================================
