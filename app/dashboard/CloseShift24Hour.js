@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+// Short-lived per-shop configuration cache; never used for final handover verification.
+const PLATFORM_CONFIG_TTL_MS = 5 * 60 * 1000;
+const platformConfigCache = new Map();
+
 // ==================================================
 // TEAM LEGEND — PROFESSIONAL DARK THEME
 // ==================================================
@@ -348,150 +352,95 @@ export default function CloseShift24Hour({
     }
 
     let cancelled = false;
+    const controller = new AbortController();
 
     const headers = {
       apikey: supabaseAnonKey,
-
-      Authorization:
-        `Bearer ${accessToken}`,
-
+      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     };
 
     async function loadData() {
+      // Cache is restricted to this shop and session token; a failed fetch is
+      // never cached. Financial shift and readings are always fresh.
+      const cacheKey = `${supabaseUrl}|${shopId}|${accessToken}`;
+      const cached = platformConfigCache.get(cacheKey);
+      const cachedPlatforms = cached && Date.now() - cached.savedAt < PLATFORM_CONFIG_TTL_MS
+        ? cached.platforms : null;
+
       try {
-        const [
-          shiftResponse,
-          platformResponse,
-          readingsResponse,
-        ] = await Promise.all([
-          fetch(
-            `${supabaseUrl}/rest/v1/shifts` +
-              `?id=eq.${encodeURIComponent(
-                shiftId
-              )}&select=*&limit=1`,
-            {
-              method: "GET",
-              headers,
-              cache: "no-store",
-            }
-          ),
+        const shiftRequest = fetch(
+          `${supabaseUrl}/rest/v1/shifts` +
+            `?id=eq.${encodeURIComponent(shiftId)}&select=*&limit=1`,
+          { method: "GET", headers, cache: "no-store", signal: controller.signal }
+        );
+        const readingsRequest = fetch(
+          `${supabaseUrl}/rest/v1/platform_readings` +
+            `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+            `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
+          { method: "GET", headers, cache: "no-store", signal: controller.signal }
+        );
+        const platformRequest = cachedPlatforms !== null
+          ? Promise.resolve(null)
+          : fetch(
+              `${supabaseUrl}/rest/v1/shop_platforms` +
+                `?shop_id=eq.${encodeURIComponent(shopId)}` +
+                `&is_active=eq.true` +
+                `&select=id,platform_name,display_order` +
+                `&order=display_order.asc`,
+              { method: "GET", headers, cache: "no-store", signal: controller.signal }
+            );
 
-          fetch(
-            `${supabaseUrl}/rest/v1/shop_platforms` +
-              `?shop_id=eq.${encodeURIComponent(
-                shopId
-              )}` +
-              `&is_active=eq.true` +
-              `&select=id,platform_name,display_order` +
-              `&order=display_order.asc`,
-            {
-              method: "GET",
-              headers,
-              cache: "no-store",
-            }
-          ),
-
-          fetch(
-            `${supabaseUrl}/rest/v1/platform_readings` +
-              `?shift_id=eq.${encodeURIComponent(
-                shiftId
-              )}` +
-              `&select=id,platform_id,reading_kind,reading_value,recorded_at`,
-            {
-              method: "GET",
-              headers,
-              cache: "no-store",
-            }
-          ),
-        ]);
-
-        const [
-          shiftResult,
-          platformResult,
-          readingsResult,
-        ] = await Promise.all([
+        const [shiftResponse, readingsResponse, platformResponse] =
+          await Promise.all([shiftRequest, readingsRequest, platformRequest]);
+        const [shiftResult, readingsResult, platformResult] = await Promise.all([
           safeJson(shiftResponse),
-          safeJson(platformResponse),
           safeJson(readingsResponse),
+          platformResponse ? safeJson(platformResponse) : Promise.resolve(cachedPlatforms),
         ]);
 
         if (!shiftResponse.ok) {
-          throw new Error(
-            shiftResult?.message ||
-              "Unable to load shift."
-          );
+          throw new Error(shiftResult?.message || "Unable to load shift.");
         }
-
-        if (!platformResponse.ok) {
-          throw new Error(
-            platformResult?.message ||
-              "Unable to load shop platforms."
-          );
-        }
-
         if (!readingsResponse.ok) {
-          throw new Error(
-            readingsResult?.message ||
-              "Unable to load platform readings."
-          );
+          throw new Error(readingsResult?.message || "Unable to load platform readings.");
+        }
+        if (platformResponse && !platformResponse.ok) {
+          throw new Error(platformResult?.message || "Unable to load shop platforms.");
         }
 
-        const latestShift =
-          Array.isArray(shiftResult)
-            ? shiftResult[0]
-            : null;
-
-        if (
-          !latestShift ||
-          String(latestShift.shop_id) !==
-            String(shopId)
-        ) {
-          throw new Error(
-            "Selected shift was not found in this shop."
-          );
+        const latestShift = Array.isArray(shiftResult) ? shiftResult[0] : null;
+        if (!latestShift || String(latestShift.shop_id) !== String(shopId)) {
+          throw new Error("Selected shift was not found in this shop.");
         }
+        if (cancelled || controller.signal.aborted) return;
 
-        if (cancelled) return;
-
+        const nextPlatforms = Array.isArray(platformResult) ? platformResult : [];
+        if (platformResponse) {
+          platformConfigCache.set(cacheKey, { platforms: nextPlatforms, savedAt: Date.now() });
+          // Keep cache bounded across logins and shop changes.
+          if (platformConfigCache.size > 20) {
+            platformConfigCache.delete(platformConfigCache.keys().next().value);
+          }
+        }
         setShiftData(latestShift);
-
-        setPlatforms(
-          Array.isArray(platformResult)
-            ? platformResult
-            : []
-        );
-
-        setReadings(
-          Array.isArray(readingsResult)
-            ? readingsResult
-            : []
-        );
-
+        setPlatforms(nextPlatforms);
+        setReadings(Array.isArray(readingsResult) ? readingsResult : []);
         setLoadError("");
       } catch (error) {
-        console.error(
-          "24H CLOSE LOAD ERROR:",
-          error
-        );
-
-        if (!cancelled) {
-          setLoadError(
-            error?.message ||
-              "Unable to prepare shift handover."
-          );
-        }
+        if (cancelled || controller.signal.aborted) return;
+        console.error("24H CLOSE LOAD ERROR:", error);
+        setLoadError(error?.message || "Unable to prepare shift handover.");
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled && !controller.signal.aborted) setLoading(false);
       }
     }
 
-    loadData();
+    void loadData();
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [
     shiftId,
