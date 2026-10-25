@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // Shared 12H/24H panel. Existing Supabase financial RPCs are unchanged.
 const AUTO_RESET_MS = 30000;
+const HISTORY_REFRESH_MS = 30000;
 
 export default function CashierAccountsReturnPanel({ user, currentShift, onReturnChanged }) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -27,6 +28,13 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
   const [secondsLeft, setSecondsLeft] = useState(30);
 
   const completedRef = useRef(null);
+  const historyBusyRef = useRef(null);
+  const historyGenerationRef = useRef(0);
+  const historyScopeRef = useRef(null);
+  const onReturnChangedRef = useRef(onReturnChanged);
+  onReturnChangedRef.current = onReturnChanged;
+  const deadlineRef = useRef({ transactionId: null, deadline: null });
+  const submittingRef = useRef(false);
   const cancelBusyRef = useRef(false);
   const timeoutRef = useRef(null);
   const intervalRef = useRef(null);
@@ -75,98 +83,147 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
     return result;
   }, [url, anonKey, token]);
 
-  // LOAD RETURN HISTORY
-  const loadHistory = useCallback(async ({ silent = false } = {}) => {
+  // LOAD RETURN HISTORY — one request at a time, scoped to this shift.
+  const loadHistory = useCallback(async ({ silent = false, force = false } = {}) => {
     if (!shiftId || !token) {
       setHistory([]);
       setHistoryLoading(false);
       return;
     }
 
-    try {
-      if (!silent) setHistoryLoading(true);
+    // An action-triggered refresh waits for the current read, then
+    // fetches again. Background polls simply skip overlapping reads.
+    if (historyBusyRef.current) {
+      if (!force) return;
+      try { await historyBusyRef.current; } catch { /* retry below */ }
+    }
 
-      const result = await callRpc(
-        "tl_cashier_return_history",
-        { p_shift_id: shiftId }
-      );
+    const scope = `${shiftId}|${token}`;
+    const generation = historyGenerationRef.current;
+    const stillCurrent = () =>
+      historyScopeRef.current === scope &&
+      historyGenerationRef.current === generation;
 
-      const rows = Array.isArray(result) ? result : [];
-      setHistory(rows);
+    const request = (async () => {
+      try {
+        if (!silent && stillCurrent()) setHistoryLoading(true);
 
-      const pending = rows.find(
-        r => String(r?.status || "").toUpperCase() === "PENDING_MANUAL_SEND"
-      );
+        const result = await callRpc(
+          "tl_cashier_return_history",
+          { p_shift_id: shiftId }
+        );
+        if (!stillCurrent()) return;
 
-      setPrepared(old => {
-        const matching = old?.transaction_id && rows.find(
-          r =>
-            String(r.id) === String(old.transaction_id) &&
-            String(r.status || "").toUpperCase() === "PENDING_MANUAL_SEND"
+        const rows = Array.isArray(result) ? result : [];
+        setHistory(rows);
+
+        const pending = rows.find(
+          r => String(r?.status || "").toUpperCase() === "PENDING_MANUAL_SEND"
         );
 
-        const row = matching || pending;
-        if (!row) return null;
+        setPrepared(old => {
+          const matching = old?.transaction_id && rows.find(
+            r =>
+              String(r.id) === String(old.transaction_id) &&
+              String(r.status || "").toUpperCase() === "PENDING_MANUAL_SEND"
+          );
 
-        return {
-          ...(matching ? old : {}),
-          transaction_id: row.id,
-          transaction_no: row.transaction_no,
-          return_slot: row.return_slot,
-          amount: row.amount,
-          estimated_fee: row.estimated_fee,
-          cashier_total_expected_deduction: roundMoney(
-            Number(row.amount || 0) + Number(row.estimated_fee || 0)
-          ),
-          company_destination: row.company_destination || old?.company_destination,
-          company_account_name: row.company_account_name || old?.company_account_name,
-          company_account_type: row.company_account_type || old?.company_account_type,
-          account_reference: row.account_reference || old?.account_reference,
-          collection_method: row.collection_method || old?.collection_method,
-          paybill_number: row.paybill_number || old?.paybill_number,
-          bank_account_number: row.bank_account_number || old?.bank_account_number,
-          created_at: row.created_at || old?.created_at,
-        };
-      });
+          const row = matching || pending;
+          if (!row) return null;
 
-      const signature = rows
-        .filter(
-          r => String(r?.status || "").toUpperCase() === "COMPLETED"
-        )
-        .map(r => `${r.id}:${r.completed_at || r.updated_at || ""}`)
-        .sort()
-        .join("|");
+          return {
+            ...(matching ? old : {}),
+            transaction_id: row.id,
+            transaction_no: row.transaction_no,
+            return_slot: row.return_slot,
+            amount: row.amount,
+            estimated_fee: row.estimated_fee,
+            cashier_total_expected_deduction: roundMoney(
+              Number(row.amount || 0) + Number(row.estimated_fee || 0)
+            ),
+            company_destination: row.company_destination || old?.company_destination,
+            company_account_name: row.company_account_name || old?.company_account_name,
+            company_account_type: row.company_account_type || old?.company_account_type,
+            account_reference: row.account_reference || old?.account_reference,
+            collection_method: row.collection_method || old?.collection_method,
+            paybill_number: row.paybill_number || old?.paybill_number,
+            bank_account_number: row.bank_account_number || old?.bank_account_number,
+            created_at: row.created_at || old?.created_at,
+          };
+        });
 
-      if (completedRef.current === null) {
-        completedRef.current = signature;
-      } else if (completedRef.current !== signature) {
-        completedRef.current = signature;
+        const signature = rows
+          .filter(r => String(r?.status || "").toUpperCase() === "COMPLETED")
+          .map(r => `${r.id}:${r.completed_at || r.updated_at || ""}`)
+          .sort()
+          .join("|");
 
-        if (typeof onReturnChanged === "function") {
-          onReturnChanged();
+        if (completedRef.current === null) {
+          completedRef.current = signature;
+        } else if (completedRef.current !== signature) {
+          completedRef.current = signature;
+          if (typeof onReturnChangedRef.current === "function") {
+            onReturnChangedRef.current();
+          }
         }
+      } catch (error) {
+        if (!stillCurrent()) return;
+        console.error("FLOAT RETURN HISTORY:", error);
+        if (!silent) notify(error?.message || "Unable to load transactions.");
+      } finally {
+        if (!silent && stillCurrent()) setHistoryLoading(false);
       }
-    } catch (error) {
-      console.error("FLOAT RETURN HISTORY:", error);
+    })();
 
-      if (!silent) {
-        notify(error?.message || "Unable to load transactions.");
-      }
+    historyBusyRef.current = request;
+    try {
+      await request;
     } finally {
-      if (!silent) setHistoryLoading(false);
+      if (historyBusyRef.current === request) historyBusyRef.current = null;
     }
-  }, [shiftId, token, callRpc, onReturnChanged]);
+  }, [shiftId, token, callRpc]);
 
-  // REFRESH EVERY 5 SECONDS
+  // Reset cached history and request ownership on session/shift changes.
   useEffect(() => {
-    loadHistory();
+    historyGenerationRef.current += 1;
+    historyScopeRef.current = `${shiftId}|${token}`;
+    historyBusyRef.current = null;
+    completedRef.current = null;
+    deadlineRef.current = { transactionId: null, deadline: null };
+    setHistory([]);
+    setPrepared(null);
+    setHistoryLoading(true);
+    setAmount("");
+    setFee(0);
+    setReceipt("");
+    clearTimers();
+    return () => {
+      historyGenerationRef.current += 1;
+      historyScopeRef.current = null;
+      clearTimers();
+    };
+  }, [shiftId, token, clearTimers]);
 
+  // 30-second history polling, only while visible; resume immediately.
+  useEffect(() => {
+    if (!shiftId || !token) return;
+    void loadHistory();
     const timer = setInterval(() => {
-      loadHistory({ silent: true });
-    }, 5000);
-
-    return () => clearInterval(timer);
-  }, [loadHistory]);
+      if (document.visibilityState === "visible") {
+        void loadHistory({ silent: true });
+      }
+    }, HISTORY_REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void loadHistory({ silent: true });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [shiftId, token, loadHistory]);
 
   // RETURN POSITIONS
   const activeHistory = useMemo(
@@ -215,7 +272,7 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
         setSecondsLeft(30);
         setHistoryOpen(false);
 
-        await loadHistory({ silent: true });
+        await loadHistory({ silent: true, force: true });
 
         if (typeof onReturnChanged === "function") {
           onReturnChanged();
@@ -223,7 +280,7 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
       } catch (error) {
         console.error("CANCEL FLOAT RETURN:", error);
 
-        await loadHistory({ silent: true });
+        await loadHistory({ silent: true, force: true });
 
         const description = String(
           error?.message || ""
@@ -261,44 +318,45 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
     return () => clearTimeout(timer);
   }, [amount, hasPrepared, preparing, submitting]);
 
-  // PREPARED RETURN AUTO-CANCEL
+  // PREPARED RETURN AUTO-CANCEL — deadline never resets on typing
+  // or history refresh. The server-side created_at anchors recovered
+  // pending transactions when available.
   useEffect(() => {
     clearTimers();
-
-    if (!hasPrepared || !prepared?.transaction_id || submitting) {
+    if (!hasPrepared || !prepared?.transaction_id) {
+      deadlineRef.current = { transactionId: null, deadline: null };
       setSecondsLeft(30);
       return;
     }
 
     const transactionId = prepared.transaction_id;
-    const started = Date.now();
+    if (deadlineRef.current.transactionId !== transactionId) {
+      const createdAt = Date.parse(prepared.created_at || "");
+      const anchored = Number.isFinite(createdAt)
+        ? createdAt + AUTO_RESET_MS
+        : Date.now() + AUTO_RESET_MS;
+      deadlineRef.current = { transactionId, deadline: anchored };
+    }
 
-    setSecondsLeft(30);
+    const deadline = deadlineRef.current.deadline;
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setSecondsLeft(remaining);
+    };
+    updateCountdown();
 
-    intervalRef.current = setInterval(() => {
-      setSecondsLeft(
-        Math.max(
-          0,
-          Math.ceil(
-            (AUTO_RESET_MS - (Date.now() - started)) / 1000
-          )
-        )
-      );
-    }, 1000);
+    // Submission owns the transaction once confirmed; no cancellation
+    // may race the receipt RPC while it is in flight.
+    if (submitting || submittingRef.current) return;
 
+    intervalRef.current = setInterval(updateCountdown, 1000);
     timeoutRef.current = setTimeout(() => {
-      cancelPending(transactionId, true);
-    }, AUTO_RESET_MS);
+      if (!submittingRef.current) void cancelPending(transactionId, true);
+    }, Math.max(0, deadline - Date.now()));
 
     return clearTimers;
-  }, [
-    hasPrepared,
-    prepared?.transaction_id,
-    receipt,
-    submitting,
-    cancelPending,
-    clearTimers,
-  ]);
+  }, [hasPrepared, prepared?.transaction_id, prepared?.created_at,
+      submitting, cancelPending, clearTimers]);
 
   useEffect(() => {
     return () => clearTimers();
@@ -427,7 +485,7 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
       setSecondsLeft(30);
       setHistoryOpen(true);
 
-      await loadHistory({ silent: true });
+      await loadHistory({ silent: true, force: true });
     } catch (error) {
       console.error("PREPARE RETURN:", error);
 
@@ -486,6 +544,7 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
 
     if (!confirmed) return;
 
+    submittingRef.current = true;
     clearTimers();
 
     try {
@@ -514,7 +573,7 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
         "success"
       );
 
-      await loadHistory({ silent: true });
+      await loadHistory({ silent: true, force: true });
 
       if (typeof onReturnChanged === "function") {
         onReturnChanged();
@@ -526,6 +585,7 @@ export default function CashierAccountsReturnPanel({ user, currentShift, onRetur
         error?.message || "Unable to submit receipt."
       );
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
