@@ -121,6 +121,9 @@ export default function CashierSavingsPanel({
 
   const busyRef = useRef(false);
   const referenceInputRef = useRef(null);
+  const savingsRequestRef = useRef(null);
+  const savingsGenerationRef = useRef(0);
+  const savingsContextRef = useRef("");
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -130,6 +133,9 @@ export default function CashierSavingsPanel({
 
   const token = user?.access_token || null;
   const shiftId = currentShift?.id || null;
+  const savingsContext = `${shiftId || ""}|${token || ""}`;
+  // Track the latest session during render so old responses cannot commit.
+  savingsContextRef.current = savingsContext;
 
   const utilityBusy =
     actionKey.startsWith("QUOTE-UTILITY") ||
@@ -232,135 +238,112 @@ export default function CashierSavingsPanel({
     [supabaseUrl, anonKey, token]
   );
 
-  // LOAD SAVINGS AND BANKING
-
+  // LOAD SAVINGS AND BANKING — GUARDED REFRESH
+  // silent=true: background refresh (skip if one is running).
+  // silent=false: initial refresh (priority).
+  // priority=true: force a fresh read after a financial operation.
   const loadSavings = useCallback(
-    async (silent = false) => {
-      if (
-        !shiftId ||
-        !token ||
-        !supabaseUrl ||
-        !anonKey
-      ) {
+    async (silent = false, priority = false) => {
+      if (!shiftId || !token || !supabaseUrl || !anonKey) {
         if (!silent) setLoading(false);
         return;
       }
 
+      // Background refreshes never interrupt financial actions.
+      if (silent && !priority && busyRef.current) return;
+      if (silent && !priority && savingsRequestRef.current) return;
+
+      if (savingsRequestRef.current) {
+        savingsRequestRef.current.abort();
+      }
+
+      const controller = new AbortController();
+      savingsRequestRef.current = controller;
+      const generation = ++savingsGenerationRef.current;
+      const context = savingsContext;
+      const isCurrent = () =>
+        !controller.signal.aborted &&
+        savingsRequestRef.current === controller &&
+        savingsGenerationRef.current === generation &&
+        savingsContextRef.current === context;
+
       try {
         if (!silent) setLoading(true);
-
         const headers = authHeaders(anonKey, token);
-
-        const [
-          savingsResponse,
-          bankingResponse,
-        ] = await Promise.all([
-          fetch(
-            `${supabaseUrl}/rest/v1/rpc/tl_cashier_savings_snapshot`,
-            {
-              method: "POST",
-              headers,
-              body: JSON.stringify({
-                p_shift_id: shiftId,
-              }),
-              cache: "no-store",
-            }
-          ),
-          fetch(
-            `${supabaseUrl}/rest/v1/rpc/tl_cashier_banking_directory`,
-            {
-              method: "POST",
-              headers,
-              body: JSON.stringify({
-                p_shift_id: shiftId,
-              }),
-              cache: "no-store",
-            }
-          ),
+        const [savingsResponse, bankingResponse] = await Promise.all([
+          fetch(`${supabaseUrl}/rest/v1/rpc/tl_cashier_savings_snapshot`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ p_shift_id: shiftId }),
+            cache: "no-store",
+            signal: controller.signal,
+          }),
+          fetch(`${supabaseUrl}/rest/v1/rpc/tl_cashier_banking_directory`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ p_shift_id: shiftId }),
+            cache: "no-store",
+            signal: controller.signal,
+          }),
         ]);
 
-        const [
-          savingsResult,
-          bankingResult,
-        ] = await Promise.all([
+        const [savingsResult, bankingResult] = await Promise.all([
           safeJson(savingsResponse),
           safeJson(bankingResponse),
         ]);
+        if (!isCurrent()) return;
 
         if (!savingsResponse.ok) {
           throw new Error(
-            savingsResult?.message ||
-              savingsResult?.details ||
-              savingsResult?.hint ||
-              "Unable to load Savings."
+            savingsResult?.message || savingsResult?.details ||
+            savingsResult?.hint || "Unable to load Savings."
           );
         }
-
         if (!bankingResponse.ok) {
           throw new Error(
-            bankingResult?.message ||
-              bankingResult?.details ||
-              bankingResult?.hint ||
-              "Unable to load Banking employees."
+            bankingResult?.message || bankingResult?.details ||
+            bankingResult?.hint || "Unable to load Banking employees."
           );
         }
 
-        const nextCategories = Array.isArray(
-          savingsResult?.categories
-        )
-          ? savingsResult.categories
-          : [];
-
-        const nextRequests = Array.isArray(
-          savingsResult?.payment_requests
-        )
-          ? savingsResult.payment_requests
-          : [];
-
-        const nextEmployees = Array.isArray(
-          bankingResult?.employees
-        )
-          ? bankingResult.employees
-          : [];
+        const nextCategories = Array.isArray(savingsResult?.categories)
+          ? savingsResult.categories : [];
+        const nextRequests = Array.isArray(savingsResult?.payment_requests)
+          ? savingsResult.payment_requests : [];
+        const nextEmployees = Array.isArray(bankingResult?.employees)
+          ? bankingResult.employees : [];
 
         setCategories(nextCategories);
-        // Fail closed until the savings snapshot returns a real boolean.
         setDstvEnabled(
           typeof savingsResult?.dstv_enabled === "boolean"
-            ? savingsResult.dstv_enabled
-            : null
+            ? savingsResult.dstv_enabled : null
         );
         setPaymentRequests(nextRequests);
         setBankingEmployees(nextEmployees);
-
         setEmployeeId((previous) => {
           if (!previous) return "";
-
           return nextEmployees.some(
-            (employee) =>
-              String(employee.employee_id) ===
-              String(previous)
-          )
-            ? previous
-            : "";
+            (employee) => String(employee.employee_id) === String(previous)
+          ) ? previous : "";
         });
       } catch (error) {
-        console.error(
-          "LOAD CASHIER SAVINGS ERROR:",
-          error
-        );
-
+        if (!isCurrent() || error?.name === "AbortError") return;
+        console.error("LOAD CASHIER SAVINGS ERROR:", error);
         if (!silent) {
-          notify(
-            error?.message ||
-              "Unable to load Savings."
-          );
+          setNotice({
+            text: error?.message || "Unable to load Savings.",
+            type: "error",
+          });
         }
       } finally {
-        if (!silent) setLoading(false);
+        // Only the current request can release the loading state.
+        if (isCurrent()) {
+          savingsRequestRef.current = null;
+          if (!silent) setLoading(false);
+        }
       }
     },
-    [shiftId, token, supabaseUrl, anonKey]
+    [shiftId, token, supabaseUrl, anonKey, savingsContext]
   );
 
   // Prevent an old DStv confirmation popup remaining open after Admin locks it.
@@ -450,16 +433,33 @@ export default function CashierSavingsPanel({
     return () => clearInterval(timer);
   }, [loadBankingMode]);
 
-  // AUTO REFRESH
-
+  // AUTO REFRESH — 30 SECONDS, ONLY WHILE VISIBLE
   useEffect(() => {
-    loadSavings();
+    // Cancel requests from the previous shift/session or unmounted panel.
+    loadSavings(false);
 
     const timer = setInterval(() => {
-      loadSavings(true);
-    }, 5000);
+      if (document.visibilityState === "visible") {
+        void loadSavings(true);
+      }
+    }, 30000);
 
-    return () => clearInterval(timer);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadSavings(true);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      savingsGenerationRef.current += 1;
+      if (savingsRequestRef.current) {
+        savingsRequestRef.current.abort();
+        savingsRequestRef.current = null;
+      }
+    };
   }, [loadSavings]);
 
   // EMPLOYEE DIRECTORY
@@ -650,7 +650,7 @@ export default function CashierSavingsPanel({
       const result = await callRpc(rpc, body);
 
       onSuccess(result);
-      await loadSavings(true);
+      await loadSavings(true, true);
     } catch (error) {
       console.error(
         `${action} SAVINGS ERROR:`,
@@ -996,7 +996,7 @@ export default function CashierSavingsPanel({
         );
       }
 
-      await loadSavings(true);
+      await loadSavings(true, true);
     } catch (error) {
       console.error(
         "BANKING PAYMENT REQUEST ERROR:",
@@ -1214,7 +1214,7 @@ export default function CashierSavingsPanel({
             : old
         );
 
-        await loadSavings(true);
+        await loadSavings(true, true);
         return;
       }
 
@@ -1235,7 +1235,7 @@ export default function CashierSavingsPanel({
             : old
         );
 
-        await loadSavings(true);
+        await loadSavings(true, true);
         return;
       }
 
@@ -1251,7 +1251,7 @@ export default function CashierSavingsPanel({
         "success"
       );
 
-      await loadSavings(true);
+      await loadSavings(true, true);
     } catch (error) {
       console.error(
         "UTILITY PAYMENT REQUEST ERROR:",
@@ -1426,7 +1426,6 @@ export default function CashierSavingsPanel({
       },
     });
   }
-
   // ==========================================
 // DISPLAY
   // ==========================================
