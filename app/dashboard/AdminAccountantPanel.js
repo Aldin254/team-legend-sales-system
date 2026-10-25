@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // TEAM LEGEND — ADMIN ACCOUNTANT CONTROL
 // Clean, readable presentation. Existing RPCs and financial logic retained.
+const ACCOUNTANT_REFRESH_MS = 60_000;
 
 export default function AdminAccountantPanel({ user }) {
   const [reportDate, setReportDate] = useState(getNairobiDate());
@@ -17,6 +18,8 @@ export default function AdminAccountantPanel({ user }) {
   const [savingBf, setSavingBf] = useState(false);
   const [bfMessage, setBfMessage] = useState("");
   const [bfMessageType, setBfMessageType] = useState("");
+  const snapshotRequestRef = useRef(null);
+  const lastSnapshotAtRef = useRef(0);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -31,16 +34,24 @@ export default function AdminAccountantPanel({ user }) {
     [supabaseAnonKey, accessToken]
   );
 
-  // Load data from the same existing Admin Accountant snapshot function.
-  const loadSnapshot = useCallback(async () => {
+  // One active snapshot request at a time. A manual/post-save refresh takes
+  // precedence over an older background request, avoiding stale B/F figures.
+  const loadSnapshot = useCallback(async ({ force = false } = {}) => {
     if (!accessToken || !supabaseUrl || !supabaseAnonKey || !reportDate) {
       setLoading(false);
       return;
     }
 
+    if (snapshotRequestRef.current) {
+      if (!force) return;
+      snapshotRequestRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    snapshotRequestRef.current = controller;
+
     try {
       setError("");
-
       const response = await fetch(
         `${supabaseUrl}/rest/v1/rpc/tl_admin_accountant_snapshot`,
         {
@@ -48,10 +59,12 @@ export default function AdminAccountantPanel({ user }) {
           headers: authHeaders,
           body: JSON.stringify({ p_report_date: reportDate }),
           cache: "no-store",
+          signal: controller.signal,
         }
       );
 
       const result = await safeJson(response);
+      if (controller.signal.aborted) return;
       if (!response.ok) {
         throw new Error(
           result?.message ||
@@ -61,24 +74,40 @@ export default function AdminAccountantPanel({ user }) {
         );
       }
 
-      setSnapshot(
-        result && typeof result === "object" ? result : {}
-      );
+      setSnapshot(result && typeof result === "object" ? result : {});
+      lastSnapshotAtRef.current = Date.now();
     } catch (error) {
+      if (controller.signal.aborted || error?.name === "AbortError") return;
       console.error("ADMIN ACCOUNTANT SNAPSHOT ERROR:", error);
       setError(error?.message || "Unable to load Accountant information.");
     } finally {
-      setLoading(false);
+      if (snapshotRequestRef.current === controller) {
+        snapshotRequestRef.current = null;
+        setLoading(false);
+      }
     }
   }, [accessToken, supabaseUrl, supabaseAnonKey, reportDate, authHeaders]);
 
-  // Refresh every five seconds, as before.
   useEffect(() => {
     setLoading(true);
-    loadSnapshot();
+    setSnapshot(null); // Never show another date's report while loading.
+    lastSnapshotAtRef.current = 0;
+    loadSnapshot({ force: true });
 
-    const timer = setInterval(loadSnapshot, 5000);
-    return () => clearInterval(timer);
+    const refreshIfDue = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastSnapshotAtRef.current < ACCOUNTANT_REFRESH_MS) return;
+      loadSnapshot();
+    };
+
+    const timer = setInterval(refreshIfDue, ACCOUNTANT_REFRESH_MS);
+    document.addEventListener("visibilitychange", refreshIfDue);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfDue);
+      snapshotRequestRef.current?.abort();
+      snapshotRequestRef.current = null;
+    };
   }, [loadSnapshot]);
 
   const report = useMemo(() => {
@@ -218,7 +247,7 @@ export default function AdminAccountantPanel({ user }) {
         `Balance B/F updated from KES ${money(oldBalance)} to KES ${money(newOpeningBalance)}.`
       );
       setBfMessageType("success");
-      await loadSnapshot();
+      await loadSnapshot({ force: true });
     } catch (error) {
       console.error("ADMIN ACCOUNTANT B/F ERROR:", error);
       setBfMessage(error?.message || "Unable to update Accountant Balance B/F.");
