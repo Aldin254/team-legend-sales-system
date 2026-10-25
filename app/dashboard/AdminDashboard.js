@@ -2120,7 +2120,7 @@ function AdminMasterEmployeeList({
                               <button
                                 type="button"
                                 style={masterRemoveStyle}
-                                disabled={saving}
+disabled={saving}
                                 onClick={() =>
                                   discardNew(row.key)
                                 }
@@ -2813,6 +2813,8 @@ function SettingsPanel({ user }) {
         </div>
       </div>
 
+      <AdminStaffSessionControl user={user} />
+
       <AdminShopManagementPanel
         user={user}
       />
@@ -2821,6 +2823,114 @@ function SettingsPanel({ user }) {
         user={user}
       />
     </>
+  );
+}
+
+// ==================================================
+// ADMIN STAFF SESSION CONTROL — BACKEND-GATED
+// The server RPC must be deployed and verified before
+// this control is enabled. Never revoke Admin sessions.
+// ==================================================
+
+const STAFF_FORCE_LOGOUT_BACKEND_READY = false;
+
+function AdminStaffSessionControl({ user }) {
+  const [reason, setReason] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+
+  async function forceLogoutStaff() {
+    if (!STAFF_FORCE_LOGOUT_BACKEND_READY || busy || !confirm) return;
+    const trimmed = reason.trim();
+    if (trimmed.length < 5) {
+      setError("Enter a reason of at least 5 characters.");
+      return;
+    }
+    if (String(user?.role || "").toUpperCase() !== "ADMIN") {
+      setError("Only Admin may request staff logout.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!baseUrl || !anonKey || !user?.access_token) {
+        throw new Error("Admin authentication is unavailable.");
+      }
+      const response = await fetch(
+        `${baseUrl}/rest/v1/rpc/tl_admin_force_logout_staff`,
+        {
+          method: "POST",
+          headers: {
+            apikey: anonKey,
+            Authorization: `Bearer ${user.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ p_reason: trimmed }),
+          cache: "no-store",
+        }
+      );
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.ok !== true) {
+        throw new Error(result?.message || "Staff logout was not confirmed by the server.");
+      }
+      setNotice("Server confirmed the staff logout request.");
+      setReason("");
+      setConfirm(false);
+    } catch (err) {
+      setError(err?.message || "Unable to request staff logout.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section style={{ ...settingsPanelStyle, marginTop: 16, marginBottom: 16 }}>
+      <div style={settingsTitleStyle}>STAFF SESSION CONTROL</div>
+      <p style={{ fontSize: 12, lineHeight: 1.6 }}>
+        Force logout all Cashiers and Accountants on every device.
+        Admin sessions and all shift and financial records must be preserved.
+      </p>
+      {!STAFF_FORCE_LOGOUT_BACKEND_READY && (
+        <p role="status" style={{ color: "#92400e", fontWeight: 700, fontSize: 12 }}>
+          NOT ACTIVE — secure server-side session revocation is not installed.
+        </p>
+      )}
+      <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+        Reason for forced logout
+      </label>
+      <textarea
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        disabled={!STAFF_FORCE_LOGOUT_BACKEND_READY || busy}
+        placeholder="Reason (required)"
+        rows={2}
+        style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #cbd5e1", borderRadius: 6 }}
+      />
+      <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, fontSize: 12 }}>
+        <input
+          type="checkbox"
+          checked={confirm}
+          onChange={(event) => setConfirm(event.target.checked)}
+          disabled={!STAFF_FORCE_LOGOUT_BACKEND_READY || busy}
+        />
+        I confirm that all Cashier and Accountant sessions should be revoked.
+      </label>
+      <button
+        type="button"
+        onClick={forceLogoutStaff}
+        disabled={!STAFF_FORCE_LOGOUT_BACKEND_READY || busy || !confirm || reason.trim().length < 5}
+        style={{ marginTop: 12, padding: "12px 16px", border: 0, borderRadius: 6, background: "#991b1b", color: "#fff", fontWeight: 800, opacity: !STAFF_FORCE_LOGOUT_BACKEND_READY || busy || !confirm || reason.trim().length < 5 ? 0.5 : 1, cursor: "pointer" }}
+      >
+        {busy ? "REQUESTING LOGOUT..." : "FORCE LOGOUT ALL CASHIERS & ACCOUNTANTS"}
+      </button>
+      {notice && <p role="status" style={{ color: "#166534" }}>{notice}</p>}
+      {error && <p role="alert" style={{ color: "#b91c1c" }}>{error}</p>}
+    </section>
   );
 }
 
