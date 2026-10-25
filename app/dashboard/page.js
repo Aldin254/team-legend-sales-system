@@ -209,6 +209,13 @@ const cashierProfile = (u) =>
   u?.auth_user_id ||
   null;
 
+// Cashier / Accountant inactivity timeout (genuine user activity only).
+const TL_IDLE_LIMIT_MS = 30 * 60 * 1000;
+const TL_IDLE_KEY = "teamLegendLastActivityAt";
+const tlIdleApplies = (u) => ["CASHIER", "ACCOUNTANT"].includes(
+  String(u?.role || "").trim().toUpperCase()
+);
+
 // ==================================================
 // MAIN DASHBOARD
 // ==================================================
@@ -245,6 +252,7 @@ export default function DashboardPage() {
   // REFS
 
   const refreshPromiseRef = useRef(null);
+  const signedOutRef = useRef(false);
   const wasRecoveringRef = useRef(false);
   const recoveryPollRef = useRef(false);
   const closingGatePollRef = useRef(false);
@@ -256,7 +264,7 @@ export default function DashboardPage() {
   // ==================================================
 
   const saveUserSession = useCallback((nextUser) => {
-    if (!nextUser) return;
+    if (!nextUser || signedOutRef.current) return;
 
     sessionStorage.setItem(
       "teamLegendUser",
@@ -271,6 +279,8 @@ export default function DashboardPage() {
   // ==================================================
 
   const expireSession = useCallback(() => {
+    signedOutRef.current = true;
+    sessionStorage.removeItem(TL_IDLE_KEY);
     sessionStorage.removeItem("teamLegendUser");
 
     setUser(null);
@@ -287,7 +297,7 @@ export default function DashboardPage() {
 
   const refreshUserSession = useCallback(
     async (u, options = {}) => {
-      if (!u) {
+      if (!u || signedOutRef.current) {
         throw sessionExpired();
       }
 
@@ -372,6 +382,7 @@ export default function DashboardPage() {
             "bearer",
         };
 
+        if (signedOutRef.current) throw sessionExpired();
         saveUserSession(next);
 
         return next;
@@ -429,6 +440,22 @@ export default function DashboardPage() {
         } catch {
           expireSession();
           return;
+        }
+
+        // Check persisted inactivity BEFORE refreshing the access token.
+        // A reload, sleeping laptop, or background tab cannot reset this clock.
+        if (tlIdleApplies(stored)) {
+          const last = Number(sessionStorage.getItem(TL_IDLE_KEY));
+          if (Number.isFinite(last) && last > 0 &&
+              (last > Date.now() || Date.now() - last >= TL_IDLE_LIMIT_MS)) {
+            expireSession();
+            return;
+          }
+          if (!Number.isFinite(last) || last <= 0) {
+            sessionStorage.setItem(TL_IDLE_KEY, String(Date.now()));
+          }
+        } else {
+          sessionStorage.removeItem(TL_IDLE_KEY);
         }
 
         const active =
@@ -736,7 +763,6 @@ export default function DashboardPage() {
 
           return;
         }
-
         if (!cancelled) {
           setMessage(
             err?.message ||
@@ -1117,6 +1143,59 @@ export default function DashboardPage() {
     user?.access_token,
     recoveryView,
   ]);
+
+  // ==================================================
+  // 30-MINUTE CASHIER / ACCOUNTANT INACTIVITY LOGOUT
+  // ==================================================
+
+  useEffect(() => {
+    if (!user || !tlIdleApplies(user)) return;
+
+    let last = Number(sessionStorage.getItem(TL_IDLE_KEY));
+    if (!Number.isFinite(last) || last <= 0) {
+      last = Date.now();
+      sessionStorage.setItem(TL_IDLE_KEY, String(last));
+    }
+
+    const checkIdle = () => {
+      const saved = Number(sessionStorage.getItem(TL_IDLE_KEY));
+      if (!Number.isFinite(saved) || saved <= 0 ||
+          saved > Date.now() || Date.now() - saved >= TL_IDLE_LIMIT_MS) {
+        expireSession();
+      }
+    };
+
+    let lastRecorded = 0;
+    const recordActivity = (event) => {
+      if (document.visibilityState === "hidden" || signedOutRef.current) return;
+      // Ignore synthetic events and background processing.
+      if (!event.isTrusted) return;
+      const now = Date.now();
+      if (now - lastRecorded < 1000) return;
+      lastRecorded = now;
+      sessionStorage.setItem(TL_IDLE_KEY, String(now));
+    };
+
+    // Check first, then register listeners. Focus/visibility do not count
+    // as activity: returning after 30 minutes must still log the user out.
+    checkIdle();
+    const activityEvents = ["pointerdown", "pointermove", "keydown", "touchstart", "wheel", "input"];
+    activityEvents.forEach((name) =>
+      window.addEventListener(name, recordActivity, { passive: true })
+    );
+    window.addEventListener("focus", checkIdle);
+    document.addEventListener("visibilitychange", checkIdle);
+    const timer = window.setInterval(checkIdle, 15000);
+
+    return () => {
+      window.clearInterval(timer);
+      activityEvents.forEach((name) =>
+        window.removeEventListener(name, recordActivity)
+      );
+      window.removeEventListener("focus", checkIdle);
+      document.removeEventListener("visibilitychange", checkIdle);
+    };
+  }, [user?.role, user?.auth_user_id, expireSession]);
 
   // ==================================================
   // AUTOMATIC TOKEN REFRESH
@@ -2215,7 +2294,6 @@ async function getShopOpenShift(shopId, token) {
 // ==================================================
 // CLOSED SHIFT FOR DATE
 // ==================================================
-
 async function getClosedShiftForDate(
   shopId,
   businessDate,
