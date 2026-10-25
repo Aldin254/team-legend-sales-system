@@ -58,6 +58,7 @@ export default function CashierReport({ user, currentShift }) {
   const [now, setNow] = useState(() => new Date());
 
   const requestIdRef = useRef(0);
+  const reportControllerRef = useRef(null);
   const expenseSavingRef = useRef(false);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -224,6 +225,8 @@ export default function CashierReport({ user, currentShift }) {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    reportControllerRef.current?.abort();
+    reportControllerRef.current = null;
 
     setShift(currentShift || null);
     setPlatforms([]);
@@ -242,8 +245,18 @@ export default function CashierReport({ user, currentShift }) {
   // LOAD CASHIER REPORT
   // ==========================================
 
-  const loadReport = useCallback(async () => {
+  const loadReport = useCallback(async (priority = true) => {
+    // Background polls never overlap. A financial-action refresh takes priority.
+    if (!priority && reportControllerRef.current) return;
+
+    reportControllerRef.current?.abort();
+    const controller = new AbortController();
+    reportControllerRef.current = controller;
     const requestId = ++requestIdRef.current;
+    const isCurrent = () =>
+      !controller.signal.aborted &&
+      reportControllerRef.current === controller &&
+      requestIdRef.current === requestId;
 
     if (
       !shiftId ||
@@ -252,6 +265,9 @@ export default function CashierReport({ user, currentShift }) {
       !supabaseUrl ||
       !supabaseAnonKey
     ) {
+      if (reportControllerRef.current === controller) {
+        reportControllerRef.current = null;
+      }
       setLoading(false);
       return;
     }
@@ -271,6 +287,7 @@ export default function CashierReport({ user, currentShift }) {
           {
             headers,
             cache: "no-store",
+            signal: controller.signal,
           }
         ),
 
@@ -281,6 +298,7 @@ export default function CashierReport({ user, currentShift }) {
           {
             headers,
             cache: "no-store",
+            signal: controller.signal,
           }
         ),
 
@@ -290,6 +308,7 @@ export default function CashierReport({ user, currentShift }) {
           {
             headers,
             cache: "no-store",
+            signal: controller.signal,
           }
         ),
 
@@ -299,6 +318,7 @@ export default function CashierReport({ user, currentShift }) {
           {
             headers,
             cache: "no-store",
+            signal: controller.signal,
           }
         ),
 
@@ -309,6 +329,7 @@ export default function CashierReport({ user, currentShift }) {
           {
             headers,
             cache: "no-store",
+            signal: controller.signal,
           }
         ),
       ]);
@@ -348,7 +369,7 @@ export default function CashierReport({ user, currentShift }) {
         );
       }
 
-      if (requestIdRef.current !== requestId) return;
+      if (!isCurrent()) return;
 
       const nextPlatforms = Array.isArray(results[1])
         ? results[1]
@@ -436,9 +457,10 @@ export default function CashierReport({ user, currentShift }) {
         )
       );
     } catch (error) {
+      if (!isCurrent() || error?.name === "AbortError") return;
       console.error("CASHIER REPORT ERROR:", error);
 
-      if (requestIdRef.current === requestId) {
+      if (isCurrent()) {
         setMessage(
           error?.message ||
           "Unable to load cashier report."
@@ -446,8 +468,9 @@ export default function CashierReport({ user, currentShift }) {
         setMessageType("error");
       }
     } finally {
-      if (requestIdRef.current === requestId) {
-        setLoading(false);
+      if (isCurrent()) setLoading(false);
+      if (reportControllerRef.current === controller) {
+        reportControllerRef.current = null;
       }
     }
   }, [
@@ -459,13 +482,24 @@ export default function CashierReport({ user, currentShift }) {
   ]);
 
   useEffect(() => {
-    loadReport();
+    // Initial load and action-triggered refreshes take priority.
+    void loadReport(true);
 
-    const timer = setInterval(loadReport, 5000);
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        void loadReport(false);
+      }
+    };
+
+    const timer = setInterval(refreshIfVisible, 30000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
 
     return () => {
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
       requestIdRef.current += 1;
+      reportControllerRef.current?.abort();
+      reportControllerRef.current = null;
     };
   }, [loadReport]);
 
@@ -1851,13 +1885,13 @@ export default function CashierReport({ user, currentShift }) {
                 <CashierSafaricomWithdrawalPanel
                   user={user}
                   currentShift={activeShift}
-                  onWithdrawalChanged={loadReport}
+                  onWithdrawalChanged={() => void loadReport(true)}
                 />
 
                 <CashierAccountsReturnPanel
                   user={user}
                   currentShift={activeShift}
-                  onReturnChanged={loadReport}
+                  onReturnChanged={() => void loadReport(true)}
                 />
               </div>
             </div>
