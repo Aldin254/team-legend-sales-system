@@ -2,36 +2,30 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const ACCOUNT_TYPES = ["RENT", "WIFI", "DSTV", "ELECTRICITY", "BANKING"];
-const FIXED_TYPES = new Set(["RENT", "WIFI", "DSTV"]);
-const EDITABLE_DUE_TYPES = new Set(["WIFI", "DSTV", "ELECTRICITY"]);
-const MONTHLY_TYPES = new Set(["WIFI", "DSTV"]);
+// TEAM LEGEND — ADMIN ACCOUNTANT CONTROL
+// Clean, readable presentation. Existing RPCs and financial logic retained.
+const ACCOUNTANT_REFRESH_MS = 60_000;
 
-const ACCOUNT_COLUMNS =
-  "110px minmax(160px,1.2fr) minmax(145px,1fr) " +
-  "minmax(145px,1fr) 205px 145px minmax(185px,1.2fr) 80px";
+export default function AdminAccountantPanel({ user }) {
+  const [reportDate, setReportDate] = useState(getNairobiDate());
+  const [snapshot, setSnapshot] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-export default function AdminAccountsPanel({ user }) {
+  const [bfInput, setBfInput] = useState("");
+  const [bfReason, setBfReason] = useState("");
+  const [bfDirty, setBfDirty] = useState(false);
+  const [savingBf, setSavingBf] = useState(false);
+  const [bfMessage, setBfMessage] = useState("");
+  const [bfMessageType, setBfMessageType] = useState("");
+  const snapshotRequestRef = useRef(null);
+  const lastSnapshotAtRef = useRef(0);
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const accessToken = user?.access_token || null;
 
-  const [shops, setShops] = useState([]);
-  const [selectedShopId, setSelectedShopId] = useState("");
-  const [accounts, setAccounts] = useState([]);
-  const [auditHistory, setAuditHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingAccounts, setLoadingAccounts] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
-  const [editingDue, setEditingDue] = useState({});
-
-  const accountRequestRef = useRef(0);
-  const historyRequestRef = useRef(0);
-
-  const authHeaders = useCallback(
+  const authHeaders = useMemo(
     () => ({
       apikey: supabaseAnonKey,
       Authorization: `Bearer ${accessToken}`,
@@ -40,1274 +34,861 @@ export default function AdminAccountsPanel({ user }) {
     [supabaseAnonKey, accessToken]
   );
 
-  const loadShops = useCallback(async () => {
-    if (!supabaseUrl || !supabaseAnonKey || !accessToken) {
+  // One active snapshot request at a time. A manual/post-save refresh takes
+  // precedence over an older background request, avoiding stale B/F figures.
+  const loadSnapshot = useCallback(async ({ force = false } = {}) => {
+    if (!accessToken || !supabaseUrl || !supabaseAnonKey || !reportDate) {
       setLoading(false);
       return;
     }
 
+    if (snapshotRequestRef.current) {
+      if (!force) return;
+      snapshotRequestRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    snapshotRequestRef.current = controller;
+
     try {
-      setLoading(true);
+      setError("");
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/rpc/tl_admin_accountant_snapshot`,
+        {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ p_report_date: reportDate }),
+          cache: "no-store",
+          signal: controller.signal,
+        }
+      );
+
+      const result = await safeJson(response);
+      if (controller.signal.aborted) return;
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            "Unable to load Accountant information."
+        );
+      }
+
+      setSnapshot(result && typeof result === "object" ? result : {});
+      lastSnapshotAtRef.current = Date.now();
+    } catch (error) {
+      if (controller.signal.aborted || error?.name === "AbortError") return;
+      console.error("ADMIN ACCOUNTANT SNAPSHOT ERROR:", error);
+      setError(error?.message || "Unable to load Accountant information.");
+    } finally {
+      if (snapshotRequestRef.current === controller) {
+        snapshotRequestRef.current = null;
+        setLoading(false);
+      }
+    }
+  }, [accessToken, supabaseUrl, supabaseAnonKey, reportDate, authHeaders]);
+
+  useEffect(() => {
+    setLoading(true);
+    setSnapshot(null); // Never show another date's report while loading.
+    lastSnapshotAtRef.current = 0;
+    loadSnapshot({ force: true });
+
+    const refreshIfDue = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastSnapshotAtRef.current < ACCOUNTANT_REFRESH_MS) return;
+      loadSnapshot();
+    };
+
+    const timer = setInterval(refreshIfDue, ACCOUNTANT_REFRESH_MS);
+    document.addEventListener("visibilitychange", refreshIfDue);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfDue);
+      snapshotRequestRef.current?.abort();
+      snapshotRequestRef.current = null;
+    };
+  }, [loadSnapshot]);
+
+  const report = useMemo(() => {
+    const raw = snapshot?.report;
+    if (Array.isArray(raw)) return raw[0] || null;
+    return raw && typeof raw === "object" ? raw : null;
+  }, [snapshot]);
+
+  const expenses = useMemo(
+    () => normaliseArray(snapshot?.expenses),
+    [snapshot]
+  );
+  const transactions = useMemo(
+    () => normaliseArray(snapshot?.transactions),
+    [snapshot]
+  );
+  const accountants = useMemo(
+    () => normaliseArray(snapshot?.accountants),
+    [snapshot]
+  );
+
+  const openingBalance = numberValue(report?.opening_balance);
+  const totalFloatSent = numberValue(report?.total_float_sent);
+  const totalFloatReceived = numberValue(report?.total_float_received);
+  const totalFees = numberValue(report?.total_transaction_fees);
+  const totalExpenses = numberValue(report?.total_expenses);
+  const closingBalance = numberValue(report?.closing_balance);
+  const reportStatus = String(report?.status || "NO REPORT")
+    .trim()
+    .toUpperCase();
+
+  // Do not overwrite a B/F amount while Admin is typing.
+  useEffect(() => {
+    if (!report) {
+      if (!bfDirty) setBfInput("");
+      return;
+    }
+    if (!bfDirty) {
+      setBfInput(String(report.opening_balance ?? 0));
+    }
+  }, [report, bfDirty]);
+
+  useEffect(() => {
+    setBfDirty(false);
+    setBfReason("");
+    setBfMessage("");
+    setBfMessageType("");
+    setBfInput("");
+  }, [reportDate]);
+
+  async function saveAccountantBf() {
+    if (!reportDate) {
+      setBfMessage("Select an Accountant report date.");
+      setBfMessageType("error");
+      return;
+    }
+    if (!report) {
+      setBfMessage("There is no Accountant report for this date.");
+      setBfMessageType("error");
+      return;
+    }
+
+    const cleanAmount = String(bfInput ?? "").trim();
+    if (cleanAmount === "") {
+      setBfMessage("Enter the corrected Balance B/F.");
+      setBfMessageType("error");
+      return;
+    }
+
+    const newOpeningBalance = Number(cleanAmount);
+    if (!Number.isFinite(newOpeningBalance)) {
+      setBfMessage("Enter a valid Balance B/F.");
+      setBfMessageType("error");
+      return;
+    }
+
+    const cleanReason = String(bfReason || "").trim();
+    if (cleanReason.length < 3) {
+      setBfMessage("Enter a reason for the B/F correction.");
+      setBfMessageType("error");
+      return;
+    }
+
+    const oldBalance = openingBalance;
+    if (roundMoney(oldBalance) === roundMoney(newOpeningBalance)) {
+      setBfMessage("The new Balance B/F is the same as the current Balance B/F.");
+      setBfMessageType("error");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "ADMIN ACCOUNTANT BALANCE B/F CORRECTION\n\n" +
+        `Report Date: ${reportDate}\n` +
+        `Current B/F: KES ${money(oldBalance)}\n` +
+        `New B/F: KES ${money(newOpeningBalance)}\n\n` +
+        `Reason: ${cleanReason}\n\n` +
+        "This changes only the Accountant Balance B/F.\n\n" +
+        "Continue?"
+    );
+    if (!confirmed) return;
+
+    try {
+      setSavingBf(true);
+      setBfMessage("");
+      setBfMessageType("");
 
       const response = await fetch(
-        `${supabaseUrl}/rest/v1/shops` +
-          "?is_active=eq.true&select=id,shop_name,shop_type,is_active" +
-          "&order=shop_name.asc",
+        `${supabaseUrl}/rest/v1/rpc/tl_admin_set_accountant_bf`,
         {
-          method: "GET",
-          headers: authHeaders(),
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({
+            p_report_date: reportDate,
+            p_opening_balance: roundMoney(newOpeningBalance),
+            p_reason: cleanReason,
+          }),
           cache: "no-store",
         }
       );
 
       const result = await safeJson(response);
-
       if (!response.ok) {
         throw new Error(
-          result?.message || result?.details || "Unable to load shops."
+          result?.message ||
+            result?.details ||
+            result?.hint ||
+            "Unable to update Accountant Balance B/F."
         );
       }
+      if (result?.success === false) {
+        throw new Error(result?.message || "Unable to update Accountant Balance B/F.");
+      }
 
-      const rows = Array.isArray(result) ? result : [];
-      setShops(rows);
-
-      setSelectedShopId((previous) =>
-        previous && rows.some((shop) => shop.id === previous)
-          ? previous
-          : rows[0]?.id || ""
+      setBfDirty(false);
+      setBfReason("");
+      setBfMessage(
+        `Balance B/F updated from KES ${money(oldBalance)} to KES ${money(newOpeningBalance)}.`
       );
+      setBfMessageType("success");
+      await loadSnapshot({ force: true });
     } catch (error) {
-      console.error("ADMIN ACCOUNTS SHOPS ERROR:", error);
-      setMessage(error?.message || "Unable to load shops.");
-      setMessageType("error");
+      console.error("ADMIN ACCOUNTANT B/F ERROR:", error);
+      setBfMessage(error?.message || "Unable to update Accountant Balance B/F.");
+      setBfMessageType("error");
     } finally {
-      setLoading(false);
-    }
-  }, [supabaseUrl, supabaseAnonKey, accessToken, authHeaders]);
-
-  const loadAccounts = useCallback(
-    async (shopId) => {
-      const requestId = ++accountRequestRef.current;
-
-      if (!shopId || !supabaseUrl || !accessToken) {
-        setAccounts(makeBlankAccounts(shopId));
-        setLoadingAccounts(false);
-        return;
-      }
-
-      try {
-        setLoadingAccounts(true);
-
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/shop_accounts` +
-            `?shop_id=eq.${encodeURIComponent(shopId)}` +
-            "&select=id,shop_id,account_type,description," +
-            "account_number,paybill_till,bank,is_active," +
-            "obligation_amount,obligation_change_reason,due_date" +
-            "&order=account_type.asc",
-          {
-            method: "GET",
-            headers: authHeaders(),
-            cache: "no-store",
-          }
-        );
-
-        const result = await safeJson(response);
-
-        if (!response.ok) {
-          throw new Error(
-            result?.message ||
-              result?.details ||
-              "Unable to load shop accounts."
-          );
-        }
-
-        if (requestId !== accountRequestRef.current) return;
-
-        const existing = Array.isArray(result) ? result : [];
-
-        const merged = ACCOUNT_TYPES.map((type) => {
-          const found = existing.find(
-            (item) =>
-              String(item.account_type || "").trim().toUpperCase() === type
-          );
-
-          const amount =
-            found?.obligation_amount == null
-              ? ""
-              : String(found.obligation_amount);
-
-          return {
-            id: found?.id || null,
-            shop_id: shopId,
-            account_type: type,
-            description: found?.description || type,
-            account_number: found?.account_number || "",
-            paybill_till: found?.paybill_till || "",
-            bank: found?.bank || "",
-            is_active: found?.is_active !== false,
-            obligation_amount: amount,
-            original_obligation_amount: amount,
-            change_reason: "",
-            due_date: found?.due_date
-              ? String(found.due_date).slice(0, 10)
-              : "",
-          };
-        });
-
-        setAccounts(merged);
-        setEditingDue({});
-      } catch (error) {
-        if (requestId !== accountRequestRef.current) return;
-
-        console.error("ADMIN SHOP ACCOUNTS ERROR:", error);
-        setAccounts(makeBlankAccounts(shopId));
-        setMessage(error?.message || "Unable to load shop accounts.");
-        setMessageType("error");
-      } finally {
-        if (requestId === accountRequestRef.current) {
-          setLoadingAccounts(false);
-        }
-      }
-    },
-    [supabaseUrl, accessToken, authHeaders]
-  );
-
-  const loadAuditHistory = useCallback(
-    async (shopId) => {
-      const requestId = ++historyRequestRef.current;
-
-      if (!shopId || !supabaseUrl || !accessToken) {
-        setAuditHistory([]);
-        setLoadingHistory(false);
-        return;
-      }
-
-      try {
-        setLoadingHistory(true);
-
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/rpc/tl_admin_shop_obligation_history`,
-          {
-            method: "POST",
-            headers: authHeaders(),
-            body: JSON.stringify({ p_shop_id: shopId }),
-            cache: "no-store",
-          }
-        );
-
-        const result = await safeJson(response);
-
-        if (!response.ok) {
-          throw new Error(
-            result?.message ||
-              result?.details ||
-              "Unable to load fixed amount history."
-          );
-        }
-
-        if (requestId !== historyRequestRef.current) return;
-
-        setAuditHistory(Array.isArray(result) ? result : []);
-      } catch (error) {
-        if (requestId !== historyRequestRef.current) return;
-
-        console.error("ACCOUNT AMOUNT AUDIT ERROR:", error);
-        setAuditHistory([]);
-      } finally {
-        if (requestId === historyRequestRef.current) {
-          setLoadingHistory(false);
-        }
-      }
-    },
-    [supabaseUrl, accessToken, authHeaders]
-  );
-
-  useEffect(() => {
-    loadShops();
-  }, [loadShops]);
-
-  useEffect(() => {
-    if (!selectedShopId) return;
-
-    setMessage("");
-    setMessageType("");
-
-    loadAccounts(selectedShopId);
-    loadAuditHistory(selectedShopId);
-  }, [selectedShopId, loadAccounts, loadAuditHistory]);
-
-  const selectedShop = useMemo(
-    () =>
-      shops.find(
-        (shop) => String(shop.id) === String(selectedShopId)
-      ) || null,
-    [shops, selectedShopId]
-  );
-
-  function updateAccount(type, field, value) {
-    setAccounts((previous) =>
-      previous.map((account) =>
-        account.account_type === type
-          ? { ...account, [field]: value }
-          : account
-      )
-    );
-
-    setMessage("");
-    setMessageType("");
-  }
-
-  async function saveAccounts() {
-    if (
-      saving ||
-      !selectedShopId ||
-      loadingAccounts ||
-      accounts.length !== ACCOUNT_TYPES.length
-    ) {
-      return;
-    }
-
-    for (const account of accounts) {
-      const type = account.account_type;
-
-      if (FIXED_TYPES.has(type)) {
-        const raw = cleanValue(account.obligation_amount);
-
-        if (
-          raw !== "" &&
-          (!Number.isFinite(Number(raw)) || Number(raw) < 0)
-        ) {
-          setMessage(`Enter a valid fixed amount for ${type}.`);
-          setMessageType("error");
-          return;
-        }
-
-        const changed = !amountsEqual(
-          account.original_obligation_amount,
-          account.obligation_amount
-        );
-
-        const hadExistingAmount =
-          cleanValue(account.original_obligation_amount) !== "";
-
-        if (
-          changed &&
-          hadExistingAmount &&
-          !cleanValue(account.change_reason)
-        ) {
-          setMessage(
-            `Enter the reason for changing the ${type} fixed amount.`
-          );
-          setMessageType("error");
-          return;
-        }
-      }
-
-      if (EDITABLE_DUE_TYPES.has(type)) {
-        const date = cleanValue(account.due_date);
-
-        if (date && !isValidDateKey(date)) {
-          setMessage(`Select a valid due date for ${type}.`);
-          setMessageType("error");
-          return;
-        }
-      }
-    }
-
-    const confirmed = window.confirm(
-      `Save account information for ${
-        selectedShop?.shop_name || "this shop"
-      }?\n\n` +
-        "WiFi and DStv repeat every month on the day you select.\n" +
-        "Changing that date updates future months.\n" +
-        "Rent stays on the 1st, Banking stays on Monday.\n" +
-        "Electricity has a manually selected due date."
-    );
-
-    if (!confirmed) return;
-
-    let savedCount = 0;
-
-    try {
-      setSaving(true);
-      setMessage("");
-      setMessageType("");
-
-      for (const account of accounts) {
-        const fixed = FIXED_TYPES.has(account.account_type);
-
-        const changed =
-          fixed &&
-          !amountsEqual(
-            account.original_obligation_amount,
-            account.obligation_amount
-          );
-
-        const amountText = cleanValue(account.obligation_amount);
-
-        const obligationAmount =
-          fixed && amountText !== ""
-            ? roundMoney(Number(amountText))
-            : null;
-
-        const payload = {
-          shop_id: selectedShopId,
-          account_type: account.account_type,
-
-          description:
-            cleanValue(account.description) || account.account_type,
-
-          account_number:
-            cleanValue(account.account_number) || null,
-
-          paybill_till:
-            cleanValue(account.paybill_till) || null,
-
-          bank:
-            cleanValue(account.bank) || null,
-
-          is_active: Boolean(account.is_active),
-
-          obligation_amount: obligationAmount,
-
-          obligation_change_reason:
-            fixed && changed
-              ? cleanValue(account.change_reason) || null
-              : null,
-
-          due_date: cleanValue(account.due_date) || null,
-        };
-
-        const existing = Boolean(account.id);
-
-        const endpoint = existing
-          ? `${supabaseUrl}/rest/v1/shop_accounts?id=eq.${encodeURIComponent(
-              account.id
-            )}`
-          : `${supabaseUrl}/rest/v1/shop_accounts`;
-
-        const response = await fetch(endpoint, {
-          method: existing ? "PATCH" : "POST",
-          headers: {
-            ...authHeaders(),
-            Prefer: "return=representation",
-          },
-          body: JSON.stringify(payload),
-          cache: "no-store",
-        });
-
-        const result = await safeJson(response);
-
-        if (!response.ok) {
-          throw new Error(
-            result?.message ||
-              result?.details ||
-              result?.hint ||
-              `Unable to save ${account.account_type}.`
-          );
-        }
-
-        if (!Array.isArray(result) || result.length === 0) {
-          throw new Error(
-            `${account.account_type} was not saved. Check Admin permissions.`
-          );
-        }
-
-        savedCount += 1;
-      }
-
-      setMessage(
-        `${selectedShop?.shop_name || "Shop"} account information saved.`
-      );
-      setMessageType("success");
-
-      await Promise.all([
-        loadAccounts(selectedShopId),
-        loadAuditHistory(selectedShopId),
-      ]);
-    } catch (error) {
-      console.error("SAVE SHOP ACCOUNTS ERROR:", error);
-
-      setMessage(
-        savedCount > 0
-          ? `Saving stopped after ${savedCount} account(s). Review before retrying. ${
-              error?.message || ""
-            }`
-          : error?.message || "Unable to save account information."
-      );
-      setMessageType("error");
-    } finally {
-      setSaving(false);
+      setSavingBf(false);
     }
   }
 
-  if (loading) {
-    return <div style={loadingStyle}>Loading shop accounts...</div>;
-  }
+  const cashierReturns = transactions.filter(
+    (transaction) =>
+      String(transaction?.flow || "").trim().toUpperCase() ===
+      "CASHIER_TO_ACCOUNTANT"
+  );
+  const accountantSends = transactions.filter(
+    (transaction) =>
+      String(transaction?.flow || "").trim().toUpperCase() ===
+      "ACCOUNTANT_TO_CASHIER"
+  );
 
   return (
-    <section style={wrapperStyle}>
-      <div style={controlPanelStyle}>
-        <div style={controlTitleStyle}>
-          SHOP ACCOUNT INFORMATION
-        </div>
-
-        <div style={shopControlStyle}>
-          <label style={labelStyle}>SELECT SHOP</label>
-
-          <select
-            value={selectedShopId}
-            disabled={saving}
+    <div style={wrapperStyle}>
+      {/* REPORT DATE */}
+      <section style={controlPanelStyle}>
+        <div style={controlTitleStyle}>LEGEND ACCOUNTS</div>
+        <div style={dateWrapStyle}>
+          <label style={labelStyle}>REPORT DATE</label>
+          <input
+            type="date"
+            value={reportDate}
             onChange={(event) => {
-              setSelectedShopId(event.target.value);
-              setMessage("");
-              setMessageType("");
+              setReportDate(event.target.value);
+              setLoading(true);
             }}
-            style={shopSelectStyle}
-          >
-            {shops.length === 0 ? (
-              <option value="">No active shops</option>
-            ) : (
-              shops.map((shop) => (
-                <option key={shop.id} value={shop.id}>
-                  {shop.shop_name}
-                </option>
-              ))
-            )}
-          </select>
+            style={dateInputStyle}
+          />
         </div>
-      </div>
+      </section>
 
-      {message && (
-        <div
-          role="status"
-          style={
-            messageType === "success" ? successStyle : errorStyle
-          }
-        >
-          {message}
-        </div>
-      )}
+      {error && <div style={errorStyle}>{error}</div>}
 
-      <div style={panelStyle}>
-        <div style={tableTitleStyle}>
-          ACCOUNTS INFORMATION
-        </div>
-
-        <div style={headerRowStyle}>
-          <div>TYPE</div>
-          <div>ACCOUNT NUMBER</div>
-          <div>PAYBILL / TILL</div>
-          <div>BANK / PROVIDER</div>
-          <div>DUE DATE</div>
-          <div>FIXED AMOUNT</div>
-          <div>CHANGE REASON</div>
-          <div>ACTIVE</div>
-        </div>
-
-        {loadingAccounts ? (
-          <div style={emptyStyle}>
-            Loading account information...
-          </div>
-        ) : (
-          accounts.map((account) => {
-            const type = account.account_type;
-            const fixed = FIXED_TYPES.has(type);
-            const monthly = MONTHLY_TYPES.has(type);
-
-            const amountChanged =
-              fixed &&
-              !amountsEqual(
-                account.original_obligation_amount,
-                account.obligation_amount
-              );
-
-            const today = todayNairobi();
-
-            const due =
-              type === "RENT"
-                ? nextRentDue(today)
-                : type === "BANKING"
-                ? nextBankingDue(today)
-                : monthly
-                ? nextMonthlyDue(account.due_date, today)
-                : account.due_date;
-
-            const editMonthly =
-              Boolean(editingDue[type]) || !account.due_date;
-
-            return (
-              <div key={type} style={accountRowStyle}>
-                <div style={accountTypeStyle}>{type}</div>
-
-                <input
-                  type="text"
-                  value={account.account_number}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateAccount(
-                      type,
-                      "account_number",
-                      event.target.value
-                    )
-                  }
-                  placeholder="Account number"
-                  style={inputStyle}
-                />
-
-                <input
-                  type="text"
-                  value={account.paybill_till}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateAccount(
-                      type,
-                      "paybill_till",
-                      event.target.value
-                    )
-                  }
-                  placeholder="PayBill / Till"
-                  style={inputStyle}
-                />
-                    <input
-                  type="text"
-                  value={account.bank}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateAccount(
-                      type,
-                      "bank",
-                      event.target.value
-                    )
-                  }
-                  placeholder="Bank / Provider"
-                  style={inputStyle}
-                />
-
-                {monthly ? (
-                  <div style={monthlyDueStyle}>
-                    <div style={dueValueStyle}>
-                      {due ? formatDateKey(due) : "NOT SET"}
-                    </div>
-
-                    {editMonthly ? (
-                      <input
-                        type="date"
-                        aria-label={`${type} monthly due date`}
-                        value={account.due_date || ""}
-                        disabled={saving}
-                        onChange={(event) =>
-                          updateAccount(
-                            type,
-                            "due_date",
-                            event.target.value
-                          )
-                        }
-                        style={dueDateInputStyle}
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() =>
-                          setEditingDue((previous) => ({
-                            ...previous,
-                            [type]: true,
-                          }))
-                        }
-                        style={editDueButtonStyle}
-                      >
-                        Change date
-                      </button>
-                    )}
-                  </div>
-                ) : type === "ELECTRICITY" ? (
-                  <input
-                    type="date"
-                    aria-label="Electricity due date"
-                    value={account.due_date || ""}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateAccount(
-                        type,
-                        "due_date",
-                        event.target.value
-                      )
-                    }
-                    style={dueDateInputStyle}
-                  />
-                ) : (
-                  <div style={automaticDueStyle}>
-                    <strong>
-                      {type === "RENT"
-                        ? "EVERY 1ST"
-                        : "EVERY MONDAY"}
-                    </strong>
-
-                    <span>{formatDateKey(due)}</span>
-                  </div>
-                )}
-
-                {fixed ? (
-                  <div style={amountWrapStyle}>
-                    <span style={currencyStyle}>KES</span>
-
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={account.obligation_amount}
-                      disabled={saving}
-                      onChange={(event) =>
-                        updateAccount(
-                          type,
-                          "obligation_amount",
-                          event.target.value
-                        )
-                      }
-                      placeholder="0.00"
-                      style={amountInputStyle}
-                    />
-                  </div>
-                ) : (
-                  <div style={notApplicableStyle}>—</div>
-                )}
-
-                {fixed && amountChanged ? (
-                  <input
-                    type="text"
-                    value={account.change_reason}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateAccount(
-                        type,
-                        "change_reason",
-                        event.target.value
-                      )
-                    }
-                    placeholder="Reason for change"
-                    style={inputStyle}
-                  />
-                ) : (
-                  <div style={notApplicableStyle}>—</div>
-                )}
-
-                <label style={activeWrapStyle}>
-                  <input
-                    type="checkbox"
-                    checked={account.is_active}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateAccount(
-                        type,
-                        "is_active",
-                        event.target.checked
-                      )
-                    }
-                  />
-
-                  <span>
-                    {account.is_active ? "YES" : "NO"}
-                  </span>
-                </label>
+      {loading && !snapshot ? (
+        <div style={loadingStyle}>Loading Legend Accounts...</div>
+      ) : (
+        <>
+          {/* DAILY SUMMARY */}
+          <section style={panelStyle}>
+            <div style={panelHeaderStyle}>
+              <div style={panelTitleStyle}>DAILY ACCOUNTANT REPORT</div>
+              <div
+                style={
+                  reportStatus === "OPEN"
+                    ? openBadgeStyle
+                    : reportStatus === "CLOSED"
+                    ? closedBadgeStyle
+                    : neutralBadgeStyle
+                }
+              >
+                {reportStatus}
               </div>
-            );
-          })
-        )}
-      </div>
+            </div>
+            <div style={summaryGridStyle}>
+              <SummaryCard title="REPORT DATE" text={report?.report_date || reportDate} />
+              <SummaryCard title="BALANCE B/F" amount={openingBalance} />
+              <SummaryCard title="FLOAT SENT" amount={totalFloatSent} />
+              <SummaryCard title="FLOAT RECEIVED" amount={totalFloatReceived} />
+              <SummaryCard title="TRANSACTION FEES" amount={totalFees} />
+              <SummaryCard title="ACCOUNTANT EXPENSES" amount={totalExpenses} />
+              <SummaryCard title="CLOSING BALANCE" amount={closingBalance} strong />
+            </div>
+          </section>
 
-      <button
-        type="button"
-        onClick={saveAccounts}
-        disabled={
-          saving ||
-          !selectedShopId ||
-          loadingAccounts ||
-          accounts.length !== ACCOUNT_TYPES.length
-        }
-        style={{
-          ...saveButtonStyle,
-          opacity:
-            saving || !selectedShopId || loadingAccounts
-              ? 0.6
-              : 1,
-        }}
-      >
-        {saving
-          ? "SAVING..."
-          : "SAVE ACCOUNT INFORMATION"}
-      </button>
-
-      <div style={historyPanelStyle}>
-        <div style={historyTitleStyle}>
-          FIXED AMOUNT CHANGE HISTORY
-        </div>
-
-        {loadingHistory ? (
-          <div style={historyEmptyStyle}>
-            Loading history...
-          </div>
-        ) : auditHistory.length === 0 ? (
-          <div style={historyEmptyStyle}>
-            No history yet.
-          </div>
-        ) : (
-          <>
-            <div style={historyHeaderStyle}>
-              <div>TYPE</div>
-              <div>OLD</div>
-              <div>NEW</div>
-              <div>REASON</div>
-              <div>DATE / TIME</div>
+          {/* ADMIN BALANCE B/F CORRECTION */}
+          <section style={bfPanelStyle}>
+            <div style={bfHeaderStyle}>
+              <div style={bfTitleStyle}>ADMIN BALANCE B/F CORRECTION</div>
+              <span style={bfOnlyBadgeStyle}>B/F ONLY</span>
             </div>
 
-            {auditHistory.slice(0, 20).map((item) => (
-              <div key={item.id} style={historyRowStyle}>
-                <strong>{item.account_type}</strong>
-
-                <div>
-                  {item.old_amount == null
-                    ? "—"
-                    : `KES ${money(item.old_amount)}`}
+            {!report ? (
+              <div style={emptyStyle}>No Accountant report exists for {reportDate}.</div>
+            ) : (
+              <div style={bfBodyStyle}>
+                <div style={bfCurrentGridStyle}>
+                  <div style={bfInfoCardStyle}>
+                    <div style={bfInfoLabelStyle}>REPORT DATE</div>
+                    <div style={bfInfoValueStyle}>{report?.report_date || reportDate}</div>
+                  </div>
+                  <div style={bfInfoCardStyle}>
+                    <div style={bfInfoLabelStyle}>CURRENT BALANCE B/F</div>
+                    <div style={bfInfoValueStyle}>KES {money(openingBalance)}</div>
+                  </div>
+                  <div style={bfInfoCardStyle}>
+                    <div style={bfInfoLabelStyle}>CURRENT CLOSING BALANCE</div>
+                    <div style={bfInfoValueStyle}>KES {money(closingBalance)}</div>
+                  </div>
                 </div>
 
-                <div>
-                  {item.new_amount == null
-                    ? "—"
-                    : `KES ${money(item.new_amount)}`}
+                <div style={bfFieldGridStyle}>
+                  <div>
+                    <label style={bfLabelStyle}>CORRECTED BALANCE B/F (KES)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={bfInput}
+                      disabled={savingBf}
+                      onChange={(event) => {
+                        setBfInput(event.target.value);
+                        setBfDirty(true);
+                        setBfMessage("");
+                      }}
+                      placeholder="Enter corrected B/F"
+                      style={bfInputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={bfLabelStyle}>CORRECTION REASON *</label>
+                    <textarea
+                      value={bfReason}
+                      disabled={savingBf}
+                      onChange={(event) => {
+                        setBfReason(event.target.value);
+                        setBfMessage("");
+                      }}
+                      rows={3}
+                      placeholder="Reason for correction"
+                      style={bfTextareaStyle}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  {item.reason || "Initial amount"}
-                </div>
+                {report?.admin_override_note && (
+                  <div style={previousOverrideStyle}>
+                    <strong>Previous Admin Correction:</strong>{" "}
+                    {report.admin_override_note}
+                  </div>
+                )}
 
-                <div>
-                  {formatDateTime(item.changed_at)}
+                {bfMessage && (
+                  <div
+                    role={bfMessageType === "error" ? "alert" : "status"}
+                    style={{
+                      ...bfMessageStyle,
+                      backgroundColor: bfMessageType === "success" ? "#ecfdf5" : "#fef2f2",
+                      borderColor: bfMessageType === "success" ? "#86efac" : "#fecaca",
+                      color: bfMessageType === "success" ? "#166534" : "#991b1b",
+                    }}
+                  >
+                    {bfMessage}
+                  </div>
+                )}
+
+                <div style={bfButtonGridStyle}>
+                  <button
+                    type="button"
+                    disabled={savingBf}
+                    onClick={() => {
+                      setBfInput(String(report?.opening_balance ?? 0));
+                      setBfReason("");
+                      setBfDirty(false);
+                      setBfMessage("");
+                    }}
+                    style={bfResetButtonStyle}
+                  >
+                    RESET
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingBf}
+                    onClick={saveAccountantBf}
+                    style={{
+                      ...bfSaveButtonStyle,
+                      opacity: savingBf ? 0.65 : 1,
+                      cursor: savingBf ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {savingBf ? "UPDATING BALANCE B/F..." : "UPDATE BALANCE B/F"}
+                  </button>
                 </div>
               </div>
-            ))}
-          </>
-        )}
-      </div>
-    </section>
+            )}
+          </section>
+
+          {/* ACCOUNTANT USERS */}
+          <section style={panelStyle}>
+            <SectionTitle title="ACCOUNTANT USERS" />
+            {accountants.length === 0 ? (
+              <div style={emptyStyle}>No Accountant users returned.</div>
+            ) : (
+              <div style={accountantGridStyle}>
+                {accountants.map((accountant, index) => (
+                  <div key={accountant?.id || index} style={accountantCardStyle}>
+                    <div style={accountantNameStyle}>
+                      {accountant?.full_name || accountant?.name ||
+                        accountant?.username || "Accountant"}
+                    </div>
+                    <div style={accountantDetailStyle}>
+                      Role: {String(accountant?.role || "ACCOUNTANT").toUpperCase()}
+                    </div>
+                    <div style={accountantDetailStyle}>
+                      Username: {accountant?.username || "-"}
+                    </div>
+                    <div style={accountant?.is_active === false ? inactiveTextStyle : activeTextStyle}>
+                      {accountant?.is_active === false ? "INACTIVE" : "ACTIVE ✓"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* ACCOUNTANT EXPENSES */}
+          <section style={panelStyle}>
+            <SectionTitle title="ACCOUNTANT EXPENSES" />
+            <div style={tableScrollStyle}>
+              <div style={expenseHeaderStyle}>
+                <div>SLOT</div>
+                <div>DESCRIPTION</div>
+                <div>AMOUNT</div>
+                <div>STATUS</div>
+                <div>TIME</div>
+              </div>
+              {expenses.length === 0 ? (
+                <div style={emptyStyle}>No Accountant expenses for this date.</div>
+              ) : (
+                expenses.map((expense, index) => (
+                  <div key={expense?.id || index} style={expenseRowStyle}>
+                    <div style={centerStyle}>{expense?.slot_number ?? index + 1}</div>
+                    <div style={descriptionStyle}>{expense?.description || "-"}</div>
+                    <div style={moneyCellStyle}>KES {money(expense?.amount)}</div>
+                    <div style={centerStyle}>
+                      <span style={expense?.locked ? lockedBadgeStyle : openExpenseBadgeStyle}>
+                        {expense?.locked ? "LOCKED" : "OPEN"}
+                      </span>
+                    </div>
+                    <div style={centerStyle}>{formatDateTime(expense?.created_at)}</div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div style={expenseFooterStyle}>
+              Total Accountant Expenses: <strong>KES {money(totalExpenses)}</strong>
+            </div>
+          </section>
+          {/* FLOAT RETURNS */}
+          <section style={panelStyle}>
+            <SectionTitle title="CASHIER → LEGEND ACCOUNTS" />
+            <TransactionTable rows={cashierReturns} direction="RETURN" />
+          </section>
+
+          {/* FLOAT SENDS */}
+          <section style={panelStyle}>
+            <SectionTitle title="LEGEND ACCOUNTS → CASHIER" />
+            <TransactionTable rows={accountantSends} direction="SEND" />
+          </section>
+
+          {/* ACCOUNTANT TRANSACTION HISTORY */}
+          <section style={panelStyle}>
+            <SectionTitle title="ACCOUNTANT TRANSACTION HISTORY" />
+            <div style={tableScrollStyle}>
+              <div style={historyHeaderStyle}>
+                <div>TRANSACTION</div>
+                <div>FLOW</div>
+                <div>CASHIER / RECIPIENT</div>
+                <div>AMOUNT</div>
+                <div>FEE</div>
+                <div>RECEIPT</div>
+                <div>STATUS</div>
+                <div>TIME</div>
+              </div>
+              {transactions.length === 0 ? (
+                <div style={emptyStyle}>No Accountant transactions for this date.</div>
+              ) : (
+                transactions.map((transaction, index) => (
+                  <div key={transaction?.id || index} style={historyRowStyle}>
+                    <div style={smallCellStyle}>{transaction?.transaction_no || "-"}</div>
+                    <div style={smallCellStyle}>{friendlyFlow(transaction?.flow)}</div>
+                    <div style={smallCellStyle}>
+                      {transaction?.cashier_name || transaction?.recipient_name_snapshot || "-"}
+                    </div>
+                    <div style={moneyCellStyle}>{money(transaction?.amount)}</div>
+                    <div style={moneyCellStyle}>
+                      {money(transaction?.actual_fee ?? transaction?.estimated_fee)}
+                    </div>
+                    <div style={smallCellStyle}>
+                      {transaction?.manual_receipt_no || transaction?.mpesa_receipt_number || "-"}
+                    </div>
+                    <div style={centerStyle}><StatusBadge status={transaction?.status} /></div>
+                    <div style={smallCellStyle}>
+                      {formatDateTime(
+                        transaction?.completed_at ||
+                          transaction?.updated_at ||
+                          transaction?.created_at
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </>
+      )}
+    </div>
   );
 }
 
-// ==================================================
-// DATA AND DATE HELPERS
-// ==================================================
-
-function makeBlankAccounts(shopId = "") {
-  return ACCOUNT_TYPES.map((type) => ({
-    id: null,
-    shop_id: shopId,
-    account_type: type,
-    description: type,
-    account_number: "",
-    paybill_till: "",
-    bank: "",
-    is_active: true,
-    obligation_amount: "",
-    original_obligation_amount: "",
-    change_reason: "",
-    due_date: "",
-  }));
+function TransactionTable({ rows, direction }) {
+  return (
+    <div style={tableScrollStyle}>
+      <div style={transactionHeaderStyle}>
+        <div>TRANSACTION</div>
+        <div>CASHIER</div>
+        <div>SLOT</div>
+        <div>AMOUNT</div>
+        <div>FEE</div>
+        <div>RECEIPT</div>
+        <div>STATUS</div>
+      </div>
+      {rows.length === 0 ? (
+        <div style={emptyStyle}>
+          {direction === "RETURN"
+            ? "No cashier returns for this date."
+            : "No Accountant-to-Cashier transfers for this date."}
+        </div>
+      ) : (
+        rows.map((transaction, index) => {
+          const slot = direction === "RETURN"
+            ? transaction?.return_slot
+            : transaction?.company_float_slot;
+          return (
+            <div key={transaction?.id || index} style={transactionRowStyle}>
+              <div style={smallCellStyle}>{transaction?.transaction_no || "-"}</div>
+              <div style={smallCellStyle}>
+                {transaction?.cashier_name || transaction?.recipient_name_snapshot || "-"}
+              </div>
+              <div style={centerStyle}>{slot ?? "-"}</div>
+              <div style={moneyCellStyle}>KES {money(transaction?.amount)}</div>
+              <div style={moneyCellStyle}>
+                KES {money(transaction?.actual_fee ?? transaction?.estimated_fee)}
+              </div>
+              <div style={smallCellStyle}>
+                {transaction?.manual_receipt_no || transaction?.mpesa_receipt_number || "-"}
+              </div>
+              <div style={centerStyle}><StatusBadge status={transaction?.status} /></div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
 }
 
-function cleanValue(value) {
-  return String(value ?? "").trim();
+function StatusBadge({ status }) {
+  const clean = String(status || "UNKNOWN").trim().toUpperCase();
+  let background = "#64748b";
+  if (clean === "COMPLETED" || clean === "CONFIRMED") {
+    background = "#15803d";
+  } else if (
+    clean.includes("PENDING") || clean.includes("AWAITING") || clean === "CHECKING"
+  ) {
+    background = "#d97706";
+  } else if (["FAILED", "CANCELLED", "REVERSED"].includes(clean)) {
+    background = "#b91c1c";
+  }
+  return (
+    <span style={{ ...statusBadgeBaseStyle, backgroundColor: background }}>
+      {clean}
+    </span>
+  );
 }
 
-function normalizedAmount(value) {
-  const clean = cleanValue(value);
-
-  if (clean === "") return null;
-
-  const numeric = Number(clean);
-
-  return Number.isFinite(numeric)
-    ? roundMoney(numeric)
-    : null;
+function SummaryCard({ title, amount, text, strong }) {
+  return (
+    <div style={{ ...summaryCardStyle, ...(strong ? strongSummaryCardStyle : {}) }}>
+      <div style={summaryTitleStyle}>{title}</div>
+      <div style={summaryValueStyle}>
+        {text !== undefined ? text : `KES ${money(amount)}`}
+      </div>
+    </div>
+  );
 }
 
-function amountsEqual(a, b) {
-  return normalizedAmount(a) === normalizedAmount(b);
+function SectionTitle({ title }) {
+  return (
+    <div style={sectionTitleWrapStyle}>
+      <div style={sectionTitleStyle}>{title}</div>
+    </div>
+  );
 }
 
-function roundMoney(value) {
-  return Math.round(
-    (Number(value) + Number.EPSILON) * 100
-  ) / 100;
+// HELPERS
+async function safeJson(response) {
+  try { return await response.json(); } catch { return null; }
+}
+
+function normaliseArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") {
+    return Object.values(value).filter((item) => item && typeof item === "object");
+  }
+  return [];
+}
+
+function numberValue(value) {
+  const numeric = Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric : 0;
 }
 
 function money(value) {
-  return Number(value || 0).toLocaleString("en-KE", {
+  return numberValue(value).toLocaleString("en-KE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 }
 
-function todayNairobi() {
-  const parts = new Intl.DateTimeFormat("en-GB", {
+function roundMoney(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function getNairobiDate() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Nairobi",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(new Date());
 
-  const result = {};
-
-  for (const part of parts) {
-    if (part.type !== "literal") {
-      result[part.type] = part.value;
-    }
-  }
-
-  return `${result.year}-${result.month}-${result.day}`;
-}
-
-function isValidDateKey(value) {
-  const text = String(value || "");
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-    return false;
-  }
-
-  const date = new Date(`${text}T12:00:00Z`);
-
-  return (
-    !Number.isNaN(date.getTime()) &&
-    date.toISOString().slice(0, 10) === text
-  );
-}
-
-function parseDateKey(value) {
-  return isValidDateKey(value)
-    ? new Date(`${value}T12:00:00Z`)
-    : null;
-}
-
-function monthDate(year, monthIndex, day) {
-  const lastDay = new Date(
-    Date.UTC(year, monthIndex + 1, 0)
-  ).getUTCDate();
-
-  return new Date(
-    Date.UTC(year, monthIndex, Math.min(day, lastDay))
-  )
-    .toISOString()
-    .slice(0, 10);
-}
-
-// WIFI / DSTV: recurring monthly dates.
-// For example, 16 Nov -> 16 Dec -> 16 Jan.
-// The last day is used in months that are too short.
-
-function nextMonthlyDue(anchor, today) {
-  const start = parseDateKey(anchor);
-  const current = parseDateKey(today);
-
-  if (!start || !current) return null;
-
-  if (anchor >= today) return anchor;
-
-  const anchorDay = start.getUTCDate();
-
-  let year = current.getUTCFullYear();
-  let month = current.getUTCMonth();
-
-  let candidate = monthDate(
-    year,
-    month,
-    anchorDay
-  );
-
-  if (candidate < today) {
-    month += 1;
-
-    if (month >= 12) {
-      year += 1;
-      month = 0;
-    }
-
-    candidate = monthDate(
-      year,
-      month,
-      anchorDay
-    );
-  }
-
-  return candidate;
-}
-
-function nextRentDue(today) {
-  const date = parseDateKey(today);
-
-  if (!date) return null;
-
-  if (date.getUTCDate() === 1) {
-    return today;
-  }
-
-  return new Date(
-    Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth() + 1,
-      1
-    )
-  )
-    .toISOString()
-    .slice(0, 10);
-}
-
-function nextBankingDue(today) {
-  const date = parseDateKey(today);
-
-  if (!date) return null;
-
-  const daysUntilMonday =
-    (8 - date.getUTCDay()) % 7;
-
-  date.setUTCDate(
-    date.getUTCDate() + daysUntilMonday
-  );
-
-  return date.toISOString().slice(0, 10);
-}
-
-function formatDateKey(value) {
-  const date = parseDateKey(value);
-
-  if (!date) return "—";
-
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "UTC",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return `${year}-${month}-${day}`;
 }
 
 function formatDateTime(value) {
-  if (!value) return "";
-
-  try {
-    return new Intl.DateTimeFormat("en-KE", {
-      timeZone: "Africa/Nairobi",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(value));
-  } catch {
-    return "";
-  }
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: "Africa/Nairobi",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
-async function safeJson(response) {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
+function friendlyFlow(value) {
+  const clean = String(value || "").trim().toUpperCase();
+  if (clean === "CASHIER_TO_ACCOUNTANT") return "Cashier → Accounts";
+  if (clean === "ACCOUNTANT_TO_CASHIER") return "Accounts → Cashier";
+  return clean || "-";
 }
 
-// ==================================================
-// PROFESSIONAL ACCOUNT STYLES
-// ==================================================
-
+// STYLES — slightly larger minimum text, same colour scheme.
 const wrapperStyle = {
-  width: "100%",
-  display: "grid",
-  gap: "12px",
+  width: "100%", display: "grid", gap: "14px",
 };
-
 const controlPanelStyle = {
-  backgroundColor: "#0f766e",
-  color: "white",
-  borderRadius: "7px",
-  padding: "14px",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "end",
-  gap: "20px",
-  flexWrap: "wrap",
+  backgroundColor: "#064e3b", color: "white", padding: "15px",
+  borderRadius: "7px", display: "flex", justifyContent: "space-between",
+  alignItems: "end", gap: "20px", flexWrap: "wrap",
 };
-
-const controlTitleStyle = {
-  fontSize: "17px",
-  fontWeight: "900",
+const controlTitleStyle = { fontSize: "17px", fontWeight: "900" };
+const dateWrapStyle = { minWidth: "180px" };
+const labelStyle = { display: "block", marginBottom: "6px", fontSize: "11px", fontWeight: "bold" };
+const dateInputStyle = {
+  width: "100%", padding: "9px", boxSizing: "border-box",
+  border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "12px",
 };
-
-const shopControlStyle = {
-  minWidth: "240px",
-};
-
-const labelStyle = {
-  display: "block",
-  marginBottom: "5px",
-  fontSize: "12px",
-  fontWeight: "bold",
-};
-
-const shopSelectStyle = {
-  width: "100%",
-  padding: "10px",
-  border: "1px solid #cbd5e1",
-  borderRadius: "5px",
-  backgroundColor: "white",
-  color: "#0f172a",
-  fontSize: "13px",
-};
-
 const panelStyle = {
-  backgroundColor: "white",
-  border: "1px solid #cbd5e1",
-  borderRadius: "7px",
-  overflowX: "auto",
+  backgroundColor: "white", border: "1px solid #cbd5e1",
+  borderRadius: "7px", overflow: "hidden",
+};
+const panelHeaderStyle = {
+  padding: "13px", display: "flex", justifyContent: "space-between",
+  alignItems: "center", gap: "12px", borderBottom: "1px solid #e2e8f0",
+};
+const panelTitleStyle = { fontWeight: "900", fontSize: "14px" };
+const summaryGridStyle = {
+  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))",
+  gap: "8px", padding: "12px",
+};
+const summaryCardStyle = {
+  minHeight: "65px", padding: "10px", border: "1px solid #e2e8f0",
+  borderRadius: "6px", backgroundColor: "#f8fafc",
+};
+const strongSummaryCardStyle = {
+  backgroundColor: "#ecfdf5", border: "1px solid #86efac",
+};
+const summaryTitleStyle = { color: "#64748b", fontSize: "10px", fontWeight: "bold" };
+const summaryValueStyle = { marginTop: "8px", fontSize: "15px", fontWeight: "900" };
+
+const bfPanelStyle = {
+  backgroundColor: "#ffffff", border: "2px solid #7c3aed",
+  borderRadius: "7px", overflow: "hidden",
+};
+const bfHeaderStyle = {
+  backgroundColor: "#7c3aed", color: "white", padding: "12px 14px",
+  display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px",
+};
+const bfTitleStyle = { fontSize: "14px", fontWeight: "900" };
+const bfOnlyBadgeStyle = {
+  padding: "5px 9px", border: "1px solid rgba(255,255,255,0.55)",
+  borderRadius: "12px", fontSize: "10px", fontWeight: "900", whiteSpace: "nowrap",
+};
+const bfBodyStyle = { padding: "13px" };
+const bfCurrentGridStyle = {
+  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))",
+  gap: "8px", marginBottom: "12px",
+};
+const bfInfoCardStyle = {
+  padding: "10px", backgroundColor: "#f8fafc",
+  border: "1px solid #e2e8f0", borderRadius: "5px",
+};
+const bfInfoLabelStyle = { color: "#64748b", fontSize: "10px", fontWeight: "bold" };
+const bfInfoValueStyle = {
+  marginTop: "5px", color: "#0f172a", fontSize: "14px", fontWeight: "900",
+};
+const bfFieldGridStyle = {
+  display: "grid", gridTemplateColumns: "minmax(180px,0.7fr) minmax(280px,1.3fr)",
+  gap: "10px", marginBottom: "12px",
+};
+const bfLabelStyle = {
+  display: "block", marginBottom: "6px", color: "#334155",
+  fontSize: "11px", fontWeight: "bold",
+};
+const bfInputStyle = {
+  width: "100%", boxSizing: "border-box", padding: "10px",
+  border: "1px solid #94a3b8", borderRadius: "5px",
+  fontWeight: "bold", fontSize: "13px",
+};
+const bfTextareaStyle = {
+  width: "100%", boxSizing: "border-box", padding: "10px",
+  border: "1px solid #94a3b8", borderRadius: "5px",
+  resize: "vertical", fontSize: "13px", fontFamily: "inherit",
+};
+const previousOverrideStyle = {
+  padding: "10px", marginBottom: "10px", backgroundColor: "#f1f5f9",
+  border: "1px solid #cbd5e1", borderRadius: "5px",
+  color: "#475569", fontSize: "11px",
+};
+const bfMessageStyle = {
+  padding: "10px", marginBottom: "10px", border: "1px solid",
+  borderRadius: "5px", fontSize: "12px", fontWeight: "bold",
+};
+const bfButtonGridStyle = {
+  display: "grid", gridTemplateColumns: "120px 1fr", gap: "8px",
+};
+const bfResetButtonStyle = {
+  padding: "11px", border: "none", borderRadius: "5px",
+  backgroundColor: "#64748b", color: "white", fontSize: "11px",
+  fontWeight: "bold", cursor: "pointer",
+};
+const bfSaveButtonStyle = {
+  padding: "11px", border: "none", borderRadius: "5px",
+  backgroundColor: "#7c3aed", color: "white", fontSize: "11px", fontWeight: "900",
 };
 
-const tableTitleStyle = {
-  backgroundColor: "#0873b9",
-  color: "white",
-  padding: "11px 12px",
-  fontSize: "15px",
-  fontWeight: "900",
+const sectionTitleWrapStyle = {
+  padding: "11px 12px", backgroundColor: "#0f766e", color: "white",
 };
-
-const headerRowStyle = {
-  display: "grid",
-  gridTemplateColumns: ACCOUNT_COLUMNS,
-  minWidth: "1340px",
-  gap: "7px",
-  padding: "10px 8px",
-  backgroundColor: "#eef4f8",
-  color: "#475569",
-  fontSize: "11px",
-  fontWeight: "bold",
-  textAlign: "center",
+const sectionTitleStyle = { fontWeight: "900", fontSize: "13px" };
+const accountantGridStyle = {
+  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+  gap: "10px", padding: "12px",
 };
-
-const accountRowStyle = {
-  display: "grid",
-  gridTemplateColumns: ACCOUNT_COLUMNS,
-  minWidth: "1340px",
-  gap: "7px",
-  alignItems: "center",
-  padding: "10px 8px",
-  borderTop: "1px solid #e2e8f0",
+const accountantCardStyle = {
+  padding: "12px", border: "1px solid #e2e8f0", borderRadius: "6px",
+  backgroundColor: "#f8fafc",
 };
+const accountantNameStyle = { fontWeight: "900", fontSize: "13px", marginBottom: "6px" };
+const accountantDetailStyle = { color: "#64748b", fontSize: "11px", marginTop: "3px" };
+const activeTextStyle = { marginTop: "7px", color: "#15803d", fontSize: "11px", fontWeight: "bold" };
+const inactiveTextStyle = { marginTop: "7px", color: "#b91c1c", fontSize: "11px", fontWeight: "bold" };
 
-const accountTypeStyle = {
-  color: "#0f172a",
-  fontWeight: "900",
-  fontSize: "13px",
+const tableScrollStyle = { overflowX: "auto" };
+const expenseColumns = "60px minmax(180px,1fr) 130px 100px 130px";
+const expenseHeaderStyle = {
+  display: "grid", gridTemplateColumns: expenseColumns, gap: "7px",
+  minWidth: "650px", padding: "10px", backgroundColor: "#f1f5f9",
+  fontSize: "10px", fontWeight: "bold",
 };
-
-const inputStyle = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "9px",
-  border: "1px solid #94a3b8",
-  borderRadius: "4px",
-  fontSize: "13px",
-  color: "#0f172a",
-  backgroundColor: "white",
+const expenseRowStyle = {
+  display: "grid", gridTemplateColumns: expenseColumns, gap: "7px",
+  minWidth: "650px", alignItems: "center", padding: "10px",
+  borderTop: "1px solid #e2e8f0", fontSize: "11px",
 };
-
-const amountWrapStyle = {
-  display: "flex",
-  alignItems: "center",
-  border: "1px solid #94a3b8",
-  borderRadius: "4px",
-  overflow: "hidden",
-  backgroundColor: "white",
+const expenseFooterStyle = {
+  padding: "11px 12px", borderTop: "1px solid #e2e8f0",
+  textAlign: "right", backgroundColor: "#f8fafc", fontSize: "12px",
 };
-
-const currencyStyle = {
-  padding: "9px 7px",
-  backgroundColor: "#f1f5f9",
-  color: "#475569",
-  fontSize: "11px",
-  fontWeight: "bold",
+const transactionColumns = "1.1fr 1fr 60px 110px 100px 1fr 1fr";
+const transactionHeaderStyle = {
+  display: "grid", gridTemplateColumns: transactionColumns, gap: "7px",
+  minWidth: "760px", padding: "10px", backgroundColor: "#f1f5f9",
+  fontSize: "10px", fontWeight: "bold",
 };
-
-const amountInputStyle = {
-  width: "100%",
-  minWidth: 0,
-  boxSizing: "border-box",
-  padding: "9px",
-  border: "none",
-  outline: "none",
-  textAlign: "right",
-  fontSize: "13px",
+const transactionRowStyle = {
+  display: "grid", gridTemplateColumns: transactionColumns, gap: "7px",
+  minWidth: "760px", alignItems: "center", padding: "10px",
+  borderTop: "1px solid #e2e8f0", fontSize: "11px",
 };
-
-const notApplicableStyle = {
-  textAlign: "center",
-  color: "#94a3b8",
-  fontSize: "13px",
-};
-
-const activeWrapStyle = {
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  gap: "5px",
-  fontSize: "12px",
-  fontWeight: "bold",
-  color: "#0f172a",
-};
-
-const saveButtonStyle = {
-  width: "100%",
-  padding: "12px",
-  border: "none",
-  borderRadius: "5px",
-  backgroundColor: "#15803d",
-  color: "white",
-  fontSize: "13px",
-  fontWeight: "900",
-  cursor: "pointer",
-};
-
-const successStyle = {
-  padding: "11px",
-  backgroundColor: "#f0fdf4",
-  border: "1px solid #86efac",
-  borderRadius: "5px",
-  color: "#166534",
-  fontSize: "12px",
-  fontWeight: "bold",
-};
-
-const errorStyle = {
-  padding: "11px",
-  backgroundColor: "#fef2f2",
-  border: "1px solid #fecaca",
-  borderRadius: "5px",
-  color: "#991b1b",
-  fontSize: "12px",
-  fontWeight: "bold",
-};
-
-const loadingStyle = {
-  padding: "30px",
-  backgroundColor: "white",
-  border: "1px solid #cbd5e1",
-  borderRadius: "7px",
-  color: "#64748b",
-  textAlign: "center",
-  fontSize: "13px",
-};
-
-const emptyStyle = {
-  minWidth: "1340px",
-  padding: "25px",
-  boxSizing: "border-box",
-  color: "#64748b",
-  textAlign: "center",
-  fontSize: "13px",
-};
-
-const dueDateInputStyle = {
-  width: "100%",
-  minWidth: 0,
-  boxSizing: "border-box",
-  padding: "9px 5px",
-  border: "1px solid #94a3b8",
-  borderRadius: "4px",
-  backgroundColor: "white",
-  color: "#0f172a",
-  fontSize: "12px",
-};
-
-const monthlyDueStyle = {
-  display: "grid",
-  gap: "4px",
-  minWidth: 0,
-  padding: "6px",
-  border: "1px solid #99f6e4",
-  borderRadius: "5px",
-  backgroundColor: "#f0fdfa",
-};
-
-const dueValueStyle = {
-  color: "#115e59",
-  fontSize: "13px",
-  fontWeight: "900",
-  textAlign: "center",
-};
-
-const editDueButtonStyle = {
-  border: "1px solid #99f6e4",
-  borderRadius: "4px",
-  padding: "5px 8px",
-  backgroundColor: "white",
-  color: "#115e59",
-  fontSize: "11px",
-  fontWeight: "bold",
-  cursor: "pointer",
-};
-
-const automaticDueStyle = {
-  display: "grid",
-  gap: "3px",
-  padding: "7px",
-  backgroundColor: "#f0fdfa",
-  border: "1px solid #99f6e4",
-  borderRadius: "5px",
-  textAlign: "center",
-  color: "#115e59",
-  fontSize: "12px",
-  lineHeight: 1.4,
-};
-
-const historyPanelStyle = {
-  backgroundColor: "white",
-  border: "1px solid #cbd5e1",
-  borderRadius: "7px",
-  overflowX: "auto",
-};
-
-const historyTitleStyle = {
-  padding: "11px 12px",
-  backgroundColor: "#7c3aed",
-  color: "white",
-  fontSize: "14px",
-  fontWeight: "900",
-};
-
+const historyColumns = "1fr 1fr 1.1fr 90px 80px 1fr 1fr 120px";
 const historyHeaderStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "110px 145px 145px 1fr 180px",
-  minWidth: "850px",
-  gap: "8px",
-  padding: "10px 8px",
-  backgroundColor: "#f5f3ff",
-  color: "#5b21b6",
-  fontSize: "11px",
-  fontWeight: "bold",
+  display: "grid", gridTemplateColumns: historyColumns, gap: "6px",
+  minWidth: "910px", padding: "10px", backgroundColor: "#f1f5f9",
+  fontSize: "10px", fontWeight: "bold",
 };
-
 const historyRowStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "110px 145px 145px 1fr 180px",
-  minWidth: "850px",
-  gap: "8px",
-  alignItems: "center",
-  padding: "10px 8px",
-  borderTop: "1px solid #e2e8f0",
-  fontSize: "12px",
+  display: "grid", gridTemplateColumns: historyColumns, gap: "6px",
+  minWidth: "910px", alignItems: "center", padding: "10px",
+  borderTop: "1px solid #e2e8f0", fontSize: "11px",
 };
-
-const historyEmptyStyle = {
-  padding: "20px",
-  color: "#64748b",
-  textAlign: "center",
-  fontSize: "12px",
+const descriptionStyle = { fontWeight: "bold" };
+const centerStyle = { textAlign: "center" };
+const moneyCellStyle = { textAlign: "right", fontWeight: "bold" };
+const smallCellStyle = { wordBreak: "break-word" };
+const lockedBadgeStyle = {
+  display: "inline-block", padding: "5px 8px", borderRadius: "10px",
+  backgroundColor: "#e2e8f0", color: "#475569", fontWeight: "bold", fontSize: "10px",
+};
+const openExpenseBadgeStyle = { ...lockedBadgeStyle, backgroundColor: "#dcfce7", color: "#166534" };
+const statusBadgeBaseStyle = {
+  display: "inline-block", padding: "5px 8px", borderRadius: "10px",
+  color: "white", fontWeight: "bold", fontSize: "10px", whiteSpace: "nowrap",
+};
+const openBadgeStyle = {
+  padding: "5px 9px", backgroundColor: "#15803d", color: "white",
+  borderRadius: "12px", fontWeight: "bold", fontSize: "10px",
+};
+const closedBadgeStyle = { ...openBadgeStyle, backgroundColor: "#475569" };
+const neutralBadgeStyle = { ...openBadgeStyle, backgroundColor: "#94a3b8" };
+const emptyStyle = {
+  padding: "20px", textAlign: "center", color: "#64748b", fontSize: "12px",
+};
+const loadingStyle = {
+  padding: "30px", textAlign: "center", backgroundColor: "white",
+  border: "1px solid #cbd5e1", borderRadius: "7px",
+  color: "#64748b", fontSize: "12px",
+};
+const errorStyle = {
+  padding: "11px", border: "1px solid #fecaca", backgroundColor: "#fef2f2",
+  color: "#b91c1c", borderRadius: "6px", fontSize: "12px", fontWeight: "bold",
 };
