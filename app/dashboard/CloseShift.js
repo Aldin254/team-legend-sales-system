@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const NAIROBI_TIME_ZONE = "Africa/Nairobi";
 const HANDOVER_START = "21:30:00";
+const PLATFORM_CACHE_MS = 5 * 60 * 1000;
 
 export default function CloseShift({
   user,
@@ -20,6 +21,7 @@ export default function CloseShift({
   const [messageType, setMessageType] = useState("");
   const [now, setNow] = useState(() => new Date());
   const closingRef = useRef(false);
+  const platformCacheRef = useRef(null);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -45,7 +47,7 @@ export default function CloseShift({
   const closingCount = currentSnapshot?.closingCount || 0;
   const allClosingsSaved = platformCount > 0 && closingCount === platformCount;
 
-  const fetchCurrentData = useCallback(async () => {
+  const fetchCurrentData = useCallback(async ({ forcePlatforms = false, signal } = {}) => {
     if (!shiftId || !shopId || !accessToken || !supabaseUrl || !supabaseAnonKey) {
       throw new Error("Shift or login information is missing.");
     }
@@ -56,38 +58,56 @@ export default function CloseShift({
       "Content-Type": "application/json",
     };
 
+    // Cache only shop configuration. Never cache shift status or closing readings.
+    const cache = platformCacheRef.current;
+    const cacheValid = !forcePlatforms && cache &&
+      cache.shopId === String(shopId) &&
+      cache.token === accessToken &&
+      Date.now() - cache.fetchedAt < PLATFORM_CACHE_MS;
+
+    const platformRequest = cacheValid
+      ? Promise.resolve(null)
+      : fetch(
+          `${supabaseUrl}/rest/v1/shop_platforms?shop_id=eq.${encodeURIComponent(shopId)}` +
+            `&is_active=eq.true&select=id`,
+          { method: "GET", headers, cache: "no-store", signal }
+        );
+
     const [shiftResponse, platformResponse, readingsResponse] = await Promise.all([
       fetch(
         `${supabaseUrl}/rest/v1/shifts?id=eq.${encodeURIComponent(shiftId)}` +
           `&select=*&limit=1`,
-        { method: "GET", headers, cache: "no-store" }
+        { method: "GET", headers, cache: "no-store", signal }
       ),
-      fetch(
-        `${supabaseUrl}/rest/v1/shop_platforms?shop_id=eq.${encodeURIComponent(shopId)}` +
-          `&is_active=eq.true&select=id`,
-        { method: "GET", headers, cache: "no-store" }
-      ),
+      platformRequest,
       fetch(
         `${supabaseUrl}/rest/v1/platform_readings?shift_id=eq.${encodeURIComponent(shiftId)}` +
           `&reading_kind=eq.CLOSING&select=id,platform_id`,
-        { method: "GET", headers, cache: "no-store" }
+        { method: "GET", headers, cache: "no-store", signal }
       ),
     ]);
 
     const [shiftResult, platformResult, readingsResult] = await Promise.all([
       safeJson(shiftResponse),
-      safeJson(platformResponse),
+      platformResponse ? safeJson(platformResponse) : Promise.resolve(cache.platforms),
       safeJson(readingsResponse),
     ]);
 
     if (!shiftResponse.ok) {
       throw new Error(shiftResult?.message || shiftResult?.details || "Unable to load shift.");
     }
-    if (!platformResponse.ok) {
+    if (platformResponse && !platformResponse.ok) {
       throw new Error(platformResult?.message || platformResult?.details || "Unable to load platforms.");
     }
     if (!readingsResponse.ok) {
       throw new Error(readingsResult?.message || readingsResult?.details || "Unable to load closing readings.");
+    }
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    if (platformResponse) {
+      platformCacheRef.current = {
+        shopId: String(shopId), token: accessToken,
+        fetchedAt: Date.now(), platforms: Array.isArray(platformResult) ? platformResult : [],
+      };
     }
 
     const shift = Array.isArray(shiftResult) ? shiftResult[0] : null;
@@ -108,10 +128,11 @@ export default function CloseShift({
   // Refresh on shift change or when the parent reports a reading change.
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
     setLoadError("");
 
-    fetchCurrentData()
+    fetchCurrentData({ signal: controller.signal })
       .then((data) => {
         if (!cancelled) {
           setSnapshot(data);
@@ -119,6 +140,7 @@ export default function CloseShift({
         }
       })
       .catch((error) => {
+        if (cancelled || error?.name === "AbortError") return;
         console.error("12H CLOSE LOAD ERROR:", error);
         if (!cancelled) setLoadError(error?.message || "Unable to load closing data.");
       })
@@ -126,7 +148,7 @@ export default function CloseShift({
         if (!cancelled) setLoading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [fetchCurrentData, refreshKey, reloadIndex]);
 
   const canClose =
@@ -146,7 +168,8 @@ export default function CloseShift({
 
     try {
       // The original business date sets the opening time, not the current clock day.
-      const fresh = await fetchCurrentData();
+      // Closing always verifies the latest active platform list, shift, and readings.
+      const fresh = await fetchCurrentData({ forcePlatforms: true });
       if (String(fresh.shift.status || "").toUpperCase() !== "OPEN") {
         throw new Error("This shift is no longer OPEN.");
       }
