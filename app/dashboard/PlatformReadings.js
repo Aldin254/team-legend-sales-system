@@ -43,10 +43,21 @@ export default function PlatformReadings({
   const readingKind = "OPENING";
 
   // --------------------------------------------------
-  // LOAD PLATFORMS + SAVED OPENING READINGS
+  // LOAD ONCE PER SHOP / SHIFT / SESSION (NO POLLING)
+  // Abort obsolete requests and fetch both datasets together.
   // --------------------------------------------------
 
   useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
+    // Never carry saved readings or unsaved inputs into another shift.
+    setPlatforms([]);
+    setReadings({});
+    setExistingRows({});
+    setMessage("");
+    setMessageType("");
+
     if (
       !shopId ||
       !shiftId ||
@@ -55,56 +66,58 @@ export default function PlatformReadings({
       !supabaseAnonKey
     ) {
       setLoading(false);
-      return;
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
     }
 
-    let cancelled = false;
+    setLoading(true);
 
     async function loadData() {
+      const headers = {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      };
+
+      const platformUrl =
+        `${supabaseUrl}/rest/v1/shop_platforms` +
+        `?shop_id=eq.${encodeURIComponent(shopId)}` +
+        `&is_active=eq.true` +
+        `&select=id,shop_id,platform_name,reading_type,display_order,is_active` +
+        `&order=display_order.asc`;
+
+      const readingUrl =
+        `${supabaseUrl}/rest/v1/platform_readings` +
+        `?shift_id=eq.${encodeURIComponent(shiftId)}` +
+        `&reading_kind=eq.${encodeURIComponent(readingKind)}` +
+        `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by`;
+
       try {
-        setLoading(true);
-        setMessage("");
-        setMessageType("");
-
-        // --------------------------------------------
-        // LOAD ACTIVE PLATFORMS FOR THIS SHOP
-        // --------------------------------------------
-
-        const platformUrl =
-          `${supabaseUrl}/rest/v1/shop_platforms` +
-          `?shop_id=eq.${encodeURIComponent(shopId)}` +
-          `&is_active=eq.true` +
-          `&select=id,shop_id,platform_name,reading_type,display_order,is_active` +
-          `&order=display_order.asc`;
-
-        const platformResponse = await fetch(
-          platformUrl,
-          {
+        const [platformResponse, readingResponse] = await Promise.all([
+          fetch(platformUrl, {
             method: "GET",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
+            headers,
             cache: "no-store",
-          }
-        );
+            signal: controller.signal,
+          }),
+          fetch(readingUrl, {
+            method: "GET",
+            headers,
+            cache: "no-store",
+            signal: controller.signal,
+          }),
+        ]);
 
-        let platformData = null;
+        const [platformData, readingData] = await Promise.all([
+          platformResponse.json().catch(() => null),
+          readingResponse.json().catch(() => null),
+        ]);
 
-        try {
-          platformData =
-            await platformResponse.json();
-        } catch {
-          platformData = null;
-        }
+        if (cancelled) return;
 
         if (!platformResponse.ok) {
-          console.error(
-            "PLATFORM LOAD ERROR:",
-            platformData
-          );
-
           throw new Error(
             platformData?.message ||
               platformData?.details ||
@@ -113,55 +126,7 @@ export default function PlatformReadings({
           );
         }
 
-        if (cancelled) {
-          return;
-        }
-
-        const activePlatforms =
-          Array.isArray(platformData)
-            ? platformData
-            : [];
-
-        setPlatforms(activePlatforms);
-
-        // --------------------------------------------
-        // LOAD SAVED OPENING READINGS
-        // --------------------------------------------
-
-        const readingUrl =
-          `${supabaseUrl}/rest/v1/platform_readings` +
-          `?shift_id=eq.${encodeURIComponent(shiftId)}` +
-          `&reading_kind=eq.${encodeURIComponent(readingKind)}` +
-          `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by`;
-
-        const readingResponse = await fetch(
-          readingUrl,
-          {
-            method: "GET",
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            cache: "no-store",
-          }
-        );
-
-        let readingData = null;
-
-        try {
-          readingData =
-            await readingResponse.json();
-        } catch {
-          readingData = null;
-        }
-
         if (!readingResponse.ok) {
-          console.error(
-            "READINGS LOAD ERROR:",
-            readingData
-          );
-
           throw new Error(
             readingData?.message ||
               readingData?.details ||
@@ -170,50 +135,31 @@ export default function PlatformReadings({
           );
         }
 
-        if (cancelled) {
-          return;
-        }
-
-        const savedRows =
-          Array.isArray(readingData)
-            ? readingData
-            : [];
+        const activePlatforms = Array.isArray(platformData)
+          ? platformData
+          : [];
+        const savedRows = Array.isArray(readingData)
+          ? readingData
+          : [];
 
         const values = {};
         const rowsByPlatform = {};
-
         for (const row of savedRows) {
-          if (!row.platform_id) {
-            continue;
-          }
-
-          values[row.platform_id] =
-            row.reading_value ?? "";
-
-          rowsByPlatform[row.platform_id] =
-            row;
+          if (!row.platform_id) continue;
+          values[row.platform_id] = row.reading_value ?? "";
+          rowsByPlatform[row.platform_id] = row;
         }
 
+        setPlatforms(activePlatforms);
         setReadings(values);
         setExistingRows(rowsByPlatform);
       } catch (error) {
-        console.error(
-          "PLATFORM READINGS LOAD ERROR:",
-          error
-        );
-
-        if (!cancelled) {
-          setMessage(
-            error?.message ||
-              "Unable to load platform readings."
-          );
-
-          setMessageType("error");
-        }
+        if (cancelled || error?.name === "AbortError") return;
+        console.error("PLATFORM READINGS LOAD ERROR:", error);
+        setMessage(error?.message || "Unable to load platform readings.");
+        setMessageType("error");
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -221,14 +167,9 @@ export default function PlatformReadings({
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [
-    shopId,
-    shiftId,
-    accessToken,
-    supabaseUrl,
-    supabaseAnonKey,
-  ]);
+  }, [shopId, shiftId, accessToken, supabaseUrl, supabaseAnonKey]);
 
   // --------------------------------------------------
   // UPDATE UNSAVED INPUT
