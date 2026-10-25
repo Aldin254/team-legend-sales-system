@@ -15,7 +15,7 @@ import {
 // Prevents overlapping list requests.
 // Keeps employee data private between shop/shift sessions.
 
-const REFRESH_MS = 15000;
+const REFRESH_MS = 30000;
 const LIST_TIMEOUT_MS = 12000;
 
 export default function CashierSalaryPanel({
@@ -233,12 +233,25 @@ export default function CashierSalaryPanel({
 
     void loadEmployees();
 
+    // Only poll while the cashier tab is visible.
     const timer = setInterval(() => {
-      void loadEmployees();
+      if (document.visibilityState === "visible") {
+        void loadEmployees();
+      }
     }, REFRESH_MS);
+
+    // Refresh promptly after returning to a hidden tab.
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void loadEmployees();
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
 
       listRequestRef.current += 1;
       listBusyRef.current = false;
