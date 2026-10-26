@@ -301,6 +301,17 @@ export default function DashboardPage() {
         throw sessionExpired();
       }
 
+      // Never refresh an idle staff session, even if the interval/focus
+      // handler has not yet fired (e.g. a laptop waking from sleep).
+      if (tlIdleApplies(u)) {
+        const lastActivity = Number(sessionStorage.getItem(TL_IDLE_KEY));
+        const now = Date.now();
+        if (!Number.isFinite(lastActivity) || lastActivity <= 0 ||
+            lastActivity > now || now - lastActivity >= TL_IDLE_LIMIT_MS) {
+          throw sessionExpired();
+        }
+      }
+
       if (
         !options.force &&
         u.access_token &&
@@ -756,7 +767,7 @@ export default function DashboardPage() {
       } catch (err) {
         if (
           err?.name === "SessionExpiredError"
-        ) {
+          ) {
           if (!cancelled) {
             expireSession();
           }
@@ -1171,6 +1182,13 @@ export default function DashboardPage() {
       // Ignore synthetic events and background processing.
       if (!event.isTrusted) return;
       const now = Date.now();
+      const saved = Number(sessionStorage.getItem(TL_IDLE_KEY));
+      // Activity after the deadline cannot resurrect an expired session.
+      if (!Number.isFinite(saved) || saved <= 0 ||
+          saved > now || now - saved >= TL_IDLE_LIMIT_MS) {
+        expireSession();
+        return;
+      }
       if (now - lastRecorded < 1000) return;
       lastRecorded = now;
       sessionStorage.setItem(TL_IDLE_KEY, String(now));
@@ -1519,7 +1537,7 @@ export default function DashboardPage() {
         throw new Error(
           "Cannot open shift with an unverified Balance B/F."
         );
-      }
+        }
 
       const now = new Date();
 
@@ -2289,7 +2307,7 @@ async function getShopOpenShift(shopId, token) {
   );
 
   return rows?.[0] || null;
-}
+  }
 
 // ==================================================
 // CLOSED SHIFT FOR DATE
