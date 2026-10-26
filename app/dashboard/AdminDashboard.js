@@ -2122,7 +2122,7 @@ function AdminMasterEmployeeList({
                                 style={masterRemoveStyle}
 disabled={saving}
                                 onClick={() =>
-                                  discardNew(row.key)
+discardNew(row.key)
                                 }
                               >
                                 Cancel
@@ -2828,11 +2828,11 @@ function SettingsPanel({ user }) {
 
 // ==================================================
 // ADMIN STAFF SESSION CONTROL — BACKEND-GATED
-// The server RPC must be deployed and verified before
-// this control is enabled. Never revoke Admin sessions.
+// Uses verified tl_admin_force_logout_staff RPC.
+// Never revoke Admin sessions.
 // ==================================================
 
-const STAFF_FORCE_LOGOUT_BACKEND_READY = false;
+const STAFF_FORCE_LOGOUT_BACKEND_READY = true;
 
 function AdminStaffSessionControl({ user }) {
   const [reason, setReason] = useState("");
@@ -2844,11 +2844,11 @@ function AdminStaffSessionControl({ user }) {
   async function forceLogoutStaff() {
     if (!STAFF_FORCE_LOGOUT_BACKEND_READY || busy || !confirm) return;
     const trimmed = reason.trim();
-    if (trimmed.length < 5) {
-      setError("Enter a reason of at least 5 characters.");
+    if (trimmed.length < 10) {
+      setError("Enter a reason of at least 10 characters.");
       return;
     }
-    if (String(user?.role || "").toUpperCase() !== "ADMIN") {
+    if (!["ADMIN", "SUPER_ADMIN"].includes(String(user?.role || "").toUpperCase())) {
       setError("Only Admin may request staff logout.");
       return;
     }
@@ -2875,10 +2875,10 @@ function AdminStaffSessionControl({ user }) {
         }
       );
       const result = await response.json().catch(() => null);
-      if (!response.ok || result?.ok !== true) {
+      if (!response.ok || result?.success !== true) {
         throw new Error(result?.message || "Staff logout was not confirmed by the server.");
       }
-      setNotice("Server confirmed the staff logout request.");
+      setNotice(`Staff logout confirmed. ${result.newly_revoked_sessions ?? 0} sessions revoked across ${result.staff_accounts ?? 0} staff accounts.`);
       setReason("");
       setConfirm(false);
     } catch (err) {
@@ -2923,8 +2923,8 @@ function AdminStaffSessionControl({ user }) {
       <button
         type="button"
         onClick={forceLogoutStaff}
-        disabled={!STAFF_FORCE_LOGOUT_BACKEND_READY || busy || !confirm || reason.trim().length < 5}
-        style={{ marginTop: 12, padding: "12px 16px", border: 0, borderRadius: 6, background: "#991b1b", color: "#fff", fontWeight: 800, opacity: !STAFF_FORCE_LOGOUT_BACKEND_READY || busy || !confirm || reason.trim().length < 5 ? 0.5 : 1, cursor: "pointer" }}
+        disabled={!STAFF_FORCE_LOGOUT_BACKEND_READY || busy || !confirm || reason.trim().length < 10}
+        style={{ marginTop: 12, padding: "12px 16px", border: 0, borderRadius: 6, background: "#991b1b", color: "#fff", fontWeight: 800, opacity: !STAFF_FORCE_LOGOUT_BACKEND_READY || busy || !confirm || reason.trim().length < 10 ? 0.5 : 1, cursor: "pointer" }}
       >
         {busy ? "REQUESTING LOGOUT..." : "FORCE LOGOUT ALL CASHIERS & ACCOUNTANTS"}
       </button>
@@ -3184,7 +3184,6 @@ const systemStatusTitleStyle = {
   fontWeight: "bold",
   fontSize: "12px",
 };
-
 const statusGridStyle = {
   display: "grid",
   gridTemplateColumns:
