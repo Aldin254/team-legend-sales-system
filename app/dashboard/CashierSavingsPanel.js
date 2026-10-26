@@ -422,16 +422,34 @@ export default function CashierSavingsPanel({
     }
   }, [token, supabaseUrl, anonKey]);
 
-  useEffect(() => {
-    loadBankingMode();
+ useEffect(() => {
+  void loadBankingMode();
 
-    const timer = setInterval(
-      loadBankingMode,
-      30000
+  const timer = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      void loadBankingMode();
+    }
+  }, 30000);
+
+  const onVisibilityChange = () => {
+    if (document.visibilityState === "visible") {
+      void loadBankingMode();
+    }
+  };
+
+  document.addEventListener(
+    "visibilitychange",
+    onVisibilityChange
+  );
+
+  return () => {
+    clearInterval(timer);
+    document.removeEventListener(
+      "visibilitychange",
+      onVisibilityChange
     );
-
-    return () => clearInterval(timer);
-  }, [loadBankingMode]);
+  };
+}, [loadBankingMode]);
 
   // AUTO REFRESH — 30 SECONDS, ONLY WHILE VISIBLE
   useEffect(() => {
