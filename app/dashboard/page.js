@@ -77,6 +77,34 @@ async function restPost(
   return value;
 }
 
+// Verify the currently authenticated staff session against the server.
+// A definite denial logs out staff; temporary connectivity errors are retried.
+async function checkStaffSession(token) {
+  if (!token) throw sessionExpired();
+
+  const response = await fetch(`${URL}/rest/v1/rpc/tl_session_is_allowed`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: "{}",
+    cache: "no-store",
+  });
+  const result = await json(response);
+
+  if (response.status === 401 || response.status === 403 ||
+      result?.code === "SESSION_REVOKED_LOGIN_REQUIRED" ||
+      /SESSION_REVOKED_LOGIN_REQUIRED/i.test(String(result?.message || ""))) {
+    throw sessionExpired();
+  }
+  if (!response.ok) {
+    throw new Error(result?.message || "Session verification unavailable.");
+  }
+  if (result === false || result?.allowed === false ||
+      result?.is_allowed === false || result?.ok === false) {
+    throw sessionExpired();
+  }
+  return true;
+}
+
 // ==================================================
 // ADMIN RECOVERY
 // ==================================================
@@ -474,6 +502,11 @@ export default function DashboardPage() {
 
         if (cancelled) return;
 
+        // Do not display a previously revoked staff dashboard after reload.
+        if (tlIdleApplies(active)) {
+          await checkStaffSession(active.access_token);
+          if (cancelled || signedOutRef.current) return;
+        }
         saveUserSession(active);
 
         const role = String(active.role || "")
@@ -752,7 +785,6 @@ export default function DashboardPage() {
           );
 
         if (cancelled) return;
-
         setBalanceBF(
           previous
             ? String(
@@ -1216,6 +1248,48 @@ export default function DashboardPage() {
   }, [user?.role, user?.auth_user_id, expireSession]);
 
   // ==================================================
+  // ADMIN FORCE LOGOUT: LIVE STAFF SESSION CHECK
+  // ==================================================
+
+  useEffect(() => {
+    if (!user?.access_token || !tlIdleApplies(user) || signedOutRef.current) return;
+    let cancelled = false;
+    let checking = false;
+
+    async function verify() {
+      if (cancelled || checking || signedOutRef.current) return;
+      checking = true;
+      try {
+        await checkStaffSession(user.access_token);
+      } catch (err) {
+        if (!cancelled && err?.name === "SessionExpiredError") {
+          expireSession();
+        }
+        // Network/server errors are not proof of revocation.
+        // Existing protected database operations remain server-gated.
+      } finally {
+        checking = false;
+      }
+    }
+
+    const timer = window.setInterval(() => { void verify(); }, 15000);
+    const onFocus = () => { void verify(); };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void verify();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    void verify();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [user?.access_token, user?.role, expireSession]);
+
+  // ==================================================
   // AUTOMATIC TOKEN REFRESH
   // ==================================================
 
@@ -1500,7 +1574,7 @@ export default function DashboardPage() {
         setBalanceLocked(true);
 
         return;
-      }
+        }
 
       // ======================================
       // PREVIOUS CLOSED SHIFT
@@ -2288,7 +2362,7 @@ async function getShopType(shopId, token) {
   return String(shop.shop_type || "")
     .trim()
     .toUpperCase();
-}
+  }
 
 // ==================================================
 // SHOP-WIDE OPEN SHIFT
