@@ -602,13 +602,20 @@ export default function Cashier24HourReport({
   // OPTIMIZED 30-SECOND REPORT REFRESH
   // ==============================================
 
-  const refresh24HourReport = useCallback(async (force = true) => {
+ const refresh24HourReport = useCallback(
+  async (force = true) => {
     const loaded = await loadReport(force);
-    if (loaded) {
-      // Child components only receive a new key after fresh report data.
+
+    // Only action-triggered refreshes notify child panels.
+    // Automatic background refreshes update the parent only.
+    if (loaded && force) {
       setRefreshKey((previous) => previous + 1);
     }
-  }, [loadReport]);
+
+    return loaded;
+  },
+  [loadReport]
+);
 
   useEffect(() => {
     // New shift / credentials invalidate any previous in-flight report.
