@@ -486,7 +486,6 @@ export default function CashierLiveFeedPanel({
     );
 
     return () => {
-      clearTimeout(staggerTimer);
       if (interval !== null) clearInterval(interval);
     };
   }, []);
