@@ -2474,9 +2474,9 @@ const css = `
 .tl-ms-inline-controls label {font-size:13px;font-weight:800;text-align:center;color:#D9B66C;white-space:nowrap}
 .tl-ms-inline-controls select,.tl-ms-inline-controls input {box-sizing:border-box;width:100%;min-width:0;height:39px;border:1px solid #496078;border-radius:7px;background:#0A1725;color:#F0F5FA;padding:7px 9px;font-size:14px;font-weight:700}
 .tl-ms-inline-controls select {border-color:#D9B66C}
-.tl-ms-action-wrap {position:relative;z-index:30}
+.tl-ms-action-wrap {position:relative;z-index:1000}
 .tl-ms-action-trigger {box-sizing:border-box;width:100%;height:39px;border:1px solid #D9B66C;border-radius:7px;background:#0A1725;color:#F0F5FA;padding:7px 9px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
-.tl-ms-action-menu {position:absolute;top:100%;left:0;min-width:170px;z-index:100;padding:5px;border:1px solid #D9B66C;border-radius:7px;background:#101F30;box-shadow:0 10px 30px #0009}
+.tl-ms-action-menu {position:absolute;bottom:calc(100% + 6px);top:auto;left:0;min-width:190px;max-height:min(320px,65vh);overflow-y:auto;overscroll-behavior:contain;z-index:1000;padding:5px;border:1px solid #D9B66C;border-radius:7px;background:#101F30;box-shadow:0 10px 30px #0009}
 .tl-ms-action-menu button {display:flex;justify-content:space-between;width:100%;border:0;background:transparent;color:#F0F5FA;text-align:left;padding:10px 12px;border-radius:5px;cursor:pointer;font-size:14px;font-weight:750}
 .tl-ms-action-menu button:hover:not(:disabled),.tl-ms-action-menu button:focus-visible {background:#28445B}
 .tl-ms-action-menu button:disabled {opacity:.4;cursor:not-allowed}
@@ -2576,7 +2576,7 @@ const s = {
     color: C.text,
     border: `1px solid ${C.border}`,
     borderRadius: 12,
-    overflow: "hidden",
+    overflow: "visible",
     fontFamily:
       "Inter, ui-sans-serif, system-ui, sans-serif",
   },
