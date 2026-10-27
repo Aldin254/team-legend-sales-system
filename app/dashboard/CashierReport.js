@@ -1851,6 +1851,7 @@ export default function CashierReport({ user, currentShift }) {
             <CashierSavingsPanel
               user={user}
               currentShift={activeShift}
+              bankingActive={operationsPanel === "banking"}
             />
 
             {/* Dashboard organization only: keep existing transaction components mounted. */}
@@ -1878,13 +1879,19 @@ export default function CashierReport({ user, currentShift }) {
                   }}
                 >
                   <option value="salary">Salary</option>
+                  <option value="banking">Banking</option>
+                  <option value="accounts">Accounts Information</option>
                   <option value="safaricom">Safaricom Withdrawal</option>
                   <option value="return">Send Float to Legend Accounts</option>
                 </select>
               </div>
 
+              <div id="tl-cashier-banking-slot" style={{ display: operationsPanel === "banking" ? "block" : "none" }} />
               <div style={{ display: operationsPanel === "salary" ? "block" : "none" }}>
                 <CashierSalaryPanel user={user} currentShift={activeShift} />
+              </div>
+              <div style={{ display: operationsPanel === "accounts" ? "block" : "none" }}>
+                <CashierAccountsPanel user={user} />
               </div>
               <div style={{ display: operationsPanel === "safaricom" ? "block" : "none" }}>
                 <CashierSafaricomWithdrawalPanel
@@ -1901,11 +1908,6 @@ export default function CashierReport({ user, currentShift }) {
                 />
               </div>
             </section>
-
-            {/* Accounts Information: always visible as the last lower panel. */}
-            <div style={{ gridColumn: "1 / -1", minWidth: 0, width: "100%" }}>
-              <CashierAccountsPanel user={user} />
-            </div>
 
           </div>
 
