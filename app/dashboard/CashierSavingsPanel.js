@@ -101,6 +101,8 @@ export default function CashierSavingsPanel({
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [saveSubmenuOpen, setSaveSubmenuOpen] = useState(false);
   const [combinedWithdrawAmount, setCombinedWithdrawAmount] = useState("");
+  const [utilityWithdrawCategory, setUtilityWithdrawCategory] = useState("WIFI");
+  const [withdrawSubmenuOpen, setWithdrawSubmenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState("");
   const [notice, setNotice] = useState(null);
@@ -1378,7 +1380,7 @@ export default function CashierSavingsPanel({
 
   // WITHDRAW TO M-SHWARI FLOAT — PRESERVED
 
-  async function withdrawMoney(row) {
+  async function withdrawMoney(row, amountOverride) {
     if (!dstvAllowed(row)) return;
 
     if (
@@ -1388,8 +1390,9 @@ export default function CashierSavingsPanel({
       return;
     }
 
-    const raw =
-      inputs[row.key]?.withdraw;
+    const raw = amountOverride === undefined
+      ? inputs[row.key]?.withdraw
+      : amountOverride;
 
     const amount = Number(raw);
 
@@ -1451,6 +1454,7 @@ export default function CashierSavingsPanel({
           row.key,
           "withdraw"
         );
+        if (!banking) setCombinedWithdrawAmount("");
 
         notify(
           `${row.label}: KES ${money(amount)} withdrawn to M-Shwari Float ${
@@ -1518,13 +1522,13 @@ export default function CashierSavingsPanel({
               <button type="button" className="tl-ms-action-trigger"
                 aria-labelledby="tl-mshwari-action-label" aria-haspopup="true"
                 aria-expanded={saveMenuOpen} disabled={Boolean(actionKey)}
-                onClick={() => { setSaveMenuOpen((open) => !open); setSaveSubmenuOpen(false); }}>
-                {mshwariAction === "WITHDRAW" ? "WITHDRAW" : utilitySaveCategory ? `SAVE · ${({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[utilitySaveCategory]}` : "SAVE"} ▾
+                onClick={() => { setSaveMenuOpen((open) => !open); setSaveSubmenuOpen(false); setWithdrawSubmenuOpen(false); }}>
+                {mshwariAction === "WITHDRAW" ? `WITHDRAW · ${({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[utilityWithdrawCategory]}` : utilitySaveCategory ? `SAVE · ${({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[utilitySaveCategory]}` : "SAVE"} ▾
               </button>
               {saveMenuOpen && (
                 <div className="tl-ms-action-menu" role="menu" aria-label="Action choices">
                   <button type="button" role="menuitem" aria-expanded={saveSubmenuOpen}
-                    onClick={() => setSaveSubmenuOpen((open) => !open)}>SAVE <span>▸</span></button>
+                    onClick={() => { setSaveSubmenuOpen((open) => !open); setWithdrawSubmenuOpen(false); }}>SAVE <span>▸</span></button>
                   {saveSubmenuOpen && (
                     <div className="tl-ms-action-submenu" role="group" aria-label="Save category">
                       {["WIFI", "DSTV", "ELECTRICITY", "RENT"].map((key) => {
@@ -1533,14 +1537,28 @@ export default function CashierSavingsPanel({
                         return <button key={key} type="button" role="menuitem"
                           disabled={locked} onClick={() => {
                             setUtilitySaveCategory(key); setMshwariAction("SAVE");
-                            setSaveSubmenuOpen(false); setSaveMenuOpen(false);
+                            setSaveSubmenuOpen(false); setWithdrawSubmenuOpen(false); setSaveMenuOpen(false);
                           }}>{label}{locked ? " (Locked)" : ""}</button>;
                       })}
                     </div>
                   )}
-                  <button type="button" role="menuitem" onClick={() => {
-                    setMshwariAction("WITHDRAW"); setSaveSubmenuOpen(false); setSaveMenuOpen(false);
-                  }}>WITHDRAW</button>
+                  <button type="button" role="menuitem" aria-expanded={withdrawSubmenuOpen}
+                    onClick={() => { setWithdrawSubmenuOpen((open) => !open); setSaveSubmenuOpen(false); }}>
+                    WITHDRAW <span>▸</span>
+                  </button>
+                  {withdrawSubmenuOpen && (
+                    <div className="tl-ms-action-submenu" role="group" aria-label="Withdraw category">
+                      {["WIFI", "DSTV", "ELECTRICITY", "RENT"].map((key) => {
+                        const locked = key === "DSTV" && dstvEnabled !== true;
+                        const label = ({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[key];
+                        return <button key={key} type="button" role="menuitem"
+                          disabled={locked} onClick={() => {
+                            setUtilityWithdrawCategory(key); setMshwariAction("WITHDRAW");
+                            setWithdrawSubmenuOpen(false); setSaveSubmenuOpen(false); setSaveMenuOpen(false);
+                          }}>{label}{locked ? " (Locked)" : ""}</button>;
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1553,7 +1571,7 @@ export default function CashierSavingsPanel({
                   onChange={(event) => setMshwariSaveAmount(event.target.value)} />
               ) : (
                 <input id="tl-ms-operation-amount" type="number" min="0" step="0.01"
-                  placeholder="Amount" aria-label="Combined M-Shwari withdrawal amount"
+                  placeholder="Amount" aria-label="Selected-category M-Shwari withdrawal amount"
                   value={combinedWithdrawAmount}
                   onChange={(event) => setCombinedWithdrawAmount(event.target.value)} />
               )}
@@ -1567,7 +1585,11 @@ export default function CashierSavingsPanel({
                 }}>SAVE</button>
             ) : (
               <button className="tl-ms-inline-submit tl-ms-inline-withdraw" type="button"
-                disabled title="Awaiting safe atomic combined-withdrawal backend verification">
+                disabled={Boolean(actionKey) || !combinedWithdrawAmount || Number(combinedWithdrawAmount) <= 0}
+                onClick={() => {
+                  const row = utilityRows.find((item) => item.key === utilityWithdrawCategory);
+                  if (row) void withdrawMoney(row, combinedWithdrawAmount);
+                }}>
                 WITHDRAW
               </button>
             )}
