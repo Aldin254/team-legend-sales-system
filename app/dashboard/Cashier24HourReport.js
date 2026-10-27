@@ -47,6 +47,8 @@ export default function Cashier24HourReport({
   const reportControllerRef = useRef(null);
   const reportGenerationRef = useRef(0);
   const [loading, setLoading] = useState(true);
+  const [transactionPanel, setTransactionPanel] = useState("SALARY");
+  const [accountsOpen, setAccountsOpen] = useState(false);
 
   const [savingExpenses, setSavingExpenses] =
     useState(false);
@@ -1449,62 +1451,68 @@ export default function Cashier24HourReport({
             </section>
           </div>
 
-          {/* 24-HOUR OPERATIONS */}
-
+          {/* 24-HOUR OPERATIONS — unchanged financial components */}
           <div style={operationsGridStyle}>
-            <div
-              className="tl24-clean-platform-inputs"
-              style={platformColumnStyle}
-            >
+            <div className="tl24-clean-platform-inputs" style={platformColumnStyle}>
               <PlatformReadings24Hour
                 user={user}
-                currentShift={
-                  shift || currentShift
-                }
+                currentShift={shift || currentShift}
                 refreshKey={refreshKey}
-                onReadingsChanged={
-                  refresh24HourReport
-                }
+                onReadingsChanged={refresh24HourReport}
               />
             </div>
+          </div>
 
-            <div style={sidePanelsStyle}>
-              <CashierSavingsPanel
-                user={user}
-                currentShift={
-                  shift || currentShift
-                }
-              />
+          {/* MATCHED 12-HOUR SAVINGS / BANKING LAYOUT */}
+          <div style={{ marginTop: 14, minWidth: 0 }}>
+            <CashierSavingsPanel
+              user={user}
+              currentShift={shift || currentShift}
+              bankingActive={transactionPanel === "BANKING"}
+            />
+          </div>
 
-              <CashierSalaryPanel
-                user={user}
-                currentShift={
-                  shift || currentShift
-                }
-                onSalaryPaid={
-                  refresh24HourReport
-                }
-              />
+          {/* SINGLE TRANSACTION CONTROL */}
+          <section style={transactionControlStyle}>
+            <label htmlFor="tl24-transaction-choice" style={transactionLabelStyle}>
+              TRANSACTION CONTROL
+            </label>
+            <select
+              id="tl24-transaction-choice"
+              value={transactionPanel}
+              onChange={(event) => setTransactionPanel(event.target.value)}
+              style={transactionSelectStyle}
+            >
+              <option value="SALARY">Salary</option>
+              <option value="BANKING">Banking</option>
+              <option value="SAFARICOM">Safaricom Withdrawal</option>
+              <option value="FLOAT_RETURN">Send Float to Legend Accounts</option>
+            </select>
+          </section>
 
-              <CashierAccountsPanel
-                user={user}
-              />
+          {/* Keep the Banking portal mount present in every mode. */}
+          <div id="tl-cashier-banking-slot" />
 
-              <CashierAccountsReturnPanel
-                user={user}
-                currentShift={
-                  shift || currentShift
-                }
-                onReturnChanged={
-                  refresh24HourReport
-                }
-              />
-<CashierSafaricomWithdrawalPanel
-  user={user}
-  currentShift={shift || currentShift}
-  onWithdrawalChanged={refresh24HourReport}
-/>
-            </div>
+          <div style={{ marginTop: 10 }} hidden={transactionPanel !== "SALARY"}>
+            <CashierSalaryPanel
+              user={user}
+              currentShift={shift || currentShift}
+              onSalaryPaid={refresh24HourReport}
+            />
+          </div>
+          <div style={{ marginTop: 10 }} hidden={transactionPanel !== "FLOAT_RETURN"}>
+            <CashierAccountsReturnPanel
+              user={user}
+              currentShift={shift || currentShift}
+              onReturnChanged={refresh24HourReport}
+            />
+          </div>
+          <div style={{ marginTop: 10 }} hidden={transactionPanel !== "SAFARICOM"}>
+            <CashierSafaricomWithdrawalPanel
+              user={user}
+              currentShift={shift || currentShift}
+              onWithdrawalChanged={refresh24HourReport}
+            />
           </div>
 
           {/* SUMMARY */}
@@ -1548,6 +1556,20 @@ export default function Cashier24HourReport({
               window.location.reload();
             }}
           />
+
+          {/* ACCOUNTS INFORMATION — COLLAPSIBLE, AT THE BOTTOM */}
+          <section style={transactionControlStyle}>
+            <button
+              type="button"
+              onClick={() => setAccountsOpen((open) => !open)}
+              aria-expanded={accountsOpen}
+              style={accountsToggleStyle}
+            >
+              <span>ACCOUNTS INFORMATION</span>
+              <span>{accountsOpen ? "▴" : "▾"}</span>
+            </button>
+            {accountsOpen && <CashierAccountsPanel user={user} />}
+          </section>
 
           {/* IMPORTANT INFORMATION */}
 
@@ -2375,6 +2397,46 @@ const expenseTotalStyle = {
   fontSize: 12,
   fontVariantNumeric:
     "tabular-nums",
+};
+
+const transactionControlStyle = {
+  marginTop: 12,
+  minWidth: 0,
+  padding: "10px 12px",
+  background: "#152B40",
+  border: "1px solid #34546B",
+  borderLeft: "3px solid #D9B66C",
+  borderRadius: 8,
+};
+const transactionLabelStyle = {
+  display: "block",
+  color: "#D9B66C",
+  fontSize: 13,
+  fontWeight: 800,
+  marginBottom: 7,
+};
+const transactionSelectStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  height: 38,
+  background: "#0A1725",
+  color: "#F0F5FA",
+  border: "1px solid #496078",
+  borderRadius: 6,
+  padding: "6px 10px",
+  fontSize: 14,
+};
+const accountsToggleStyle = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "space-between",
+  background: "transparent",
+  color: "#D9B66C",
+  border: 0,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 800,
+  padding: "4px 0",
 };
 
 const operationsGridStyle = {
