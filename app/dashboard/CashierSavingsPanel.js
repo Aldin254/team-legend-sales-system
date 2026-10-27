@@ -90,6 +90,7 @@ export default function CashierSavingsPanel({
 
   const [inputs, setInputs] = useState(makeInputs);
   const [utilitySaveCategory, setUtilitySaveCategory] = useState("WIFI");
+  const [mshwariAction, setMshwariAction] = useState("SAVE");
   const [combinedWithdrawAmount, setCombinedWithdrawAmount] = useState("");
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState("");
@@ -1492,44 +1493,52 @@ export default function CashierSavingsPanel({
                 const row = utilityRows.find((item) => item.key === key);
                 return { key, label: row?.label || key, balance: row?.balance || 0 };
               }),
-              { key: "TOTAL", label: "TOTAL SAVED", balance: utilityTotalSaved },
             ].map((item) => (
-              <div key={item.key} className={`tl-ms-balance ${item.key === "TOTAL" ? "tl-ms-total" : ""}`}>
+              <div key={item.key} className="tl-ms-balance">
                 <span>{item.label}</span>
                 <strong>KES {money(item.balance)}</strong>
               </div>
             ))}
+            <div className="tl-ms-balance tl-ms-action-tile">
+              <label htmlFor="tl-mshwari-action">ACTION</label>
+              <select id="tl-mshwari-action" aria-label="M-Shwari save or withdraw"
+                value={mshwariAction} disabled={Boolean(actionKey)}
+                onChange={(event) => setMshwariAction(event.target.value)}>
+                <option value="SAVE">SAVE</option>
+                <option value="WITHDRAW">WITHDRAW</option>
+              </select>
+            </div>
+            <div className="tl-ms-balance tl-ms-total">
+              <span>TOTAL SAVED</span>
+              <strong>KES {money(utilityTotalSaved)}</strong>
+            </div>
           </div>
           <div className="tl-ms-operations">
-            <div className="tl-ms-operation">
-              <strong>SAVE TO M-SHWARI</strong>
-              <div className="tl-ms-fields">
+            {mshwariAction === "SAVE" ? (
+              <div className="tl-ms-fields tl-ms-single-line">
                 <select aria-label="Savings category" style={s.select} value={utilitySaveCategory}
                   disabled={Boolean(actionKey)} onChange={(event) => setUtilitySaveCategory(event.target.value)}>
                   {utilityRows.map((row) => <option key={row.key} value={row.key}>{row.label}</option>)}
                 </select>
-                <input type="number" min="0" step="0.01" placeholder="Amount (KES)" style={s.input}
+                <input type="number" min="0" step="0.01" placeholder="Save amount (KES)" style={s.input}
                   aria-label="M-Shwari save amount" disabled={Boolean(actionKey) || (utilitySaveCategory === "DSTV" && dstvEnabled !== true)}
                   value={inputs[utilitySaveCategory]?.save || ""}
                   onChange={(event) => setInput(utilitySaveCategory, "save", event.target.value)} />
                 <button type="button" style={{...s.button,...s.saveButton}} disabled={Boolean(actionKey) || (utilitySaveCategory === "DSTV" && dstvEnabled !== true)}
                   onClick={() => { const row = utilityRows.find((item) => item.key === utilitySaveCategory); if (row) void saveMoney(row); }}>
-                  {actionKey === `SAVE-${utilitySaveCategory}` ? "Saving..." : "Save"}
+                  {actionKey === `SAVE-${utilitySaveCategory}` ? "Saving..." : "SAVE"}
                 </button>
               </div>
-            </div>
-            <div className="tl-ms-operation">
-              <strong>WITHDRAW FROM M-SHWARI</strong>
+            ) : (
               <div className="tl-ms-fields tl-ms-withdraw-fields">
-                <input type="number" min="0" step="0.01" placeholder="Amount (KES)" style={s.input}
+                <input type="number" min="0" step="0.01" placeholder="Withdraw amount (KES)" style={s.input}
                   aria-label="Combined M-Shwari withdrawal amount" value={combinedWithdrawAmount}
                   onChange={(event) => setCombinedWithdrawAmount(event.target.value)} />
-                <button type="button" style={{...s.button,...s.withdrawButton}} disabled title="Awaiting atomic combined-withdrawal backend verification">
-                  Withdraw
-                </button>
+                <button type="button" style={{...s.button,...s.withdrawButton}} disabled
+                  title="Awaiting safe atomic combined-withdrawal backend verification">WITHDRAW</button>
+                <span className="tl-ms-hint">Available: KES {money(utilityAvailable)} · Pending backend verification</span>
               </div>
-              <span className="tl-ms-hint">Available: KES {money(utilityAvailable)} · Combined withdrawal pending backend verification</span>
-            </div>
+            )}
           </div>
           <div className="tl-ms-section-label">PAY EXPENSES & BANKING</div>
           <div style={s.categoryGrid}>
@@ -2418,22 +2427,25 @@ function formatDateTime(value) {
 // ============================================
 
 const css = `
-.tl-ms-overview {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:12px 12px 0}
+.tl-ms-overview {display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;padding:12px 12px 0}
 .tl-ms-balance {min-width:0;background:#0A1725;border:1px solid #2A3D52;border-radius:8px;padding:10px 5px;text-align:center;display:flex;flex-direction:column;gap:7px}
 .tl-ms-balance span {font-size:10px;font-weight:800;color:#C4D0DC}
 .tl-ms-balance strong {font-size:clamp(10px,1.2vw,15px);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:#F0F5FA}
 .tl-ms-total {border-color:#D9B66C;background:#292A2C}
 .tl-ms-total strong {color:#F2DA91}
-.tl-ms-operations {display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
+.tl-ms-operations {display:block;padding:8px 12px}
 .tl-ms-operation {min-width:0;background:#15263A;border:1px solid #2A3D52;border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:10px}
 .tl-ms-operation > strong,.tl-ms-section-label {font-size:12px;letter-spacing:.05em;color:#D9B66C}
 .tl-ms-fields {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 90px;gap:7px;align-items:start}
 .tl-ms-fields select {margin-bottom:0!important}
-.tl-ms-withdraw-fields {grid-template-columns:minmax(0,1fr) 110px}
+.tl-ms-action-tile label {font-size:10px;font-weight:800;color:#D9B66C}
+.tl-ms-action-tile select {width:100%;min-width:0;background:#15263A;border:1px solid #D9B66C;color:#F0F5FA;border-radius:5px;padding:5px 2px;font-size:11px;font-weight:800}
+.tl-ms-single-line {grid-template-columns:minmax(100px,1fr) minmax(100px,1fr) 90px}
+.tl-ms-withdraw-fields {grid-template-columns:minmax(0,1fr) 110px auto}
 .tl-ms-hint {font-size:10px;color:#91A5B8}
 .tl-ms-section-label {padding:4px 12px 0;font-weight:800}
 @media(max-width:750px){.tl-ms-operations{grid-template-columns:1fr}.tl-ms-balance span{font-size:9px}.tl-ms-balance strong{font-size:10px}}
-@media(max-width:420px){.tl-ms-overview{gap:3px;padding:8px 5px 0}.tl-ms-balance{padding:8px 2px}.tl-ms-balance span{font-size:8px}.tl-ms-balance strong{font-size:9px}.tl-ms-fields{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 65px}}
+@media(max-width:420px){.tl-ms-overview{gap:3px;padding:8px 5px 0}.tl-ms-balance{padding:8px 2px}.tl-ms-balance span{font-size:8px}.tl-ms-balance strong{font-size:9px}.tl-ms-single-line{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 65px}.tl-ms-action-tile select{font-size:9px}}
 
 .tl-shared-savings input[type="number"] {
   appearance: textfield;
