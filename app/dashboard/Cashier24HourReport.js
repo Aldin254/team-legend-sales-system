@@ -42,6 +42,8 @@ export default function Cashier24HourReport({
     useState([]);
 
   const [expenses, setExpenses] = useState([]);
+  const [transactionPanel, setTransactionPanel] = useState("SALARY");
+  const [accountsInfoOpen, setAccountsInfoOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const reportInFlightRef = useRef(null);
   const reportControllerRef = useRef(null);
@@ -1471,39 +1473,57 @@ export default function Cashier24HourReport({
             <div style={sidePanelsStyle}>
               <CashierSavingsPanel
                 user={user}
-                currentShift={
-                  shift || currentShift
-                }
+                currentShift={shift || currentShift}
+                bankingActive={transactionPanel === "BANKING"}
               />
 
-              <CashierSalaryPanel
-                user={user}
-                currentShift={
-                  shift || currentShift
-                }
-                onSalaryPaid={
-                  refresh24HourReport
-                }
+              <section style={transactionControlStyle}>
+                <label htmlFor="tl24-transaction-control" style={transactionLabelStyle}>
+                  TRANSACTION CONTROL
+                </label>
+                <select
+                  id="tl24-transaction-control"
+                  value={transactionPanel}
+                  onChange={(event) => setTransactionPanel(event.target.value)}
+                  style={transactionSelectStyle}
+                >
+                  <option value="SALARY">Salary</option>
+                  <option value="BANKING">Banking</option>
+                  <option value="SAFARICOM">Safaricom Withdrawal</option>
+                  <option value="FLOAT">Send Float to Legend Accounts</option>
+                </select>
+              </section>
+
+              {/* The Banking portal target stays mounted so switching to
+                  Banking can render without remounting Savings. */}
+              <div
+                id="tl-cashier-banking-slot"
+                style={{ display: transactionPanel === "BANKING" ? "block" : "none" }}
               />
 
-              <CashierAccountsPanel
-                user={user}
-              />
+              {transactionPanel === "SALARY" && (
+                <CashierSalaryPanel
+                  user={user}
+                  currentShift={shift || currentShift}
+                  onSalaryPaid={refresh24HourReport}
+                />
+              )}
 
-              <CashierAccountsReturnPanel
-                user={user}
-                currentShift={
-                  shift || currentShift
-                }
-                onReturnChanged={
-                  refresh24HourReport
-                }
-              />
-<CashierSafaricomWithdrawalPanel
-  user={user}
-  currentShift={shift || currentShift}
-  onWithdrawalChanged={refresh24HourReport}
-/>
+              {transactionPanel === "FLOAT" && (
+                <CashierAccountsReturnPanel
+                  user={user}
+                  currentShift={shift || currentShift}
+                  onReturnChanged={refresh24HourReport}
+                />
+              )}
+
+              {transactionPanel === "SAFARICOM" && (
+                <CashierSafaricomWithdrawalPanel
+                  user={user}
+                  currentShift={shift || currentShift}
+                  onWithdrawalChanged={refresh24HourReport}
+                />
+              )}
             </div>
           </div>
 
@@ -1604,6 +1624,19 @@ export default function Cashier24HourReport({
                 the authorised window.
               </div>
             </div>
+          </section>
+
+          {/* Accounts Information is independent of Transaction Control. */}
+          <section style={informationStyle}>
+            <button
+              type="button"
+              aria-expanded={accountsInfoOpen}
+              onClick={() => setAccountsInfoOpen((open) => !open)}
+              style={accountsToggleStyle}
+            >
+              <span>{accountsInfoOpen ? "▾" : "▸"} ACCOUNTS INFORMATION</span>
+            </button>
+            {accountsInfoOpen && <CashierAccountsPanel user={user} />}
           </section>
         </main>
       </div>
@@ -2399,6 +2432,51 @@ const sidePanelsStyle = {
     "minmax(0,1fr)",
   alignContent: "start",
   gap: 14,
+};
+
+const transactionControlStyle = {
+  background: C.panel,
+  border: `1px solid ${C.border}`,
+  borderLeft: `3px solid ${C.gold}`,
+  borderRadius: 9,
+  padding: "9px 11px",
+  minWidth: 0,
+};
+
+const transactionLabelStyle = {
+  display: "block",
+  color: C.gold,
+  fontSize: 11,
+  fontWeight: 850,
+  marginBottom: 6,
+};
+
+const transactionSelectStyle = {
+  display: "block",
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
+  padding: "9px 10px",
+  borderRadius: 6,
+  background: C.field,
+  color: C.text,
+  border: `1px solid ${C.gold}`,
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const accountsToggleStyle = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  cursor: "pointer",
+  padding: "12px 14px",
+  background: C.panelRaised,
+  border: "none",
+  borderLeft: `3px solid ${C.gold}`,
+  color: C.gold,
+  fontSize: 11,
+  fontWeight: 850,
 };
 
 const summaryGridStyle = {
