@@ -99,6 +99,7 @@ export default function CashierSavingsPanel({
   const [mshwariAction, setMshwariAction] = useState("SAVE");
   const [mshwariSaveAmount, setMshwariSaveAmount] = useState("");
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
+  const [saveSubmenuOpen, setSaveSubmenuOpen] = useState(false);
   const [combinedWithdrawAmount, setCombinedWithdrawAmount] = useState("");
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState("");
@@ -1512,14 +1513,36 @@ export default function CashierSavingsPanel({
               <span>TOTAL SAVED</span>
               <strong>KES {money(utilityTotalSaved)}</strong>
             </div>
-            <div className="tl-ms-inline-controls">
-              <label htmlFor="tl-mshwari-action">ACTION</label>
-              <select id="tl-mshwari-action" aria-label="M-Shwari save or withdraw"
-                value={mshwariAction} disabled={Boolean(actionKey)}
-                onChange={(event) => { setMshwariAction(event.target.value); setSaveMenuOpen(false); }}>
-                <option value="SAVE">SAVE</option>
-                <option value="WITHDRAW">WITHDRAW</option>
-              </select>
+            <div className="tl-ms-inline-controls tl-ms-action-wrap">
+              <label id="tl-mshwari-action-label">ACTION</label>
+              <button type="button" className="tl-ms-action-trigger"
+                aria-labelledby="tl-mshwari-action-label" aria-haspopup="true"
+                aria-expanded={saveMenuOpen} disabled={Boolean(actionKey)}
+                onClick={() => { setSaveMenuOpen((open) => !open); setSaveSubmenuOpen(false); }}>
+                {mshwariAction === "WITHDRAW" ? "WITHDRAW" : utilitySaveCategory ? `SAVE · ${({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[utilitySaveCategory]}` : "SAVE"} ▾
+              </button>
+              {saveMenuOpen && (
+                <div className="tl-ms-action-menu" role="menu" aria-label="Action choices">
+                  <button type="button" role="menuitem" aria-expanded={saveSubmenuOpen}
+                    onClick={() => setSaveSubmenuOpen((open) => !open)}>SAVE <span>▸</span></button>
+                  {saveSubmenuOpen && (
+                    <div className="tl-ms-action-submenu" role="group" aria-label="Save category">
+                      {["WIFI", "DSTV", "ELECTRICITY", "RENT"].map((key) => {
+                        const locked = key === "DSTV" && dstvEnabled !== true;
+                        const label = ({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[key];
+                        return <button key={key} type="button" role="menuitem"
+                          disabled={locked} onClick={() => {
+                            setUtilitySaveCategory(key); setMshwariAction("SAVE");
+                            setSaveSubmenuOpen(false); setSaveMenuOpen(false);
+                          }}>{label}{locked ? " (Locked)" : ""}</button>;
+                      })}
+                    </div>
+                  )}
+                  <button type="button" role="menuitem" onClick={() => {
+                    setMshwariAction("WITHDRAW"); setSaveSubmenuOpen(false); setSaveMenuOpen(false);
+                  }}>WITHDRAW</button>
+                </div>
+              )}
             </div>
             <div className="tl-ms-inline-controls">
               <label htmlFor="tl-ms-operation-amount">AMOUNT (KES)</label>
@@ -1536,33 +1559,12 @@ export default function CashierSavingsPanel({
               )}
             </div>
             {mshwariAction === "SAVE" ? (
-              <div className="tl-ms-save-menu-wrap">
-                <button type="button" className="tl-ms-inline-submit tl-ms-inline-save"
-                  aria-haspopup="true" aria-expanded={saveMenuOpen}
-                  disabled={Boolean(actionKey)}
-                  onClick={() => setSaveMenuOpen((value) => !value)}>
-                  SAVE ▾
-                </button>
-                {saveMenuOpen && (
-                  <div className="tl-ms-save-menu" role="menu" aria-label="Save to category">
-                    {["WIFI", "DSTV", "ELECTRICITY", "RENT"].map((key) => {
-                      const row = utilityRows.find((item) => item.key === key);
-                      const locked = key === "DSTV" && dstvEnabled !== true;
-                      return (
-                        <button key={key} type="button" role="menuitem"
-                          disabled={Boolean(actionKey) || locked}
-                          onClick={() => {
-                            setSaveMenuOpen(false);
-                            if (!row) return;
-                            void saveMoney(row, mshwariSaveAmount);
-                          }}>
-                          {row?.label || key}{locked ? " (Locked)" : ""}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              <button type="button" className="tl-ms-inline-submit tl-ms-inline-save"
+                disabled={Boolean(actionKey) || !mshwariSaveAmount || Number(mshwariSaveAmount) <= 0}
+                onClick={() => {
+                  const row = utilityRows.find((item) => item.key === utilitySaveCategory);
+                  if (row) void saveMoney(row, mshwariSaveAmount);
+                }}>SAVE</button>
             ) : (
               <button className="tl-ms-inline-submit tl-ms-inline-withdraw" type="button"
                 disabled title="Awaiting safe atomic combined-withdrawal backend verification">
@@ -2472,7 +2474,13 @@ const css = `
 .tl-ms-inline-controls label {font-size:13px;font-weight:800;text-align:center;color:#D9B66C;white-space:nowrap}
 .tl-ms-inline-controls select,.tl-ms-inline-controls input {box-sizing:border-box;width:100%;min-width:0;height:39px;border:1px solid #496078;border-radius:7px;background:#0A1725;color:#F0F5FA;padding:7px 9px;font-size:14px;font-weight:700}
 .tl-ms-inline-controls select {border-color:#D9B66C}
-.tl-ms-save-menu-wrap {position:relative;flex:0 0 112px;align-self:flex-end;z-index:15}
+.tl-ms-action-wrap {position:relative;z-index:30}
+.tl-ms-action-trigger {box-sizing:border-box;width:100%;height:39px;border:1px solid #D9B66C;border-radius:7px;background:#0A1725;color:#F0F5FA;padding:7px 9px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
+.tl-ms-action-menu {position:absolute;top:100%;left:0;min-width:170px;z-index:100;padding:5px;border:1px solid #D9B66C;border-radius:7px;background:#101F30;box-shadow:0 10px 30px #0009}
+.tl-ms-action-menu button {display:flex;justify-content:space-between;width:100%;border:0;background:transparent;color:#F0F5FA;text-align:left;padding:10px 12px;border-radius:5px;cursor:pointer;font-size:14px;font-weight:750}
+.tl-ms-action-menu button:hover:not(:disabled),.tl-ms-action-menu button:focus-visible {background:#28445B}
+.tl-ms-action-menu button:disabled {opacity:.4;cursor:not-allowed}
+.tl-ms-action-submenu {margin:3px 0 5px 9px;padding-left:7px;border-left:2px solid #D9B66C}
 .tl-ms-inline-submit {height:39px;width:112px;border:0;border-radius:7px;padding:0 10px;font-size:14px;font-weight:850;cursor:pointer;color:#fff;align-self:flex-end;white-space:nowrap}
 .tl-ms-inline-save {background:#11996E}
 .tl-ms-inline-withdraw {background:#345B79}
