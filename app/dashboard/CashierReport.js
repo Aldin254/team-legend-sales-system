@@ -1880,7 +1880,6 @@ export default function CashierReport({ user, currentShift }) {
                 >
                   <option value="salary">Salary</option>
                   <option value="banking">Banking</option>
-                  <option value="accounts">Accounts Information</option>
                   <option value="safaricom">Safaricom Withdrawal</option>
                   <option value="return">Send Float to Legend Accounts</option>
                 </select>
@@ -1889,9 +1888,6 @@ export default function CashierReport({ user, currentShift }) {
               <div id="tl-cashier-banking-slot" style={{ display: operationsPanel === "banking" ? "block" : "none" }} />
               <div style={{ display: operationsPanel === "salary" ? "block" : "none" }}>
                 <CashierSalaryPanel user={user} currentShift={activeShift} />
-              </div>
-              <div style={{ display: operationsPanel === "accounts" ? "block" : "none" }}>
-                <CashierAccountsPanel user={user} />
               </div>
               <div style={{ display: operationsPanel === "safaricom" ? "block" : "none" }}>
                 <CashierSafaricomWithdrawalPanel
@@ -1915,6 +1911,16 @@ export default function CashierReport({ user, currentShift }) {
             user={user}
             currentShift={activeShift}
           />
+
+          {/* Accounts Information always comes last, outside Transaction Control. */}
+          <details style={{ marginTop: 12, background: "#152639", border: "1px solid #2a3d52", borderLeft: "3px solid #d9b66c", borderRadius: 12, padding: 12 }}>
+            <summary style={{ cursor: "pointer", color: "#f0f5fa", fontWeight: 850, fontSize: 13 }}>
+              ACCOUNTS INFORMATION
+            </summary>
+            <div style={{ marginTop: 12 }}>
+              <CashierAccountsPanel user={user} />
+            </div>
+          </details>
         </main>
       </div>
     </div>
