@@ -1853,11 +1853,6 @@ export default function CashierReport({ user, currentShift }) {
               currentShift={activeShift}
             />
 
-            {/* Accounts Information remains visible outside Transaction Control. */}
-            <div style={{ gridColumn: "1 / -1", minWidth: 0, width: "100%" }}>
-              <CashierAccountsPanel user={user} />
-            </div>
-
             {/* Dashboard organization only: keep existing transaction components mounted. */}
             <section style={{ gridColumn: "1 / -1", minWidth: 0, width: "100%" }}>
               <div style={{
@@ -1906,6 +1901,11 @@ export default function CashierReport({ user, currentShift }) {
                 />
               </div>
             </section>
+
+            {/* Accounts Information: always visible as the last lower panel. */}
+            <div style={{ gridColumn: "1 / -1", minWidth: 0, width: "100%" }}>
+              <CashierAccountsPanel user={user} />
+            </div>
 
           </div>
 
