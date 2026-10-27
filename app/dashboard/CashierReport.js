@@ -1853,6 +1853,11 @@ export default function CashierReport({ user, currentShift }) {
               currentShift={activeShift}
             />
 
+            {/* Accounts Information remains visible outside Transaction Control. */}
+            <div style={{ gridColumn: "1 / -1", minWidth: 0, width: "100%" }}>
+              <CashierAccountsPanel user={user} />
+            </div>
+
             {/* Dashboard organization only: keep existing transaction components mounted. */}
             <section style={{ gridColumn: "1 / -1", minWidth: 0, width: "100%" }}>
               <div style={{
@@ -1878,7 +1883,6 @@ export default function CashierReport({ user, currentShift }) {
                   }}
                 >
                   <option value="salary">Salary</option>
-                  <option value="accounts">Accounts Information</option>
                   <option value="safaricom">Safaricom Withdrawal</option>
                   <option value="return">Send Float to Legend Accounts</option>
                 </select>
@@ -1886,9 +1890,6 @@ export default function CashierReport({ user, currentShift }) {
 
               <div style={{ display: operationsPanel === "salary" ? "block" : "none" }}>
                 <CashierSalaryPanel user={user} currentShift={activeShift} />
-              </div>
-              <div style={{ display: operationsPanel === "accounts" ? "block" : "none" }}>
-                <CashierAccountsPanel user={user} />
               </div>
               <div style={{ display: operationsPanel === "safaricom" ? "block" : "none" }}>
                 <CashierSafaricomWithdrawalPanel
