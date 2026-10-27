@@ -96,6 +96,7 @@ export default function CashierSavingsPanel({
 
   const [inputs, setInputs] = useState(makeInputs);
   const [utilitySaveCategory, setUtilitySaveCategory] = useState("WIFI");
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [mshwariAction, setMshwariAction] = useState("SAVE");
   const [combinedWithdrawAmount, setCombinedWithdrawAmount] = useState("");
   const [loading, setLoading] = useState(true);
@@ -700,7 +701,7 @@ export default function CashierSavingsPanel({
 
   // SAVE — UNCHANGED FINANCIAL RULE
 
-  async function saveMoney(row) {
+  async function saveMoney(row, amountOverride) {
     if (!dstvAllowed(row)) return;
 
     if (
@@ -710,7 +711,7 @@ export default function CashierSavingsPanel({
       return;
     }
 
-    const raw = inputs[row.key]?.save;
+    const raw = amountOverride === undefined ? inputs[row.key]?.save : amountOverride;
     const amount = Number(raw);
 
     if (
@@ -1509,7 +1510,7 @@ export default function CashierSavingsPanel({
               <label htmlFor="tl-mshwari-action">ACTION</label>
               <select id="tl-mshwari-action" aria-label="M-Shwari save or withdraw"
                 value={mshwariAction} disabled={Boolean(actionKey)}
-                onChange={(event) => setMshwariAction(event.target.value)}>
+                onChange={(event) => { setMshwariAction(event.target.value); setSaveMenuOpen(false); }}>
                 <option value="SAVE">SAVE</option>
                 <option value="WITHDRAW">WITHDRAW</option>
               </select>
@@ -1517,25 +1518,39 @@ export default function CashierSavingsPanel({
             {mshwariAction === "SAVE" ? (
               <>
                 <div className="tl-ms-inline-controls">
-                  <label htmlFor="tl-ms-save-category">CATEGORY</label>
-                  <select id="tl-ms-save-category" aria-label="Savings category"
-                    value={utilitySaveCategory} disabled={Boolean(actionKey)}
-                    onChange={(event) => setUtilitySaveCategory(event.target.value)}>
-                    {utilityRows.map((row) => <option key={row.key} value={row.key}>{row.label}</option>)}
-                  </select>
-                </div>
-                <div className="tl-ms-inline-controls">
                   <label htmlFor="tl-ms-save-amount">AMOUNT (KES)</label>
                   <input id="tl-ms-save-amount" type="number" min="0" step="0.01" placeholder="Amount"
                     aria-label="M-Shwari save amount" disabled={Boolean(actionKey) || (utilitySaveCategory === "DSTV" && dstvEnabled !== true)}
                     value={inputs[utilitySaveCategory]?.save || ""}
                     onChange={(event) => setInput(utilitySaveCategory, "save", event.target.value)} />
                 </div>
-                <button className="tl-ms-inline-submit tl-ms-inline-save" type="button"
-                  disabled={Boolean(actionKey) || (utilitySaveCategory === "DSTV" && dstvEnabled !== true)}
-                  onClick={() => { const row = utilityRows.find((item) => item.key === utilitySaveCategory); if (row) void saveMoney(row); }}>
-                  {actionKey === `SAVE-${utilitySaveCategory}` ? "Saving..." : "SAVE"}
-                </button>
+                <div className="tl-ms-save-menu-wrap">
+                  <button className="tl-ms-inline-submit tl-ms-inline-save" type="button"
+                    aria-expanded={saveMenuOpen} aria-label="Choose category to save"
+                    disabled={Boolean(actionKey)}
+                    onClick={() => setSaveMenuOpen((open) => !open)}>
+                    {actionKey.startsWith("SAVE-") ? "Saving..." : "SAVE ▾"}
+                  </button>
+                  {saveMenuOpen && (
+                    <div className="tl-ms-save-menu" role="group" aria-label="Save to category">
+                      {utilityRows.map((row) => (
+                        <button type="button" key={row.key}
+                          disabled={Boolean(actionKey) || (row.key === "DSTV" && dstvEnabled !== true)}
+                          onClick={() => {
+                            setSaveMenuOpen(false);
+                            setUtilitySaveCategory(row.key);
+                            // Use the amount already entered, regardless of the last chosen category.
+                            const entered = inputs[utilitySaveCategory]?.save || "";
+                            setInputs((old) => ({...old, [row.key]: {...old[row.key], save: entered}}));
+                            // Save after state update using the existing saveMoney path.
+                            void saveMoney(row, entered);
+                          }}>
+                          {row.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <>
@@ -2449,7 +2464,7 @@ function formatDateTime(value) {
 // ============================================
 
 const css = `
-.tl-ms-overview {display:grid;grid-template-columns:repeat(4,minmax(85px,.8fr)) minmax(94px,.9fr) minmax(94px,.9fr) minmax(105px,1fr) minmax(66px,.65fr) minmax(115px,1fr);gap:4px;padding:7px 8px 4px;align-items:stretch}
+.tl-ms-overview {display:grid;grid-template-columns:repeat(4,minmax(85px,1fr)) minmax(95px,1fr) minmax(115px,1.15fr) minmax(80px,.7fr) minmax(120px,1.1fr);gap:4px;padding:7px 8px 4px;align-items:stretch}
 .tl-ms-balance {min-width:0;background:#0A1725;border:1px solid #2A3D52;border-radius:6px;padding:5px 3px;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:3px}
 .tl-ms-balance span {font-size:9px;font-weight:800;color:#C4D0DC}
 .tl-ms-balance strong {font-size:clamp(10px,1vw,13px);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;color:#F0F5FA}
@@ -2461,11 +2476,16 @@ const css = `
 .tl-ms-inline-controls select {border-color:#D9B66C}
 .tl-ms-inline-controls strong {text-align:center;font-size:11px;color:#F0F5FA}
 .tl-ms-inline-submit {align-self:end;height:29px;border:0;border-radius:5px;padding:0 5px;font-size:10px;font-weight:850;cursor:pointer;color:#fff}
-.tl-ms-inline-save {background:#11996E}
+.tl-ms-inline-save {background:#11996E;width:100%}
+.tl-ms-save-menu-wrap {position:relative;min-width:0;align-self:end}
+.tl-ms-save-menu {position:absolute;top:calc(100% + 4px);right:0;min-width:145px;background:#0A1725;border:1px solid #D9B66C;border-radius:7px;padding:4px;z-index:100;box-shadow:0 8px 24px #0008}
+.tl-ms-save-menu button {display:block;width:100%;text-align:left;padding:9px 11px;background:transparent;color:#F0F5FA;border:0;border-radius:4px;cursor:pointer;font-size:12px}
+.tl-ms-save-menu button:hover {background:#233F58}
+.tl-ms-save-menu button:disabled {opacity:.4;cursor:not-allowed}
 .tl-ms-inline-withdraw {background:#345B79}
 .tl-ms-inline-submit:disabled {opacity:.45;cursor:not-allowed}
 .tl-ms-section-label {padding:4px 12px 0;font-size:12px;letter-spacing:.05em;color:#D9B66C;font-weight:800}
-@media(max-width:950px){.tl-ms-overview{overflow-x:auto;grid-template-columns:repeat(4,85px) 94px 94px 105px 66px 115px}.tl-ms-balance span{font-size:8px}.tl-ms-balance strong{font-size:10px}}
+@media(max-width:950px){.tl-ms-overview{overflow-x:auto;grid-template-columns:repeat(4,85px) 95px 115px 80px 120px}.tl-ms-balance span{font-size:8px}.tl-ms-balance strong{font-size:10px}}
 
 .tl-shared-savings input[type="number"] {
   appearance: textfield;
