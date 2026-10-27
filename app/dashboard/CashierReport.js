@@ -43,6 +43,7 @@ const emptyExpenses = () =>
 export default function CashierReport({ user, currentShift }) {
   const router = useRouter();
 
+  const [operationsPanel, setOperationsPanel] = useState("salary");
   const [shift, setShift] = useState(currentShift || null);
   const [platforms, setPlatforms] = useState([]);
   const [readings, setReadings] = useState([]);
@@ -1852,55 +1853,58 @@ export default function CashierReport({ user, currentShift }) {
               currentShift={activeShift}
             />
 
-            {/* Salary and accounts information stacked left; withdrawal and float return stacked right. */}
-            <div
-              className="tl-cashier-salary-withdrawal-row"
-              style={{
-                gridColumn: "1 / -1",
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 12,
-                alignItems: "start",
-                minWidth: 0,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                  minWidth: 0,
-                }}
-              >
-                <CashierSalaryPanel
-                  user={user}
-                  currentShift={activeShift}
-                />
-
-                <CashierAccountsPanel user={user} />
+            {/* Dashboard organization only: keep existing transaction components mounted. */}
+            <section style={{ gridColumn: "1 / -1", minWidth: 0, width: "100%" }}>
+              <div style={{
+                background: "#152639", border: "1px solid #2a3d52",
+                borderLeft: "3px solid #d9b66c", borderRadius: 12,
+                padding: 14, marginBottom: 12,
+              }}>
+                <label htmlFor="tl-cashier-operations-choice" style={{
+                  display: "block", color: "#f0f5fa", fontWeight: 850,
+                  fontSize: 13, marginBottom: 9,
+                }}>
+                  TRANSACTION CONTROL
+                </label>
+                <select
+                  id="tl-cashier-operations-choice"
+                  value={operationsPanel}
+                  onChange={(event) => setOperationsPanel(event.target.value)}
+                  style={{
+                    width: "100%", minHeight: 44, padding: "10px 12px",
+                    color: "#f0f5fa", background: "#0a1725",
+                    border: "1px solid #40556b", borderRadius: 8,
+                    fontSize: 13, fontWeight: 750,
+                  }}
+                >
+                  <option value="salary">Salary</option>
+                  <option value="accounts">Accounts Information</option>
+                  <option value="safaricom">Safaricom Withdrawal</option>
+                  <option value="return">Send Float to Legend Accounts</option>
+                </select>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                  minWidth: 0,
-                }}
-              >
+              <div style={{ display: operationsPanel === "salary" ? "block" : "none" }}>
+                <CashierSalaryPanel user={user} currentShift={activeShift} />
+              </div>
+              <div style={{ display: operationsPanel === "accounts" ? "block" : "none" }}>
+                <CashierAccountsPanel user={user} />
+              </div>
+              <div style={{ display: operationsPanel === "safaricom" ? "block" : "none" }}>
                 <CashierSafaricomWithdrawalPanel
                   user={user}
                   currentShift={activeShift}
                   onWithdrawalChanged={() => void loadReport(true)}
                 />
-
+              </div>
+              <div style={{ display: operationsPanel === "return" ? "block" : "none" }}>
                 <CashierAccountsReturnPanel
                   user={user}
                   currentShift={activeShift}
                   onReturnChanged={() => void loadReport(true)}
                 />
               </div>
-            </div>
+            </section>
 
           </div>
 
