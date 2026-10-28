@@ -1472,6 +1472,47 @@ export default function CashierSavingsPanel({
       },
     });
   }
+  // Savings ACTION menu: BANKING follows the same category RPCs as utilities.
+  // The separate employee Banking payment workflow above remains untouched.
+  async function saveActionCategory(row, raw) {
+    if (!row || !dstvAllowed(row) || busyRef.current) return;
+    const amount = Number(raw);
+    if (raw === "" || !Number.isFinite(amount) || amount <= 0 || amount !== roundMoney(amount)) {
+      notify(`Enter a valid ${row.label} save amount.`);
+      return;
+    }
+    if (!window.confirm(`Save KES ${money(amount)} to ${row.label}?\n\nThis will add the amount to Expenses and Savings.`)) return;
+    await postMoney({
+      row, action: "SAVE", rpc: "tl_cashier_save_savings",
+      body: { p_shift_id: shiftId, p_category: row.key, p_amount: roundMoney(amount) },
+      onSuccess: () => {
+        setMshwariSaveAmount("");
+        notify(`${row.label}: KES ${money(amount)} saved.`, "success");
+      },
+    });
+  }
+
+  async function withdrawActionCategory(row, raw) {
+    if (!row || !dstvAllowed(row) || busyRef.current) return;
+    const amount = Number(raw);
+    if (raw === "" || !Number.isFinite(amount) || amount <= 0 || amount !== roundMoney(amount)) {
+      notify(`Enter a valid ${row.label} withdrawal amount.`);
+      return;
+    }
+    if (amount > Number(row.availableBalance || 0)) {
+      notify(`${row.label}: Available KES ${money(row.availableBalance || 0)}.`);
+      return;
+    }
+    if (!window.confirm(`Withdraw KES ${money(amount)} from ${row.label} Savings?\n\nThe money will enter the next available M-Shwari Added Float position.`)) return;
+    await postMoney({
+      row, action: "WITHDRAW", rpc: "tl_cashier_withdraw_savings",
+      body: { p_shift_id: shiftId, p_category: row.key, p_amount: roundMoney(amount) },
+      onSuccess: (result) => {
+        setCombinedWithdrawAmount("");
+        notify(`${row.label}: KES ${money(amount)} withdrawn to M-Shwari Float ${result?.mshwari_slot || ""}.`, "success");
+      },
+    });
+  }
   // ==========================================
 // DISPLAY
   // ==========================================
@@ -1538,7 +1579,7 @@ export default function CashierSavingsPanel({
                 aria-labelledby="tl-mshwari-action-label" aria-haspopup="true"
                 aria-expanded={saveMenuOpen} disabled={Boolean(actionKey)}
                 onClick={() => { setSaveMenuOpen((open) => !open); setSaveSubmenuOpen(false); setWithdrawSubmenuOpen(false); }}>
-                {mshwariAction === "WITHDRAW" ? `WITHDRAW · ${({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[utilityWithdrawCategory]}` : utilitySaveCategory ? `SAVE · ${({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[utilitySaveCategory]}` : "SAVE"} ▾
+                {mshwariAction === "WITHDRAW" ? `WITHDRAW · ${({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent", BANKING: "Banking" })[utilityWithdrawCategory]}` : utilitySaveCategory ? `SAVE · ${({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent", BANKING: "Banking" })[utilitySaveCategory]}` : "SAVE"} ▾
               </button>
               {saveMenuOpen && (
                 <div className="tl-ms-action-menu" role="menu" aria-label="Action choices">
@@ -1546,9 +1587,9 @@ export default function CashierSavingsPanel({
                     onClick={() => { setSaveSubmenuOpen((open) => !open); setWithdrawSubmenuOpen(false); }}>SAVE <span>▸</span></button>
                   {saveSubmenuOpen && (
                     <div className="tl-ms-action-submenu" role="group" aria-label="Save category">
-                      {["WIFI", "DSTV", "ELECTRICITY", "RENT"].map((key) => {
+                      {["WIFI", "DSTV", "ELECTRICITY", "RENT", "BANKING"].map((key) => {
                         const locked = key === "DSTV" && dstvEnabled !== true;
-                        const label = ({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[key];
+                        const label = ({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent", BANKING: "Banking" })[key];
                         return <button key={key} type="button" role="menuitem"
                           disabled={locked} onClick={() => {
                             setUtilitySaveCategory(key); setMshwariAction("SAVE");
@@ -1563,9 +1604,9 @@ export default function CashierSavingsPanel({
                   </button>
                   {withdrawSubmenuOpen && (
                     <div className="tl-ms-action-submenu" role="group" aria-label="Withdraw category">
-                      {["WIFI", "DSTV", "ELECTRICITY", "RENT"].map((key) => {
+                      {["WIFI", "DSTV", "ELECTRICITY", "RENT", "BANKING"].map((key) => {
                         const locked = key === "DSTV" && dstvEnabled !== true;
-                        const label = ({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent" })[key];
+                        const label = ({ WIFI: "WiFi", DSTV: "DStv", ELECTRICITY: "Electricity", RENT: "Rent", BANKING: "Banking" })[key];
                         return <button key={key} type="button" role="menuitem"
                           disabled={locked} onClick={() => {
                             setUtilityWithdrawCategory(key); setMshwariAction("WITHDRAW");
@@ -1595,15 +1636,19 @@ export default function CashierSavingsPanel({
               <button type="button" className="tl-ms-inline-submit tl-ms-inline-save"
                 disabled={Boolean(actionKey) || !mshwariSaveAmount || Number(mshwariSaveAmount) <= 0}
                 onClick={() => {
-                  const row = utilityRows.find((item) => item.key === utilitySaveCategory);
-                  if (row) void saveMoney(row, mshwariSaveAmount);
+                  const row = utilitySaveCategory === "BANKING"
+                    ? { ...rows.find((item) => item.key === "BANKING"), balance: bankingSavingsBalance, availableBalance: Number(bankingSavingsRow?.available_balance || 0) }
+                    : rows.find((item) => item.key === utilitySaveCategory);
+                  if (row) void saveActionCategory(row, mshwariSaveAmount);
                 }}>SAVE</button>
             ) : (
               <button className="tl-ms-inline-submit tl-ms-inline-withdraw" type="button"
                 disabled={Boolean(actionKey) || !combinedWithdrawAmount || Number(combinedWithdrawAmount) <= 0}
                 onClick={() => {
-                  const row = utilityRows.find((item) => item.key === utilityWithdrawCategory);
-                  if (row) void withdrawMoney(row, combinedWithdrawAmount);
+                  const row = utilityWithdrawCategory === "BANKING"
+                    ? { ...rows.find((item) => item.key === "BANKING"), balance: bankingSavingsBalance, availableBalance: Number(bankingSavingsRow?.available_balance || 0) }
+                    : rows.find((item) => item.key === utilityWithdrawCategory);
+                  if (row) void withdrawActionCategory(row, combinedWithdrawAmount);
                 }}>
                 WITHDRAW
               </button>
