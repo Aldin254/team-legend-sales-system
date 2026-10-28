@@ -183,12 +183,18 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
         {!quote && <button type="submit" disabled={!isReady || busy || !validAmount || (category === "BANKING" && (!employeeId || !/^[A-Z0-9]{8,16}$/.test(normalizedReference)))} style={{ ...input, background: "#174e70", cursor: "pointer", fontWeight: 800, opacity: !isReady || busy ? 0.6 : 1 }}>{busy ? "CHECKING..." : "REVIEW PAYMENT"}</button>}
       </form>
       {quote && <div style={{ marginTop: 12, border: "1px solid #d9b66c", borderRadius: 8, padding: 12, display: "grid", gap: 8 }}><strong>CONFIRM REQUEST</strong>{category === "BANKING" && <div>Employee: {selectedEmployee?.employee_name || selectedEmployee?.full_name}</div>}<div>Amount: KES {money(quote.amount)}</div><div>Fee: KES {money(quote.fee)}</div><strong>Total: KES {money(quote.amount + quote.fee)}</strong><div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy} onClick={() => setQuote(null)} style={{ ...input, flex: 1, cursor: "pointer" }}>CANCEL</button><button type="button" disabled={busy} onClick={submit} style={{ ...input, flex: 1, background: "#087e62", fontWeight: 800, cursor: "pointer" }}>{busy ? "SUBMITTING..." : "SUBMIT REQUEST"}</button></div></div>}
-      {visibleRequests.length > 0 && <div style={{ marginTop: 12, borderTop: "1px solid #40556b", paddingTop: 10 }}>
-        <strong style={{ fontSize: 12, color: "#d9b66c" }}>STATUS</strong>
-        {visibleRequests.slice(0, 6).map((r, i) => <div key={r.id || i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #2a3d52", gap: 8, fontSize: 12 }}>
-          <span>KES {money(r.amount)}</span>
-          <strong style={{ color: ["PENDING", "PROCESSING"].includes(r.status) ? "#d9b66c" : r.status === "CONFIRMED" ? "#72d8af" : "#ff9e9e" }}>{r.status === "CONFIRMED" ? "APPROVED" : r.status === "PROCESSING" ? "PENDING" : r.status}</strong>
-        </div>)}
+      {visibleRequests.length > 0 && <div style={{ marginTop: 12, borderTop: "1px solid #40556b", paddingTop: 10, display: "grid", gap: 8 }}>
+        {visibleRequests.slice(0, 6).map((r, i) => {
+          const state = String(r.status || "PENDING").toUpperCase();
+          const pending = state === "PENDING" || state === "PROCESSING";
+          const approved = state === "CONFIRMED";
+          const statusLabel = pending ? "PENDING APPROVAL" : approved ? "APPROVED" : state;
+          const statusColor = pending ? "#d9b66c" : approved ? "#72d8af" : "#ff9e9e";
+          return <div key={r.id || i} style={{ border: "1px solid #40556b", borderRadius: 7, padding: "10px 12px", background: "#112b40", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <strong style={{ color: statusColor, fontSize: 14, letterSpacing: 0.3 }}>{statusLabel}</strong>
+            <span style={{ color: "#dce7ee", fontSize: 13, fontWeight: 750 }}>KES {money(r.amount)}</span>
+          </div>;
+        })}
       </div>}
       {message && <div role="status" style={{ marginTop: 12, color: /submitted/i.test(message) ? "#72d8af" : "#ff9e9e", fontSize: 12 }}>{message}</div>}
     </section>
