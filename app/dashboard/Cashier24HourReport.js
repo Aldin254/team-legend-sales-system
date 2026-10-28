@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import CashierSafaricomWithdrawalPanel
   from "./CashierSafaricomWithdrawalPanel";
 import CashierSavingsPanel from "./CashierSavingsPanel";
+import CashierDirectPaymentsPanel from "./CashierDirectPaymentsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
 import CashierLiveFeedPanel from "./CashierLiveFeedPanel";
 import CashierMealsRotaPanel from "./CashierMealsRotaPanel";
@@ -1474,7 +1475,7 @@ export default function Cashier24HourReport({
               <CashierSavingsPanel
                 user={user}
                 currentShift={shift || currentShift}
-                bankingActive={transactionPanel === "BANKING"}
+                bankingActive={false}
               />
 
               <section style={transactionControlStyle}>
@@ -1489,17 +1490,18 @@ export default function Cashier24HourReport({
                 >
                   <option value="SALARY">Salary</option>
                   <option value="BANKING">Banking</option>
+                  <option value="ELECTRICITY">Electricity</option>
+                  <option value="DSTV">DStv</option>
+                  <option value="WIFI">WiFi</option>
+                  <option value="RENT">Rent</option>
                   <option value="SAFARICOM">Safaricom Withdrawal</option>
                   <option value="FLOAT">Send Float to Legend Accounts</option>
                 </select>
               </section>
 
-              {/* The Banking portal target stays mounted so switching to
-                  Banking can render without remounting Savings. */}
-              <div
-                id="tl-cashier-banking-slot"
-                style={{ display: transactionPanel === "BANKING" ? "block" : "none" }}
-              />
+              {["BANKING", "ELECTRICITY", "DSTV", "WIFI", "RENT"].includes(transactionPanel) && (
+                <CashierDirectPaymentsPanel user={user} currentShift={shift || currentShift} category={transactionPanel} onPaymentRequested={refresh24HourReport} />
+              )}
 
               {transactionPanel === "SALARY" && (
                 <CashierSalaryPanel
