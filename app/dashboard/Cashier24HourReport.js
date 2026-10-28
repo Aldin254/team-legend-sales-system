@@ -99,8 +99,21 @@ export default function Cashier24HourReport({
     user?.auth_user_id ||
     null;
 
-  const shiftId =
-    currentShift?.id || null;
+  // Keep the existing shift selected until its handover is confirmed.
+  // A clock-boundary change in the parent must not replace an OPEN shift.
+  const shiftId = shift?.id || currentShift?.id || null;
+
+  useEffect(() => {
+    if (!currentShift?.id) return;
+    setShift((previous) => {
+      if (!previous?.id) return currentShift;
+      if (String(previous.id) === String(currentShift.id)) return previous;
+      const status = String(previous.status || "").toUpperCase();
+      // A different shift is accepted only after the previous one closed.
+      if (status === "CLOSED" || status === "COMPLETED") return currentShift;
+      return previous;
+    });
+  }, [currentShift]);
 
   const shopName =
     user?.shop ||
@@ -123,10 +136,7 @@ export default function Cashier24HourReport({
   // attendance changes or rota writes.
   // ==============================================
 
-  const dutyShiftId =
-    currentShift?.id ||
-    shift?.id ||
-    null;
+  const dutyShiftId = shiftId;
 
   const dutyShopId =
     shift?.shop_id ||
