@@ -40,6 +40,18 @@ function getPaymentDutyCashierName(request) {
   return "ROTA NAME UNAVAILABLE";
 }
 
+// Payment source and frozen fee must come from the private server snapshot.
+// Never guess a financial route or silently replace a missing quote with zero.
+function paymentSource(request) {
+  return String(request?.payment_source || "").trim().toUpperCase();
+}
+function paymentFrozenFee(request) {
+  if (request?.quoted_transaction_fee == null || request?.tariff_quoted_at == null) return null;
+  const fee = Number(request.quoted_transaction_fee);
+  return Number.isFinite(fee) && fee >= 0 && Math.round(fee * 100) === fee * 100
+    ? fee : null;
+}
+
 export default function AccountantDashboard({ user }) {
   const router = useRouter();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1279,7 +1291,17 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
 
     const reference = String(form.reference || "").trim().toUpperCase();
     const externalId = String(form.externalId || "").trim();
-    const fee = Number(form.fee || 0);
+    const source = paymentSource(request);
+    const fee = paymentFrozenFee(request);
+    if (!source || !["CLOSING_BALANCE", "SAVINGS"].includes(source)) {
+      setMessage("Payment source missing or unsupported in the private snapshot. Contact Admin; do not confirm.");
+      return;
+    }
+    if (fee === null) {
+      setMessage("Frozen payment fee missing in the private snapshot. Contact Admin; do not confirm.");
+      return;
+    }
+
 
     if (provider !== "M-PESA" && provider !== "I&M") {
       setMessage("Select M-Pesa or I&M as the payment source.");
@@ -1291,60 +1313,33 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
       );
       return;
     }
-    if (!Number.isFinite(fee) || fee < 0) {
-      setMessage(
-        "Enter a valid transaction fee. Use 0 if there was no fee."
-      );
-      return;
-    }
-
+    const isDirect = source === "CLOSING_BALANCE";
     const confirmed = window.confirm(
       `Confirm ${request.category} payment?\n\n` +
-        `Shop: ${request.shop_name || "Shop"}\n` +
-        `Employee: ${getPaymentDutyCashierName(request)}\n` +
-        `Amount: KES ${money(request.amount)}\n` +
-        `Source: ${provider}\n` +
-        `Reference: ${reference || externalId}\n\n` +
-        "This will deduct the principal from the saved balance. It will NOT create another cashier expense."
+      `Shop: ${request.shop_name || "Shop"}\n` +
+      `Cashier: ${getPaymentDutyCashierName(request)}\n` +
+      `Principal: KES ${money(request.amount)}\n` +
+      `Frozen fee: KES ${money(fee)}\n` +
+      `Source: ${isDirect ? "SHOP CLOSING BALANCE" : "SAVINGS"}\n` +
+      `Payment provider: ${provider}\n` +
+      `Reference: ${reference || externalId}\n\n` +
+      (isDirect
+        ? "This will post the principal and frozen fee as two direct-payment expenses exactly once."
+        : "This will deduct the principal from Savings and post the frozen fee only.")
     );
     if (!confirmed) return;
 
     try {
       setConfirmingSavingsPaymentId(request.id);
       setMessage("");
-      setSuccessMessage("");
-
-      const result = await callRpc(
-        "tl_accountant_confirm_savings_payment",
-        {
-          p_request_id: request.id,
-          p_payment_method:
-            provider === "I&M"
-              ? "IM_TO_PAYBILL"
-              : "MPESA_TO_PAYBILL",
-          p_payment_provider: provider,
-          p_payment_reference: reference,
-          p_external_transaction_id: externalId || null,
-          p_transaction_fee: roundMoney(fee),
-        }
-      );
-
-      setSavingsPaymentForms((previous) => {
-        const next = { ...previous };
-        delete next[request.id];
-        return next;
-      });
-
       setSuccessMessage(
-        `${request.category} payment confirmed. KES ${money(
-          result?.amount_paid ?? request.amount
-        )} deducted from Savings. Remaining balance: KES ${money(
-          result?.balance_after
-        )}.`
+        isDirect
+          ? `${request.category} direct payment confirmed. Principal KES ${money(result?.principal ?? request.amount)} and fee KES ${money(result?.transaction_fee ?? fee)} posted to the shift.`
+          : `${request.category} Savings payment confirmed. KES ${money(result?.amount_paid ?? request.amount)} deducted from Savings. Remaining balance: KES ${money(result?.balance_after)}.`
       );
       await refreshData({ silent: true });
     } catch (error) {
-      console.error("CONFIRM SAVINGS PAYMENT ERROR:", error);
+      console.error("CONFIRM PAYMENT ERROR:", error);
       setMessage(
         error?.message || "Unable to confirm the Savings payment."
       );
@@ -1361,6 +1356,11 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
       rejectingSavingsPaymentId
     ) return;
 
+    const source = paymentSource(request);
+    if (!["CLOSING_BALANCE", "SAVINGS"].includes(source)) {
+      setMessage("Payment source missing or unsupported in the private snapshot. Contact Admin; do not reject.");
+      return;
+    }
     const form = savingsPaymentForms[request.id] || {};
     const reason = String(form.rejectionReason || "").trim();
     if (!reason) {
@@ -1374,7 +1374,7 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
       `Reject ${request.category} payment request?\n\n` +
         `Amount: KES ${money(request.amount)}\n` +
         `Reason: ${reason}\n\n` +
-        "No Savings, Expense or Float balance will change."
+        "The pending request will be rejected; no payment will be posted."
     );
     if (!confirmed) return;
 
@@ -1384,7 +1384,9 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
       setSuccessMessage("");
 
       await callRpc(
-        "tl_accountant_reject_savings_payment",
+        source === "CLOSING_BALANCE"
+          ? "tl_accountant_reject_direct_payment"
+          : "tl_accountant_reject_savings_payment",
         {
           p_request_id: request.id,
           p_reason: reason,
@@ -2714,14 +2716,12 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
                                               min: "0",
                                               step: "0.01",
                                               value:
-                                                form.fee ?? "0",
-                                              disabled: busy,
-                                              onChange: (event) =>
-                                                updateSavingsPaymentForm(
-                                                  request.id,
-                                                  "fee",
-                                                  event.target.value
-                                                ),
+                                                paymentFrozenFee(request) === null
+                                                  ? ""
+                                                  : paymentFrozenFee(request).toFixed(2),
+                                              readOnly: true,
+                                              disabled: true,
+                                              placeholder: "Fee quote unavailable",
                                               style: inputStyle,
                                             }),
                                           ],
@@ -2739,7 +2739,7 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
                                             confirmSavingsPayment(
                                               request
                                             ),
-                                          disabled: busy,
+                                          disabled: busy || !["CLOSING_BALANCE", "SAVINGS"].includes(paymentSource(request)) || paymentFrozenFee(request) === null,
                                           style:
                                             savingsConfirmButtonStyle,
                                           children: confirming
@@ -2769,7 +2769,7 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
                                             rejectSavingsPayment(
                                               request
                                             ),
-                                          disabled: busy,
+                                          disabled: busy || !["CLOSING_BALANCE", "SAVINGS"].includes(paymentSource(request)),
                                           style:
                                             savingsRejectButtonStyle,
                                           children: rejecting
