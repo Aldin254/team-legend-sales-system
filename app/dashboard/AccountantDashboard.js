@@ -1332,6 +1332,31 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
     try {
       setConfirmingSavingsPaymentId(request.id);
       setMessage("");
+      setSuccessMessage("");
+
+      const result = await callRpc(
+        isDirect
+          ? "tl_accountant_confirm_direct_payment"
+          : "tl_accountant_confirm_savings_payment",
+        {
+          p_request_id: request.id,
+          p_payment_method: provider === "I&M"
+            ? "IM_TO_PAYBILL"
+            : "MPESA_TO_PAYBILL",
+          p_payment_provider: provider,
+          p_payment_reference: reference,
+          p_external_transaction_id: externalId || null,
+          ...(isDirect ? {} : { p_transaction_fee: roundMoney(fee) }),
+        }
+      );
+      if (result?.success === false) {
+        throw new Error(result?.message || "Payment confirmation failed.");
+      }
+      setSavingsPaymentForms((previous) => {
+        const next = { ...previous };
+        delete next[request.id];
+        return next;
+      });
       setSuccessMessage(
         isDirect
           ? `${request.category} direct payment confirmed. Principal KES ${money(result?.principal ?? request.amount)} and fee KES ${money(result?.transaction_fee ?? fee)} posted to the shift.`
