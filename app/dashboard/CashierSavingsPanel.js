@@ -1509,13 +1509,13 @@ export default function CashierSavingsPanel({
               return (
                 <div key={key} className="tl-ms-balance">
                   <span>{row?.label || key}</span>
-                  <strong>KES {money(row?.balance || 0)}</strong>
+                  <strong><small>KES</small><span>{money(row?.balance || 0)}</span></strong>
                 </div>
               );
             })}
             <div className="tl-ms-balance tl-ms-total">
               <span>TOTAL SAVED</span>
-              <strong>KES {money(utilityTotalSaved)}</strong>
+              <strong><small>KES</small><span>{money(utilityTotalSaved)}</span></strong>
             </div>
           </div>
           <div className="tl-ms-operation-row">
@@ -2127,11 +2127,14 @@ function formatDateTime(value) {
 // ============================================
 
 const css = `
-.tl-shared-savings {min-width:0;max-width:100%;width:100%;box-sizing:border-box;}
+.tl-shared-savings {min-width:0;max-width:100%;width:100%;box-sizing:border-box;container-type:inline-size;}
 .tl-ms-overview {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch;gap:7px;padding:10px 12px 6px;max-width:100%;box-sizing:border-box}
 .tl-ms-balance {min-width:0;background:#0A1725;border:1px solid #2A3D52;border-radius:7px;padding:9px 6px;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:4px}
 .tl-ms-balance span {font-size:clamp(9px,1.15vw,13px);font-weight:800;color:#C4D0DC;white-space:nowrap}
-.tl-ms-balance strong {font-size:clamp(10px,1.35vw,15px);font-weight:850;font-variant-numeric:tabular-nums;white-space:nowrap;color:#F0F5FA}
+.tl-ms-balance strong {min-width:0;max-width:100%;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:clamp(9px,2.5cqw,14px);line-height:1.18;font-weight:850;font-variant-numeric:tabular-nums;color:#F0F5FA}
+.tl-ms-balance strong small {font-size:.8em;font-weight:750;color:#C4D0DC}
+.tl-ms-balance strong span {display:block;max-width:100%;font-size:inherit;white-space:nowrap;letter-spacing:-.025em}
+.tl-ms-balance span:not(strong span) {min-width:0}
 .tl-ms-total {border-color:#D9B66C;background:#292A2C}
 .tl-ms-total strong {color:#F2DA91}
 .tl-ms-inline-controls {min-width:0;display:flex;flex-direction:column;justify-content:center;gap:5px}
@@ -2162,7 +2165,8 @@ const css = `
   .tl-ms-overview{gap:4px;padding:8px 6px 6px}
   .tl-ms-balance{padding:7px 2px;gap:3px}
   .tl-ms-balance span{font-size:9px;white-space:normal;overflow-wrap:anywhere}
-  .tl-ms-balance strong{font-size:10px;white-space:normal;overflow-wrap:anywhere}
+  .tl-ms-balance strong{font-size:clamp(8px,2.6cqw,12px)}
+  .tl-ms-balance strong span{white-space:nowrap}
   .tl-ms-operation-row{gap:5px;padding:0 6px 9px;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(72px,.7fr)}
   .tl-ms-inline-controls label{font-size:10px}
   .tl-ms-action-trigger{font-size:11px;padding:6px 3px}
@@ -2170,6 +2174,18 @@ const css = `
   .tl-ms-inline-submit{font-size:11px;padding:0 3px}
 }
 
+/* Cashier panel is a narrow dashboard column even on wide desktop screens. */
+@container (max-width: 430px) {
+  .tl-ms-overview {gap:3px;padding:8px 5px 6px}
+  .tl-ms-balance {padding:6px 1px;gap:3px}
+  .tl-ms-balance > span {font-size:clamp(7px,2.15cqw,10px);line-height:1.2;white-space:normal;overflow-wrap:anywhere}
+  .tl-ms-balance strong {font-size:clamp(8px,2.45cqw,11px)}
+  .tl-ms-operation-row {gap:5px;padding:0 6px 9px;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(62px,.65fr)}
+  .tl-ms-inline-controls label {font-size:clamp(8px,2.5cqw,11px)}
+  .tl-ms-action-trigger {font-size:10px;padding:5px 3px}
+  .tl-ms-inline-controls input {font-size:11px;padding:5px}
+  .tl-ms-inline-submit {font-size:10px;padding:0 3px}
+}
 
 .tl-shared-savings input[type="number"] {
   appearance: textfield;
