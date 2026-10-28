@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 
- 
+
 // TEAM LEGEND — Shared 12H / 24H Savings and Banking.
 //
 // Utility Payment Control:
