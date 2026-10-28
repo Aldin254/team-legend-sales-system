@@ -2127,6 +2127,7 @@ function formatDateTime(value) {
 // ============================================
 
 const css = `
+.tl-shared-savings {min-width:0;max-width:100%;width:100%;box-sizing:border-box;}
 .tl-ms-overview {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch;gap:7px;padding:10px 12px 6px;max-width:100%;box-sizing:border-box}
 .tl-ms-balance {min-width:0;background:#0A1725;border:1px solid #2A3D52;border-radius:7px;padding:9px 6px;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:4px}
 .tl-ms-balance span {font-size:clamp(9px,1.15vw,13px);font-weight:800;color:#C4D0DC;white-space:nowrap}
@@ -2139,8 +2140,8 @@ const css = `
 .tl-ms-inline-controls select,.tl-ms-inline-controls input {box-sizing:border-box;width:100%;min-width:0;height:39px;border:1px solid #496078;border-radius:7px;background:#0A1725;color:#F0F5FA;padding:7px 9px;font-size:14px;font-weight:700}
 .tl-ms-inline-controls select {border-color:#D9B66C}
 .tl-ms-action-wrap {position:relative;z-index:1000}
-.tl-ms-action-trigger {box-sizing:border-box;width:100%;height:39px;border:1px solid #D9B66C;border-radius:7px;background:#0A1725;color:#F0F5FA;padding:7px 9px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
-.tl-ms-action-menu {position:absolute;bottom:calc(100% + 6px);top:auto;left:0;min-width:190px;max-height:min(320px,65vh);overflow-y:auto;overscroll-behavior:contain;z-index:1000;padding:5px;border:1px solid #D9B66C;border-radius:7px;background:#101F30;box-shadow:0 10px 30px #0009}
+.tl-ms-action-trigger {box-sizing:border-box;max-width:100%;overflow:hidden;text-overflow:ellipsis;width:100%;height:39px;border:1px solid #D9B66C;border-radius:7px;background:#0A1725;color:#F0F5FA;padding:7px 9px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
+.tl-ms-action-menu {box-sizing:border-box;max-width:min(280px,90vw);position:absolute;bottom:calc(100% + 6px);top:auto;left:0;min-width:190px;max-height:min(320px,65vh);overflow-y:auto;overscroll-behavior:contain;z-index:1000;padding:5px;border:1px solid #D9B66C;border-radius:7px;background:#101F30;box-shadow:0 10px 30px #0009}
 .tl-ms-action-menu button {display:flex;justify-content:space-between;width:100%;border:0;background:transparent;color:#F0F5FA;text-align:left;padding:10px 12px;border-radius:5px;cursor:pointer;font-size:14px;font-weight:750}
 .tl-ms-action-menu button:hover:not(:disabled),.tl-ms-action-menu button:focus-visible {background:#28445B}
 .tl-ms-action-menu button:disabled {opacity:.4;cursor:not-allowed}
@@ -2155,7 +2156,7 @@ const css = `
 .tl-ms-save-menu button:disabled {opacity:.4;cursor:not-allowed}
 .tl-ms-section-label {padding:6px 12px 0;font-size:13px;letter-spacing:.05em;color:#D9B66C;font-weight:800}
 /* Second row stays within the cashier panel, including on small screens. */
-.tl-ms-operation-row {display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(90px,.65fr);align-items:end;gap:9px;padding:0 12px 10px;max-width:100%;box-sizing:border-box}
+.tl-ms-operation-row {min-width:0;width:100%;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(90px,.65fr);align-items:end;gap:9px;padding:0 12px 10px;max-width:100%;box-sizing:border-box}
 .tl-ms-operation-row > * {min-width:0}
 @media(max-width:650px){
   .tl-ms-overview{gap:4px;padding:8px 6px 6px}
@@ -2245,8 +2246,9 @@ const css = `
 
 const s = {
   panel: {
-    gridColumn: "1 / -1",
     width: "100%",
+    maxWidth: "100%",
+    alignSelf: "stretch",
     minWidth: 0,
     boxSizing: "border-box",
     background: C.bg,
