@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import CashierSafaricomWithdrawalPanel
   from "./CashierSafaricomWithdrawalPanel";
 import CashierSavingsPanel from "./CashierSavingsPanel";
+import CashierDirectPaymentsPanel from "./CashierDirectPaymentsPanel";
 import CashierSalaryPanel from "./CashierSalaryPanel";
 import CashierAccountsPanel from "./CashierAccountsPanel";
 import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
@@ -1851,7 +1852,7 @@ export default function CashierReport({ user, currentShift }) {
             <CashierSavingsPanel
               user={user}
               currentShift={activeShift}
-              bankingActive={operationsPanel === "banking"}
+              bankingActive={false}
             />
 
             {/* Dashboard organization only: keep existing transaction components mounted. */}
@@ -1880,12 +1881,18 @@ export default function CashierReport({ user, currentShift }) {
                 >
                   <option value="salary">Salary</option>
                   <option value="banking">Banking</option>
+                  <option value="electricity">Electricity</option>
+                  <option value="dstv">DStv</option>
+                  <option value="wifi">WiFi</option>
+                  <option value="rent">Rent</option>
                   <option value="safaricom">Safaricom Withdrawal</option>
                   <option value="return">Send Float to Legend Accounts</option>
                 </select>
               </div>
 
-              <div id="tl-cashier-banking-slot" style={{ display: operationsPanel === "banking" ? "block" : "none" }} />
+              {["banking", "electricity", "dstv", "wifi", "rent"].includes(operationsPanel) && (
+                <CashierDirectPaymentsPanel user={user} currentShift={activeShift} category={operationsPanel.toUpperCase()} onPaymentRequested={() => void loadReport(true)} />
+              )}
               <div style={{ display: operationsPanel === "salary" ? "block" : "none" }}>
                 <CashierSalaryPanel user={user} currentShift={activeShift} />
               </div>
