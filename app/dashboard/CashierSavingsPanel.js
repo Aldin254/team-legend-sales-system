@@ -1514,7 +1514,7 @@ export default function CashierSavingsPanel({
               );
             })}
             <div className="tl-ms-balance tl-ms-total">
-              <span>TOTAL SAVED</span>
+              <span>TOTAL</span>
               <strong><small>KES</small><span>{money(utilityTotalSaved)}</span></strong>
             </div>
           </div>
