@@ -660,10 +660,6 @@ export default function AdminSavingsPanel({
   const [directLoading, setDirectLoading] = useState(true);
   const [directError, setDirectError] = useState("");
   const [directNotice, setDirectNotice] = useState("");
-  const [directSelectedId, setDirectSelectedId] = useState("");
-  const [directForm, setDirectForm] = useState({
-    bankReference: "", paidAmount: "", fee: "",
-  });
   const [directBusy, setDirectBusy] = useState(false);
   const directBusyRef = useRef(false);
 
@@ -1000,27 +996,16 @@ export default function AdminSavingsPanel({
     return () => clearInterval(timer);
   }, [loadDirectBanking]);
 
-  async function confirmDirectBanking(event) {
-    event.preventDefault();
-    if (directBusyRef.current) return;
-    const row = directRows.find((r) => r.id === directSelectedId);
-    if (!row) return;
-    const paid = Number(directForm.paidAmount);
-    const fee = Number(directForm.fee);
-    const reference = upper(directForm.bankReference);
-    if (!Number.isFinite(paid) || paid !== Number(row.amount)) {
-      setDirectError("Confirmed bank amount must match the cashier request exactly.");
+  async function confirmDirectBanking(row) {
+    if (!row?.id || directBusyRef.current) return;
+    const paid = Number(row.amount);
+    const fee = Number(row.quoted_transaction_fee);
+    const reference = upper(row.cashier_mpesa_reference);
+    if (!Number.isFinite(paid) || paid <= 0 || !Number.isFinite(fee) || fee < 0 || !/^[A-Z0-9]{8,16}$/.test(reference)) {
+      setDirectError("Invalid saved payment details. Contact Admin support.");
       return;
     }
-    if (!Number.isFinite(fee) || fee !== Number(row.quoted_transaction_fee)) {
-      setDirectError("Transaction fee must equal the frozen fee.");
-      return;
-    }
-    if (reference !== upper(row.cashier_mpesa_reference)) {
-      setDirectError("Bank reference must exactly match the cashier M-Pesa reference.");
-      return;
-    }
-    if (!window.confirm(`CONFIRM DIRECT BANKING?\nEmployee: ${row.employee_name}\nAmount: KES ${money(row.amount)}\nReference: ${reference}\nFee: KES ${money(fee)}\n\nThis will post principal and fee against the shift Closing Balance.`)) return;
+    if (!window.confirm(`CONFIRM DIRECT BANKING?\nEmployee: ${row.employee_name || "Sender"}\nAmount: KES ${money(paid)}\nReference: ${reference}\n\nConfirm only after checking the actual deposit.`)) return;
     directBusyRef.current = true;
     setDirectBusy(true);
     setDirectError("");
@@ -1034,12 +1019,11 @@ export default function AdminSavingsPanel({
         p_transaction_fee: fee,
         p_reason: "",
       });
-      if (result?.success === false) throw new Error(result?.message || "Confirmation rejected.");
+      if (result?.success !== true) throw new Error(result?.message || "Confirmation was not acknowledged by the server.");
       setDirectNotice(`Banking confirmed: KES ${money(paid)} — ${reference}`);
-      setDirectSelectedId("");
       await Promise.all([loadDirectBanking(), load(), loadRecovery()]);
     } catch (err) {
-      setDirectError(err?.message || "Banking confirmation requires a server update.");
+      setDirectError(err?.message || "Unable to confirm banking.");
     } finally {
       directBusyRef.current = false;
       setDirectBusy(false);
@@ -1059,7 +1043,6 @@ export default function AdminSavingsPanel({
         p_reason: "Mistaken pending cashier banking transaction",
       });
       if (result?.success === false) throw new Error(result?.message || "Cancellation rejected.");
-      setDirectSelectedId("");
       setDirectNotice("Pending banking cancelled");
       await Promise.all([loadDirectBanking(), load(), loadRecovery()]);
     } catch (err) {
@@ -2715,33 +2698,16 @@ export default function AdminSavingsPanel({
             ) : <div className="tlba-recovery-list">{directRows.map((row) => (
               <article key={row.id} className="tlba-recovery-item">
                 <div className="tlba-recovery-itemhead">
-                  <div><strong>{row.employee_name || "Unknown employee"}</strong>
-
-                  </div><span className="tlba-recovery-status">{row.status}</span>
+                  <div><strong>{row.employee_name || "Unknown cashier"}</strong></div>
                 </div>
                 <div className="tlba-recovery-data">
-                  <div><small>AMOUNT</small><strong>KES {money(row.amount)}</strong></div>
                   <div><small>M-PESA REFERENCE</small><strong className="tlba-reference">{row.cashier_mpesa_reference}</strong></div>
-                  <div><small>FEE</small><strong>KES {money(row.quoted_transaction_fee)}</strong></div>
+                  <div><small>AMOUNT</small><strong>KES {money(row.amount)}</strong></div>
                 </div>
-                {directSelectedId !== row.id ? (
-                  <button type="button" className="tlba-recovery-correct" disabled={directBusy}
-                    onClick={() => { setDirectSelectedId(row.id); setDirectError(""); setDirectForm({ bankReference: upper(row.cashier_mpesa_reference), paidAmount: String(row.amount), fee: String(row.quoted_transaction_fee ?? "") }); }}>
-                    Verify
-                  </button>
-                ) : <form className="tlba-recovery-form" onSubmit={confirmDirectBanking}>
-                  <div className="tlba-recovery-formtitle">{row.employee_name || "Sender"}</div>
-                  <div className="tlba-recovery-data">
-                    <div><small>AMOUNT</small><strong>KES {money(row.amount)}</strong></div>
-                    <div><small>FEE</small><strong>KES {money(row.quoted_transaction_fee)}</strong></div>
-                  </div>
-                  <label>M-PESA REFERENCE</label>
-                  <input type="text" required maxLength={16} value={directForm.bankReference} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, bankReference: upper(e.target.value) }))}/>
-                  <div className="tlba-recovery-actions">
-                    <button type="button" disabled={directBusy} onClick={() => void cancelDirectBanking(row)}>{directBusy ? "Please wait..." : "Cancel Transaction"}</button>
-                    <button type="submit" className="primary" disabled={directBusy}>{directBusy ? "Confirming..." : "Confirm"}</button>
-                  </div>
-                </form>}
+                <div className="tlba-recovery-actions">
+                  <button type="button" className="primary" disabled={directBusy} onClick={() => void confirmDirectBanking(row)}>{directBusy ? "Please wait..." : "CONFIRM"}</button>
+                  <button type="button" disabled={directBusy} onClick={() => void cancelDirectBanking(row)}>{directBusy ? "Please wait..." : "CANCEL"}</button>
+                </div>
               </article>
             ))}</div>}
           </section>
