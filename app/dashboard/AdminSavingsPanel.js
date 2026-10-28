@@ -662,7 +662,7 @@ export default function AdminSavingsPanel({
   const [directNotice, setDirectNotice] = useState("");
   const [directSelectedId, setDirectSelectedId] = useState("");
   const [directForm, setDirectForm] = useState({
-    bankReference: "", evidence: "", reason: "", paidAmount: "", fee: "",
+    bankReference: "", paidAmount: "", fee: "",
   });
   const [directBusy, setDirectBusy] = useState(false);
   const directBusyRef = useRef(false);
@@ -1008,8 +1008,6 @@ export default function AdminSavingsPanel({
     const paid = Number(directForm.paidAmount);
     const fee = Number(directForm.fee);
     const reference = upper(directForm.bankReference);
-    const evidence = directForm.evidence.trim();
-    const reason = directForm.reason.trim();
     if (!Number.isFinite(paid) || paid !== Number(row.amount)) {
       setDirectError("Confirmed bank amount must match the cashier request exactly.");
       return;
@@ -1022,10 +1020,6 @@ export default function AdminSavingsPanel({
       setDirectError("Bank reference must exactly match the cashier M-Pesa reference.");
       return;
     }
-    if (evidence.length < 10 || reason.length < 5) {
-      setDirectError("Enter bank statement evidence and a confirmation reason.");
-      return;
-    }
     if (!window.confirm(`CONFIRM DIRECT BANKING?\nEmployee: ${row.employee_name}\nAmount: KES ${money(row.amount)}\nReference: ${reference}\nFee: KES ${money(fee)}\n\nThis will post principal and fee against the shift Closing Balance.`)) return;
     directBusyRef.current = true;
     setDirectBusy(true);
@@ -1036,16 +1030,16 @@ export default function AdminSavingsPanel({
         p_request_id: row.id,
         p_paid_amount: paid,
         p_bank_reference: reference,
-        p_statement_evidence_path: evidence,
+        p_statement_evidence_path: "",
         p_transaction_fee: fee,
-        p_reason: reason,
+        p_reason: "",
       });
       if (result?.success === false) throw new Error(result?.message || "Confirmation rejected.");
       setDirectNotice(`Banking confirmed: KES ${money(paid)} — ${reference}`);
       setDirectSelectedId("");
       await Promise.all([loadDirectBanking(), load(), loadRecovery()]);
     } catch (err) {
-      setDirectError(err?.message || "Unable to confirm Banking.");
+      setDirectError(err?.message || "Banking confirmation requires a server update.");
     } finally {
       directBusyRef.current = false;
       setDirectBusy(false);
@@ -2698,7 +2692,7 @@ export default function AdminSavingsPanel({
               <article key={row.id} className="tlba-recovery-item">
                 <div className="tlba-recovery-itemhead">
                   <div><strong>{row.employee_name || "Unknown employee"}</strong>
-                    <small>{row.shop_name || row.shop_id} · {displayDate(row.requested_at)} {localTime(row.requested_at)}</small>
+
                   </div><span className="tlba-recovery-status">{row.status}</span>
                 </div>
                 <div className="tlba-recovery-data">
@@ -2708,24 +2702,20 @@ export default function AdminSavingsPanel({
                 </div>
                 {directSelectedId !== row.id ? (
                   <button type="button" className="tlba-recovery-correct" disabled={directBusy}
-                    onClick={() => { setDirectSelectedId(row.id); setDirectError(""); setDirectForm({ bankReference: "", evidence: "", reason: "", paidAmount: String(row.amount), fee: String(row.quoted_transaction_fee ?? "") }); }}>
-                    Verify Bank Payment
+                    onClick={() => { setDirectSelectedId(row.id); setDirectError(""); setDirectForm({ bankReference: upper(row.cashier_mpesa_reference), paidAmount: String(row.amount), fee: String(row.quoted_transaction_fee ?? "") }); }}>
+                    Verify
                   </button>
                 ) : <form className="tlba-recovery-form" onSubmit={confirmDirectBanking}>
-                  <div className="tlba-recovery-formtitle">BANK VERIFICATION</div>
-                  <label>CONFIRMED AMOUNT (KES)</label>
-                  <input type="number" step="0.01" min="0.01" required value={directForm.paidAmount} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, paidAmount: e.target.value }))}/>
-                  <label>BANK / M-PESA REFERENCE</label>
-                  <input type="text" required maxLength={16} value={directForm.bankReference} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, bankReference: upper(e.target.value) }))} placeholder="Bank reference"/>
-                  <label>TRANSACTION FEE (KES)</label>
-                  <input type="number" step="0.01" min="0" required value={directForm.fee} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, fee: e.target.value }))}/>
-                  <label>BANK EVIDENCE</label>
-                  <textarea rows={2} required value={directForm.evidence} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, evidence: e.target.value }))} placeholder="Bank evidence"/>
-                  <label>REASON</label>
-                  <textarea rows={2} required value={directForm.reason} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Verification reason"/>
+                  <div className="tlba-recovery-formtitle">{row.employee_name || "Sender"}</div>
+                  <div className="tlba-recovery-data">
+                    <div><small>AMOUNT</small><strong>KES {money(row.amount)}</strong></div>
+                    <div><small>FEE</small><strong>KES {money(row.quoted_transaction_fee)}</strong></div>
+                  </div>
+                  <label>M-PESA REFERENCE</label>
+                  <input type="text" required maxLength={16} value={directForm.bankReference} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, bankReference: upper(e.target.value) }))}/>
                   <div className="tlba-recovery-actions">
                     <button type="button" disabled={directBusy} onClick={() => setDirectSelectedId("")}>Cancel</button>
-                    <button type="submit" className="primary" disabled={directBusy}>{directBusy ? "Confirming..." : "Confirm Bank Payment"}</button>
+                    <button type="submit" className="primary" disabled={directBusy}>{directBusy ? "Confirming..." : "Confirm"}</button>
                   </div>
                 </form>}
               </article>
