@@ -584,8 +584,15 @@ export default function CashierSavingsPanel({
     [categories, selectedEmployee]
   );
 
+  // Display-only BANKING placard: the same shop Savings snapshot as utilities.
+  // Never derive this from the separate employee Banking payment directory.
+  const bankingSavingsRow = categories.find(
+    (item) => String(item?.category || "").trim().toUpperCase() === "BANKING"
+  );
+  const bankingSavingsBalance = Number(bankingSavingsRow?.balance || 0);
   const utilityRows = rows.filter((row) => row.key !== "BANKING");
   const utilityTotalSaved = roundMoney(utilityRows.reduce((sum, row) => sum + row.balance, 0));
+  const displayTotalSaved = roundMoney(utilityTotalSaved + bankingSavingsBalance);
   const utilityAvailable = roundMoney(utilityRows.reduce((sum, row) => sum + row.availableBalance, 0));
 
   const totals = useMemo(
@@ -1515,7 +1522,13 @@ export default function CashierSavingsPanel({
             })}
             <div className="tl-ms-balance tl-ms-total">
               <span>TOTAL</span>
-              <strong><small>KES</small><span>{money(utilityTotalSaved)}</span></strong>
+              <strong><small>KES</small><span>{money(displayTotalSaved)}</span></strong>
+            </div>
+          </div>
+          <div className="tl-ms-banking-second-row">
+            <div className="tl-ms-balance tl-ms-banking-placard">
+              <span>BANKING</span>
+              <strong><small>KES</small><span>{money(bankingSavingsBalance)}</span></strong>
             </div>
           </div>
           <div className="tl-ms-operation-row">
@@ -2128,6 +2141,9 @@ function formatDateTime(value) {
 
 const css = `
 .tl-shared-savings {min-width:0;max-width:100%;width:100%;box-sizing:border-box;container-type:inline-size;}
+.tl-ms-banking-second-row {display:flex;min-width:0;max-width:100%;padding:0 12px 8px;box-sizing:border-box}
+.tl-ms-banking-placard {width:clamp(100px,22%,160px);min-width:0;padding:7px 8px;border-color:#D9B66C}
+.tl-ms-banking-placard strong {font-size:clamp(10px,2.5cqw,14px)}
 .tl-ms-overview {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch;gap:7px;padding:10px 12px 6px;max-width:100%;box-sizing:border-box}
 .tl-ms-balance {min-width:0;background:#0A1725;border:1px solid #2A3D52;border-radius:7px;padding:9px 6px;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:4px}
 .tl-ms-balance span {font-size:clamp(9px,1.15vw,13px);font-weight:800;color:#C4D0DC;white-space:nowrap}
