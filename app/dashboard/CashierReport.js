@@ -12,7 +12,7 @@ import CashierAccountsReturnPanel from "./CashierAccountsReturnPanel";
 import CashierCloseShiftButton from "./CashierCloseShiftButton";
 import CashierLiveFeedPanel from "./CashierLiveFeedPanel";
 import CashierMealsRotaPanel from "./CashierMealsRotaPanel";
-import { 
+import {
   pageStyle, loadingStyle, topHeaderStyle, brandWrapStyle,
   crownStyle, brandStyle, taglineStyle, headerRightStyle,
   headerShopStyle, logoutButtonStyle, bodyStyle, sidebarStyle,
@@ -1855,7 +1855,7 @@ export default function CashierReport({ user, currentShift }) {
               bankingActive={false}
             />
 
-            {/* Dashboard organization only: keep existing transaction components mounted. */}
+            
             <section style={{ gridColumn: "1 / -1", minWidth: 0, width: "100%" }}>
               <div style={{
                 background: "#152639", border: "1px solid #2a3d52",
