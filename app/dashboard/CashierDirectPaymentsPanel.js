@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const OPTIONS = [
-  ["BANKING", "Employee Banking"],
+  ["BANKING", "Banking"],
   ["ELECTRICITY", "Electricity"],
   ["DSTV", "DStv"],
   ["WIFI", "WiFi"],
@@ -112,7 +112,12 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
   const isReady = !loading && !!shiftId && String(currentShift?.status).toUpperCase() === "OPEN" && currentShift?.admin_manual_totals !== true;
   const selectedEmployee = employees.find((e) => String(e.employee_id) === String(employeeId));
   const categoryRequests = requests.filter((r) => r.category === category);
-  const visibleRequests = categoryRequests.length ? categoryRequests : (recentRequest?.category === category ? [recentRequest] : []);
+  const recentMatch = recentRequest?.category === category
+    ? categoryRequests.find((r) => r.id && r.id === recentRequest.id)
+    : null;
+  const visibleRequests = recentRequest?.category === category && !recentMatch
+    ? [recentRequest, ...categoryRequests]
+    : categoryRequests;
 
   async function preview(event) {
     event.preventDefault();
@@ -139,7 +144,7 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
   async function submit() {
     if (!quote || busy || requestRef.current) return;
     if (quote.category !== category || quote.shiftId !== shiftId || Number(amount) !== quote.amount || quote.employeeId !== employeeId || (category === "BANKING" && quote.reference !== normalizedReference)) {
-      setQuote(null); setMessage("Payment details changed. Review the quote again."); return;
+      setQuote(null); setMessage("Review again."); return;
     }
     requestRef.current = true; setBusy(true); setMessage("");
     try {
@@ -156,8 +161,8 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
       void loadRequests();
       const savedFee = result?.quoted_transaction_fee;
       setMessage(savedFee == null || Number(savedFee) !== quote.fee
-        ? "Payment request submitted, but its frozen fee differs from the quote. Contact Admin before confirmation."
-        : "PENDING APPROVAL");
+        ? "Fee mismatch. Contact Admin."
+        : "PENDING");
       await refresh();
       onPaymentRequested?.();
     } catch (e) { setQuote(null); setMessage(e.message); }
@@ -167,19 +172,19 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
   return (
     <section style={panel}>
       <div style={{ fontSize: 13, fontWeight: 850, color: "#d9b66c", marginBottom: 12 }}>
-        {OPTIONS.find(([key]) => key === category)?.[1] || "Direct Payment"} · CLOSING BALANCE
+        {OPTIONS.find(([key]) => key === category)?.[1] || "Direct Payment"}
       </div>
       <form onSubmit={preview} style={{ display: "grid", gap: 12 }}>
         {category === "BANKING" && <div><label style={label}>EMPLOYEE</label><select style={input} value={employeeId} disabled={busy} onChange={(e) => { setEmployeeId(e.target.value); setQuote(null); }}><option value="">Select employee</option>{employees.map((e) => <option key={e.employee_id} value={e.employee_id}>{e.employee_name || e.full_name || "Employee"}{e.shop_name ? ` · ${e.shop_name}` : ""}</option>)}</select></div>}
         <div><label style={label}>AMOUNT (KES)</label>{category === "ELECTRICITY" ? <select style={input} value={amount} disabled={busy} onChange={(e) => { setAmount(e.target.value); setQuote(null); }}><option value="">Select electricity amount</option>{TIERS.map((tier) => <option key={tier} value={tier}>KES {money(tier)}</option>)}</select> : <input style={input} type="number" min="0.01" step="0.01" placeholder="Amount" value={amount} disabled={busy} onChange={(e) => { setAmount(e.target.value); setQuote(null); }} />}</div>
         {category === "BANKING" && <div><label style={label}>CASHIER M-PESA REFERENCE</label><input style={input} value={reference} maxLength={16} placeholder="8–16 letters or numbers" disabled={busy} onChange={(e) => { setReference(e.target.value.toUpperCase().replace(/\s+/g, "")); setQuote(null); }} /></div>}
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", fontSize: 12 }}><span>Closing Balance: <strong style={{ color: "#d9b66c" }}>KES {money(balance?.closing_balance ?? currentShift?.closing_balance)}</strong></span><span>Available to request: <strong style={{ color: "#72d8af" }}>KES {money(maxTotal)}</strong></span></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", fontSize: 12 }}><span>Closing: <strong style={{ color: "#d9b66c" }}>KES {money(balance?.closing_balance ?? currentShift?.closing_balance)}</strong></span><span>Available: <strong style={{ color: "#72d8af" }}>KES {money(maxTotal)}</strong></span></div>
 
         {!quote && <button type="submit" disabled={!isReady || busy || !validAmount || (category === "BANKING" && (!employeeId || !/^[A-Z0-9]{8,16}$/.test(normalizedReference)))} style={{ ...input, background: "#174e70", cursor: "pointer", fontWeight: 800, opacity: !isReady || busy ? 0.6 : 1 }}>{busy ? "CHECKING..." : "REVIEW PAYMENT"}</button>}
       </form>
-      {quote && <div style={{ marginTop: 12, border: "1px solid #d9b66c", borderRadius: 8, padding: 12, display: "grid", gap: 8 }}><strong>REVIEW REQUEST</strong>{category === "BANKING" && <div>Employee: {selectedEmployee?.employee_name || selectedEmployee?.full_name}</div>}<div>Principal: KES {money(quote.amount)}</div><div>Transaction fee: KES {money(quote.fee)}</div><strong>Reserved: KES {money(quote.amount + quote.fee)}</strong><div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy} onClick={() => setQuote(null)} style={{ ...input, flex: 1, cursor: "pointer" }}>CANCEL</button><button type="button" disabled={busy} onClick={submit} style={{ ...input, flex: 1, background: "#087e62", fontWeight: 800, cursor: "pointer" }}>{busy ? "SUBMITTING..." : "SUBMIT REQUEST"}</button></div></div>}
+      {quote && <div style={{ marginTop: 12, border: "1px solid #d9b66c", borderRadius: 8, padding: 12, display: "grid", gap: 8 }}><strong>CONFIRM REQUEST</strong>{category === "BANKING" && <div>Employee: {selectedEmployee?.employee_name || selectedEmployee?.full_name}</div>}<div>Amount: KES {money(quote.amount)}</div><div>Fee: KES {money(quote.fee)}</div><strong>Total: KES {money(quote.amount + quote.fee)}</strong><div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy} onClick={() => setQuote(null)} style={{ ...input, flex: 1, cursor: "pointer" }}>CANCEL</button><button type="button" disabled={busy} onClick={submit} style={{ ...input, flex: 1, background: "#087e62", fontWeight: 800, cursor: "pointer" }}>{busy ? "SUBMITTING..." : "SUBMIT REQUEST"}</button></div></div>}
       {visibleRequests.length > 0 && <div style={{ marginTop: 12, borderTop: "1px solid #40556b", paddingTop: 10 }}>
-        <strong style={{ fontSize: 12, color: "#d9b66c" }}>PAYMENT STATUS</strong>
+        <strong style={{ fontSize: 12, color: "#d9b66c" }}>STATUS</strong>
         {visibleRequests.slice(0, 6).map((r, i) => <div key={r.id || i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #2a3d52", gap: 8, fontSize: 12 }}>
           <span>KES {money(r.amount)}</span>
           <strong style={{ color: ["PENDING", "PROCESSING"].includes(r.status) ? "#d9b66c" : r.status === "CONFIRMED" ? "#72d8af" : "#ff9e9e" }}>{r.status === "CONFIRMED" ? "APPROVED" : r.status === "PROCESSING" ? "PENDING" : r.status}</strong>
