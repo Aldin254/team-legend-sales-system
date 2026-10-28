@@ -655,6 +655,18 @@ export default function AdminSavingsPanel({
     ]
   );
 
+  // DIRECT BANKING — independent of legacy Savings snapshots.
+  const [directRows, setDirectRows] = useState([]);
+  const [directLoading, setDirectLoading] = useState(true);
+  const [directError, setDirectError] = useState("");
+  const [directNotice, setDirectNotice] = useState("");
+  const [directSelectedId, setDirectSelectedId] = useState("");
+  const [directForm, setDirectForm] = useState({
+    bankReference: "", evidence: "", reason: "", paidAmount: "", fee: "",
+  });
+  const [directBusy, setDirectBusy] = useState(false);
+  const directBusyRef = useRef(false);
+
   const todayDuty = useMemo(
     () =>
       buildTodayDuty(
@@ -958,6 +970,82 @@ export default function AdminSavingsPanel({
       recoveryRef.current += 1;
     };
   }, [loadRecovery]);
+
+  const loadDirectBanking = useCallback(async () => {
+    if (!baseUrl || !anonKey || !token) {
+      setDirectError("Admin login is missing.");
+      setDirectLoading(false);
+      return;
+    }
+    try {
+      const result = await rpc("tl_admin_direct_banking_pending_snapshot");
+      if (!Array.isArray(result)) throw new Error("Invalid direct Banking response.");
+      setDirectRows(result);
+      setDirectError("");
+    } catch (err) {
+      setDirectError(err?.message || "Unable to load direct Banking requests.");
+    } finally {
+      setDirectLoading(false);
+    }
+  }, [baseUrl, anonKey, token, rpc]);
+
+  useEffect(() => {
+    void loadDirectBanking();
+    const timer = setInterval(() => void loadDirectBanking(), REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [loadDirectBanking]);
+
+  async function confirmDirectBanking(event) {
+    event.preventDefault();
+    if (directBusyRef.current) return;
+    const row = directRows.find((r) => r.id === directSelectedId);
+    if (!row) return;
+    const paid = Number(directForm.paidAmount);
+    const fee = Number(directForm.fee);
+    const reference = upper(directForm.bankReference);
+    const evidence = directForm.evidence.trim();
+    const reason = directForm.reason.trim();
+    if (!Number.isFinite(paid) || paid !== Number(row.amount)) {
+      setDirectError("Confirmed bank amount must match the cashier request exactly.");
+      return;
+    }
+    if (!Number.isFinite(fee) || fee !== Number(row.quoted_transaction_fee)) {
+      setDirectError("Transaction fee must equal the frozen fee.");
+      return;
+    }
+    if (reference !== upper(row.cashier_mpesa_reference)) {
+      setDirectError("Bank reference must exactly match the cashier M-Pesa reference.");
+      return;
+    }
+    if (evidence.length < 10 || reason.length < 5) {
+      setDirectError("Enter bank statement evidence and a confirmation reason.");
+      return;
+    }
+    if (!window.confirm(`CONFIRM DIRECT BANKING?\nEmployee: ${row.employee_name}\nAmount: KES ${money(row.amount)}\nReference: ${reference}\nFee: KES ${money(fee)}\n\nThis will post principal and fee against the shift Closing Balance.`)) return;
+    directBusyRef.current = true;
+    setDirectBusy(true);
+    setDirectError("");
+    setDirectNotice("");
+    try {
+      const result = await rpc("tl_admin_confirm_direct_banking", {
+        p_request_id: row.id,
+        p_paid_amount: paid,
+        p_bank_reference: reference,
+        p_statement_evidence_path: evidence,
+        p_transaction_fee: fee,
+        p_reason: reason,
+      });
+      if (result?.success === false) throw new Error(result?.message || "Confirmation rejected.");
+      setDirectNotice(`Banking confirmed: KES ${money(paid)} — ${reference}`);
+      setDirectSelectedId("");
+      await Promise.all([loadDirectBanking(), load(), loadRecovery()]);
+    } catch (err) {
+      setDirectError(err?.message || "Unable to confirm Banking.");
+    } finally {
+      directBusyRef.current = false;
+      setDirectBusy(false);
+    }
+  }
 
   // ==================================================
   // NEW — CORRECTION INPUTS
@@ -2357,26 +2445,6 @@ export default function AdminSavingsPanel({
                         </table>
                       </div>
 
-                      <div className="tlba-electricity-note">
-                        SAVED is posted once when
-                        the cashier saves money.
-                        PAID counts only confirmed
-                        payment-ledger entries.
-                        Pending requests are not
-                        paid. Current balance is
-                        the live wallet balance,
-                        not a period total.
-
-                        {truncated && (
-                          <strong>
-                            {" "}
-                            History is limited to
-                            the latest 500 records;
-                            period totals may
-                            be incomplete.
-                          </strong>
-                        )}
-                      </div>
                     </>
                   )}
                 </div>
@@ -2621,6 +2689,58 @@ export default function AdminSavingsPanel({
             </section>
           </div>
 
+          <section className="tlba-panel tlba-recovery-panel">
+            <div className="tlba-panelhead">
+              <h2>Direct Banking Verification</h2>
+              <span className="tlba-badge">ADMIN ONLY</span>
+            </div>
+            <div className="tlba-recovery-head">
+              <span>PENDING REQUESTS</span>
+              <strong>{directLoading ? "..." : directRows.length}</strong>
+              <button type="button" onClick={() => void loadDirectBanking()} disabled={directBusy}>Refresh</button>
+            </div>
+            {directError && <div className="tlba-error" role="alert">{directError}</div>}
+            {directNotice && <div className="tlba-recovery-success" role="status">{directNotice}</div>}
+            {directRows.length === 0 ? (
+              <div className="tlba-recovery-empty">{directLoading ? "Loading direct Banking..." : "No pending direct Banking requests."}</div>
+            ) : <div className="tlba-recovery-list">{directRows.map((row) => (
+              <article key={row.id} className="tlba-recovery-item">
+                <div className="tlba-recovery-itemhead">
+                  <div><strong>{row.employee_name || "Unknown employee"}</strong>
+                    <small>{row.shop_name || row.shop_id} · {displayDate(row.requested_at)} {localTime(row.requested_at)}</small>
+                  </div><span className="tlba-recovery-status">{row.status}</span>
+                </div>
+                <div className="tlba-recovery-data">
+                  <div><small>AMOUNT</small><strong>KES {money(row.amount)}</strong></div>
+                  <div><small>M-PESA REFERENCE</small><strong className="tlba-reference">{row.cashier_mpesa_reference}</strong></div>
+                  <div><small>FEE</small><strong>KES {money(row.quoted_transaction_fee)}</strong></div>
+                </div>
+                {directSelectedId !== row.id ? (
+                  <button type="button" className="tlba-recovery-correct" disabled={directBusy}
+                    onClick={() => { setDirectSelectedId(row.id); setDirectError(""); setDirectForm({ bankReference: "", evidence: "", reason: "", paidAmount: String(row.amount), fee: String(row.quoted_transaction_fee ?? "") }); }}>
+                    Verify Bank Payment
+                  </button>
+                ) : <form className="tlba-recovery-form" onSubmit={confirmDirectBanking}>
+                  <div className="tlba-recovery-formtitle">BANK VERIFICATION</div>
+                  <label>CONFIRMED AMOUNT (KES)</label>
+                  <input type="number" step="0.01" min="0.01" required value={directForm.paidAmount} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, paidAmount: e.target.value }))}/>
+                  <label>BANK / M-PESA REFERENCE</label>
+                  <input type="text" required maxLength={16} value={directForm.bankReference} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, bankReference: upper(e.target.value) }))} placeholder="Enter reference from bank statement"/>
+                  <label>TRANSACTION FEE (KES)</label>
+                  <input type="number" step="0.01" min="0" required value={directForm.fee} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, fee: e.target.value }))}/>
+                  <label>BANK EVIDENCE</label>
+                  <textarea rows={2} required value={directForm.evidence} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, evidence: e.target.value }))} placeholder="Verified bank statement reference or evidence path"/>
+                  <label>REASON</label>
+                  <textarea rows={2} required value={directForm.reason} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Reason for confirming the bank deposit"/>
+                  <div className="tlba-recovery-actions">
+                    <button type="button" disabled={directBusy} onClick={() => setDirectSelectedId("")}>Cancel</button>
+                    <button type="submit" className="primary" disabled={directBusy}>{directBusy ? "Confirming..." : "Confirm Bank Payment"}</button>
+                  </div>
+                </form>}
+              </article>
+            ))}</div>}
+          </section>
+
           {/* ===================================
               NEW ADMIN BANKING RECOVERY
               =================================== */}
@@ -2678,15 +2798,6 @@ export default function AdminSavingsPanel({
                 {recoveryNotice}
               </div>
             )}
-
-            <p className="tlba-recovery-note">
-              Submitted M-PESA references are
-              displayed here even if the cashier
-              later loses the SMS. Correction
-              preserves the original reference
-              and the frozen transaction fee.
-              It does not confirm the payment.
-            </p>
 
             {recoveryLoading &&
               recoveryRows.length === 0 ? (
@@ -2769,7 +2880,7 @@ export default function AdminSavingsPanel({
 
                           <div>
                             <small>
-                              FROZEN FEE
+                              FEE
                             </small>
 
                             <strong>
