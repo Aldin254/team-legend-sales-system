@@ -22,6 +22,8 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
   const [employees, setEmployees] = useState([]);
   const [balance, setBalance] = useState(null);
   const [quote, setQuote] = useState(null);
+  const [requests, setRequests] = useState([]);
+  const [recentRequest, setRecentRequest] = useState(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -71,6 +73,29 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
     return () => { alive = false; };
   }, [rpc, shiftId]);
 
+  // Read-only request status. Database confirmation is the only settlement path.
+  const loadRequests = useCallback(async () => {
+    if (!shiftId || !url || !key || !token) return;
+    const params = new URLSearchParams({
+      select: "id,category,amount,status,requested_at,quoted_transaction_fee,payment_source",
+      shift_id: `eq.${shiftId}`,
+      payment_source: "eq.CLOSING_BALANCE",
+      order: "requested_at.desc",
+      limit: "30",
+    });
+    const response = await fetch(`${url}/rest/v1/savings_payment_requests?${params}`, {
+      cache: "no-store", headers: { apikey: key, Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return; // RLS may restrict direct table reads; submission remains valid.
+    const rows = await response.json();
+    if (Array.isArray(rows)) setRequests(rows);
+  }, [shiftId, url, key, token]);
+  useEffect(() => {
+    setRequests([]); setRecentRequest(null);
+    void loadRequests();
+    const timer = setInterval(() => void loadRequests(), 15000);
+    return () => clearInterval(timer);
+  }, [loadRequests]);
   useEffect(() => { setAmount(""); setReference(""); setQuote(null); setMessage(""); }, [category]);
   useEffect(() => { if (!message) return; const timer = setTimeout(() => setMessage(""), 5000); return () => clearTimeout(timer); }, [message]);
   useEffect(() => {
@@ -86,6 +111,8 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
   const maxTotal = Number.isFinite(available) ? available : 0;
   const isReady = !loading && !!shiftId && String(currentShift?.status).toUpperCase() === "OPEN" && currentShift?.admin_manual_totals !== true;
   const selectedEmployee = employees.find((e) => String(e.employee_id) === String(employeeId));
+  const categoryRequests = requests.filter((r) => r.category === category);
+  const visibleRequests = categoryRequests.length ? categoryRequests : (recentRequest?.category === category ? [recentRequest] : []);
 
   async function preview(event) {
     event.preventDefault();
@@ -125,10 +152,12 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
         ? await rpc("tl_cashier_request_direct_banking", { p_shift_id: shiftId, p_employee_id: quote.employeeId, p_amount: quote.amount, p_mpesa_reference: quote.reference })
         : await rpc("tl_cashier_request_direct_payment", { p_shift_id: shiftId, p_category: category, p_amount: quote.amount });
       setQuote(null); setAmount(""); setReference("");
+      setRecentRequest({ id: result?.request_id || result?.id || null, category: quote.category, amount: quote.amount, status: "PENDING" });
+      void loadRequests();
       const savedFee = result?.quoted_transaction_fee;
       setMessage(savedFee == null || Number(savedFee) !== quote.fee
         ? "Payment request submitted, but its frozen fee differs from the quote. Contact Admin before confirmation."
-        : "Payment request submitted for verification. Closing Balance will reduce only after confirmation.");
+        : "PENDING APPROVAL");
       await refresh();
       onPaymentRequested?.();
     } catch (e) { setQuote(null); setMessage(e.message); }
@@ -145,10 +174,17 @@ export default function CashierDirectPaymentsPanel({ user, currentShift, categor
         <div><label style={label}>AMOUNT (KES)</label>{category === "ELECTRICITY" ? <select style={input} value={amount} disabled={busy} onChange={(e) => { setAmount(e.target.value); setQuote(null); }}><option value="">Select electricity amount</option>{TIERS.map((tier) => <option key={tier} value={tier}>KES {money(tier)}</option>)}</select> : <input style={input} type="number" min="0.01" step="0.01" placeholder="Amount" value={amount} disabled={busy} onChange={(e) => { setAmount(e.target.value); setQuote(null); }} />}</div>
         {category === "BANKING" && <div><label style={label}>CASHIER M-PESA REFERENCE</label><input style={input} value={reference} maxLength={16} placeholder="8–16 letters or numbers" disabled={busy} onChange={(e) => { setReference(e.target.value.toUpperCase().replace(/\s+/g, "")); setQuote(null); }} /></div>}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", fontSize: 12 }}><span>Closing Balance: <strong style={{ color: "#d9b66c" }}>KES {money(balance?.closing_balance ?? currentShift?.closing_balance)}</strong></span><span>Available to request: <strong style={{ color: "#72d8af" }}>KES {money(maxTotal)}</strong></span></div>
-        <div style={{ fontSize: 11, color: "#91a5b8" }}>Available amount already excludes pending direct-payment reservations and the KES 1,000 minimum.</div>
+
         {!quote && <button type="submit" disabled={!isReady || busy || !validAmount || (category === "BANKING" && (!employeeId || !/^[A-Z0-9]{8,16}$/.test(normalizedReference)))} style={{ ...input, background: "#174e70", cursor: "pointer", fontWeight: 800, opacity: !isReady || busy ? 0.6 : 1 }}>{busy ? "CHECKING..." : "REVIEW PAYMENT"}</button>}
       </form>
-      {quote && <div style={{ marginTop: 12, border: "1px solid #d9b66c", borderRadius: 8, padding: 12, display: "grid", gap: 8 }}><strong>CONFIRM PAYMENT REQUEST</strong>{category === "BANKING" && <div>Employee: {selectedEmployee?.employee_name || selectedEmployee?.full_name}</div>}<div>Principal: KES {money(quote.amount)}</div><div>Transaction fee: KES {money(quote.fee)}</div><strong>Total reserved: KES {money(quote.amount + quote.fee)}</strong><div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy} onClick={() => setQuote(null)} style={{ ...input, flex: 1, cursor: "pointer" }}>CANCEL</button><button type="button" disabled={busy} onClick={submit} style={{ ...input, flex: 1, background: "#087e62", fontWeight: 800, cursor: "pointer" }}>{busy ? "SUBMITTING..." : "REQUEST PAY"}</button></div></div>}
+      {quote && <div style={{ marginTop: 12, border: "1px solid #d9b66c", borderRadius: 8, padding: 12, display: "grid", gap: 8 }}><strong>REVIEW REQUEST</strong>{category === "BANKING" && <div>Employee: {selectedEmployee?.employee_name || selectedEmployee?.full_name}</div>}<div>Principal: KES {money(quote.amount)}</div><div>Transaction fee: KES {money(quote.fee)}</div><strong>Reserved: KES {money(quote.amount + quote.fee)}</strong><div style={{ display: "flex", gap: 8 }}><button type="button" disabled={busy} onClick={() => setQuote(null)} style={{ ...input, flex: 1, cursor: "pointer" }}>CANCEL</button><button type="button" disabled={busy} onClick={submit} style={{ ...input, flex: 1, background: "#087e62", fontWeight: 800, cursor: "pointer" }}>{busy ? "SUBMITTING..." : "SUBMIT REQUEST"}</button></div></div>}
+      {visibleRequests.length > 0 && <div style={{ marginTop: 12, borderTop: "1px solid #40556b", paddingTop: 10 }}>
+        <strong style={{ fontSize: 12, color: "#d9b66c" }}>PAYMENT STATUS</strong>
+        {visibleRequests.slice(0, 6).map((r, i) => <div key={r.id || i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #2a3d52", gap: 8, fontSize: 12 }}>
+          <span>KES {money(r.amount)}</span>
+          <strong style={{ color: ["PENDING", "PROCESSING"].includes(r.status) ? "#d9b66c" : r.status === "CONFIRMED" ? "#72d8af" : "#ff9e9e" }}>{r.status === "CONFIRMED" ? "APPROVED" : r.status === "PROCESSING" ? "PENDING" : r.status}</strong>
+        </div>)}
+      </div>}
       {message && <div role="status" style={{ marginTop: 12, color: /submitted/i.test(message) ? "#72d8af" : "#ff9e9e", fontSize: 12 }}>{message}</div>}
     </section>
   );
