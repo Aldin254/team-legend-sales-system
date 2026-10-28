@@ -1046,6 +1046,30 @@ export default function AdminSavingsPanel({
     }
   }
 
+  async function cancelDirectBanking(row) {
+    if (!row?.id || directBusyRef.current) return;
+    if (!window.confirm(`CANCEL PENDING BANKING?\nEmployee: ${row.employee_name || "Sender"}\nAmount: KES ${money(row.amount)}\nReference: ${row.cashier_mpesa_reference || ""}\n\nThis releases the reservation. No expense will be posted.`)) return;
+    directBusyRef.current = true;
+    setDirectBusy(true);
+    setDirectError("");
+    setDirectNotice("");
+    try {
+      const result = await rpc("tl_admin_cancel_direct_banking", {
+        p_request_id: row.id,
+        p_reason: "Mistaken pending cashier banking transaction",
+      });
+      if (result?.success === false) throw new Error(result?.message || "Cancellation rejected.");
+      setDirectSelectedId("");
+      setDirectNotice("Pending banking cancelled");
+      await Promise.all([loadDirectBanking(), load(), loadRecovery()]);
+    } catch (err) {
+      setDirectError(err?.message || "Unable to cancel pending banking.");
+    } finally {
+      directBusyRef.current = false;
+      setDirectBusy(false);
+    }
+  }
+
   // ==================================================
   // NEW — CORRECTION INPUTS
   // ==================================================
@@ -2714,7 +2738,7 @@ export default function AdminSavingsPanel({
                   <label>M-PESA REFERENCE</label>
                   <input type="text" required maxLength={16} value={directForm.bankReference} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, bankReference: upper(e.target.value) }))}/>
                   <div className="tlba-recovery-actions">
-                    <button type="button" disabled={directBusy} onClick={() => setDirectSelectedId("")}>Cancel</button>
+                    <button type="button" disabled={directBusy} onClick={() => void cancelDirectBanking(row)}>{directBusy ? "Please wait..." : "Cancel Transaction"}</button>
                     <button type="submit" className="primary" disabled={directBusy}>{directBusy ? "Confirming..." : "Confirm"}</button>
                   </div>
                 </form>}
