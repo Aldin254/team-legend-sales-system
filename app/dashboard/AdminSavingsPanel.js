@@ -979,8 +979,13 @@ export default function AdminSavingsPanel({
     }
     try {
       const result = await rpc("tl_admin_direct_banking_pending_snapshot");
-      if (!Array.isArray(result)) throw new Error("Invalid direct Banking response.");
-      setDirectRows(result);
+      const rows = Array.isArray(result)
+        ? result
+        : (result?.success === true && Array.isArray(result?.requests)
+            ? result.requests
+            : null);
+      if (!rows) throw new Error("Invalid direct Banking response.");
+      setDirectRows(rows);
       setDirectError("");
     } catch (err) {
       setDirectError(err?.message || "Unable to load direct Banking requests.");
@@ -2126,10 +2131,6 @@ export default function AdminSavingsPanel({
                 <h2>
                   Shop Monthly Payment Status
                 </h2>
-
-                <span className="tlba-badge">
-                  READ ONLY
-                </span>
               </div>
 
               <div className="tlba-inner">
@@ -2262,10 +2263,6 @@ export default function AdminSavingsPanel({
                     <strong>
                       ELECTRICITY BREAKDOWN
                     </strong>
-
-                    <span>
-                      VARIABLE EXPENSE · READ ONLY
-                    </span>
                   </div>
 
                   <label htmlFor="tlba-electricity-period">
@@ -2307,8 +2304,7 @@ export default function AdminSavingsPanel({
 
                   {!shopId ? (
                     <div className="tlba-electricity-empty">
-                      Select a shop above to
-                      view Electricity transactions.
+                      Select shop
                     </div>
                   ) : (
                     <>
@@ -2461,10 +2457,6 @@ export default function AdminSavingsPanel({
                 <h2>
                   Employee Banking Details
                 </h2>
-
-                <span className="tlba-badge">
-                  READ ONLY
-                </span>
               </div>
 
               <div className="tlba-inner">
@@ -2692,7 +2684,6 @@ export default function AdminSavingsPanel({
           <section className="tlba-panel tlba-recovery-panel">
             <div className="tlba-panelhead">
               <h2>Direct Banking Verification</h2>
-              <span className="tlba-badge">ADMIN ONLY</span>
             </div>
             <div className="tlba-recovery-head">
               <span>PENDING REQUESTS</span>
@@ -2702,7 +2693,7 @@ export default function AdminSavingsPanel({
             {directError && <div className="tlba-error" role="alert">{directError}</div>}
             {directNotice && <div className="tlba-recovery-success" role="status">{directNotice}</div>}
             {directRows.length === 0 ? (
-              <div className="tlba-recovery-empty">{directLoading ? "Loading direct Banking..." : "No pending direct Banking requests."}</div>
+              <div className="tlba-recovery-empty">{directLoading ? "Loading..." : "No pending requests"}</div>
             ) : <div className="tlba-recovery-list">{directRows.map((row) => (
               <article key={row.id} className="tlba-recovery-item">
                 <div className="tlba-recovery-itemhead">
@@ -2725,13 +2716,13 @@ export default function AdminSavingsPanel({
                   <label>CONFIRMED AMOUNT (KES)</label>
                   <input type="number" step="0.01" min="0.01" required value={directForm.paidAmount} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, paidAmount: e.target.value }))}/>
                   <label>BANK / M-PESA REFERENCE</label>
-                  <input type="text" required maxLength={16} value={directForm.bankReference} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, bankReference: upper(e.target.value) }))} placeholder="Enter reference from bank statement"/>
+                  <input type="text" required maxLength={16} value={directForm.bankReference} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, bankReference: upper(e.target.value) }))} placeholder="Bank reference"/>
                   <label>TRANSACTION FEE (KES)</label>
                   <input type="number" step="0.01" min="0" required value={directForm.fee} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, fee: e.target.value }))}/>
                   <label>BANK EVIDENCE</label>
-                  <textarea rows={2} required value={directForm.evidence} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, evidence: e.target.value }))} placeholder="Verified bank statement reference or evidence path"/>
+                  <textarea rows={2} required value={directForm.evidence} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, evidence: e.target.value }))} placeholder="Bank evidence"/>
                   <label>REASON</label>
-                  <textarea rows={2} required value={directForm.reason} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Reason for confirming the bank deposit"/>
+                  <textarea rows={2} required value={directForm.reason} disabled={directBusy} onChange={(e) => setDirectForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Verification reason"/>
                   <div className="tlba-recovery-actions">
                     <button type="button" disabled={directBusy} onClick={() => setDirectSelectedId("")}>Cancel</button>
                     <button type="submit" className="primary" disabled={directBusy}>{directBusy ? "Confirming..." : "Confirm Bank Payment"}</button>
@@ -2750,10 +2741,6 @@ export default function AdminSavingsPanel({
               <h2>
                 Banking Reference Recovery
               </h2>
-
-              <span className="tlba-badge">
-                ADMIN ONLY
-              </span>
             </div>
 
             <div className="tlba-recovery-head">
@@ -2806,7 +2793,7 @@ export default function AdminSavingsPanel({
               </div>
             ) : recoveryRows.length === 0 ? (
               <div className="tlba-recovery-empty">
-                No pending Banking requests.
+                No pending requests
               </div>
             ) : (
               <div className="tlba-recovery-list">
@@ -2998,7 +2985,7 @@ export default function AdminSavingsPanel({
                               required
                               value={correction.evidence}
                               disabled={correctionBusy}
-                              placeholder="Describe independently verified bank evidence, reference and amount."
+                              placeholder="Bank evidence and amount"
                               onChange={(e) =>
                                 updateCorrection(
                                   "evidence",
@@ -3051,15 +3038,6 @@ export default function AdminSavingsPanel({
                 )}
               </div>
             )}
-
-            {recoveryRows.length >= 100 &&
-              recoveryTotal > recoveryRows.length && (
-                <p className="tlba-recovery-note">
-                  Showing the latest 100 pending
-                  Banking requests. Refresh after
-                  resolving these requests.
-                </p>
-              )}
           </section>
         </>
       )}
