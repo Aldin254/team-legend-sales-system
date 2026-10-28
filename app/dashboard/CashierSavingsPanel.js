@@ -1517,6 +1517,8 @@ export default function CashierSavingsPanel({
               <span>TOTAL SAVED</span>
               <strong>KES {money(utilityTotalSaved)}</strong>
             </div>
+          </div>
+          <div className="tl-ms-operation-row">
             <div className="tl-ms-inline-controls tl-ms-action-wrap">
               <label id="tl-mshwari-action-label">ACTION</label>
               <button type="button" className="tl-ms-action-trigger"
@@ -2125,14 +2127,14 @@ function formatDateTime(value) {
 // ============================================
 
 const css = `
-.tl-ms-overview {display:flex;align-items:stretch;gap:7px;padding:10px 12px 8px;max-width:100%;box-sizing:border-box;overflow:visible}
-.tl-ms-balance {flex:1 1 135px;min-width:105px;background:#0A1725;border:1px solid #2A3D52;border-radius:7px;padding:9px 6px;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:4px}
-.tl-ms-balance span {font-size:13px;font-weight:800;color:#C4D0DC;white-space:nowrap}
-.tl-ms-balance strong {font-size:15px;font-weight:850;font-variant-numeric:tabular-nums;white-space:nowrap;color:#F0F5FA}
-.tl-ms-total {flex:1.1 1 155px;border-color:#D9B66C;background:#292A2C}
+.tl-ms-overview {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch;gap:7px;padding:10px 12px 6px;max-width:100%;box-sizing:border-box}
+.tl-ms-balance {min-width:0;background:#0A1725;border:1px solid #2A3D52;border-radius:7px;padding:9px 6px;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.tl-ms-balance span {font-size:clamp(9px,1.15vw,13px);font-weight:800;color:#C4D0DC;white-space:nowrap}
+.tl-ms-balance strong {font-size:clamp(10px,1.35vw,15px);font-weight:850;font-variant-numeric:tabular-nums;white-space:nowrap;color:#F0F5FA}
+.tl-ms-total {border-color:#D9B66C;background:#292A2C}
 .tl-ms-total strong {color:#F2DA91}
-.tl-ms-inline-controls {flex:1 1 135px;min-width:115px;display:flex;flex-direction:column;justify-content:center;gap:5px}
-.tl-ms-inline-controls:has(input) {flex:1.35 1 175px;max-width:260px}
+.tl-ms-inline-controls {min-width:0;display:flex;flex-direction:column;justify-content:center;gap:5px}
+.tl-ms-inline-controls:has(input) {max-width:none}
 .tl-ms-inline-controls label {font-size:13px;font-weight:800;text-align:center;color:#D9B66C;white-space:nowrap}
 .tl-ms-inline-controls select,.tl-ms-inline-controls input {box-sizing:border-box;width:100%;min-width:0;height:39px;border:1px solid #496078;border-radius:7px;background:#0A1725;color:#F0F5FA;padding:7px 9px;font-size:14px;font-weight:700}
 .tl-ms-inline-controls select {border-color:#D9B66C}
@@ -2143,7 +2145,7 @@ const css = `
 .tl-ms-action-menu button:hover:not(:disabled),.tl-ms-action-menu button:focus-visible {background:#28445B}
 .tl-ms-action-menu button:disabled {opacity:.4;cursor:not-allowed}
 .tl-ms-action-submenu {margin:3px 0 5px 9px;padding-left:7px;border-left:2px solid #D9B66C}
-.tl-ms-inline-submit {height:39px;width:112px;border:0;border-radius:7px;padding:0 10px;font-size:14px;font-weight:850;cursor:pointer;color:#fff;align-self:flex-end;white-space:nowrap}
+.tl-ms-inline-submit {height:39px;width:100%;border:0;border-radius:7px;padding:0 10px;font-size:14px;font-weight:850;cursor:pointer;color:#fff;align-self:flex-end;white-space:nowrap}
 .tl-ms-inline-save {background:#11996E}
 .tl-ms-inline-withdraw {background:#345B79}
 .tl-ms-inline-submit:disabled {opacity:.45;cursor:not-allowed}
@@ -2152,7 +2154,20 @@ const css = `
 .tl-ms-save-menu button:hover:not(:disabled),.tl-ms-save-menu button:focus-visible {background:#28445B}
 .tl-ms-save-menu button:disabled {opacity:.4;cursor:not-allowed}
 .tl-ms-section-label {padding:6px 12px 0;font-size:13px;letter-spacing:.05em;color:#D9B66C;font-weight:800}
-@media(max-width:1050px){.tl-ms-overview{overflow-x:auto}.tl-ms-balance{flex:0 0 130px}.tl-ms-total{flex:0 0 150px}.tl-ms-inline-controls{flex:0 0 130px}.tl-ms-inline-controls:has(input){flex:0 0 170px}}
+/* Second row stays within the cashier panel, including on small screens. */
+.tl-ms-operation-row {display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(90px,.65fr);align-items:end;gap:9px;padding:0 12px 10px;max-width:100%;box-sizing:border-box}
+.tl-ms-operation-row > * {min-width:0}
+@media(max-width:650px){
+  .tl-ms-overview{gap:4px;padding:8px 6px 6px}
+  .tl-ms-balance{padding:7px 2px;gap:3px}
+  .tl-ms-balance span{font-size:9px;white-space:normal;overflow-wrap:anywhere}
+  .tl-ms-balance strong{font-size:10px;white-space:normal;overflow-wrap:anywhere}
+  .tl-ms-operation-row{gap:5px;padding:0 6px 9px;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(72px,.7fr)}
+  .tl-ms-inline-controls label{font-size:10px}
+  .tl-ms-action-trigger{font-size:11px;padding:6px 3px}
+  .tl-ms-inline-controls input{font-size:12px;padding:6px 5px}
+  .tl-ms-inline-submit{font-size:11px;padding:0 3px}
+}
 
 
 .tl-shared-savings input[type="number"] {
