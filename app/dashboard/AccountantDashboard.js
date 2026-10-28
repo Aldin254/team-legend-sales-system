@@ -19,6 +19,27 @@ const PREPARED_TIMEOUT_MS = 30000;
 const SECTION_COLLAPSE_MS = 30000;
 const DASHBOARD_REFRESH_MS = 60000;
 
+// Display the cashier assigned by the authoritative Duty Rota snapshot.
+// Never present placeholder greetings as employee identities.
+function getPaymentDutyCashierName(request) {
+  const candidates = [
+    request?.duty_cashier_full_name,
+    request?.rota_cashier_full_name,
+    request?.duty_cashier_name,
+    request?.rota_cashier_name,
+    request?.cashier_full_name,
+    request?.cashier_name,
+    request?.employee_name,
+  ];
+  for (const value of candidates) {
+    const name = String(value ?? "").trim();
+    if (name && !["WELCOME", "CASHIER", "NOT ASSIGNED", "-", "N/A", "NULL"].includes(name.toUpperCase())) {
+      return name;
+    }
+  }
+  return "ROTA NAME UNAVAILABLE";
+}
+
 export default function AccountantDashboard({ user }) {
   const router = useRouter();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1280,7 +1301,7 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
     const confirmed = window.confirm(
       `Confirm ${request.category} payment?\n\n` +
         `Shop: ${request.shop_name || "Shop"}\n` +
-        `Employee: ${request.employee_name || "Cashier"}\n` +
+        `Employee: ${getPaymentDutyCashierName(request)}\n` +
         `Amount: KES ${money(request.amount)}\n` +
         `Source: ${provider}\n` +
         `Reference: ${reference || externalId}\n\n` +
@@ -2481,8 +2502,7 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
                                                 request.shop_name ||
                                                 "Shop"
                                               } • ${
-                                                request.employee_name ||
-                                                "Cashier"
+                                                getPaymentDutyCashierName(request)
                                               } • ${formatDateTime(
                                                 request.requested_at
                                               )}`,
@@ -2844,8 +2864,7 @@ const [rejectingSavingsPaymentId, setRejectingSavingsPaymentId] =
                                               }),
                                               _jsx(TableCell, {
                                                 children:
-                                                  request.employee_name ||
-                                                  "-",
+                                                  getPaymentDutyCashierName(request),
                                               }),
                                               _jsx(TableCell, {
                                                 right: true,
