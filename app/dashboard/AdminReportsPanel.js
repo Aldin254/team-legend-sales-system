@@ -1357,9 +1357,10 @@ callRpc("tl_admin_daily_savings_ledger", {
           (platform) => {
             const platformKey = String(platform.id || "").trim();
             const opening = readingMap[`${platformKey}-OPENING`] || null;
-            const closing = readingMap[
-              `${platformKey}-${isNightReport ? "CLOSING_9AM" : "HANDOVER_9PM"}`
-            ] || null;
+            const closing = isNightReport
+              ? readingMap[`${platformKey}-CLOSING_9AM`] || null
+              : readingMap[`${platformKey}-HANDOVER_9PM`] ||
+                readingMap[`${platformKey}-CLOSING`] || null;
             const midnight = isNightReport
               ? readingMap[`${platformKey}-MIDNIGHT_CLOSE`] || null
               : null;
