@@ -1359,42 +1359,30 @@ callRpc("tl_admin_daily_savings_ledger", {
                 `${platform.id}-OPENING`
               ] || null;
 
-            const closing =
-              readingMap[
-                `${platform.id}-CLOSING`
-              ] || null;
-
-            // Display a midnight checkpoint only when a separate reading
-            // was actually saved. Never infer it from opening/closing.
-            const midnight = readings
-              .filter((r) =>
-                String(r.platform_id) === String(platform.id) &&
-                /^(MIDNIGHT|MIDNIGHT_READING|MID_SHIFT|MIDSHIFT|23:59|2359)$/.test(
-                  upper(r.reading_kind)
-                )
-              )
-              .sort((a, b) =>
-                Date.parse(b.recorded_at || 0) - Date.parse(a.recorded_at || 0)
-              )[0] || null;
+            const isNight = upper(shift.shift_name).replace(/[_-]/g, " ").replace(/\s+/g, " ").trim() === "SHIFT 2";
+            const closing = readingMap[
+              `${platform.id}-${isNight ? "CLOSING_9AM" : "HANDOVER_9PM"}`
+            ] || null;
+            const midnight = isNight
+              ? readingMap[`${platform.id}-MIDNIGHT_CLOSE`] || null
+              : null;
+            const isTablePlatform = upper(platform.platform_name) === "TABLE";
+            const openingValue = opening ? Number(opening.reading_value) : null;
+            const closingValue = closing ? Number(closing.reading_value) : null;
+            const midnightValue = midnight ? Number(midnight.reading_value) : null;
+            const output = openingValue !== null && closingValue !== null &&
+              (!isNight || isTablePlatform || midnightValue !== null)
+              ? roundMoney(isNight && !isTablePlatform
+                  ? midnightValue - openingValue + closingValue
+                  : closingValue - openingValue)
+              : null;
 
             return {
               ...platform,
               opening,
               midnight,
               closing,
-
-              output:
-                opening && closing
-                  ? roundMoney(
-                      Number(
-                        closing.reading_value || 0
-                      ) -
-                        Number(
-                          opening.reading_value ||
-                            0
-                        )
-                    )
-                  : null,
+              output,
             };
           }
         );
