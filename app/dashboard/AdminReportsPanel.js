@@ -196,7 +196,6 @@ function buildExpenseSummary(expenses) {
     { key: "MONDAY", label: "Monday Bonus" },
     { key: "FRIDAY", label: "Friday Bonus" },
     { key: "HOLIDAY", label: "Holiday Bonus" },
-    { key: "OTHER", label: "Other Automatic / Unclassified" },
   ];
   const rows = labels.map((x) => ({ ...x, amount: 0, fee: 0 }));
   const byKey = new Map(rows.map((r) => [r.key, r]));
@@ -207,7 +206,19 @@ function buildExpenseSummary(expenses) {
       continue;
     }
     const kind = classifyExpense(expense);
-    const row = byKey.get(kind.key);
+    let row = byKey.get(kind.key);
+    if (!row) {
+      // Preserve every expense under its own recorded description/source instead
+      // of hiding it in a generic unclassified bucket or dropping its amount.
+      const label = String(expense.description || expense.source_type || "Unnamed expense").trim();
+      const key = `SOURCE_${upper(expense.source_type)}_${upper(label)}`;
+      row = byKey.get(key);
+      if (!row) {
+        row = { key, label, amount: 0, fee: 0 };
+        rows.push(row);
+        byKey.set(key, row);
+      }
+    }
     row[kind.fee ? "fee" : "amount"] += Number(expense.amount || 0);
   }
   for (const row of rows) {
