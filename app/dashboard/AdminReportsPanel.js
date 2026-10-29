@@ -163,6 +163,8 @@ function classifyExpense(expense) {
       ? "BANKING" : SAVINGS_CATEGORIES.find((c) => desc.startsWith(`${c} `));
     return { key: category ? `SAVE_${category}` : "OTHER", fee: true };
   }
+  if (source === "DIRECT_PAYMENT_PRINCIPAL") return { key: "DIRECT_BANKING", fee: false, transfer: true };
+  if (source === "DIRECT_PAYMENT_FEE") return { key: "DIRECT_BANKING", fee: true };
   if (source === "ACCOUNTANT_RETURN") return { key: "RETURN", fee: false, transfer: true };
   if (source === "SAFARICOM_WITHDRAWAL") return { key: "WITHDRAWAL", fee: true };
   if (source === "SALARY") return { key: "SALARY", fee: false };
@@ -185,6 +187,7 @@ function isManualExpense(expense) {
 function buildExpenseSummary(expenses) {
   const labels = [
     ...SAVINGS_CATEGORIES.map((c) => ({ key: `SAVE_${c}`, label: `${SAVINGS_LABELS[c]} — Savings / Payment Fee` })),
+    { key: "DIRECT_BANKING", label: "Direct Banking — Principal / Transaction Fee" },
     { key: "RETURN", label: "Send Float to Legend Accounts (transfer)" },
     { key: "WITHDRAWAL", label: "Safaricom Withdrawal Fee" },
     { key: "SALARY", label: "Salary" },
