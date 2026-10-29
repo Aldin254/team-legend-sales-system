@@ -1340,7 +1340,7 @@ callRpc("tl_admin_daily_savings_ledger", {
 
         for (const r of readings) {
           const key =
-            `${r.platform_id}-${r.reading_kind}`;
+            `${String(r.platform_id || "").trim()}-${upper(r.reading_kind)}`;
 
           if (
             !readingMap[key] ||
@@ -1352,20 +1352,18 @@ callRpc("tl_admin_daily_savings_ledger", {
             readingMap[key] = r;
           }
         }
+        const isNightReport = shiftPeriod(shift) === "NIGHT";
         const platformRows = platforms.map(
           (platform) => {
-            const opening =
-              readingMap[
-                `${platform.id}-OPENING`
-              ] || null;
-
-            const isNight = upper(shift.shift_name).replace(/[_-]/g, " ").replace(/\s+/g, " ").trim() === "SHIFT 2";
+            const platformKey = String(platform.id || "").trim();
+            const opening = readingMap[`${platformKey}-OPENING`] || null;
             const closing = readingMap[
-              `${platform.id}-${isNight ? "CLOSING_9AM" : "HANDOVER_9PM"}`
+              `${platformKey}-${isNightReport ? "CLOSING_9AM" : "HANDOVER_9PM"}`
             ] || null;
-            const midnight = isNight
-              ? readingMap[`${platform.id}-MIDNIGHT_CLOSE`] || null
+            const midnight = isNightReport
+              ? readingMap[`${platformKey}-MIDNIGHT_CLOSE`] || null
               : null;
+            const isNight = isNightReport;
             const isTablePlatform = upper(platform.platform_name) === "TABLE";
             const openingValue = opening ? Number(opening.reading_value) : null;
             const closingValue = closing ? Number(closing.reading_value) : null;
