@@ -161,7 +161,9 @@ function classifyExpense(expense) {
   if (source === "SAVINGS_PAYMENT_FEE" || source === "CONSOLIDATED_BANKING_FEE") {
     const category = source === "CONSOLIDATED_BANKING_FEE"
       ? "BANKING" : SAVINGS_CATEGORIES.find((c) => desc.startsWith(`${c} `));
-    return { key: category ? `SAVE_${category}` : "OTHER", fee: true };
+    // Display savings payment fees in the same category as direct-payment fees.
+    // This avoids duplicate WiFi/DStv/Rent/Electricity rows without losing fees.
+    return { key: category && category !== "BANKING" ? `DIRECT_${category}` : "DIRECT_BANKING", fee: true };
   }
   // Group direct payments by their recorded purpose. Only Banking belongs
   // under Direct Banking; WiFi, DStv, Rent and Electricity keep their own rows.
@@ -196,7 +198,6 @@ function isManualExpense(expense) {
 
 function buildExpenseSummary(expenses) {
   const labels = [
-    ...SAVINGS_CATEGORIES.map((c) => ({ key: `SAVE_${c}`, label: `${SAVINGS_LABELS[c]} — Payment Fee` })),
     ...["WIFI", "DSTV", "RENT", "ELECTRICITY"].map((c) => ({
       key: `DIRECT_${c}`,
       label: `${SAVINGS_LABELS[c]} — Direct Payment / Transaction Fee`,
