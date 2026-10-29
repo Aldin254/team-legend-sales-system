@@ -163,12 +163,14 @@ function classifyExpense(expense) {
       ? "BANKING" : SAVINGS_CATEGORIES.find((c) => desc.startsWith(`${c} `));
     return { key: category ? `SAVE_${category}` : "OTHER", fee: true };
   }
-  // Direct electricity payments retain their original source type in the ledger,
-  // but must be displayed under Electricity rather than Direct Banking.
+  // Group direct payments by their recorded purpose. Only Banking belongs
+  // under Direct Banking; WiFi, DStv, Rent and Electricity keep their own rows.
   if (source === "DIRECT_PAYMENT_PRINCIPAL" || source === "DIRECT_PAYMENT_FEE") {
-    const isElectricity = desc.startsWith("ELECTRICITY ");
+    const category = ["WIFI", "DSTV", "RENT", "ELECTRICITY"].find(
+      (c) => desc.startsWith(`${c} `)
+    );
     return {
-      key: isElectricity ? "DIRECT_ELECTRICITY" : "DIRECT_BANKING",
+      key: category ? `DIRECT_${category}` : "DIRECT_BANKING",
       fee: source === "DIRECT_PAYMENT_FEE",
       transfer: source === "DIRECT_PAYMENT_PRINCIPAL",
     };
@@ -195,7 +197,10 @@ function isManualExpense(expense) {
 function buildExpenseSummary(expenses) {
   const labels = [
     ...SAVINGS_CATEGORIES.map((c) => ({ key: `SAVE_${c}`, label: `${SAVINGS_LABELS[c]} — Payment Fee` })),
-    { key: "DIRECT_ELECTRICITY", label: "Electricity — Direct Payment / Transaction Fee" },
+    ...["WIFI", "DSTV", "RENT", "ELECTRICITY"].map((c) => ({
+      key: `DIRECT_${c}`,
+      label: `${SAVINGS_LABELS[c]} — Direct Payment / Transaction Fee`,
+    })),
     { key: "DIRECT_BANKING", label: "Direct Banking — Principal / Transaction Fee" },
     { key: "RETURN", label: "Send Float to Legend Accounts (transfer)" },
     { key: "WITHDRAWAL", label: "Safaricom Withdrawal Fee" },
