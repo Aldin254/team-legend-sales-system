@@ -194,7 +194,7 @@ function isManualExpense(expense) {
 
 function buildExpenseSummary(expenses) {
   const labels = [
-    ...SAVINGS_CATEGORIES.map((c) => ({ key: `SAVE_${c}`, label: `${SAVINGS_LABELS[c]} — Savings / Payment Fee` })),
+    ...SAVINGS_CATEGORIES.map((c) => ({ key: `SAVE_${c}`, label: `${SAVINGS_LABELS[c]} — Payment Fee` })),
     { key: "DIRECT_ELECTRICITY", label: "Electricity — Direct Payment / Transaction Fee" },
     { key: "DIRECT_BANKING", label: "Direct Banking — Principal / Transaction Fee" },
     { key: "RETURN", label: "Send Float to Legend Accounts (transfer)" },
@@ -210,6 +210,9 @@ function buildExpenseSummary(expenses) {
   const byKey = new Map(rows.map((r) => [r.key, r]));
   const manual = [];
   for (const expense of expenses) {
+    // Savings deposits are shown in Saved Today, not as automatic payments.
+    // This only changes the report display; shift totals remain authoritative.
+    if (upper(expense.source_type) === "SAVINGS_SAVE") continue;
     if (isManualExpense(expense)) {
       manual.push(expense);
       continue;
@@ -2125,7 +2128,7 @@ function ReportDisplay({
           </div>
         </div>
         <div style={styles.savingsNotice}>
-          Saved principal is already posted as an automatic expense when saved.
+          Savings deposits appear under Saved Today and are not listed as automatic payments.
           Paid principal moves out of the savings wallet and is not expensed again.
           Balance is reconstructed from the last recorded ledger balance per account
           at the end of this business date. Both shifts share this daily savings view.
@@ -2152,7 +2155,8 @@ function ReportDisplay({
         <div style={styles.savingsNotice}>
           Company float returns are transfers, not additional operating costs.
           Safaricom withdrawal entries in this report are recorded fees only.
-          The authoritative shift Total Expenses remains unchanged below.
+          Savings deposits are excluded from this display subtotal, but remain in
+          the authoritative shift Total Expenses shown below.
         </div>
       </div>
 
