@@ -1343,16 +1343,12 @@ callRpc("tl_admin_daily_savings_ledger", {
     )?.business_date
   ).end,
 }),
-          // Read-only, shop-scoped withdrawals for this business day.
-          fetchAll(
-            `savings_ledger?shop_id=eq.${shop}` +
-              `&transaction_type=eq.WITHDRAWAL` +
-              `&created_at=gte.${encodeURIComponent(nairobiBusinessDayBounds(shifts.find((s) => String(s.id) === String(selectedShiftId))?.business_date).start)}` +
-              `&created_at=lt.${encodeURIComponent(nairobiBusinessDayBounds(shifts.find((s) => String(s.id) === String(selectedShiftId))?.business_date).end)}` +
-              `&income_entry_id=not.is.null` +
-              `&select=id,category,transaction_type,amount,income_entry_id,created_at` +
-              `&order=created_at.asc`
-          ),
+          // Admin-authorized RPC; never read savings_ledger directly from the browser.
+          callRpc("tl_admin_daily_savings_withdrawals", {
+            p_shop_id: selectedShopId,
+            p_start: nairobiBusinessDayBounds(shifts.find((s) => String(s.id) === String(selectedShiftId))?.business_date).start,
+            p_before: nairobiBusinessDayBounds(shifts.find((s) => String(s.id) === String(selectedShiftId))?.business_date).end,
+          }),
         ]);
 
         if (
@@ -1394,16 +1390,12 @@ callRpc("tl_admin_daily_savings_ledger", {
 
         const ledger = Array.isArray(ledgerResult) ? ledgerResult : [];
         const withdrawalEntries = Array.isArray(withdrawalResult) ? withdrawalResult : [];
-        const linkedIds = [...new Set(withdrawalEntries.map((x) => x.income_entry_id).filter(Boolean))];
-        const linkedFloats = [];
-        for (let i = 0; i < linkedIds.length; i += 100) {
-          const batch = linkedIds.slice(i, i + 100);
-          const results = await fetchJson(
-            `shift_income_entries?id=in.(${batch.map(encodeURIComponent).join(",")})` +
-            `&entry_type=eq.MSHWARI_FLOAT&select=id,entry_type,description,amount`
-          );
-          if (Array.isArray(results)) linkedFloats.push(...results);
-        }
+        // Destination and float slot are returned by the authorized withdrawal RPC.
+        const linkedFloats = withdrawalEntries.map((entry) => ({
+          id: entry.income_entry_id,
+          entry_type: entry.entry_type,
+          description: entry.float_description,
+        }));
         if (requestId !== reportRequestRef.current) return;
 
         // ==================================================
