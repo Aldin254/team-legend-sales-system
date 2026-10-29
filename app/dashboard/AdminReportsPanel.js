@@ -246,14 +246,14 @@ function buildExpenseSummary(expenses) {
   return { rows, manual };
 }
 
-// Ledger is the source for saved/paid amounts and historical wallet balances.
+// Ledger is the source for savings activity and historical wallet balances.
 // Never sum expense SAVINGS_SAVE with ledger SAVE as that would double count.
-function buildSavingsSummary(ledger, businessDate) {
+function buildSavingsSummary(ledger, businessDate, withdrawalEntries = [], linkedFloats = []) {
   const { start, end } = nairobiBusinessDayBounds(businessDate);
   const startMs = Date.parse(start);
   const endMs = Date.parse(end);
   const rows = SAVINGS_CATEGORIES.map((category) => ({
-    category, label: SAVINGS_LABELS[category], saved: 0, paid: 0, balance: 0,
+    category, label: SAVINGS_LABELS[category], saved: 0, paid: 0, balance: 0, withdrawals: [], withdrawn: 0, balanceBeforeWithdrawals: 0,
   }));
   const byCategory = new Map(rows.map((row) => [row.category, row]));
   const lastByAccount = new Map();
@@ -283,7 +283,26 @@ function buildSavingsSummary(ledger, businessDate) {
   for (const entry of lastByAccount.values()) {
     byCategory.get(entry.category).balance += entry.balance;
   }
+  const floatById = new Map(linkedFloats.map((entry) => [String(entry.id), entry]));
+  const seenWithdrawalIds = new Set();
+  for (const entry of withdrawalEntries) {
+    if (upper(entry.transaction_type) !== "WITHDRAWAL" || !entry.income_entry_id) continue;
+    if (seenWithdrawalIds.has(String(entry.id))) continue;
+    const row = byCategory.get(upper(entry.category));
+    const float = floatById.get(String(entry.income_entry_id));
+    if (!row || upper(float?.entry_type) !== "MSHWARI_FLOAT") continue;
+    const match = String(float.description || "").match(/\bFloat\s*([123])\s+from\s+M[- ]?Shwari\b/i);
+    seenWithdrawalIds.add(String(entry.id));
+    const amount = Number(entry.amount || 0);
+    row.withdrawals.push({ id: entry.id, amount, slot: match ? Number(match[1]) : null });
+    row.withdrawn += amount;
+  }
   for (const row of rows) {
+    row.withdrawals.sort((a, b) => (a.slot || 99) - (b.slot || 99));
+    row.withdrawn = roundMoney(row.withdrawn);
+    // Balance before the day's recorded float withdrawals, holding other
+    // savings activity constant. Balance Saved is the actual day-end balance.
+    row.balanceBeforeWithdrawals = roundMoney(row.balance + row.withdrawn);
     row.saved = roundMoney(row.saved);
     row.paid = roundMoney(row.paid);
     row.balance = roundMoney(row.balance);
@@ -1283,6 +1302,7 @@ export default function AdminReportsPanel({
           floatResult,
           expenseResult,
           ledgerResult,
+          withdrawalResult,
         ] = await Promise.all([
           fetchJson(
             `shifts?id=eq.${id}&select=*&limit=1`
@@ -1323,6 +1343,16 @@ callRpc("tl_admin_daily_savings_ledger", {
     )?.business_date
   ).end,
 }),
+          // Read-only, shop-scoped withdrawals for this business day.
+          fetchAll(
+            `savings_ledger?shop_id=eq.${shop}` +
+              `&transaction_type=eq.WITHDRAWAL` +
+              `&created_at=gte.${encodeURIComponent(nairobiBusinessDayBounds(shifts.find((s) => String(s.id) === String(selectedShiftId))?.business_date).start)}` +
+              `&created_at=lt.${encodeURIComponent(nairobiBusinessDayBounds(shifts.find((s) => String(s.id) === String(selectedShiftId))?.business_date).end)}` +
+              `&income_entry_id=not.is.null` +
+              `&select=id,category,transaction_type,amount,income_entry_id,created_at` +
+              `&order=created_at.asc`
+          ),
         ]);
 
         if (
@@ -1363,6 +1393,18 @@ callRpc("tl_admin_daily_savings_ledger", {
             : [];
 
         const ledger = Array.isArray(ledgerResult) ? ledgerResult : [];
+        const withdrawalEntries = Array.isArray(withdrawalResult) ? withdrawalResult : [];
+        const linkedIds = [...new Set(withdrawalEntries.map((x) => x.income_entry_id).filter(Boolean))];
+        const linkedFloats = [];
+        for (let i = 0; i < linkedIds.length; i += 100) {
+          const batch = linkedIds.slice(i, i + 100);
+          const results = await fetchJson(
+            `shift_income_entries?id=in.(${batch.map(encodeURIComponent).join(",")})` +
+            `&entry_type=eq.MSHWARI_FLOAT&select=id,entry_type,description,amount`
+          );
+          if (Array.isArray(results)) linkedFloats.push(...results);
+        }
+        if (requestId !== reportRequestRef.current) return;
 
         // ==================================================
         // PLATFORM READINGS
@@ -1420,7 +1462,7 @@ callRpc("tl_admin_daily_savings_ledger", {
 
         // The Savings table is business-day scoped. Expense records remain
         // strictly shift scoped; 24H Shift 1 and Shift 2 are not mixed.
-        const savingsRows = buildSavingsSummary(ledger, shift.business_date);
+        const savingsRows = buildSavingsSummary(ledger, shift.business_date, withdrawalEntries, linkedFloats);
         const expenseSummary = buildExpenseSummary(expenses);
 
         setReport({
@@ -2115,29 +2157,38 @@ function ReportDisplay({
       <div style={styles.section}>
         <SectionTitle background="#0e7490">SAVINGS / BANKING — BUSINESS DATE</SectionTitle>
         <div style={styles.tableScroll}>
-          <div style={styles.fourColumnHeader}>
-            <span style={{ textAlign: "left" }}>CATEGORY</span><span>SAVED TODAY</span><span>PAID TODAY</span><span>BALANCE</span>
+          <div style={styles.fiveColumnHeader}>
+            <span style={{ textAlign: "left" }}>CATEGORY</span><span>SAVED TODAY</span><span>BALANCE</span><span>WITHDRAWN FLOAT</span><span>BALANCE SAVED</span>
           </div>
           {savingsRows.map((row) => (
-            <div key={row.category} style={styles.fourColumnRow}>
+            <div key={row.category} style={styles.fiveColumnRow}>
               <strong style={{ textAlign: "left" }}>{row.label}</strong>
               <span>{money(row.saved)}</span>
-              <span>{money(row.paid)}</span>
+              <span>{money(row.balanceBeforeWithdrawals)}</span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5 }}>
+                {row.withdrawals.length ? row.withdrawals.map((withdrawal) => (
+                  <div key={withdrawal.id} style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, flexWrap: "wrap" }}>
+                    <strong>{money(withdrawal.amount)}</strong>
+                    <span style={styles.floatSlotBadge}>{withdrawal.slot ? `Float ${withdrawal.slot}` : "Slot unavailable"}</span>
+                  </div>
+                )) : <span>0.00</span>}
+              </div>
               <strong>{money(row.balance)}</strong>
             </div>
           ))}
-          <div style={styles.fourColumnTotal}>
+          <div style={styles.fiveColumnTotal}>
             <strong style={{ textAlign: "left" }}>TOTAL (KES)</strong>
             <strong>{money(savingsRows.reduce((sum, row) => sum + row.saved, 0))}</strong>
-            <strong>{money(savingsRows.reduce((sum, row) => sum + row.paid, 0))}</strong>
+            <strong>{money(savingsRows.reduce((sum, row) => sum + row.balanceBeforeWithdrawals, 0))}</strong>
+            <strong>{money(savingsRows.reduce((sum, row) => sum + row.withdrawn, 0))}</strong>
             <strong>{money(savingsRows.reduce((sum, row) => sum + row.balance, 0))}</strong>
           </div>
         </div>
         <div style={styles.savingsNotice}>
-          Savings deposits appear under Saved Today and are not listed as automatic payments.
-          Paid principal moves out of the savings wallet and is not expensed again.
-          Balance is reconstructed from the last recorded ledger balance per account
-          at the end of this business date. Both shifts share this daily savings view.
+          Saved Today shows deposits. Balance shows the day-end savings balance plus
+          that day's linked M-Shwari float withdrawals; Balance Saved is the actual
+          day-end ledger balance. Withdrawn Float lists each linked withdrawal and
+          its recorded destination slot. Both shifts share this business-day view.
         </div>
       </div>
 {/* AUTOMATIC EXPENSES — SELECTED SHIFT */}
@@ -2603,6 +2654,26 @@ const styles = {
     display: "grid", gridTemplateColumns: "1.5fr repeat(3,1fr)",
     minWidth: 500, gap: 10, padding: "10px", backgroundColor: "#cffafe",
     fontSize: 11, textAlign: "right", fontVariantNumeric: "tabular-nums",
+  },
+  fiveColumnHeader: {
+    display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr 1fr",
+    minWidth: 720, gap: 10, padding: "9px 10px", backgroundColor: "#cffafe",
+    color: "#155e75", fontWeight: "bold", fontSize: 10, textAlign: "right",
+  },
+  fiveColumnRow: {
+    display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr 1fr",
+    minWidth: 720, gap: 10, padding: "9px 10px", borderTop: "1px solid #e2e8f0",
+    fontSize: 11, textAlign: "right", fontVariantNumeric: "tabular-nums", alignItems: "center",
+  },
+  fiveColumnTotal: {
+    display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr 1fr",
+    minWidth: 720, gap: 10, padding: "10px", backgroundColor: "#cffafe",
+    fontSize: 11, textAlign: "right", fontVariantNumeric: "tabular-nums",
+  },
+  floatSlotBadge: {
+    display: "inline-block", padding: "2px 6px", borderRadius: 5,
+    backgroundColor: "#e0f2fe", color: "#075985", fontWeight: 700,
+    fontSize: 10, whiteSpace: "nowrap",
   },
   threeColumnHeader: {
     display: "grid", gridTemplateColumns: "2fr 1fr 1fr", minWidth: 500,
