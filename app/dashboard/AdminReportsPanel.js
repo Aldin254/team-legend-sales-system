@@ -14,6 +14,8 @@ const NAVY = "#0f172a";
 
 const PLATFORM_COLUMNS =
   "minmax(115px,1.6fr) repeat(3,minmax(78px,1fr))";
+const NIGHT_PLATFORM_COLUMNS =
+  "minmax(115px,1.6fr) repeat(4,minmax(78px,1fr))";
 
 // ==================================================
 // DATE HELPERS
@@ -1262,8 +1264,7 @@ export default function AdminReportsPanel({
 
           fetchJson(
             `platform_readings?shift_id=eq.${id}` +
-              `&reading_kind=in.(OPENING,CLOSING)` +
-              `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
+                            `&select=id,shift_id,platform_id,reading_kind,reading_value,recorded_at,recorded_by` +
               `&order=recorded_at.asc`
           ),
 
@@ -1363,9 +1364,23 @@ callRpc("tl_admin_daily_savings_ledger", {
                 `${platform.id}-CLOSING`
               ] || null;
 
+            // Display a midnight checkpoint only when a separate reading
+            // was actually saved. Never infer it from opening/closing.
+            const midnight = readings
+              .filter((r) =>
+                String(r.platform_id) === String(platform.id) &&
+                /^(MIDNIGHT|MIDNIGHT_READING|MID_SHIFT|MIDSHIFT|23:59|2359)$/.test(
+                  upper(r.reading_kind)
+                )
+              )
+              .sort((a, b) =>
+                Date.parse(b.recorded_at || 0) - Date.parse(a.recorded_at || 0)
+              )[0] || null;
+
             return {
               ...platform,
               opening,
+              midnight,
               closing,
 
               output:
@@ -1803,6 +1818,11 @@ function ReportDisplay({
     expenseSummary,
   } = report;
 
+  const isNightShift = upper(shop?.shop_type) === "24_HOUR" &&
+    shiftPeriod(shift) === "NIGHT";
+  const platformColumns = isNightShift ? NIGHT_PLATFORM_COLUMNS : PLATFORM_COLUMNS;
+  const platformMinWidth = isNightShift ? 560 : 445;
+
   // Financial calculations unchanged.
   const totalSales = roundMoney(
     Number(shift.opening_balance || 0) +
@@ -1991,7 +2011,7 @@ function ReportDisplay({
           </SectionTitle>
 
           <div style={styles.platformScroll}>
-            <div style={styles.platformHeader}>
+            <div style={{ ...styles.platformHeader, gridTemplateColumns: platformColumns, minWidth: platformMinWidth }}>
               <div
                 style={{
                   textAlign: "left",
@@ -2000,15 +2020,16 @@ function ReportDisplay({
                 PLATFORM
               </div>
 
-              <div>OPENING</div>
-              <div>CLOSING</div>
+              <div>{isNightShift ? "OPENING 9 PM" : "OPENING 9 AM"}</div>
+              {isNightShift && <div>MIDNIGHT 11:59 PM</div>}
+              <div>{isNightShift ? "CLOSING 9 AM" : "CLOSING 9 PM"}</div>
               <div>SALES</div>
             </div>
 
             {platformRows.map((platform) => (
               <div
                 key={platform.id}
-                style={styles.platformRow}
+                style={{ ...styles.platformRow, gridTemplateColumns: platformColumns, minWidth: platformMinWidth }}
               >
                 <strong
                   style={{
@@ -2027,6 +2048,12 @@ function ReportDisplay({
                       )
                     : "-"}
                 </span>
+
+                {isNightShift && (
+                  <span>
+                    {platform.midnight ? money(platform.midnight.reading_value) : "-"}
+                  </span>
+                )}
 
                 <span>
                   {platform.closing
@@ -2047,10 +2074,10 @@ function ReportDisplay({
               </div>
             ))}
 
-            <div style={styles.platformTotal}>
+            <div style={{ ...styles.platformTotal, gridTemplateColumns: platformColumns, minWidth: platformMinWidth }}>
               <strong
                 style={{
-                  gridColumn: "1 / 4",
+                  gridColumn: isNightShift ? "1 / 5" : "1 / 4",
                   textAlign: "left",
                 }}
               >
