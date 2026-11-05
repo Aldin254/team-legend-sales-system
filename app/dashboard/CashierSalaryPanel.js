@@ -734,19 +734,19 @@ export default function CashierSalaryPanel({
         );
       }
 
-      setRecentPaid((previous) => ({
-        ...previous,
-        [row.employee_id]: true,
-      }));
-
-      setUnlocked((previous) => ({
-        ...previous,
-        [row.employee_id]: {
-          ...details,
-          ...result,
-          _sessionScope: expectedScope,
-        },
-      }));
+      // Payment succeeded for ONE salary week, not necessarily all arrears.
+      // Clear the spent authorization so the next oldest unpaid week can
+      // be unlocked with a NEW salary PIN, without a 10-second false-PAID hold.
+      setRecentPaid((previous) => {
+        const next = { ...previous };
+        delete next[row.employee_id];
+        return next;
+      });
+      setUnlocked((previous) => {
+        const next = { ...previous };
+        delete next[row.employee_id];
+        return next;
+      });
 
       setPinOpenId(null);
 
@@ -759,8 +759,6 @@ export default function CashierSalaryPanel({
         `${row.employee_name}: Salary paid.`,
         "success"
       );
-
-      startPaidCloseTimer(row.employee_id);
 
       // A dashboard refresh failure must never
       // change a successful salary payment into
@@ -898,9 +896,7 @@ export default function CashierSalaryPanel({
             recentPaid[employeeId] && details
           );
 
-          // The database is authoritative for whether any tracked
-          // salary week remains unpaid. A successful payment is not
-          // proof that all other weeks have been cleared.
+          // The database status reflects ALL tracked unpaid salary weeks.
           const status = salaryStatus(row);
 
           const locked = Boolean(
@@ -931,18 +927,14 @@ export default function CashierSalaryPanel({
 
                 <SalaryStatus
                   status={visibleStatus}
+                  unpaidWeeks={row.unpaid_weeks}
+                  unpaidCount={row.unpaid_week_count}
                 />
 
                 <div className="tl-salary-action">
                   {justPaid ? (
-                    <span
-                      className={`tl-salary-action-label ${
-                        status === "PENDING" ? "neutral" : "positive"
-                      }`}
-                    >
-                      {status === "PENDING"
-                        ? "ARREARS PENDING"
-                        : "PAYMENT SAVED ✓"}
+                    <span className="tl-salary-action-label neutral">
+                      PAYMENT SAVED ✓
                     </span>
                   ) : locked ? (
                     <span className="tl-salary-action-label negative">
@@ -1160,8 +1152,10 @@ export default function CashierSalaryPanel({
 // CHILD COMPONENTS
 // ==================================================
 
-function SalaryStatus({ status }) {
+function SalaryStatus({ status, unpaidWeeks, unpaidCount }) {
   const value = upper(status);
+  const count = Number(unpaidCount || 0);
+  const weeks = Array.isArray(unpaidWeeks) ? unpaidWeeks : [];
 
   const tone =
     value === "PAID"
@@ -1174,7 +1168,17 @@ function SalaryStatus({ status }) {
 
   return (
     <div className={`tl-salary-status ${tone}`}>
-      {value === "PAID" ? "PAID ✓" : value}
+      <div>{value === "PAID" ? "PAID ✓" : value}</div>
+      {count > 0 && (
+        <div className="tl-salary-arrears-count">
+          {count} {count === 1 ? "WEEK" : "WEEKS"} DUE
+        </div>
+      )}
+      {count > 1 && weeks.length > 1 && (
+        <div className="tl-salary-arrears-weeks">
+          {weeks.map((w) => shortWeek(w.earned_week_start)).join(" • ")}
+        </div>
+      )}
     </div>
   );
 }
@@ -1266,32 +1270,23 @@ async function safeJson(response) {
 // ==================================================
 
 function salaryStatus(row) {
-  // Prefer the unpaid-arrears information when returned by
-  // the salary database function. Never infer full payment
-  // from the most recently completed salary transaction.
-  const unpaidCount =
-    row?.unpaid_week_count ??
-    row?.unpaid_weeks_count ??
-    row?.salary_arrears_count;
-
-  if (
-    unpaidCount !== null &&
-    unpaidCount !== undefined &&
-    unpaidCount !== "" &&
-    Number.isFinite(Number(unpaidCount)) &&
-    Number(unpaidCount) > 0
-  ) {
+  const count = Number(row?.unpaid_week_count ?? 0);
+  if (Number.isFinite(count) && count > 0) return "PENDING";
+  if (Array.isArray(row?.unpaid_weeks) && row.unpaid_weeks.length > 0) {
     return "PENDING";
   }
-
-  if (
-    Array.isArray(row?.unpaid_weeks) &&
-    row.unpaid_weeks.length > 0
-  ) {
-    return "PENDING";
-  }
-
   return upper(row?.status || "NOT DUE");
+}
+
+function shortWeek(dateString) {
+  const value = String(dateString || "");
+  const date = new Date(`${value}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-KE", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 function upper(value) {
@@ -1474,6 +1469,17 @@ const salaryCss = `
   font-size: 11px;
   font-weight: 850;
   line-height: 1.3;
+}
+.tl-salary-arrears-count {
+  font-size: 10px;
+  font-weight: 800;
+  margin-top: 3px;
+}
+.tl-salary-arrears-weeks {
+  font-size: 9px;
+  font-weight: 600;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
 }
 .tl-salary-status.pending,
 .tl-salary-action-label.neutral {
