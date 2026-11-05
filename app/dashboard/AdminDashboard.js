@@ -1671,7 +1671,11 @@ function AdminMasterEmployeeList({
         }
 
         const current =
-          people.map(toMasterDraft);
+          people
+            .filter((employee) =>
+              employee.employment_status === "ACTIVE"
+            )
+            .map(toMasterDraft);
 
         setEmployees(current);
         setDrafts(current);
