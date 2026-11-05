@@ -460,7 +460,7 @@ export default function CashierSalaryPanel({
     }
 
     if (
-      upper(row?.status) !== "PENDING"
+      salaryStatus(row) !== "PENDING"
     ) {
       return;
     }
@@ -898,9 +898,10 @@ export default function CashierSalaryPanel({
             recentPaid[employeeId] && details
           );
 
-          const status = upper(
-            row.status || "NOT DUE"
-          );
+          // The database is authoritative for whether any tracked
+          // salary week remains unpaid. A successful payment is not
+          // proof that all other weeks have been cleared.
+          const status = salaryStatus(row);
 
           const locked = Boolean(
             row.pin_locked ||
@@ -910,12 +911,9 @@ export default function CashierSalaryPanel({
           const pinOpen =
             pinOpenId === employeeId;
 
-          const visibleStatus =
-            justPaid
-              ? "PAID"
-              : locked
-                ? "LOCKED"
-                : status;
+          const visibleStatus = locked
+            ? "LOCKED"
+            : status;
 
           return (
             <div
@@ -937,8 +935,14 @@ export default function CashierSalaryPanel({
 
                 <div className="tl-salary-action">
                   {justPaid ? (
-                    <span className="tl-salary-action-label positive">
-                      PAID ✓
+                    <span
+                      className={`tl-salary-action-label ${
+                        status === "PENDING" ? "neutral" : "positive"
+                      }`}
+                    >
+                      {status === "PENDING"
+                        ? "ARREARS PENDING"
+                        : "PAYMENT SAVED ✓"}
                     </span>
                   ) : locked ? (
                     <span className="tl-salary-action-label negative">
@@ -1260,6 +1264,35 @@ async function safeJson(response) {
 // ==================================================
 // HELPERS
 // ==================================================
+
+function salaryStatus(row) {
+  // Prefer the unpaid-arrears information when returned by
+  // the salary database function. Never infer full payment
+  // from the most recently completed salary transaction.
+  const unpaidCount =
+    row?.unpaid_week_count ??
+    row?.unpaid_weeks_count ??
+    row?.salary_arrears_count;
+
+  if (
+    unpaidCount !== null &&
+    unpaidCount !== undefined &&
+    unpaidCount !== "" &&
+    Number.isFinite(Number(unpaidCount)) &&
+    Number(unpaidCount) > 0
+  ) {
+    return "PENDING";
+  }
+
+  if (
+    Array.isArray(row?.unpaid_weeks) &&
+    row.unpaid_weeks.length > 0
+  ) {
+    return "PENDING";
+  }
+
+  return upper(row?.status || "NOT DUE");
+}
 
 function upper(value) {
   return String(value || "")
