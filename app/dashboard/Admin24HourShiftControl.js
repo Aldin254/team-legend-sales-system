@@ -291,35 +291,101 @@ export default function Admin24HourShiftControl({
   // ======================================
   // ACTION VALIDATION
   //
-  // SAME SHIFT:
-  // - NO REASON REQUIRED
-  // - NO PLATFORM READINGS REQUIRED
-  // - NO FINANCIAL EDIT REQUIRED
-  //
-  // DIFFERENT SHIFT:
-  // - ADMIN REASON REQUIRED
-  // - HANDOVER RULES REMAIN
+  // Ending a recovery session requires no
+  // correction, platform readings, or handover.
+  // Opening a different shift is a separate
+  // action with its existing validation.
   // ======================================
 
   const reasonText = reason.trim();
 
-  const canSave =
+  const canExit =
     active &&
     !!source &&
+    !!status?.session_id &&
     !loading &&
-    !saving &&
-    reasonText.length <= 500 &&
-    (
-      sameSlot ||
-      (
-        Array.isArray(roster?.employees) &&
-        !rosterLoading &&
-        reasonText.length >= 10
-      )
-    );
+    !saving;
+
+  const canSave =
+    canExit &&
+    !sameSlot &&
+    Array.isArray(roster?.employees) &&
+    !rosterLoading &&
+    reasonText.length >= 10 &&
+    reasonText.length <= 500;
 
   // ======================================
-  // FINALIZE / END RECOVERY
+  // END RECOVERY WITHOUT HANDOVER
+  // ======================================
+
+  async function endRecovery() {
+    if (!canExit) return;
+
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const latest = await rpc(
+        "tl_admin_24h_recovery_status_v1",
+        token,
+        { p_shop_id: shopId }
+      );
+
+      if (
+        latest?.active_recovery !== true ||
+        !latest?.session_id ||
+        !latest?.source ||
+        latest.session_id !== status.session_id ||
+        latest.source.id !== source.id
+      ) {
+        throw new Error(
+          "Recovery changed. Refresh the report."
+        );
+      }
+
+      const confirmed = window.confirm(
+        [
+          "END ADMIN RECOVERY",
+          "",
+          `Shop: ${latest.shop_name}`,
+          `Shift: ${latest.source.shift_name}`,
+          `Business date: ${latest.source.business_date}`,
+          "",
+          "Save no additional corrections.",
+          "Keep existing shifts, readings and balances unchanged.",
+          "Do not open another shift.",
+          "",
+          "Continue?",
+        ].join("\n")
+      );
+
+      if (!confirmed) return;
+
+      await rpc(
+        "tl_admin_end_shift_recovery",
+        token,
+        {
+          p_session_id: latest.session_id,
+          p_note: reasonText || null,
+        }
+      );
+
+      setMessage("Recovery ended. Shifts unchanged.");
+      setReason("");
+      setVersion((n) => n + 1);
+      onChanged?.();
+    } catch (err) {
+      setError(
+        err?.message || "Unable to end Admin Recovery."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ======================================
+  // FINALIZE A REAL SHIFT HANDOVER
   // ======================================
 
   async function finalize() {
@@ -388,63 +454,6 @@ export default function Admin24HourShiftControl({
       }
 
       // ==================================
-      // OPTION 1:
-      // FINISH RECOVERY, KEEP SHIFT OPEN
-      //
-      // This uses the existing recovery
-      // ending function.
-      //
-      // Does not:
-      // - Close Shift 1
-      // - Create Shift 2
-      // - Require six platform readings
-      // - Reset any reading to zero
-      // - Change financial figures
-      // ==================================
-
-      if (latestSameSlot) {
-        const confirmed = window.confirm(
-          [
-            "END ADMIN RECOVERY",
-            "",
-            `Shop: ${latest.shop_name}`,
-            `Shift: ${latest.source.shift_name}`,
-            `Business date: ${latest.source.business_date}`,
-            "",
-            "Keep the current shift OPEN.",
-            "Keep all saved corrections.",
-            "Do not change platform readings.",
-            "Do not create another shift.",
-            "",
-            "Continue?",
-          ].join("\n")
-        );
-
-        if (!confirmed) return;
-
-        await rpc(
-          "tl_admin_end_shift_recovery",
-          token,
-          {
-            p_session_id: latest.session_id,
-            p_note: reasonText || null,
-          }
-        );
-
-        setMessage(
-          "Recovery ended. Existing shift remains OPEN."
-        );
-
-        setReason("");
-        setVersion((n) => n + 1);
-
-        onChanged?.();
-
-        return;
-      }
-
-      // ==================================
-      // OPTION 2:
       // CLOSE SOURCE AND OPEN NEXT SHIFT
       //
       // This is a genuine financial
@@ -777,22 +786,37 @@ export default function Admin24HourShiftControl({
           </div>
         )}
 
-        <div style={styles.actions}>
+        <div
+          style={{
+            ...styles.actions,
+            gridTemplateColumns: sameSlot ? "2fr 1fr" : "2fr 2fr 1fr",
+          }}
+        >
           <button
             type="button"
-            disabled={!canSave}
-            onClick={finalize}
+            disabled={!canExit}
+            onClick={endRecovery}
             style={{
               ...styles.save,
-              opacity: canSave ? 1 : 0.5,
+              opacity: canExit ? 1 : 0.5,
             }}
           >
-            {saving
-              ? "SAVING..."
-              : sameSlot
-              ? "END RECOVERY — KEEP SHIFT OPEN"
-              : "FINALIZE RECOVERY & OPEN SHIFT"}
+            {saving ? "SAVING..." : "END RECOVERY — RETURN"}
           </button>
+
+          {!sameSlot && (
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={finalize}
+              style={{
+                ...styles.save,
+                opacity: canSave ? 1 : 0.5,
+              }}
+            >
+              {saving ? "SAVING..." : "FINALIZE & OPEN NEXT SHIFT"}
+            </button>
+          )}
 
           <button
             type="button"
